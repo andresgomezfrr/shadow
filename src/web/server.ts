@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { readFileSync, existsSync, statSync } from 'node:fs';
+import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDatabase, type ShadowDatabase } from '../storage/database.js';
 import { loadConfig } from '../config/load-config.js';
@@ -132,6 +132,47 @@ async function handleApi(
       const repos = db.listRepos();
       return json(res, repos);
     }
+
+    if (pathname === '/api/daily-summary') {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const sinceIso = todayStart.toISOString();
+      const profile = db.ensureProfile();
+      const repos = db.listRepos();
+      const observations = db.listObservations({ limit: 100 });
+      const todayObs = observations.filter((o) => o.createdAt > sinceIso);
+      const memories = db.listMemories({ archived: false });
+      const todayMemories = memories.filter((m) => m.createdAt > sinceIso);
+      const suggestions = db.listSuggestions({ status: 'pending' });
+      const usage = db.getUsageSummary('day');
+      const events = db.listPendingEvents();
+      return json(res, {
+        date: todayStart.toISOString().split('T')[0],
+        profile,
+        activity: {
+          observationsToday: todayObs.length,
+          memoriesCreatedToday: todayMemories.length,
+          pendingSuggestions: suggestions.length,
+          pendingEvents: events.length,
+        },
+        topObservations: todayObs.slice(0, 10),
+        pendingSuggestions: suggestions.slice(0, 20),
+        repos: repos.map((r) => ({ id: r.id, name: r.name, path: r.path, lastObservedAt: r.lastObservedAt })),
+        tokens: { input: usage.totalInputTokens, output: usage.totalOutputTokens, calls: usage.totalCalls },
+      });
+    }
+
+    if (pathname === '/api/events') {
+      const events = db.listPendingEvents();
+      return json(res, events);
+    }
+
+    if (pathname === '/api/runs') {
+      const status = params.get('status') ?? undefined;
+      const repoId = params.get('repoId') ?? undefined;
+      const runs = db.listRuns({ status, repoId });
+      return json(res, runs);
+    }
   }
 
   // --- POST routes ---
@@ -148,6 +189,36 @@ async function handleApi(
       const updated = db.getSuggestion(id);
       return json(res, updated);
     }
+
+    if (pathname === '/api/profile') {
+      const body = JSON.parse(await readBody(req));
+      const numericFields = ['proactivityLevel', 'personalityLevel', 'trustLevel', 'trustScore', 'bondLevel'];
+      const updates: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(body)) {
+        updates[key] = numericFields.includes(key) ? Number(value) : value;
+      }
+      db.updateProfile('default', updates);
+      const updated = db.ensureProfile();
+      return json(res, updated);
+    }
+
+    if (pathname === '/api/focus') {
+      const body = JSON.parse(await readBody(req));
+      if (body.mode === 'focus') {
+        let focusUntil: string | null = null;
+        if (body.duration) {
+          const durMatch = String(body.duration).match(/^(\d+)\s*(h|m)$/i);
+          if (durMatch) {
+            const ms = durMatch[2].toLowerCase() === 'h' ? Number(durMatch[1]) * 3600000 : Number(durMatch[1]) * 60000;
+            focusUntil = new Date(Date.now() + ms).toISOString();
+          }
+        }
+        db.updateProfile('default', { focusMode: 'focus', focusUntil });
+      } else {
+        db.updateProfile('default', { focusMode: null, focusUntil: null });
+      }
+      return json(res, db.ensureProfile());
+    }
   }
 
   // --- CORS preflight ---
@@ -163,15 +234,34 @@ async function handleApi(
   json(res, { error: 'Not found' }, 404);
 }
 
-export async function startWebServer(port: number = 3700, existingDb?: ShadowDatabase): Promise<void> {
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
+
+export async function startWebServer(port: number = 3700, _existingDb?: ShadowDatabase): Promise<void> {
   const config = loadConfig();
-  const db = existingDb ?? createDatabase(config);
+  // Always create own DB connection — sharing with daemon causes "database is not open" errors
+  const db = createDatabase(config);
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
-  // Try src path first (dev), then dist path (built)
+
+  // React dashboard (built by Vite)
+  const srcDashboardDir = resolve(__dirname, '..', '..', 'src', 'web', 'dashboard', 'dist');
+  const distDashboardDir = resolve(__dirname, 'dashboard', 'dist');
+  const dashboardDir = existsSync(srcDashboardDir) ? srcDashboardDir : (existsSync(distDashboardDir) ? distDashboardDir : null);
+
+  // Legacy fallback
   const srcHtmlPath = resolve(__dirname, '..', '..', 'src', 'web', 'public', 'index.html');
   const distHtmlPath = resolve(__dirname, 'public', 'index.html');
-  const htmlPath = existsSync(srcHtmlPath) ? srcHtmlPath : distHtmlPath;
+  const legacyHtmlPath = existsSync(srcHtmlPath) ? srcHtmlPath : distHtmlPath;
 
   const server = createServer(async (req, res) => {
     try {
@@ -182,8 +272,27 @@ export async function startWebServer(port: number = 3700, existingDb?: ShadowDat
         return;
       }
 
-      // Serve dashboard — re-read on each request so changes are picked up
-      const indexHtml = readFileSync(htmlPath, 'utf8');
+      // Serve React SPA if built
+      if (dashboardDir) {
+        const filePath = resolve(dashboardDir, pathname === '/' ? 'index.html' : pathname.slice(1));
+        if (existsSync(filePath) && statSync(filePath).isFile()) {
+          const ext = extname(filePath);
+          const contentType = MIME_TYPES[ext] ?? 'application/octet-stream';
+          const content = readFileSync(filePath);
+          res.writeHead(200, { 'Content-Type': contentType });
+          res.end(content);
+          return;
+        }
+        // SPA fallback — serve index.html for client-side routing
+        const indexPath = resolve(dashboardDir, 'index.html');
+        if (existsSync(indexPath)) {
+          html(res, readFileSync(indexPath, 'utf8'));
+          return;
+        }
+      }
+
+      // Legacy dashboard fallback
+      const indexHtml = readFileSync(legacyHtmlPath, 'utf8');
       html(res, indexHtml);
     } catch (err) {
       console.error('Shadow web error:', err);

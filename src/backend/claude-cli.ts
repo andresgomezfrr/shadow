@@ -12,7 +12,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
     const startedAt = new Date().toISOString();
     const timeoutMs = pack.timeoutMs ?? this.config.runnerTimeoutMs;
 
-    const args = ['--print', '--output-format', 'text'];
+    const args = ['--print', '--output-format', 'json'];
 
     if (pack.model) {
       args.push('--model', pack.model);
@@ -50,13 +50,35 @@ export class ClaudeCliAdapter implements BackendAdapter {
         };
       }
 
+      // Parse JSON output from Claude CLI to extract text and token usage
+      let outputText = result.stdout || '';
+      let inputTokens: number | undefined;
+      let outputTokens: number | undefined;
+
+      try {
+        const jsonOutput = JSON.parse(outputText) as {
+          result?: string;
+          usage?: { input_tokens?: number; output_tokens?: number };
+          cost_usd?: number;
+          duration_ms?: number;
+          num_turns?: number;
+        };
+        outputText = jsonOutput.result ?? outputText;
+        inputTokens = jsonOutput.usage?.input_tokens;
+        outputTokens = jsonOutput.usage?.output_tokens;
+      } catch {
+        // Not JSON — use raw text output (fallback)
+      }
+
       return {
         status: result.status === 0 ? 'success' : 'failure',
         exitCode: result.status,
         startedAt,
         finishedAt,
-        output: result.stdout || '',
+        output: outputText,
         summaryHint: null,
+        inputTokens,
+        outputTokens,
       };
     } catch (error) {
       return {

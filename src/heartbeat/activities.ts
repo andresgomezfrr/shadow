@@ -246,6 +246,7 @@ export async function activityAnalyze(
           }>;
         };
 
+        console.error(`[shadow:analyze] Parsed ${parsed.insights?.length ?? 0} insights from LLM`);
         if (parsed.insights && Array.isArray(parsed.insights)) {
           for (const insight of parsed.insights) {
             if (!insight.title || !insight.bodyMd) continue;
@@ -269,13 +270,15 @@ export async function activityAnalyze(
             if (insight.kind === 'pattern') patternsDetected++;
           }
         }
-      } catch {
-        // Failed to parse LLM output — not fatal
+      } catch (parseErr) {
+        // Log parse failures so we can debug
+        console.error('[shadow:analyze] Failed to parse LLM output:', parseErr instanceof Error ? parseErr.message : parseErr);
+        console.error('[shadow:analyze] Raw output (first 500 chars):', result.output.slice(0, 500));
       }
     }
-  } catch {
-    // LLM call failed — continue without analysis
-    // This is expected during early development / when backend is not configured
+  } catch (llmErr) {
+    // Log LLM failures
+    console.error('[shadow:analyze] LLM call failed:', llmErr instanceof Error ? llmErr.message : llmErr);
   }
 
   // Mark all observations as processed

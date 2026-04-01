@@ -26,6 +26,16 @@ const GIT_TIMEOUT = 10_000;
 
 // --- Helpers ---
 
+/**
+ * Check if a similar observation already exists recently (last 1h).
+ * Prevents duplicate observations across heartbeats.
+ */
+function hasRecentObservation(db: ShadowDatabase, repoId: string, kind: string): boolean {
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const recent = db.listObservations({ repoId, limit: 50 });
+  return recent.some(o => o.kind === kind && o.createdAt > oneHourAgo);
+}
+
 function gitExec(args: string[], cwd: string): string {
   return execFileSync('git', args, {
     cwd,
@@ -321,23 +331,29 @@ export async function observeRepo(db: ShadowDatabase, repo: RepoRecord): Promise
     const statusOutput = tryGitExec(['status', '--porcelain'], repo.path);
     const diffStatOutput = tryGitExec(['diff', '--stat', 'HEAD'], repo.path);
 
-    // --- Create observations ---
+    // --- Create observations (with dedup) ---
 
     // Project structure (first time only — gives LLM full context about the repo)
     const structure = observeProjectStructure(db, repo);
     if (structure) result.observations.push(structure);
 
-    // Recent commits (what was worked on)
-    const commitObs = observeRecentCommits(db, repo, commits);
-    if (commitObs) result.observations.push(commitObs);
+    // Recent commits (what was worked on) — only if new commits
+    if (commits.length > 0 && !hasRecentObservation(db, repo.id, 'recent_commits')) {
+      const commitObs = observeRecentCommits(db, repo, commits);
+      if (commitObs) result.observations.push(commitObs);
+    }
 
-    // Uncommitted work (what's in progress)
-    const uncommitted = observeUncommittedWork(db, repo, statusOutput, diffStatOutput);
-    if (uncommitted) result.observations.push(uncommitted);
+    // Uncommitted work (what's in progress) — dedup
+    if (!hasRecentObservation(db, repo.id, 'uncommitted_work')) {
+      const uncommitted = observeUncommittedWork(db, repo, statusOutput, diffStatOutput);
+      if (uncommitted) result.observations.push(uncommitted);
+    }
 
-    // Active branches (what features are in flight)
-    const branches = observeActiveBranches(db, repo);
-    if (branches) result.observations.push(branches);
+    // Active branches (what features are in flight) — dedup
+    if (!hasRecentObservation(db, repo.id, 'active_branches')) {
+      const branches = observeActiveBranches(db, repo);
+      if (branches) result.observations.push(branches);
+    }
 
     // Update lastObservedAt
     db.updateRepo(repo.id, { lastObservedAt: new Date().toISOString() });
