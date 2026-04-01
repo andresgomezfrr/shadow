@@ -1,3 +1,7 @@
+import { readFileSync, writeFileSync as fsWriteFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import type { ShadowConfig } from '../config/load-config.js';
 import type { ShadowDatabase } from '../storage/database.js';
 import type { ObservationRecord, MemoryRecord } from '../storage/models.js';
 import type { ObjectivePack } from '../backend/types.js';
@@ -6,6 +10,7 @@ import { observeAllRepos } from '../observation/watcher.js';
 import { findRelevantMemories } from '../memory/retrieval.js';
 import { maintainMemoryLayers } from '../memory/layers.js';
 import { selectAdapter } from '../backend/index.js';
+import { applyTrustDelta } from '../profile/trust.js';
 
 import type { HeartbeatContext } from './state-machine.js';
 
@@ -29,11 +34,77 @@ export async function activityObserve(
 
 // --- Activity: Analyze ---
 
+function loadRecentInteractions(config: ShadowConfig, sinceIso?: string): { file: string; tool: string; cmd: string; ts: string }[] {
+  const interactionsPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
+  try {
+    const content = readFileSync(interactionsPath, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const since = sinceIso ? new Date(sinceIso).getTime() : Date.now() - 60 * 60 * 1000; // default: last 1h
+    const entries: { file: string; tool: string; cmd: string; ts: string }[] = [];
+
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as { ts: string; tool: string; file?: string; cmd?: string };
+        if (new Date(entry.ts).getTime() > since) {
+          entries.push({
+            ts: entry.ts,
+            tool: entry.tool,
+            file: entry.file ?? '',
+            cmd: entry.cmd ?? '',
+          });
+        }
+      } catch { /* skip malformed lines */ }
+    }
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+function summarizeInteractions(interactions: { file: string; tool: string; cmd: string; ts: string }[]): string {
+  if (interactions.length === 0) return '';
+
+  // Group by file/repo to show what was worked on
+  const fileCounts = new Map<string, number>();
+  const toolCounts = new Map<string, number>();
+
+  for (const i of interactions) {
+    if (i.file) {
+      fileCounts.set(i.file, (fileCounts.get(i.file) ?? 0) + 1);
+    }
+    toolCounts.set(i.tool, (toolCounts.get(i.tool) ?? 0) + 1);
+  }
+
+  const lines: string[] = [`${interactions.length} tool calls in Claude CLI sessions:`];
+
+  // Top files touched
+  const topFiles = [...fileCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  if (topFiles.length > 0) {
+    lines.push('\nFiles worked on:');
+    for (const [file, count] of topFiles) {
+      lines.push(`  - ${file} (${count}x)`);
+    }
+  }
+
+  // Tool usage breakdown
+  lines.push('\nTool usage:');
+  for (const [tool, count] of [...toolCounts.entries()].sort((a, b) => b[1] - a[1])) {
+    lines.push(`  - ${tool}: ${count}`);
+  }
+
+  return lines.join('\n');
+}
+
 export async function activityAnalyze(
   ctx: HeartbeatContext,
   observations: ObservationRecord[],
 ): Promise<{ patternsDetected: number; memoriesCreated: number; llmCalls: number; tokensUsed: number }> {
-  if (observations.length === 0) {
+  // Load recent interactions from Claude CLI sessions
+  const lastHbTime = ctx.lastHeartbeat?.startedAt;
+  const recentInteractions = loadRecentInteractions(ctx.config, lastHbTime);
+  const interactionSummary = summarizeInteractions(recentInteractions);
+
+  if (observations.length === 0 && recentInteractions.length === 0) {
     return { patternsDetected: 0, memoriesCreated: 0, llmCalls: 0, tokensUsed: 0 };
   }
 
@@ -50,32 +121,55 @@ export async function activityAnalyze(
     if (typeof detail.file === 'string') filePaths.push(detail.file);
   }
 
+  // Also extract file paths from interactions
+  for (const i of recentInteractions) {
+    if (i.file) filePaths.push(i.file);
+  }
+
   // Get relevant memories for context
   const relevantMemories = findRelevantMemories(ctx.db, {
-    filePaths,
+    filePaths: [...new Set(filePaths)].slice(0, 20),
     topics: [...new Set(topics)],
     repoId: repoIds.size === 1 ? [...repoIds][0] : undefined,
   });
 
   // Build the analysis prompt
-  const observationSummaries = observations.map((obs) =>
-    `- [${obs.severity}] ${obs.kind}: ${obs.title} (repo: ${obs.repoId})`,
-  ).join('\n');
+  const observationSummaries = observations.length > 0
+    ? observations.map((obs) =>
+        `- [${obs.severity}] ${obs.kind}: ${obs.title} (repo: ${obs.repoId})`,
+      ).join('\n')
+    : 'No new git observations.';
 
   const memorySummaries = relevantMemories.map((mem) =>
     `- [${mem.layer}/${mem.kind}] ${mem.title}: ${mem.bodyMd.slice(0, 200)}`,
   ).join('\n');
 
   const prompt = [
-    'Analyze the following observations from the developer\'s repositories.',
-    'Identify patterns, potential issues, and insights. Return structured JSON with:',
-    '{ "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[] }] }',
+    'You are Shadow, analyzing what happened in the developer\'s engineering sessions.',
+    'You have two data sources:',
+    '1. Git observations: changes detected in repositories',
+    '2. Claude CLI interactions: what the developer worked on in their Claude sessions (files edited, commands run)',
     '',
-    '## Recent Observations',
+    'Analyze both sources and extract useful memories. Return structured JSON:',
+    '```json',
+    '{ "insights": [{ "kind": "pattern|fact|preference|observation", "title": "short title", "bodyMd": "what you learned (markdown)", "confidence": 70, "tags": ["tag1"], "layer": "hot|core", "scope": "personal|repo|cross-repo" }] }',
+    '```',
+    '',
+    'Guidelines:',
+    '- Extract WHAT the developer is working on (projects, features, files)',
+    '- Notice PATTERNS (which repos/files get touched together, work schedule)',
+    '- Identify PREFERENCES (coding style, tools used, workflows)',
+    '- If something seems like permanent knowledge (infrastructure, team processes), use layer "core"',
+    '- For current work context, use layer "hot"',
+    '- Be specific and actionable, not vague',
+    '- Each insight should be something useful to remember for future sessions',
+    '',
+    '## Git Observations',
     observationSummaries,
     '',
-    relevantMemories.length > 0 ? `## Relevant Memories\n${memorySummaries}\n` : '',
-    'Respond with JSON only.',
+    interactionSummary ? `## Claude CLI Session Activity\n${interactionSummary}\n` : '',
+    relevantMemories.length > 0 ? `## Existing Memories (for context)\n${memorySummaries}\n` : '',
+    'Respond with JSON only, no markdown fences.',
   ].join('\n');
 
   const pack: ObjectivePack = {
@@ -112,13 +206,30 @@ export async function activityAnalyze(
     // Parse insights from LLM response
     if (result.status === 'success' && result.output) {
       try {
-        const parsed = JSON.parse(result.output) as {
+        // Extract JSON from output — Claude CLI may wrap it in markdown fences
+        let jsonStr = result.output.trim();
+        const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[1].trim();
+        }
+        // Also try to find raw JSON object
+        if (!jsonStr.startsWith('{')) {
+          const braceIdx = jsonStr.indexOf('{');
+          const lastBrace = jsonStr.lastIndexOf('}');
+          if (braceIdx !== -1 && lastBrace !== -1) {
+            jsonStr = jsonStr.slice(braceIdx, lastBrace + 1);
+          }
+        }
+
+        const parsed = JSON.parse(jsonStr) as {
           insights?: Array<{
             kind?: string;
             title?: string;
             bodyMd?: string;
             confidence?: number;
             tags?: string[];
+            layer?: string;
+            scope?: string;
           }>;
         };
 
@@ -126,17 +237,20 @@ export async function activityAnalyze(
           for (const insight of parsed.insights) {
             if (!insight.title || !insight.bodyMd) continue;
 
+            const layer = ['core', 'hot', 'warm'].includes(insight.layer ?? '') ? insight.layer! : 'hot';
+            const scope = ['personal', 'repo', 'team', 'system', 'cross-repo'].includes(insight.scope ?? '') ? insight.scope! : 'personal';
+
             ctx.db.createMemory({
               repoId: repoIds.size === 1 ? [...repoIds][0] : null,
-              layer: 'warm',
-              scope: 'repo',
+              layer,
+              scope,
               kind: insight.kind ?? 'pattern',
               title: insight.title,
               bodyMd: insight.bodyMd,
               tags: insight.tags ?? [],
-              sourceType: 'analyze',
+              sourceType: 'heartbeat',
               confidenceScore: insight.confidence ?? 60,
-              relevanceScore: 0.5,
+              relevanceScore: 0.6,
             });
             memoriesCreated++;
             if (insight.kind === 'pattern') patternsDetected++;
@@ -155,6 +269,17 @@ export async function activityAnalyze(
   for (const obs of observations) {
     ctx.db.markObservationProcessed(obs.id);
   }
+
+  // Trust: heartbeat completion + interaction logging
+  if (llmCalls > 0) {
+    try { applyTrustDelta(ctx.db, 'heartbeat_completed'); } catch { /* ignore */ }
+  }
+  if (recentInteractions.length >= 10) {
+    try { applyTrustDelta(ctx.db, 'interaction_logged'); } catch { /* ignore */ }
+  }
+
+  // Rotate interactions log after processing
+  rotateInteractionsLog(ctx.config, new Date().toISOString());
 
   return { patternsDetected, memoriesCreated, llmCalls, tokensUsed };
 }
@@ -389,6 +514,27 @@ export async function activityConsolidate(
     llmCalls,
     tokensUsed,
   };
+}
+
+// --- Interactions log rotation ---
+
+function rotateInteractionsLog(config: ShadowConfig, cutoffIso: string): void {
+  const interactionsPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
+  try {
+    const content = readFileSync(interactionsPath, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean);
+
+    // Keep only lines from the last 5 minutes as buffer
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const kept = lines.filter(line => {
+      try {
+        const entry = JSON.parse(line) as { ts: string };
+        return entry.ts > fiveMinAgo;
+      } catch { return false; }
+    });
+
+    fsWriteFileSync(interactionsPath, kept.length > 0 ? kept.join('\n') + '\n' : '', 'utf8');
+  } catch { /* file doesn't exist or can't be read — fine */ }
 }
 
 // --- Activity: Notify ---

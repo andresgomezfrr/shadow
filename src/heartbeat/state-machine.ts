@@ -94,12 +94,32 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
   result.phases.push('wake');
   ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'wake', activity: 'waking' });
 
-  // Smart heartbeat: check if there are new observations since last heartbeat
-  let hasNewObservationsSinceLastBeat = true;
-  if (ctx.lastHeartbeat?.startedAt) {
+  // Smart heartbeat: check if there are unprocessed observations, new observations, or recent interactions
+  const unprocessedCount = ctx.db.listObservations({ processed: false }).length;
+  let hasNewObservationsSinceLastBeat = unprocessedCount > 0;
+  if (!hasNewObservationsSinceLastBeat && ctx.lastHeartbeat?.startedAt) {
     const countSince = ctx.db.countObservationsSince(ctx.lastHeartbeat.startedAt);
     hasNewObservationsSinceLastBeat = countSince > 0;
   }
+
+  // Also check for recent interactions (from Claude CLI sessions via PostToolUse hook)
+  let hasRecentInteractions = false;
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const interactionsPath = resolve(ctx.config.resolvedDataDir, 'interactions.jsonl');
+    const content = readFileSync(interactionsPath, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const since = ctx.lastHeartbeat?.startedAt
+      ? new Date(ctx.lastHeartbeat.startedAt).getTime()
+      : Date.now() - 60 * 60 * 1000;
+    hasRecentInteractions = lines.some(line => {
+      try {
+        const entry = JSON.parse(line) as { ts: string };
+        return new Date(entry.ts).getTime() > since;
+      } catch { return false; }
+    });
+  } catch { /* no interactions file */ }
 
   // --- OBSERVE phase (always runs after wake) ---
   result.phases.push('observe');
@@ -117,9 +137,13 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
   const hasObservations = observeResult.observationsCreated > 0;
   const needsConsolidation = shouldConsolidate(ctx.db);
 
-  // Smart heartbeat: if no new observations since last heartbeat AND no new ones this beat,
-  // skip analyze/suggest/consolidate entirely (no LLM cost)
-  const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasObservations;
+  // Smart heartbeat: skip LLM phases only if nothing to process (no observations AND no interactions)
+  const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasObservations && !hasRecentInteractions;
+
+  // Debug logging
+  if (ctx.config.logLevel === 'debug') {
+    console.error(`[heartbeat] unprocessedOrNew=${hasNewObservationsSinceLastBeat} observeCreated=${hasObservations} skip=${skipLlmPhases}`);
+  }
 
   if (skipLlmPhases) {
     // Nothing new to process — go straight to notify then idle
@@ -140,7 +164,8 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
   }
 
   // --- ANALYZE phase ---
-  if (hasObservations && !focusActive) {
+  const hasWorkToDo = hasObservations || unprocessedCount > 0 || hasRecentInteractions;
+  if (hasWorkToDo && !focusActive) {
     result.phases.push('analyze');
     ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'analyze', activity: 'analyzing observations' });
 

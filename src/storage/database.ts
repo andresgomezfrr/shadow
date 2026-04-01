@@ -453,10 +453,25 @@ export class ShadowDatabase {
   searchMemories(query: string, options?: { layer?: string; scope?: string; repoId?: string; limit?: number }): MemorySearchResult[] {
     const limit = options?.limit ?? 10;
 
+    // Sanitize query for FTS5 — wrap each word in double quotes to avoid syntax errors
+    const sanitized = query
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 1)
+      .map(w => `"${w}"`)
+      .join(' OR ');
+
+    if (!sanitized) return [];
+
     // Step 1: Get rowids from FTS5 with ranking
-    const ftsRows = this.database
-      .prepare('SELECT rowid, bm25(memories_fts) as rank FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank LIMIT ?')
-      .all(query, limit * 2) as { rowid: number; rank: number }[];
+    let ftsRows: { rowid: number; rank: number }[];
+    try {
+      ftsRows = this.database
+        .prepare('SELECT rowid, bm25(memories_fts) as rank FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank LIMIT ?')
+        .all(sanitized, limit * 2) as { rowid: number; rank: number }[];
+    } catch {
+      return [];
+    }
 
     if (ftsRows.length === 0) return [];
 

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { ShadowDatabase } from '../storage/database.js';
 import type { ShadowConfig } from '../config/load-config.js';
 import type { UserProfileRecord } from '../storage/models.js';
+import { applyTrustDelta } from '../profile/trust.js';
 
 export type McpTool = {
   name: string;
@@ -103,6 +104,8 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       handler: async () => {
         const profile = db.ensureProfile();
+        // Trust: each check_in increases trust
+        try { applyTrustDelta(db, 'check_in'); } catch { /* ignore */ }
         const personality = loadPersonality(profile.personalityLevel);
         const mood = deriveMood(db);
         const greeting = deriveGreeting(profile, db);
@@ -323,6 +326,8 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
           bodyMd: body,
           sourceType: 'mcp',
         });
+        // Trust: teaching increases trust
+        try { applyTrustDelta(db, 'memory_taught'); } catch { /* ignore */ }
         return memory;
       },
     },

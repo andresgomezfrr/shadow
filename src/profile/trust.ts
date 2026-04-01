@@ -96,6 +96,21 @@ export const TRUST_DELTAS: Record<string, TrustDelta> = {
     delta: -1.0,
     reason: 'A full day passed with no interaction',
   },
+  heartbeat_completed: {
+    event: 'heartbeat_completed',
+    delta: 0.5,
+    reason: 'Heartbeat completed successfully with LLM analysis',
+  },
+  interaction_logged: {
+    event: 'interaction_logged',
+    delta: 0.2,
+    reason: 'Batch of interactions logged from Claude CLI session',
+  },
+  check_in: {
+    event: 'check_in',
+    delta: 0.3,
+    reason: 'User started a new session with Shadow',
+  },
 };
 
 // --- Applying trust deltas ---
