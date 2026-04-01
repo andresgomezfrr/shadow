@@ -227,6 +227,49 @@ export function ProfilePage() {
         </div>
       </section>
 
+      {/* LLM Models */}
+      <section className="bg-card border border-border rounded-lg p-5 mb-6">
+        <h2 className="text-base font-semibold mb-4">🧠 LLM Models</h2>
+        <p className="text-sm text-text-dim mb-4">Choose which model Shadow uses for each phase of the heartbeat.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {(['analyze', 'suggest', 'consolidate', 'runner'] as const).map((phase) => {
+            const labels: Record<string, { label: string; desc: string }> = {
+              analyze: { label: 'Analyze', desc: 'Processes observations + conversations' },
+              suggest: { label: 'Suggest', desc: 'Generates recommendations' },
+              consolidate: { label: 'Consolidate', desc: 'Maintains memory layers' },
+              runner: { label: 'Runner', desc: 'Executes accepted tasks' },
+            };
+            const defaults: Record<string, string> = { analyze: 'sonnet', suggest: 'opus', consolidate: 'sonnet', runner: 'sonnet' };
+            const currentModels = (profile.preferences as Record<string, unknown>)?.models as Record<string, string> | undefined;
+            const currentValue = currentModels?.[phase] ?? defaults[phase];
+            return (
+              <div key={phase}>
+                <label className="flex items-center justify-between text-sm text-text-muted mb-1">
+                  <span>{labels[phase].label}</span>
+                  <SaveIndicator show={saved === `model_${phase}`} />
+                </label>
+                <p className="text-xs text-text-dim mb-2">{labels[phase].desc}</p>
+                <select
+                  defaultValue={currentValue}
+                  onChange={async (e) => {
+                    const newModels = { ...currentModels, [phase]: e.target.value };
+                    await updateProfile({ preferences: { models: newModels } });
+                    setSaved(`model_${phase}`);
+                    setTimeout(() => setSaved(null), 2000);
+                    refresh();
+                  }}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm outline-none focus:border-accent transition-colors cursor-pointer"
+                >
+                  <option value="haiku">Haiku (fast, cheap)</option>
+                  <option value="sonnet">Sonnet (balanced)</option>
+                  <option value="opus">Opus (highest quality)</option>
+                </select>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       {/* Focus mode */}
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-4 flex items-center gap-2">

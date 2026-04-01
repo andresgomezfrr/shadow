@@ -197,6 +197,13 @@ async function handleApi(
       for (const [key, value] of Object.entries(body)) {
         updates[key] = numericFields.includes(key) ? Number(value) : value;
       }
+      // Merge preferences instead of overwriting
+      if (updates.preferences && typeof updates.preferences === 'object') {
+        const current = db.ensureProfile();
+        const merged = { ...(current.preferences as Record<string, unknown>), ...(updates.preferences as Record<string, unknown>) };
+        updates.preferencesJson = merged;
+        delete updates.preferences;
+      }
       db.updateProfile('default', updates);
       const updated = db.ensureProfile();
       return json(res, updated);

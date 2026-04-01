@@ -163,6 +163,12 @@ function rotateConversationsLog(config: ShadowConfig): void {
   } catch { /* fine */ }
 }
 
+function getModel(ctx: HeartbeatContext, phase: 'analyze' | 'suggest' | 'consolidate' | 'runner'): string {
+  const prefs = ctx.profile.preferences as Record<string, unknown> | undefined;
+  const models = prefs?.models as Record<string, string> | undefined;
+  return models?.[phase] ?? ctx.config.models[phase];
+}
+
 export async function activityAnalyze(
   ctx: HeartbeatContext,
   observations: ObservationRecord[],
@@ -275,7 +281,7 @@ export async function activityAnalyze(
     goal: 'Analyze recent observations for patterns and insights',
     prompt,
     relevantMemories,
-    model: ctx.config.models.analyze,
+    model: getModel(ctx, 'analyze'),
   };
 
   // Placeholder: log what would be sent and simulate a response
@@ -295,7 +301,7 @@ export async function activityAnalyze(
     ctx.db.recordLlmUsage({
       source: 'heartbeat_analyze',
       sourceId: null,
-      model: ctx.config.models.analyze,
+      model: getModel(ctx, 'analyze'),
       inputTokens: result.inputTokens ?? 0,
       outputTokens: result.outputTokens ?? 0,
     });
@@ -448,7 +454,7 @@ export async function activitySuggest(
     goal: 'Propose actionable suggestions based on observations',
     prompt,
     relevantMemories,
-    model: ctx.config.models.suggest,
+    model: getModel(ctx, 'suggest'),
   };
 
   let llmCalls = 0;
@@ -465,7 +471,7 @@ export async function activitySuggest(
     ctx.db.recordLlmUsage({
       source: 'heartbeat_suggest',
       sourceId: null,
-      model: ctx.config.models.suggest,
+      model: getModel(ctx, 'suggest'),
       inputTokens: result.inputTokens ?? 0,
       outputTokens: result.outputTokens ?? 0,
     });
@@ -554,7 +560,7 @@ export async function activityConsolidate(
       goal: 'Synthesize meta-patterns from accumulated memories',
       prompt,
       relevantMemories: hotMemories.slice(0, 20),
-      model: ctx.config.models.consolidate,
+      model: getModel(ctx, 'consolidate'),
     };
 
     try {
@@ -566,7 +572,7 @@ export async function activityConsolidate(
       ctx.db.recordLlmUsage({
         source: 'heartbeat_consolidate',
         sourceId: null,
-        model: ctx.config.models.consolidate,
+        model: getModel(ctx, 'consolidate'),
         inputTokens: result.inputTokens ?? 0,
         outputTokens: result.outputTokens ?? 0,
       });
