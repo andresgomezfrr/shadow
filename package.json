@@ -12,12 +12,15 @@
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run dashboard:build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test $(find dist -type f -name '*.test.js' | sort)",
     "test:dev": "node --test $(find src -type f -name '*.test.ts' | sort)",
     "lint": "npm run typecheck",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "dashboard:install": "cd src/web/dashboard && npm install",
+    "dashboard:dev": "cd src/web/dashboard && npm run dev",
+    "dashboard:build": "cd src/web/dashboard && npm run build"
   },
   "dependencies": {
     "commander": "^14.0.0",

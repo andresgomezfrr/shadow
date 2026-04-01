@@ -100,8 +100,9 @@ export async function activityAnalyze(
   observations: ObservationRecord[],
 ): Promise<{ patternsDetected: number; memoriesCreated: number; llmCalls: number; tokensUsed: number }> {
   // Load recent interactions from Claude CLI sessions
-  const lastHbTime = ctx.lastHeartbeat?.startedAt;
-  const recentInteractions = loadRecentInteractions(ctx.config, lastHbTime);
+  // Use a wider window (2h) to capture enough context, not just since last heartbeat
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const recentInteractions = loadRecentInteractions(ctx.config, twoHoursAgo);
   const interactionSummary = summarizeInteractions(recentInteractions);
 
   if (observations.length === 0 && recentInteractions.length === 0) {
@@ -176,7 +177,9 @@ export async function activityAnalyze(
     'Kinds: tech_stack, design_decision, workflow, problem_solved, team_knowledge, preference',
     'Layer "core" = permanent truths. "hot" = currently relevant but may change.',
     'Confidence: 90+ for explicit facts, 70-89 for strong inferences.',
-    'Return 0-3 insights. Return EMPTY array {"insights":[]} if nothing worth remembering.',
+    'Return 1-3 insights. Always try to find at least 1 useful thing to remember.',
+    'If you see files being edited, infer what the project does and what tech stack it uses.',
+    'If you see commands being run, infer the developer\'s workflow and preferences.',
     '',
     '## Data Sources',
     observations.length > 0 ? `### Git Observations\n${observationSummaries}\n` : '',
@@ -540,12 +543,12 @@ function rotateInteractionsLog(config: ShadowConfig, cutoffIso: string): void {
     const content = readFileSync(interactionsPath, 'utf8');
     const lines = content.trim().split('\n').filter(Boolean);
 
-    // Keep only lines from the last 5 minutes as buffer
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    // Keep lines from the last 2 hours as buffer (not 5 min — too aggressive)
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     const kept = lines.filter(line => {
       try {
         const entry = JSON.parse(line) as { ts: string };
-        return entry.ts > fiveMinAgo;
+        return entry.ts > twoHoursAgo;
       } catch { return false; }
     });
 

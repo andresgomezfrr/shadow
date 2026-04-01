@@ -6,3 +6,5 @@ dist/
 coverage/
 *.log
 .DS_Store
+src/web/dashboard/node_modules/
+src/web/dashboard/dist/
