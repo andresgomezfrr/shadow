@@ -37,12 +37,12 @@ TOKENS=$(echo "$STATUS" | grep -o '"todayTokens":[0-9]*' | head -1 | cut -d: -f2
 
 # Trust emoji
 case "$TRUST" in
-  1) TEMOJI="👀" ;;
+  1) TEMOJI="🔍" ;;
   2) TEMOJI="💬" ;;
   3) TEMOJI="🤝" ;;
   4) TEMOJI="⚡️" ;;
-  5) TEMOJI="🌑" ;;
-  *) TEMOJI="👀" ;;
+  5) TEMOJI="👾" ;;
+  *) TEMOJI="🔍" ;;
 esac
 
 # Activity emoji + text

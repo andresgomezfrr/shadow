@@ -112,7 +112,7 @@ ${endMarker}`;
 # Shadow status line for Claude Code
 # Shows Shadow's current state with emojis — alive and expressive
 
-SHADOW_CLI="npx tsx ${resolve(shadowSrcDir, 'cli.ts')}"
+SHADOW_CLI="${process.execPath} ${resolve(shadowSrcDir, 'cli.js')}"
 CACHE_FILE="${config.resolvedDataDir}/statusline-cache.txt"
 CACHE_TTL=15
 
@@ -146,12 +146,12 @@ TOKENS=$(echo "$STATUS" | grep -o '"todayTokens":[0-9]*' | head -1 | cut -d: -f2
 
 # Trust name + emoji
 case "$TRUST" in
-  1) TNAME="observer"; TEMOJI="👀" ;;
+  1) TNAME="observer"; TEMOJI="🔍" ;;
   2) TNAME="advisor"; TEMOJI="💬" ;;
   3) TNAME="assistant"; TEMOJI="🤝" ;;
   4) TNAME="partner"; TEMOJI="⚡️" ;;
-  5) TNAME="shadow"; TEMOJI="🌑" ;;
-  *) TNAME="observer"; TEMOJI="👀" ;;
+  5) TNAME="shadow"; TEMOJI="👾" ;;
+  *) TNAME="observer"; TEMOJI="🔍" ;;
 esac
 
 # Determine Shadow's current activity emoji + text
@@ -252,7 +252,7 @@ echo "$LINE" > "$CACHE_FILE"
       // Session start hook script
       writeFileSync(sessionStartPath, `#!/bin/bash
 # Shadow SessionStart hook — injects personality and context
-exec npx tsx ${resolve(shadowSrcDir, 'cli.ts')} mcp-context 2>/dev/null
+exec ${process.execPath} ${resolve(shadowSrcDir, 'cli.js')} mcp-context 2>/dev/null
 `, 'utf8');
 
       // Post-tool-use hook script (auto-learning)
@@ -318,11 +318,78 @@ fi
 
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
 
-      // Auto-start daemon if not already running
-      let daemonPid: number | null = null;
-      try {
-        const { isDaemonRunning } = await import('./daemon/runtime.js');
-        if (!isDaemonRunning(config)) {
+      // Install launchd service for persistent daemon
+      let daemonResult: Record<string, unknown> = {};
+      const launchAgentDir = resolve(homedir(), 'Library', 'LaunchAgents');
+      const plistPath = resolve(launchAgentDir, 'com.shadow.daemon.plist');
+      const alreadyInstalled = existsSync(plistPath);
+
+      if (alreadyInstalled) {
+        daemonResult = { launchd: 'already installed', plist: plistPath };
+      } else if (process.platform === 'darwin') {
+        // Ask user for permission via interactive prompt
+        const { createInterface } = await import('node:readline');
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+        const answer = await new Promise<string>((resolve) => {
+          rl.question(
+            '\n🌑 Install Shadow daemon as a system service?\n' +
+            '  This keeps Shadow running in the background permanently.\n' +
+            '  It will auto-start on login and restart if it crashes.\n' +
+            '  Install to ~/Library/LaunchAgents/com.shadow.daemon.plist? [Y/n] ',
+            (ans) => { rl.close(); resolve(ans); },
+          );
+        });
+
+        if (answer === '' || answer.toLowerCase().startsWith('y')) {
+          mkdirSync(launchAgentDir, { recursive: true });
+
+          const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.shadow.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${process.execPath}</string>
+    <string>${resolve(shadowSrcDir, '..', 'node_modules', '.bin', 'tsx')}</string>
+    <string>${resolve(shadowSrcDir, 'daemon', 'runtime.ts')}</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${resolve(shadowSrcDir, '..')}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${resolve(config.resolvedDataDir, 'daemon.stdout.log')}</string>
+  <key>StandardErrorPath</key>
+  <string>${resolve(config.resolvedDataDir, 'daemon.stderr.log')}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>SHADOW_DATA_DIR</key>
+    <string>${config.resolvedDataDir}</string>
+  </dict>
+</dict>
+</plist>`;
+
+          writeFileSync(plistPath, plistContent, 'utf8');
+
+          // Load the service
+          const { execSync } = await import('node:child_process');
+          try {
+            execSync(`launchctl bootout gui/$(id -u) ${plistPath} 2>/dev/null || true`, { stdio: 'ignore' });
+            execSync(`launchctl bootstrap gui/$(id -u) ${plistPath}`, { stdio: 'pipe' });
+            daemonResult = { launchd: 'installed and started', plist: plistPath };
+          } catch (e) {
+            daemonResult = { launchd: 'installed but failed to start', plist: plistPath, error: String(e) };
+          }
+        } else {
+          daemonResult = { launchd: 'skipped by user' };
+          // Fallback: start daemon manually
           const { spawn } = await import('node:child_process');
           const child = spawn(
             'npx',
@@ -330,13 +397,23 @@ fi
             { detached: true, stdio: 'ignore', env: { ...process.env }, cwd: join(__dirname, '..') },
           );
           child.unref();
-          daemonPid = child.pid ?? null;
+          daemonResult.fallback = { pid: child.pid };
         }
-      } catch { /* daemon module not ready */ }
+      } else {
+        // Non-macOS: fallback to manual daemon start
+        const { spawn } = await import('node:child_process');
+        const child = spawn(
+          'npx',
+          ['tsx', join(__dirname, 'daemon', 'runtime.ts')],
+          { detached: true, stdio: 'ignore', env: { ...process.env }, cwd: join(__dirname, '..') },
+        );
+        child.unref();
+        daemonResult = { launchd: 'not available (not macOS)', fallback: { pid: child.pid } };
+      }
 
       return {
         ok: true,
-        daemon: daemonPid ? { started: true, pid: daemonPid } : { started: false, reason: 'already running or unavailable' },
+        daemon: daemonResult,
         home: config.resolvedDataDir,
         databasePath: config.resolvedDatabasePath,
         artifactsDir: config.resolvedArtifactsDir,
@@ -867,6 +944,17 @@ daemon
   .command('start')
   .description('start the background daemon')
   .action(async () => {
+    // Try launchd first
+    const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
+    if (existsSync(plistPath)) {
+      try {
+        const { execSync } = await import('node:child_process');
+        execSync(`launchctl bootstrap gui/$(id -u) ${plistPath} 2>/dev/null || launchctl kickstart gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
+        printOutput({ ok: true, message: 'daemon started via launchd' }, Boolean(program.opts().json));
+        return;
+      } catch { /* fallback to manual start */ }
+    }
+
     const { isDaemonRunning } = await import('./daemon/runtime.js');
     if (isDaemonRunning(config)) {
       printOutput({ error: 'daemon is already running' }, Boolean(program.opts().json));
@@ -897,6 +985,18 @@ daemon
   .description('stop the background daemon')
   .action(async () => {
     const { stopDaemon } = await import('./daemon/runtime.js');
+
+    // Try launchd first
+    const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
+    if (existsSync(plistPath)) {
+      try {
+        const { execSync } = await import('node:child_process');
+        execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' });
+        printOutput({ ok: true, message: 'daemon stopped (launchd service unloaded)' }, Boolean(program.opts().json));
+        return;
+      } catch { /* fallback to PID-based stop */ }
+    }
+
     const stopped = stopDaemon(config);
     printOutput(
       stopped
@@ -1148,6 +1248,128 @@ program
 
       // Print to stdout (SessionStart hook captures this)
       console.log(lines.join('\n'));
+    }),
+  );
+
+// --- web panel ---
+
+program
+  .command('web')
+  .description('open the Shadow dashboard in your browser')
+  .option('--port <port>', 'port number', '3700')
+  .action(async (options: { port: string }) => {
+    const { startWebServer } = await import('./web/server.js');
+    const port = parseInt(options.port, 10);
+    await startWebServer(port);
+
+    // Open browser
+    const { exec } = await import('node:child_process');
+    exec(`open http://localhost:${port}`);
+  });
+
+// --- ask (one-shot) ---
+
+program
+  .command('ask <question...>')
+  .description('ask Shadow a question from any terminal (one-shot, uses Claude CLI)')
+  .option('--model <model>', 'model to use', 'sonnet')
+  .action(async (questionParts: string[], options: { model: string }) => {
+    const { loadPersonality } = await import('./personality/loader.js');
+    const db = createDatabase(config);
+    try {
+      const profile = db.ensureProfile();
+      const personality = loadPersonality(config.resolvedDataDir, profile.personalityLevel);
+
+      // Search for relevant memories
+      const memories = db.searchMemories(questionParts.join(' '), { limit: 5 });
+      const memoryContext = memories.length > 0
+        ? '\n## Relevant memories\n' + memories.map(m => `- [${m.memory.layer}] ${m.memory.title}: ${m.memory.bodyMd.slice(0, 200)}`).join('\n')
+        : '';
+
+      // Profile context
+      const repos = db.listRepos();
+      const contacts = db.listContacts();
+      const systems = db.listSystems();
+
+      const prompt = [
+        `You are Shadow, a digital engineering companion.`,
+        personality,
+        ``,
+        `User: ${profile.displayName ?? 'unknown'}`,
+        `Language: ${profile.locale === 'es' ? 'Spanish' : profile.locale}`,
+        `Repos: ${repos.map(r => r.name).join(', ') || 'none'}`,
+        `Contacts: ${contacts.map(c => c.name).join(', ') || 'none'}`,
+        `Systems: ${systems.map(s => s.name).join(', ') || 'none'}`,
+        memoryContext,
+        ``,
+        `Answer this question as Shadow:`,
+        questionParts.join(' '),
+      ].join('\n');
+
+      const { spawnSync } = await import('node:child_process');
+      const env = { ...process.env };
+      if (config.claudeExtraPath) {
+        env.PATH = `${config.claudeExtraPath}:${env.PATH ?? ''}`;
+      }
+
+      const result = spawnSync(config.claudeBin, ['--print', '--model', options.model, prompt], {
+        encoding: 'utf8',
+        timeout: 60000,
+        env,
+        maxBuffer: 5 * 1024 * 1024,
+      });
+
+      if (result.stdout) {
+        console.log(result.stdout);
+      } else if (result.stderr) {
+        console.error(result.stderr);
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+// --- summary ---
+
+program
+  .command('summary')
+  .description('get a daily summary of engineering activity')
+  .action(() =>
+    withDb((db) => {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const sinceIso = todayStart.toISOString();
+
+      const profile = db.ensureProfile();
+      const repos = db.listRepos();
+      const observations = db.listObservations({ limit: 50 });
+      const todayObs = observations.filter(o => o.createdAt > sinceIso);
+      const memories = db.listMemories({ archived: false });
+      const todayMemories = memories.filter(m => m.createdAt > sinceIso);
+      const suggestions = db.listSuggestions({ status: 'pending' });
+      const usage = db.getUsageSummary('day');
+      const events = db.listPendingEvents();
+
+      return {
+        date: todayStart.toISOString().split('T')[0],
+        user: profile.displayName ?? 'unknown',
+        trustLevel: profile.trustLevel,
+        trustScore: profile.trustScore,
+        activity: {
+          observationsToday: todayObs.length,
+          memoriesCreatedToday: todayMemories.length,
+          pendingSuggestions: suggestions.length,
+          pendingEvents: events.length,
+        },
+        topObservations: todayObs.slice(0, 5).map(o => ({ kind: o.kind, title: o.title })),
+        newMemories: todayMemories.map(m => ({ layer: m.layer, kind: m.kind, title: m.title })),
+        repos: repos.map(r => r.name),
+        tokens: {
+          input: usage.totalInputTokens,
+          output: usage.totalOutputTokens,
+          calls: usage.totalCalls,
+        },
+      };
     }),
   );
 

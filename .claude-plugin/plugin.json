@@ -6,6 +6,6 @@
     "name": "andresgomezfrr"
   },
   "keywords": ["mcp", "companion", "engineering", "memory", "observation", "heartbeat"],
-  "mcpServers": "../.mcp.json",
+  "mcpServers": "./mcp.json",
   "hooks": "../hooks/hooks.json"
 }

@@ -23,20 +23,6 @@ type CommitEntry = {
 // --- Constants ---
 
 const GIT_TIMEOUT = 10_000;
-const COMMIT_BURST_THRESHOLD = 5;
-const FILE_HOTSPOT_COMMIT_WINDOW = 10;
-const FILE_HOTSPOT_THRESHOLD = 3;
-const STALE_BRANCH_DAYS = 14;
-const LARGE_DIFF_LINES = 500;
-const FORGOTTEN_STASH_DAYS = 7;
-const WORK_SESSION_GAP_HOURS = 4;
-const WORK_SESSION_END_HOURS = 2;
-
-const DEPENDENCY_FILES = new Set([
-  'package.json',
-  'requirements.txt',
-  'Cargo.toml',
-]);
 
 // --- Helpers ---
 
@@ -56,36 +42,12 @@ function tryGitExec(args: string[], cwd: string): string | null {
   }
 }
 
-function hoursBetween(a: Date, b: Date): number {
-  return Math.abs(a.getTime() - b.getTime()) / (1000 * 60 * 60);
-}
-
-function daysBetween(a: Date, b: Date): number {
-  return Math.abs(a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24);
-}
-
-/**
- * Parse the output of `git log --format='%H|%aI|%s' --numstat`.
- *
- * Each commit block looks like:
- *   <hash>|<iso-date>|<subject>
- *   <added>\t<removed>\t<file>
- *   ...
- *   (blank line)
- */
 function parseGitLog(raw: string): CommitEntry[] {
   const commits: CommitEntry[] = [];
-  const lines = raw.split('\n');
   let current: CommitEntry | null = null;
 
-  for (const line of lines) {
-    if (line === '') {
-      if (current) {
-        commits.push(current);
-        current = null;
-      }
-      continue;
-    }
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
 
     const headerMatch = line.match(/^([0-9a-f]{40})\|(.+?)\|(.*)$/);
     if (headerMatch) {
@@ -99,7 +61,6 @@ function parseGitLog(raw: string): CommitEntry[] {
       continue;
     }
 
-    // numstat line: <added>\t<removed>\t<file>
     if (current) {
       const parts = line.split('\t');
       if (parts.length >= 3) {
@@ -112,172 +73,220 @@ function parseGitLog(raw: string): CommitEntry[] {
   return commits;
 }
 
-function parseDiffStatLineCount(raw: string): number {
-  // Last line of `git diff --stat` looks like:
-  //  3 files changed, 120 insertions(+), 45 deletions(-)
-  const lines = raw.trim().split('\n');
-  const summary = lines[lines.length - 1] ?? '';
-  let total = 0;
-  const insertions = summary.match(/(\d+) insertion/);
-  if (insertions) total += parseInt(insertions[1], 10);
-  const deletions = summary.match(/(\d+) deletion/);
-  if (deletions) total += parseInt(deletions[1], 10);
-  return total;
-}
+// --- Observation: recent commits summary (LLM-friendly) ---
 
-// --- Detection functions ---
-
-function detectCommitBurst(commits: CommitEntry[]): { found: boolean; windowStart: string; windowEnd: string; count: number } | null {
-  if (commits.length < COMMIT_BURST_THRESHOLD) return null;
-
-  // Sliding window: find any 1-hour window with > threshold commits
-  const sorted = [...commits].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-  for (let i = 0; i <= sorted.length - COMMIT_BURST_THRESHOLD; i++) {
-    const windowStart = new Date(sorted[i].date);
-    let count = 1;
-    for (let j = i + 1; j < sorted.length; j++) {
-      const t = new Date(sorted[j].date);
-      if (hoursBetween(windowStart, t) <= 1) {
-        count++;
-      } else {
-        break;
-      }
-    }
-    if (count > COMMIT_BURST_THRESHOLD) {
-      return {
-        found: true,
-        windowStart: sorted[i].date,
-        windowEnd: sorted[i + count - 1].date,
-        count,
-      };
-    }
-  }
-  return null;
-}
-
-function detectFileHotspots(commits: CommitEntry[]): string[] {
-  // Look at the last N commits and find files appearing in > threshold of them
-  const recent = commits.slice(0, FILE_HOTSPOT_COMMIT_WINDOW);
-  const fileCounts = new Map<string, number>();
-  for (const commit of recent) {
-    const seen = new Set(commit.files);
-    for (const file of seen) {
-      fileCounts.set(file, (fileCounts.get(file) ?? 0) + 1);
-    }
-  }
-
-  const hotspots: string[] = [];
-  for (const [file, count] of fileCounts) {
-    if (count > FILE_HOTSPOT_THRESHOLD) {
-      hotspots.push(file);
-    }
-  }
-  return hotspots;
-}
-
-function detectDependencyUpdates(commits: CommitEntry[]): { file: string; commitHash: string }[] {
-  const results: { file: string; commitHash: string }[] = [];
-  for (const commit of commits) {
-    for (const file of commit.files) {
-      const basename = file.split('/').pop() ?? file;
-      if (DEPENDENCY_FILES.has(basename)) {
-        results.push({ file, commitHash: commit.hash });
-      }
-    }
-  }
-  return results;
-}
-
-function detectWorkSessionStart(commits: CommitEntry[], lastObservedAt: string | null): CommitEntry | null {
+function observeRecentCommits(
+  db: ShadowDatabase,
+  repo: RepoRecord,
+  commits: CommitEntry[],
+): ObservationRecord | null {
   if (commits.length === 0) return null;
 
-  const sorted = [...commits].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-  // Check gap between lastObservedAt and first commit
-  if (lastObservedAt) {
-    const gap = hoursBetween(new Date(lastObservedAt), new Date(sorted[0].date));
-    if (gap > WORK_SESSION_GAP_HOURS) {
-      return sorted[0];
-    }
+  // Build a useful summary of what changed
+  const allFiles = new Set<string>();
+  const subjects: string[] = [];
+  for (const c of commits.slice(0, 20)) {
+    subjects.push(`${c.hash.slice(0, 7)} ${c.subject}`);
+    for (const f of c.files) allFiles.add(f);
   }
 
-  // Check gaps between consecutive commits
-  for (let i = 1; i < sorted.length; i++) {
-    const gap = hoursBetween(new Date(sorted[i - 1].date), new Date(sorted[i].date));
-    if (gap > WORK_SESSION_GAP_HOURS) {
-      return sorted[i];
-    }
+  // Group files by directory
+  const dirCounts = new Map<string, number>();
+  for (const f of allFiles) {
+    const dir = f.includes('/') ? f.split('/').slice(0, 2).join('/') : '.';
+    dirCounts.set(dir, (dirCounts.get(dir) ?? 0) + 1);
   }
+  const topDirs = [...dirCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([dir, count]) => `${dir} (${count} files)`);
 
-  return null;
+  return db.createObservation({
+    repoId: repo.id,
+    sourceKind: 'repo',
+    sourceId: repo.id,
+    kind: 'recent_commits',
+    severity: 'info',
+    title: `${commits.length} new commits in ${repo.name}`,
+    detail: {
+      commitCount: commits.length,
+      commits: subjects.slice(0, 10),
+      filesChanged: allFiles.size,
+      topDirectories: topDirs,
+      dateRange: {
+        from: commits[commits.length - 1].date,
+        to: commits[0].date,
+      },
+    },
+  });
 }
 
-function detectWorkSessionEnd(commits: CommitEntry[]): CommitEntry | null {
-  if (commits.length === 0) return null;
+// --- Observation: uncommitted work ---
 
-  const sorted = [...commits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const lastCommit = sorted[0];
-  const now = new Date();
-  const gap = hoursBetween(new Date(lastCommit.date), now);
+function observeUncommittedWork(
+  db: ShadowDatabase,
+  repo: RepoRecord,
+  statusOutput: string | null,
+  diffStatOutput: string | null,
+): ObservationRecord | null {
+  if (!statusOutput || !statusOutput.trim()) return null;
 
-  if (gap > WORK_SESSION_END_HOURS) {
-    return lastCommit;
+  const lines = statusOutput.trim().split('\n').filter(Boolean);
+  if (lines.length === 0) return null;
+
+  // Parse status into categories
+  const modified: string[] = [];
+  const added: string[] = [];
+  const deleted: string[] = [];
+  const untracked: string[] = [];
+
+  for (const line of lines) {
+    const status = line.slice(0, 2).trim();
+    const file = line.slice(3).trim();
+    if (status === 'M' || status === 'MM') modified.push(file);
+    else if (status === 'A' || status === 'AM') added.push(file);
+    else if (status === 'D') deleted.push(file);
+    else if (status === '??') untracked.push(file);
   }
-  return null;
+
+  // Calculate diff size
+  let diffLines = 0;
+  if (diffStatOutput) {
+    const summary = diffStatOutput.trim().split('\n').pop() ?? '';
+    const ins = summary.match(/(\d+) insertion/);
+    const del = summary.match(/(\d+) deletion/);
+    if (ins) diffLines += parseInt(ins[1], 10);
+    if (del) diffLines += parseInt(del[1], 10);
+  }
+
+  // Only create observation if there's meaningful uncommitted work
+  if (modified.length === 0 && added.length === 0) return null;
+
+  return db.createObservation({
+    repoId: repo.id,
+    sourceKind: 'repo',
+    sourceId: repo.id,
+    kind: 'uncommitted_work',
+    severity: diffLines > 500 ? 'warning' : 'info',
+    title: `Uncommitted work in ${repo.name}: ${modified.length} modified, ${added.length} added`,
+    detail: {
+      modified: modified.slice(0, 10),
+      added: added.slice(0, 10),
+      deleted: deleted.slice(0, 5),
+      untracked: untracked.length,
+      diffLines,
+    },
+  });
 }
 
-type BranchInfo = {
-  name: string;
-  lastCommitDate: string;
-};
+// --- Observation: project structure snapshot (first observation only) ---
 
-function parseBranches(raw: string): BranchInfo[] {
-  const branches: BranchInfo[] = [];
-  for (const line of raw.trim().split('\n')) {
+function observeProjectStructure(
+  db: ShadowDatabase,
+  repo: RepoRecord,
+): ObservationRecord | null {
+  // Only run on first observation (lastObservedAt === null)
+  if (repo.lastObservedAt !== null) return null;
+
+  // Detect project type from files
+  const indicators: Record<string, string> = {};
+
+  const checkFile = (file: string, label: string) => {
+    const output = tryGitExec(['ls-files', file], repo.path);
+    if (output && output.trim()) indicators[label] = file;
+  };
+
+  checkFile('package.json', 'Node.js/TypeScript');
+  checkFile('requirements.txt', 'Python');
+  checkFile('Cargo.toml', 'Rust');
+  checkFile('go.mod', 'Go');
+  checkFile('pom.xml', 'Java/Maven');
+  checkFile('build.gradle', 'Java/Gradle');
+  checkFile('Dockerfile', 'Docker');
+  checkFile('docker-compose.yml', 'Docker Compose');
+  checkFile('.github/workflows', 'GitHub Actions');
+  checkFile('tsconfig.json', 'TypeScript');
+  checkFile('.eslintrc', 'ESLint');
+  checkFile('jest.config', 'Jest');
+  checkFile('vitest.config', 'Vitest');
+
+  // Get current branch
+  const branch = tryGitExec(['branch', '--show-current'], repo.path)?.trim() ?? 'unknown';
+
+  // Get top-level directory structure
+  const tree = tryGitExec(['ls-tree', '--name-only', 'HEAD'], repo.path);
+  const topLevel = tree ? tree.trim().split('\n').filter(Boolean).slice(0, 15) : [];
+
+  // Count total files
+  const fileCount = tryGitExec(['ls-files'], repo.path);
+  const totalFiles = fileCount ? fileCount.trim().split('\n').length : 0;
+
+  if (Object.keys(indicators).length === 0 && topLevel.length === 0) return null;
+
+  return db.createObservation({
+    repoId: repo.id,
+    sourceKind: 'repo',
+    sourceId: repo.id,
+    kind: 'project_structure',
+    severity: 'info',
+    title: `Project structure: ${repo.name} (${Object.keys(indicators).join(', ') || 'unknown stack'})`,
+    detail: {
+      techStack: indicators,
+      currentBranch: branch,
+      topLevelEntries: topLevel,
+      totalFiles,
+    },
+  });
+}
+
+// --- Observation: active branches ---
+
+function observeActiveBranches(
+  db: ShadowDatabase,
+  repo: RepoRecord,
+): ObservationRecord | null {
+  const branchOutput = tryGitExec(
+    ['branch', '-a', '--sort=-committerdate', '--format=%(refname:short)|%(committerdate:iso)|%(subject)'],
+    repo.path,
+  );
+  if (!branchOutput) return null;
+
+  const branches: { name: string; date: string; subject: string }[] = [];
+  for (const line of branchOutput.trim().split('\n')) {
     if (!line) continue;
     const parts = line.split('|');
     if (parts.length >= 2) {
       branches.push({
         name: parts[0].trim(),
-        lastCommitDate: parts[1].trim(),
+        date: parts[1].trim(),
+        subject: parts[2]?.trim() ?? '',
       });
     }
   }
-  return branches;
-}
 
-type StashEntry = {
-  index: number;
-  description: string;
-  date: string | null;
-};
+  // Only report if there are feature branches (not just main/master)
+  const featureBranches = branches.filter(b =>
+    !['main', 'master', 'HEAD', 'origin/main', 'origin/master', 'origin/HEAD'].includes(b.name) &&
+    !b.name.startsWith('origin/HEAD'),
+  );
 
-function parseStashList(raw: string, cwd: string): StashEntry[] {
-  const entries: StashEntry[] = [];
-  const lines = raw.trim().split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
-    // stash@{0}: WIP on main: abc1234 some message
-    const match = line.match(/^stash@\{(\d+)\}:\s*(.*)$/);
-    if (!match) continue;
-    const index = parseInt(match[1], 10);
-    const description = match[2];
+  if (featureBranches.length === 0) return null;
 
-    // Get the date for this stash entry
-    let date: string | null = null;
-    const dateOutput = tryGitExec(
-      ['log', '-1', '--format=%aI', `stash@{${index}}`],
-      cwd,
-    );
-    if (dateOutput) {
-      date = dateOutput.trim();
-    }
-
-    entries.push({ index, description, date });
-  }
-  return entries;
+  return db.createObservation({
+    repoId: repo.id,
+    sourceKind: 'repo',
+    sourceId: repo.id,
+    kind: 'active_branches',
+    severity: 'info',
+    title: `${featureBranches.length} feature branches in ${repo.name}`,
+    detail: {
+      branches: featureBranches.slice(0, 10).map(b => ({
+        name: b.name,
+        lastCommit: b.date,
+        subject: b.subject,
+      })),
+    },
+  });
 }
 
 // --- Main observation function ---
@@ -294,7 +303,7 @@ export async function observeRepo(db: ShadowDatabase, repo: RepoRecord): Promise
   try {
     const sinceArg = repo.lastObservedAt ?? '1970-01-01T00:00:00Z';
 
-    // 1. Git log: new commits with file stats
+    // Git data collection
     const logOutput = tryGitExec(
       ['log', `--since=${sinceArg}`, '--format=%H|%aI|%s', '--numstat'],
       repo.path,
@@ -309,232 +318,31 @@ export async function observeRepo(db: ShadowDatabase, repo: RepoRecord): Promise
       result.lastCommitAt = sorted[0].date;
     }
 
-    // 2. Git status: uncommitted changes
     const statusOutput = tryGitExec(['status', '--porcelain'], repo.path);
-
-    // 3. Git diff stat: working tree diff size
     const diffStatOutput = tryGitExec(['diff', '--stat', 'HEAD'], repo.path);
 
-    // 4. Branch freshness
-    const branchOutput = tryGitExec(
-      ['branch', '-a', '--sort=-committerdate', '--format=%(refname:short)|%(committerdate:iso)'],
-      repo.path,
-    );
+    // --- Create observations ---
 
-    // 5. Stash list
-    const stashOutput = tryGitExec(['stash', 'list'], repo.path);
+    // Project structure (first time only — gives LLM full context about the repo)
+    const structure = observeProjectStructure(db, repo);
+    if (structure) result.observations.push(structure);
 
-    // --- Detect observation kinds ---
+    // Recent commits (what was worked on)
+    const commitObs = observeRecentCommits(db, repo, commits);
+    if (commitObs) result.observations.push(commitObs);
 
-    // commit_burst: >5 commits in 1h window
-    const burst = detectCommitBurst(commits);
-    if (burst) {
-      result.observations.push(
-        db.createObservation({
-          repoId: repo.id,
-          sourceKind: 'repo',
-          sourceId: repo.id,
-          kind: 'commit_burst',
-          severity: 'info',
-          title: `Commit burst: ${burst.count} commits in 1 hour`,
-          detail: {
-            count: burst.count,
-            windowStart: burst.windowStart,
-            windowEnd: burst.windowEnd,
-          },
-        }),
-      );
-    }
+    // Uncommitted work (what's in progress)
+    const uncommitted = observeUncommittedWork(db, repo, statusOutput, diffStatOutput);
+    if (uncommitted) result.observations.push(uncommitted);
 
-    // file_hotspot: same file in >3 of last 10 commits
-    const hotspots = detectFileHotspots(commits);
-    for (const file of hotspots) {
-      result.observations.push(
-        db.createObservation({
-          repoId: repo.id,
-          sourceKind: 'repo',
-          sourceId: repo.id,
-          kind: 'file_hotspot',
-          severity: 'info',
-          title: `File hotspot: ${file}`,
-          detail: { file },
-        }),
-      );
-    }
-
-    // stale_branch: branch with no commits in >14 days
-    if (branchOutput) {
-      const branches = parseBranches(branchOutput);
-      const now = new Date();
-      for (const branch of branches) {
-        if (!branch.lastCommitDate) continue;
-        const branchDate = new Date(branch.lastCommitDate);
-        if (daysBetween(now, branchDate) > STALE_BRANCH_DAYS) {
-          result.observations.push(
-            db.createObservation({
-              repoId: repo.id,
-              sourceKind: 'repo',
-              sourceId: repo.id,
-              kind: 'stale_branch',
-              severity: 'low',
-              title: `Stale branch: ${branch.name}`,
-              detail: {
-                branch: branch.name,
-                lastCommitDate: branch.lastCommitDate,
-                staleDays: Math.floor(daysBetween(now, branchDate)),
-              },
-            }),
-          );
-        }
-      }
-    }
-
-    // large_diff: uncommitted diff >500 lines
-    if (diffStatOutput) {
-      const diffLines = parseDiffStatLineCount(diffStatOutput);
-      if (diffLines > LARGE_DIFF_LINES) {
-        result.observations.push(
-          db.createObservation({
-            repoId: repo.id,
-            sourceKind: 'repo',
-            sourceId: repo.id,
-            kind: 'large_diff',
-            severity: 'warning',
-            title: `Large uncommitted diff: ${diffLines} lines`,
-            detail: {
-              lines: diffLines,
-              statusSummary: statusOutput?.trim().split('\n').length ?? 0,
-            },
-          }),
-        );
-      }
-    }
-
-    // test_failure: repo.testCommand exits non-zero
-    if (repo.testCommand) {
-      try {
-        execFileSync('sh', ['-c', repo.testCommand], {
-          cwd: repo.path,
-          timeout: GIT_TIMEOUT,
-          encoding: 'utf8',
-          stdio: 'pipe',
-        });
-      } catch {
-        result.observations.push(
-          db.createObservation({
-            repoId: repo.id,
-            sourceKind: 'repo',
-            sourceId: repo.id,
-            kind: 'test_failure',
-            severity: 'high',
-            title: `Tests failing: ${repo.testCommand}`,
-            detail: { testCommand: repo.testCommand },
-          }),
-        );
-      }
-    }
-
-    // forgotten_stash: stash entries >7 days old
-    if (stashOutput && stashOutput.trim()) {
-      const stashes = parseStashList(stashOutput, repo.path);
-      const now = new Date();
-      for (const stash of stashes) {
-        if (!stash.date) continue;
-        const stashDate = new Date(stash.date);
-        if (daysBetween(now, stashDate) > FORGOTTEN_STASH_DAYS) {
-          result.observations.push(
-            db.createObservation({
-              repoId: repo.id,
-              sourceKind: 'repo',
-              sourceId: repo.id,
-              kind: 'forgotten_stash',
-              severity: 'low',
-              title: `Forgotten stash: stash@{${stash.index}}`,
-              detail: {
-                index: stash.index,
-                description: stash.description,
-                date: stash.date,
-                ageDays: Math.floor(daysBetween(now, stashDate)),
-              },
-            }),
-          );
-        }
-      }
-    }
-
-    // dependency_update: package.json/requirements.txt/Cargo.toml changed
-    const depUpdates = detectDependencyUpdates(commits);
-    if (depUpdates.length > 0) {
-      // Group by file to avoid spamming
-      const uniqueFiles = [...new Set(depUpdates.map((d) => d.file))];
-      for (const file of uniqueFiles) {
-        const relatedCommits = depUpdates
-          .filter((d) => d.file === file)
-          .map((d) => d.commitHash);
-        result.observations.push(
-          db.createObservation({
-            repoId: repo.id,
-            sourceKind: 'repo',
-            sourceId: repo.id,
-            kind: 'dependency_update',
-            severity: 'info',
-            title: `Dependency file changed: ${file}`,
-            detail: {
-              file,
-              commitCount: relatedCommits.length,
-              commits: relatedCommits,
-            },
-          }),
-        );
-      }
-    }
-
-    // work_session_start: first commit after >4h gap
-    const sessionStart = detectWorkSessionStart(commits, repo.lastObservedAt);
-    if (sessionStart) {
-      result.observations.push(
-        db.createObservation({
-          repoId: repo.id,
-          sourceKind: 'repo',
-          sourceId: repo.id,
-          kind: 'work_session_start',
-          severity: 'info',
-          title: `Work session started at ${sessionStart.date}`,
-          detail: {
-            commitHash: sessionStart.hash,
-            commitDate: sessionStart.date,
-            commitSubject: sessionStart.subject,
-          },
-        }),
-      );
-    }
-
-    // work_session_end: no commits for >2h after last commit
-    const sessionEnd = detectWorkSessionEnd(commits);
-    if (sessionEnd) {
-      const gap = hoursBetween(new Date(sessionEnd.date), new Date());
-      result.observations.push(
-        db.createObservation({
-          repoId: repo.id,
-          sourceKind: 'repo',
-          sourceId: repo.id,
-          kind: 'work_session_end',
-          severity: 'info',
-          title: `Work session ended ${gap.toFixed(1)}h ago`,
-          detail: {
-            lastCommitHash: sessionEnd.hash,
-            lastCommitDate: sessionEnd.date,
-            lastCommitSubject: sessionEnd.subject,
-            hoursAgo: parseFloat(gap.toFixed(1)),
-          },
-        }),
-      );
-    }
+    // Active branches (what features are in flight)
+    const branches = observeActiveBranches(db, repo);
+    if (branches) result.observations.push(branches);
 
     // Update lastObservedAt
     db.updateRepo(repo.id, { lastObservedAt: new Date().toISOString() });
   } catch {
-    // Repo might not exist or might not be a git repo — return empty result
+    // Repo might not exist or might not be a git repo
   }
 
   return result;

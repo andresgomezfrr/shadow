@@ -1,10 +1,10 @@
 import { resolve, basename } from 'node:path';
-import { readFileSync } from 'node:fs';
 
 import type { ShadowDatabase } from '../storage/database.js';
 import type { ShadowConfig } from '../config/load-config.js';
 import type { UserProfileRecord } from '../storage/models.js';
 import { applyTrustDelta } from '../profile/trust.js';
+import { loadPersonality } from '../personality/loader.js';
 
 export type McpTool = {
   name: string;
@@ -38,33 +38,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     return { ok: true };
   }
 
-  // --- SOUL.md personality loader ---
-
-  function loadPersonality(level: number): string {
-    const soulPath = resolve(config.resolvedDataDir, 'SOUL.md');
-    try {
-      const content = readFileSync(soulPath, 'utf8');
-      const levelHeader = `## Level ${level}`;
-      const idx = content.indexOf(levelHeader);
-      if (idx === -1) return content;
-
-      const nextLevel = content.indexOf('\n## Level ', idx + levelHeader.length);
-      const section = nextLevel === -1
-        ? content.slice(idx + levelHeader.length)
-        : content.slice(idx + levelHeader.length, nextLevel);
-
-      return section.replace(/^[:\s]+/, '').trim();
-    } catch {
-      const defaults: Record<number, string> = {
-        1: 'Respond in a purely technical, terse manner. No personality. Just facts and data.',
-        2: 'Professional tone. Occasionally warm. Focus on delivering value.',
-        3: 'Conversational but focused. Use natural language. Light humor when appropriate.',
-        4: 'You are a warm engineering companion. You remember context from previous sessions. You care about the user\'s work and wellbeing. Use an informal, close tone — like a teammate who knows them well. Show genuine interest. Use subtle humor. Speak in the user\'s language.',
-        5: 'Expressive, playful, deep personal bond. You are creative and emotionally present. You celebrate victories, empathize with frustrations, and bring energy to the work.',
-      };
-      return defaults[level] ?? defaults[4]!;
-    }
-  }
+  // Personality loader uses shared module
 
   function deriveMood(db: ShadowDatabase): string {
     const recent = db.listRecentInteractions(10);
@@ -106,7 +80,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         const profile = db.ensureProfile();
         // Trust: each check_in increases trust
         try { applyTrustDelta(db, 'check_in'); } catch { /* ignore */ }
-        const personality = loadPersonality(profile.personalityLevel);
+        const personality = loadPersonality(config.resolvedDataDir, profile.personalityLevel);
         const mood = deriveMood(db);
         const greeting = deriveGreeting(profile, db);
         const pendingEvents = db.listPendingEvents();
@@ -783,6 +757,49 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
       handler: async (params) => {
         const period = (params.period as 'day' | 'week' | 'month' | undefined) ?? 'day';
         return db.getUsageSummary(period);
+      },
+    },
+    {
+      name: 'shadow_daily_summary',
+      description: 'Get a comprehensive summary of today\'s engineering activity: repos touched, memories created, suggestions, observations, tokens used, and active hours.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      handler: async () => {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const sinceIso = todayStart.toISOString();
+
+        const profile = db.ensureProfile();
+        const repos = db.listRepos();
+        const observations = db.listObservations({ limit: 100 });
+        const todayObs = observations.filter(o => o.createdAt > sinceIso);
+        const memories = db.listMemories({ archived: false });
+        const todayMemories = memories.filter(m => m.createdAt > sinceIso);
+        const suggestions = db.listSuggestions({ status: 'pending' });
+        const usage = db.getUsageSummary('day');
+        const events = db.listPendingEvents();
+
+        return {
+          date: todayStart.toISOString().split('T')[0],
+          user: profile.displayName ?? 'unknown',
+          trustLevel: profile.trustLevel,
+          trustScore: profile.trustScore,
+          activity: {
+            observationsToday: todayObs.length,
+            memoriesCreatedToday: todayMemories.length,
+            pendingSuggestions: suggestions.length,
+            pendingEvents: events.length,
+          },
+          topObservations: todayObs.slice(0, 5).map(o => ({ kind: o.kind, title: o.title, repo: o.repoId })),
+          newMemories: todayMemories.map(m => ({ layer: m.layer, kind: m.kind, title: m.title })),
+          pendingSuggestions: suggestions.slice(0, 5).map(s => ({ kind: s.kind, title: s.title, impact: s.impactScore })),
+          repos: repos.map(r => ({ name: r.name, lastObserved: r.lastObservedAt })),
+          tokens: {
+            input: usage.totalInputTokens,
+            output: usage.totalOutputTokens,
+            totalCalls: usage.totalCalls,
+            byModel: usage.byModel,
+          },
+        };
       },
     },
   ];

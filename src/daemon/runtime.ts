@@ -167,6 +167,14 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     // Step 3: Load profile (ensure it exists)
     db.ensureProfile();
 
+    // Step 3b: Start web server
+    try {
+      const { startWebServer } = await import('../web/server.js');
+      await startWebServer(3700, db);
+    } catch {
+      // web module not available — continue without it
+    }
+
     // Step 4: Initialize state
     const now = new Date().toISOString();
     let consecutiveIdleTicks = 0;
@@ -217,7 +225,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
             pendingEventCount: pendingEvents,
           });
           lastHeartbeatAt = new Date().toISOString();
-          lastHeartbeatPhase = result?.phases?.join(',') ?? 'completed';
+          lastHeartbeatPhase = null; // Reset — heartbeat is done, back to idle
           worked = true;
         } catch {
           // heartbeat module not yet implemented or runtime error

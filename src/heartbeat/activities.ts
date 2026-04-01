@@ -144,32 +144,45 @@ export async function activityAnalyze(
     `- [${mem.layer}/${mem.kind}] ${mem.title}: ${mem.bodyMd.slice(0, 200)}`,
   ).join('\n');
 
+  // Include ALL existing hot+core memories for dedup
+  const allHotCore = ctx.db.listMemories({ archived: false });
+  const existingMemories = allHotCore
+    .filter(m => m.layer === 'core' || m.layer === 'hot')
+    .map(m => `- [${m.layer}] ${m.title}`)
+    .join('\n');
+
   const prompt = [
-    'You are Shadow, analyzing what happened in the developer\'s engineering sessions.',
-    'You have two data sources:',
-    '1. Git observations: changes detected in repositories',
-    '2. Claude CLI interactions: what the developer worked on in their Claude sessions (files edited, commands run)',
+    'You are Shadow, extracting DURABLE KNOWLEDGE from engineering sessions.',
     '',
-    'Analyze both sources and extract useful memories. Return structured JSON:',
-    '```json',
-    '{ "insights": [{ "kind": "pattern|fact|preference|observation", "title": "short title", "bodyMd": "what you learned (markdown)", "confidence": 70, "tags": ["tag1"], "layer": "hot|core", "scope": "personal|repo|cross-repo" }] }',
-    '```',
+    'ONLY create memories that would be useful if the developer opened a completely',
+    'different project tomorrow. Ask yourself: "would I want to know this in 3 months?"',
     '',
-    'Guidelines:',
-    '- Extract WHAT the developer is working on (projects, features, files)',
-    '- Notice PATTERNS (which repos/files get touched together, work schedule)',
-    '- Identify PREFERENCES (coding style, tools used, workflows)',
-    '- If something seems like permanent knowledge (infrastructure, team processes), use layer "core"',
-    '- For current work context, use layer "hot"',
-    '- Be specific and actionable, not vague',
-    '- Each insight should be something useful to remember for future sessions',
+    'Return JSON: { "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core", "scope": "personal"|"repo"|"cross-repo" }] }',
     '',
-    '## Git Observations',
-    observationSummaries,
+    'GOOD memories (CREATE THESE):',
+    '- "Shadow uses SQLite with WAL mode + busy_timeout=5000 for concurrent access" (tech_stack)',
+    '- "FTS5 content-sync tables: use bm25() on alias, not table name" (problem_solved)',
+    '- "User prefers Spanish for conversation, English for code" (preference)',
+    '- "Deploy goes through ArgoCD, main branch auto-deploys to staging" (team_knowledge)',
+    '- "Auth tokens stored in httpOnly cookies, refreshed via /api/refresh" (design_decision)',
     '',
-    interactionSummary ? `## Claude CLI Session Activity\n${interactionSummary}\n` : '',
-    relevantMemories.length > 0 ? `## Existing Memories (for context)\n${memorySummaries}\n` : '',
-    'Respond with JSON only, no markdown fences.',
+    'BAD memories (NEVER CREATE):',
+    '- Session descriptions: "5 tool calls", "light session", "largest session yet"',
+    '- Tool usage stats: "high Edit:Read ratio", "Grep usage declining"',
+    '- Obvious facts: "cli.ts is the main file", "working on shadow repo"',
+    '- Activity logs: "edited 3 files", "ran npm build"',
+    '- Ephemeral state: "file remains uncommitted", "focused on X this session"',
+    '',
+    'Kinds: tech_stack, design_decision, workflow, problem_solved, team_knowledge, preference',
+    'Layer "core" = permanent truths. "hot" = currently relevant but may change.',
+    'Confidence: 90+ for explicit facts, 70-89 for strong inferences.',
+    'Return 0-3 insights. Return EMPTY array {"insights":[]} if nothing worth remembering.',
+    '',
+    '## Data Sources',
+    observations.length > 0 ? `### Git Observations\n${observationSummaries}\n` : '',
+    interactionSummary ? `### Claude CLI Activity\n${interactionSummary}\n` : '',
+    existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
+    'Respond with JSON only.',
   ].join('\n');
 
   const pack: ObjectivePack = {
