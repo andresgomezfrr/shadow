@@ -6,7 +6,7 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { ObservationRecord, MemoryRecord } from '../storage/models.js';
 import type { ObjectivePack } from '../backend/types.js';
 
-import { observeAllRepos } from '../observation/watcher.js';
+import { observeAllRepos, collectAllRepoContexts, summarizeRepoContexts } from '../observation/watcher.js';
 import { findRelevantMemories } from '../memory/retrieval.js';
 import { maintainMemoryLayers } from '../memory/layers.js';
 import { selectAdapter } from '../backend/index.js';
@@ -183,6 +183,10 @@ export async function activityAnalyze(
   const recentConversations = loadRecentConversations(ctx.config, twoHoursAgo);
   const conversationSummary = summarizeConversations(recentConversations);
 
+  // Collect lightweight repo context (branch, uncommitted files, recent commits)
+  const repoContexts = collectAllRepoContexts(ctx.db);
+  const repoContextSummary = summarizeRepoContexts(repoContexts);
+
   if (observations.length === 0 && recentInteractions.length === 0 && recentConversations.length === 0) {
     return { patternsDetected: 0, memoriesCreated: 0, llmCalls: 0, tokensUsed: 0 };
   }
@@ -236,9 +240,20 @@ export async function activityAnalyze(
     'ONLY create memories that would be useful if the developer opened a completely',
     'different project tomorrow. Ask yourself: "would I want to know this in 3 months?"',
     '',
-    'Return JSON with two fields:',
-    '{ "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core", "scope": "personal"|"repo"|"cross-repo" }],',
-    '  "profileUpdates": { "moodHint": "neutral"|"happy"|"focused"|"tired"|"frustrated"|"excited"|"concerned", "energyLevel": "low"|"normal"|"high" } }',
+    'Return JSON with three fields:',
+    '{',
+    '  "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core", "scope": "personal"|"repo"|"cross-repo" }],',
+    '  "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure", "title": string, "detail": string, "severity": "info"|"warning"|"high" }],',
+    '  "profileUpdates": { "moodHint": "neutral"|"happy"|"focused"|"tired"|"frustrated"|"excited"|"concerned", "energyLevel": "low"|"normal"|"high" }',
+    '}',
+    '',
+    'Observations are ACTIONABLE INSIGHTS — things worth flagging to the developer:',
+    '- improvement: "cli.ts is 1200+ lines — consider extracting route handlers"',
+    '- risk: "uncommitted work across 2 repos — consider committing before switching context"',
+    '- opportunity: "user discussed adding a feature but hasn\'t started — could suggest implementation"',
+    '- pattern: "developer always works on heartbeat after modifying activities.ts"',
+    '- infrastructure: "no tests configured for the shadow repo"',
+    'Only create observations for things that are ACTIONABLE. Not activity logs.',
     '',
     'For profileUpdates, infer from the conversations and activity:',
     '- moodHint: "frustrated" if user complains about bugs/issues, "excited" if celebrating wins, "focused" if deep in implementation, "tired" if working late or short messages, "happy" if positive tone, "concerned" if discussing risks/problems, "neutral" if unclear',
@@ -267,7 +282,7 @@ export async function activityAnalyze(
     'If you see commands being run, infer the developer\'s workflow and preferences.',
     '',
     '## Data Sources',
-    observations.length > 0 ? `### Git Observations\n${observationSummaries}\n` : '',
+    repoContextSummary ? `### Repository Status\n${repoContextSummary}\n` : '',
     interactionSummary ? `### Tool Usage (files edited, commands run)\n${interactionSummary}\n` : '',
     conversationSummary ? `### Conversations (what was actually discussed)\n${conversationSummary}\n` : '',
     existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
@@ -341,13 +356,19 @@ export async function activityAnalyze(
             layer?: string;
             scope?: string;
           }>;
+          observations?: Array<{
+            kind?: string;
+            title?: string;
+            detail?: string;
+            severity?: string;
+          }>;
           profileUpdates?: {
             moodHint?: string;
             energyLevel?: string;
           };
         };
 
-        console.error(`[shadow:analyze] Parsed ${parsed.insights?.length ?? 0} insights, profileUpdates: ${JSON.stringify(parsed.profileUpdates ?? {})}`);
+        console.error(`[shadow:analyze] Parsed ${parsed.insights?.length ?? 0} insights, ${parsed.observations?.length ?? 0} observations, profileUpdates: ${JSON.stringify(parsed.profileUpdates ?? {})}`);
 
         // Apply profile updates (mood, energy)
         if (parsed.profileUpdates) {
@@ -380,6 +401,25 @@ export async function activityAnalyze(
             });
             memoriesCreated++;
             if (insight.kind === 'pattern') patternsDetected++;
+          }
+        }
+
+        // Create LLM-generated observations
+        if (parsed.observations && Array.isArray(parsed.observations)) {
+          for (const obs of parsed.observations) {
+            if (!obs.title) continue;
+            // Use first repo if available, otherwise use the shadow repo or skip
+            const firstRepoId = repoIds.size > 0 ? [...repoIds][0] : (repoContexts.length > 0 ? repoContexts[0].repoId : null);
+            if (!firstRepoId) continue;
+            ctx.db.createObservation({
+              repoId: firstRepoId,
+              sourceKind: 'llm',
+              sourceId: null,
+              kind: obs.kind ?? 'pattern',
+              severity: obs.severity ?? 'info',
+              title: obs.title,
+              detail: { description: obs.detail ?? '' },
+            });
           }
         }
       } catch (parseErr) {

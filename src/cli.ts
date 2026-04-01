@@ -692,15 +692,15 @@ program
   .option('--repo <nameOrId>', 'observe a specific repo by name or id')
   .action(async (options: { repo?: string }) =>
     withDb(async (db) => {
-      const { observeRepo, observeAllRepos } = await import('./observation/watcher.js');
+      const { collectRepoContext, collectAllRepoContexts } = await import('./observation/watcher.js');
 
       if (options.repo) {
         const found = db.findRepoByName(options.repo) ?? db.getRepo(options.repo);
         if (!found) return { error: `repo not found: ${options.repo}` };
-        return observeRepo(db, found);
+        return collectRepoContext(found);
       }
 
-      return observeAllRepos(db);
+      return collectAllRepoContexts(db);
     }),
   );
 
