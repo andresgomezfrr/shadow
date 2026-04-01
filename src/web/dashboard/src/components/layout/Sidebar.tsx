@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/runs', icon: '▶', label: 'Runs' },
   { to: '/events', icon: '📬', label: 'Events' },
   { to: '/profile', icon: '⚙', label: 'Settings' },
+  { to: '/emoji-guide', icon: '📖', label: 'Emoji Guide' },
 ];
 
 export function Sidebar() {

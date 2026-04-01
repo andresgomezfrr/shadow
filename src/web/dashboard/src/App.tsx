@@ -13,6 +13,7 @@ import { UsagePage } from './components/pages/UsagePage';
 import { HeartbeatsPage } from './components/pages/HeartbeatsPage';
 import { RunsPage } from './components/pages/RunsPage';
 import { EventsPage } from './components/pages/EventsPage';
+import { EmojiGuidePage } from './components/pages/EmojiGuidePage';
 
 export function App() {
   return (
@@ -32,6 +33,7 @@ export function App() {
         <Route path="/heartbeats" element={<HeartbeatsPage />} />
         <Route path="/runs" element={<RunsPage />} />
         <Route path="/events" element={<EventsPage />} />
+        <Route path="/emoji-guide" element={<EmojiGuidePage />} />
       </Routes>
     </AppShell>
   );

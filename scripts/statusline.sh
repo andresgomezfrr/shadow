@@ -34,6 +34,8 @@ DAEMON_RUNNING=$(echo "$STATUS" | grep -o '"running":[a-z]*' | head -1 | cut -d:
 HEARTBEAT_PHASE=$(echo "$STATUS" | grep -o '"lastHeartbeatPhase":"[^"]*"' | head -1 | cut -d'"' -f4)
 RECENT_ACTIVITY=$(echo "$STATUS" | grep -o '"recentActivity":[0-9]*' | head -1 | cut -d: -f2)
 TOKENS=$(echo "$STATUS" | grep -o '"todayTokens":[0-9]*' | head -1 | cut -d: -f2)
+MOOD=$(echo "$STATUS" | grep -o '"moodHint":"[^"]*"' | head -1 | cut -d'"' -f4)
+ENERGY=$(echo "$STATUS" | grep -o '"energyLevel":"[^"]*"' | head -1 | cut -d'"' -f4)
 
 # Trust emoji
 case "$TRUST" in
@@ -73,6 +75,19 @@ fi
 
 # Build line
 LINE="$ACTIVITY_EMOJI Shadow $ACTIVITY_TEXT $TEMOJI"
+
+# Mood + energy emojis
+MOOD_EMOJI=""
+case "$MOOD" in
+  happy) MOOD_EMOJI="😊" ;; focused) MOOD_EMOJI="🎯" ;; tired) MOOD_EMOJI="😴" ;;
+  frustrated) MOOD_EMOJI="😤" ;; excited) MOOD_EMOJI="🤩" ;; concerned) MOOD_EMOJI="🤔" ;;
+  *) MOOD_EMOJI="😐" ;;
+esac
+ENERGY_EMOJI=""
+case "$ENERGY" in
+  high) ENERGY_EMOJI="⚡️" ;; low) ENERGY_EMOJI="🪫" ;; *) ENERGY_EMOJI="🔋" ;;
+esac
+LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI"
 
 if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
   LINE="$LINE | 💡$SUGGESTIONS"
