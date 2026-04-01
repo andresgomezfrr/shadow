@@ -236,7 +236,14 @@ export async function activityAnalyze(
     'ONLY create memories that would be useful if the developer opened a completely',
     'different project tomorrow. Ask yourself: "would I want to know this in 3 months?"',
     '',
-    'Return JSON: { "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core", "scope": "personal"|"repo"|"cross-repo" }] }',
+    'Return JSON with two fields:',
+    '{ "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core", "scope": "personal"|"repo"|"cross-repo" }],',
+    '  "profileUpdates": { "moodHint": "neutral"|"happy"|"focused"|"tired"|"frustrated"|"excited"|"concerned", "energyLevel": "low"|"normal"|"high" } }',
+    '',
+    'For profileUpdates, infer from the conversations and activity:',
+    '- moodHint: "frustrated" if user complains about bugs/issues, "excited" if celebrating wins, "focused" if deep in implementation, "tired" if working late or short messages, "happy" if positive tone, "concerned" if discussing risks/problems, "neutral" if unclear',
+    '- energyLevel: "high" if lots of activity and engagement, "low" if sparse or late-night work, "normal" otherwise',
+    '- Always include profileUpdates even if mood/energy seem neutral',
     '',
     'GOOD memories (CREATE THESE):',
     '- "Shadow uses SQLite with WAL mode + busy_timeout=5000 for concurrent access" (tech_stack)',
@@ -334,9 +341,24 @@ export async function activityAnalyze(
             layer?: string;
             scope?: string;
           }>;
+          profileUpdates?: {
+            moodHint?: string;
+            energyLevel?: string;
+          };
         };
 
-        console.error(`[shadow:analyze] Parsed ${parsed.insights?.length ?? 0} insights from LLM`);
+        console.error(`[shadow:analyze] Parsed ${parsed.insights?.length ?? 0} insights, profileUpdates: ${JSON.stringify(parsed.profileUpdates ?? {})}`);
+
+        // Apply profile updates (mood, energy)
+        if (parsed.profileUpdates) {
+          const pu: Record<string, unknown> = {};
+          if (parsed.profileUpdates.moodHint) pu.moodHint = parsed.profileUpdates.moodHint;
+          if (parsed.profileUpdates.energyLevel) pu.energyLevel = parsed.profileUpdates.energyLevel;
+          if (Object.keys(pu).length > 0) {
+            ctx.db.updateProfile(ctx.profile.id, pu);
+            console.error(`[shadow:analyze] Updated profile: ${JSON.stringify(pu)}`);
+          }
+        }
         if (parsed.insights && Array.isArray(parsed.insights)) {
           for (const insight of parsed.insights) {
             if (!insight.title || !insight.bodyMd) continue;
