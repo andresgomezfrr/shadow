@@ -1,0 +1,6 @@
+{
+  "shadow": {
+    "command": "npx",
+    "args": ["tsx", "${CLAUDE_PLUGIN_ROOT}/src/cli.ts", "mcp", "serve"]
+  }
+}

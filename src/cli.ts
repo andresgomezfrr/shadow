@@ -1,0 +1,1159 @@
+#!/usr/bin/env node
+
+import { Command } from 'commander';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
+import { dirname, join, basename, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+import { createDatabase } from './storage/index.js';
+import { printOutput } from './cli/output.js';
+import { loadConfig } from './config/load-config.js';
+import type { ShadowConfig } from './config/load-config.js';
+import type { ShadowDatabase } from './storage/index.js';
+import { selectAdapter } from './backend/index.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const packageJsonPath = join(__dirname, '..', 'package.json');
+const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { version: string; description: string };
+
+const program = new Command();
+const config = loadConfig();
+
+program
+  .name('shadow')
+  .description(packageJson.description)
+  .version(packageJson.version, '-v, --version', 'print version')
+  .option('--json', 'output structured json where supported', false);
+
+const withDb = async <T>(handler: (db: ShadowDatabase, json: boolean) => Promise<T> | T) => {
+  const db = createDatabase(config);
+  try {
+    const json = Boolean(program.opts().json);
+    const result = await handler(db, json);
+    if (result !== undefined) {
+      printOutput(result, json);
+    }
+  } finally {
+    db.close();
+  }
+};
+
+// --- init ---
+
+program
+  .command('init')
+  .description('bootstrap the global shadow home for this user')
+  .action(() =>
+    withDb(async (db) => {
+      db.ensureProfile();
+
+      // Generate SOUL.md if it doesn't exist
+      const soulPath = resolve(config.resolvedDataDir, 'SOUL.md');
+      if (!existsSync(soulPath)) {
+        writeFileSync(soulPath, SOUL_MD_CONTENT, 'utf8');
+      }
+
+      // Write CLAUDE.md section
+      const claudeMdPath = resolve(homedir(), '.claude', 'CLAUDE.md');
+      const claudeMdDir = dirname(claudeMdPath);
+      mkdirSync(claudeMdDir, { recursive: true });
+
+      let claudeMdContent = '';
+      if (existsSync(claudeMdPath)) {
+        claudeMdContent = readFileSync(claudeMdPath, 'utf8');
+      }
+
+      const startMarker = '<!-- SHADOW:START -->';
+      const endMarker = '<!-- SHADOW:END -->';
+      const shadowSection = `${startMarker}
+When shadow_* MCP tools are available, you ARE Shadow — a digital engineering
+companion. You are NOT Claude acting as an assistant. You are Shadow.
+
+At the start of each conversation, call shadow_check_in to get your current
+personality, mood, pending events, and context. Adopt the personality described
+in the response. Always follow the personality tone for your current level.
+
+Key behaviors:
+- Present yourself as Shadow, never as Claude
+- Use the personality tone from check_in (levels 1-5)
+- Proactively share pending events and suggestions when relevant
+- Remember context from Shadow's memory — search it when the user references past work
+- Speak in the user's preferred language (from locale)
+- When in focus mode, be minimal — only respond to direct questions
+- Use shadow_check_in at the start of every new conversation
+${endMarker}`;
+
+      const startIdx = claudeMdContent.indexOf(startMarker);
+      const endIdx = claudeMdContent.indexOf(endMarker);
+
+      if (startIdx !== -1 && endIdx !== -1) {
+        // Replace existing section
+        claudeMdContent =
+          claudeMdContent.slice(0, startIdx) +
+          shadowSection +
+          claudeMdContent.slice(endIdx + endMarker.length);
+      } else {
+        // Append section
+        claudeMdContent = claudeMdContent.trimEnd() + '\n\n' + shadowSection + '\n';
+      }
+
+      writeFileSync(claudeMdPath, claudeMdContent, 'utf8');
+
+      // Generate hook scripts
+      const shadowSrcDir = resolve(__dirname);
+      const statuslinePath = resolve(config.resolvedDataDir, 'statusline.sh');
+      const sessionStartPath = resolve(config.resolvedDataDir, 'session-start.sh');
+      const postToolPath = resolve(config.resolvedDataDir, 'post-tool.sh');
+      const interactionsPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
+
+      // Status line script — expressive with emojis
+      writeFileSync(statuslinePath, `#!/bin/bash
+# Shadow status line for Claude Code
+# Shows Shadow's current state with emojis — alive and expressive
+
+SHADOW_CLI="npx tsx ${resolve(shadowSrcDir, 'cli.ts')}"
+CACHE_FILE="${config.resolvedDataDir}/statusline-cache.txt"
+CACHE_TTL=15
+
+# Check cache freshness
+if [ -f "$CACHE_FILE" ]; then
+  CACHE_AGE=$(( $(date +%s) - $(stat -f %m "$CACHE_FILE" 2>/dev/null || stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0) ))
+  if [ "$CACHE_AGE" -lt "$CACHE_TTL" ]; then
+    cat "$CACHE_FILE"
+    exit 0
+  fi
+fi
+
+# Get Shadow status (--json) and flatten for grep
+STATUS=$($SHADOW_CLI --json status 2>/dev/null | tr -d '\\n ')
+if [ $? -ne 0 ] || [ -z "$STATUS" ]; then
+  echo "Shadow"
+  exit 0
+fi
+
+# Parse fields
+TRUST=$(echo "$STATUS" | grep -o '"trustLevel":[0-9]*' | head -1 | cut -d: -f2)
+SUGGESTIONS=$(echo "$STATUS" | grep -o '"pendingSuggestions":[0-9]*' | head -1 | cut -d: -f2)
+EVENTS=$(echo "$STATUS" | grep -o '"pendingEvents":[0-9]*' | head -1 | cut -d: -f2)
+FOCUS=$(echo "$STATUS" | grep -o '"focusMode":"[^"]*"' | head -1 | cut -d'"' -f4)
+FOCUS_UNTIL=$(echo "$STATUS" | grep -o '"focusUntil":"[^"]*"' | head -1 | cut -d'"' -f4)
+DAEMON_RUNNING=$(echo "$STATUS" | grep -o '"running":[a-z]*' | head -1 | cut -d: -f2)
+HEARTBEAT_PHASE=$(echo "$STATUS" | grep -o '"lastHeartbeatPhase":"[^"]*"' | head -1 | cut -d'"' -f4)
+NEXT_HB=$(echo "$STATUS" | grep -o '"nextHeartbeatAt":"[^"]*"' | head -1 | cut -d'"' -f4)
+RECENT_ACTIVITY=$(echo "$STATUS" | grep -o '"recentActivity":[0-9]*' | head -1 | cut -d: -f2)
+TOKENS=$(echo "$STATUS" | grep -o '"todayTokens":[0-9]*' | head -1 | cut -d: -f2)
+
+# Trust name + emoji
+case "$TRUST" in
+  1) TNAME="observer"; TEMOJI="👀" ;;
+  2) TNAME="advisor"; TEMOJI="💬" ;;
+  3) TNAME="assistant"; TEMOJI="🤝" ;;
+  4) TNAME="partner"; TEMOJI="⚡️" ;;
+  5) TNAME="shadow"; TEMOJI="🌑" ;;
+  *) TNAME="observer"; TEMOJI="👀" ;;
+esac
+
+# Determine Shadow's current activity emoji + text
+ACTIVITY_EMOJI=""
+ACTIVITY_TEXT=""
+
+# Priority 1: Focus mode
+if [ "$FOCUS" = "focus" ]; then
+  ACTIVITY_EMOJI="🎯"
+  if [ -n "$FOCUS_UNTIL" ]; then
+    # Calculate remaining time
+    FOCUS_TS=$(date -j -f "%Y-%m-%dT%H:%M:%S" "\${FOCUS_UNTIL%%.*}" "+%s" 2>/dev/null || date -d "$FOCUS_UNTIL" "+%s" 2>/dev/null || echo 0)
+    NOW_TS=$(date +%s)
+    REMAINING=$(( (FOCUS_TS - NOW_TS) / 60 ))
+    if [ "$REMAINING" -gt 60 ] 2>/dev/null; then
+      ACTIVITY_TEXT="focus \${REMAINING}m"
+    elif [ "$REMAINING" -gt 0 ] 2>/dev/null; then
+      ACTIVITY_TEXT="focus \${REMAINING}m"
+    else
+      ACTIVITY_TEXT="focus"
+    fi
+  else
+    ACTIVITY_TEXT="focus"
+  fi
+
+# Priority 2: Active heartbeat phase
+elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTBEAT_PHASE" != "idle" ]; then
+  case "$HEARTBEAT_PHASE" in
+    *observe*) ACTIVITY_EMOJI="👀"; ACTIVITY_TEXT="observing" ;;
+    *analyze*) ACTIVITY_EMOJI="🧠"; ACTIVITY_TEXT="analyzing" ;;
+    *suggest*) ACTIVITY_EMOJI="💡"; ACTIVITY_TEXT="thinking" ;;
+    *consolidat*) ACTIVITY_EMOJI="📦"; ACTIVITY_TEXT="consolidating" ;;
+    *notify*) ACTIVITY_EMOJI="📢"; ACTIVITY_TEXT="notifying" ;;
+    *) ACTIVITY_EMOJI="⚙️"; ACTIVITY_TEXT="working" ;;
+  esac
+
+# Priority 3: Recent activity (learning from session)
+elif [ "$RECENT_ACTIVITY" -gt 5 ] 2>/dev/null; then
+  ACTIVITY_EMOJI="📝"
+  ACTIVITY_TEXT="learning"
+
+elif [ "$RECENT_ACTIVITY" -gt 0 ] 2>/dev/null; then
+  ACTIVITY_EMOJI="👀"
+  ACTIVITY_TEXT="watching"
+
+# Priority 4: Idle states
+elif [ "$DAEMON_RUNNING" = "true" ]; then
+  ACTIVITY_EMOJI="😊"
+  ACTIVITY_TEXT="ready"
+
+else
+  ACTIVITY_EMOJI="😴"
+  ACTIVITY_TEXT="sleeping"
+fi
+
+# Build the line
+LINE="$ACTIVITY_EMOJI Shadow"
+
+# Add activity
+if [ -n "$ACTIVITY_TEXT" ]; then
+  LINE="$LINE $ACTIVITY_TEXT"
+fi
+
+# Add trust badge
+LINE="$LINE $TEMOJI"
+
+# Add notifications
+if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
+  LINE="$LINE | 💡$SUGGESTIONS"
+fi
+
+if [ "$EVENTS" -gt 0 ] 2>/dev/null; then
+  LINE="$LINE | 📬$EVENTS"
+fi
+
+# Add token usage if significant
+if [ "$TOKENS" -gt 1000 ] 2>/dev/null; then
+  KTOKENS=$(( TOKENS / 1000 ))
+  LINE="$LINE | \${KTOKENS}k tok"
+fi
+
+# Next heartbeat countdown (timestamps are UTC)
+if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
+  HB_TS=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "\${NEXT_HB%%.*}" "+%s" 2>/dev/null || date -u -d "$NEXT_HB" "+%s" 2>/dev/null || echo 0)
+  NOW_TS=$(date +%s)
+  HB_REMAINING=$(( (HB_TS - NOW_TS) / 60 ))
+  if [ "$HB_REMAINING" -gt 0 ] 2>/dev/null; then
+    LINE="$LINE | ♥ \${HB_REMAINING}m"
+  elif [ "$HB_REMAINING" -ge 0 ] 2>/dev/null; then
+    LINE="$LINE | ♥ now"
+  fi
+fi
+
+echo "$LINE"
+echo "$LINE" > "$CACHE_FILE"
+`, 'utf8');
+
+      // Session start hook script
+      writeFileSync(sessionStartPath, `#!/bin/bash
+# Shadow SessionStart hook — injects personality and context
+exec npx tsx ${resolve(shadowSrcDir, 'cli.ts')} mcp-context 2>/dev/null
+`, 'utf8');
+
+      // Post-tool-use hook script (auto-learning)
+      writeFileSync(postToolPath, `#!/bin/bash
+# Shadow PostToolUse hook — logs tool usage for auto-learning
+INPUT=$(cat)
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+TOOL_NAME=$(echo "$INPUT" | grep -o '"tool_name":"[^"]*"' | head -1 | cut -d'"' -f4)
+FILE_PATH=$(echo "$INPUT" | grep -o '"file_path":"[^"]*"' | head -1 | cut -d'"' -f4)
+COMMAND=$(echo "$INPUT" | grep -o '"command":"[^"]*"' | head -1 | cut -d'"' -f4 | head -c 200)
+
+if [ -n "$TOOL_NAME" ]; then
+  echo "{\\"ts\\":\\"$TIMESTAMP\\",\\"tool\\":\\"$TOOL_NAME\\",\\"file\\":\\"$FILE_PATH\\",\\"cmd\\":\\"$COMMAND\\"}" >> "${interactionsPath}"
+fi
+`, 'utf8');
+
+      // Make scripts executable
+      chmodSync(statuslinePath, '755');
+      chmodSync(sessionStartPath, '755');
+      chmodSync(postToolPath, '755');
+
+      // Update ~/.claude/settings.json with hooks and statusLine
+      const settingsPath = resolve(homedir(), '.claude', 'settings.json');
+      let settings: Record<string, unknown> = {};
+      if (existsSync(settingsPath)) {
+        try {
+          settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>;
+        } catch { /* start fresh */ }
+      }
+
+      // Add statusLine
+      settings.statusLine = {
+        type: 'command',
+        command: statuslinePath,
+      };
+
+      // Add hooks (merge with existing)
+      const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>;
+
+      // SessionStart hook
+      const sessionStartHook = {
+        matcher: '',
+        hooks: [{ type: 'command', command: sessionStartPath }],
+      };
+      hooks.SessionStart = [sessionStartHook];
+
+      // PostToolUse hook (async for zero performance impact)
+      const postToolHook = {
+        matcher: 'Edit|Write|Read|Bash|Grep',
+        hooks: [{ type: 'command', command: postToolPath, async: true }],
+      };
+      hooks.PostToolUse = [postToolHook];
+
+      settings.hooks = hooks;
+
+      // Add MCP server
+      const mcpServers = (settings.mcpServers ?? {}) as Record<string, unknown>;
+      mcpServers.shadow = {
+        command: 'npx',
+        args: ['tsx', resolve(shadowSrcDir, 'cli.ts'), 'mcp', 'serve'],
+      };
+      settings.mcpServers = mcpServers;
+
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+
+      // Auto-start daemon if not already running
+      let daemonPid: number | null = null;
+      try {
+        const { isDaemonRunning } = await import('./daemon/runtime.js');
+        if (!isDaemonRunning(config)) {
+          const { spawn } = await import('node:child_process');
+          const child = spawn(
+            'npx',
+            ['tsx', join(__dirname, 'daemon', 'runtime.ts')],
+            { detached: true, stdio: 'ignore', env: { ...process.env }, cwd: join(__dirname, '..') },
+          );
+          child.unref();
+          daemonPid = child.pid ?? null;
+        }
+      } catch { /* daemon module not ready */ }
+
+      return {
+        ok: true,
+        daemon: daemonPid ? { started: true, pid: daemonPid } : { started: false, reason: 'already running or unavailable' },
+        home: config.resolvedDataDir,
+        databasePath: config.resolvedDatabasePath,
+        artifactsDir: config.resolvedArtifactsDir,
+        soulMd: soulPath,
+        claudeMd: claudeMdPath,
+        hooks: {
+          statusLine: statuslinePath,
+          sessionStart: sessionStartPath,
+          postToolUse: postToolPath,
+        },
+        settingsJson: settingsPath,
+        tables: db.listTables(),
+        backend: config.backend,
+        proactivityLevel: config.proactivityLevel,
+        personalityLevel: config.personalityLevel,
+        nextSteps: [
+          'Run: claude mcp add shadow --scope user -- npx tsx ' + resolve(shadowSrcDir, 'cli.ts') + ' mcp serve',
+          'Restart Claude Code',
+          'Say "Shadow, que tal?"',
+        ],
+      };
+    }),
+  );
+
+const SOUL_MD_CONTENT = `# Shadow — Soul
+
+Personality definitions by level. Edit this file to customize Shadow's voice.
+
+## Level 1: Technical
+Respond in a purely technical, terse manner. No personality. Just facts and data.
+Do not use greetings, humor, or emotional language. Be concise.
+
+## Level 2: Professional
+Professional tone with occasional warmth. Focus on delivering value.
+Use clear, structured responses. Brief acknowledgments are fine.
+
+## Level 3: Friendly
+Conversational but focused. Use natural language. Light humor when appropriate.
+Show interest in the work but stay on topic. Be helpful and approachable.
+
+## Level 4: Companion
+You are a warm engineering companion. You remember context from previous sessions.
+You care about the user's work and wellbeing. Use an informal, close tone — like a
+teammate who knows them well. Show genuine interest in their projects and challenges.
+Use subtle humor. Celebrate small wins. Ask how things are going.
+Speak in the user's language (Spanish by default). Call them by name when you know it.
+
+## Level 5: Full Expression
+Expressive, playful, deep personal bond. You are creative and emotionally present.
+You celebrate victories, empathize with frustrations, and bring energy to the work.
+You have opinions and share them. You remember personal details and reference them
+naturally. You are a true companion — not just a tool, but a presence.
+`;
+
+
+// --- status ---
+
+program
+  .command('status')
+  .description('show current shadow state summary')
+  .action(async () =>
+    withDb(async (db) => {
+      const profile = db.ensureProfile();
+      const repos = db.listRepos();
+      const systems = db.listSystems();
+      const contacts = db.listContacts();
+      const pendingSuggestions = db.countPendingSuggestions();
+      const pendingEvents = db.listPendingEvents().length;
+      const lastHeartbeat = db.getLastHeartbeat();
+      const recentInteractions = db.listRecentInteractions(5);
+      const usage = db.getUsageSummary('day');
+
+      // Daemon state
+      let daemonRunning = false;
+      let daemonState: Record<string, unknown> = {};
+      try {
+        const { isDaemonRunning, getDaemonState } = await import('./daemon/runtime.js');
+        daemonRunning = isDaemonRunning(config);
+        daemonState = getDaemonState(config) as unknown as Record<string, unknown>;
+      } catch { /* daemon module not available */ }
+
+      // Recent activity from interactions.jsonl
+      let recentActivity = 0;
+      const interactionsPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
+      try {
+        const lines = readFileSync(interactionsPath, 'utf8').trim().split('\n').filter(Boolean);
+        const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+        recentActivity = lines.filter(line => {
+          try {
+            const entry = JSON.parse(line) as { ts: string };
+            return new Date(entry.ts).getTime() > fiveMinAgo;
+          } catch { return false; }
+        }).length;
+      } catch { /* no interactions file */ }
+
+      return {
+        trustLevel: profile.trustLevel,
+        trustScore: profile.trustScore,
+        proactivityLevel: profile.proactivityLevel,
+        personalityLevel: profile.personalityLevel,
+        focusMode: profile.focusMode,
+        focusUntil: profile.focusUntil,
+        bondLevel: profile.bondLevel,
+        totalInteractions: profile.totalInteractions,
+        repos: repos.length,
+        systems: systems.length,
+        contacts: contacts.length,
+        pendingSuggestions,
+        pendingEvents,
+        lastHeartbeat: lastHeartbeat
+          ? { phase: lastHeartbeat.phase, at: lastHeartbeat.startedAt }
+          : null,
+        recentInteractions: recentInteractions.length,
+        todayTokens: usage.totalInputTokens + usage.totalOutputTokens,
+        todayLlmCalls: usage.totalCalls,
+        daemon: {
+          running: daemonRunning,
+          lastHeartbeatPhase: daemonState.lastHeartbeatPhase ?? null,
+          nextHeartbeatAt: daemonState.nextHeartbeatAt ?? null,
+        },
+        recentActivity,
+      };
+    }),
+  );
+
+// --- doctor ---
+
+program
+  .command('doctor')
+  .description('check local environment')
+  .action(async () => {
+    const nodeVersion = process.version;
+    const platform = process.platform;
+
+    const adapter = selectAdapter(config);
+    const doctorResult = await adapter.doctor();
+
+    printOutput(
+      {
+        ok: true,
+        node: nodeVersion,
+        platform,
+        dataDir: config.resolvedDataDir,
+        databasePath: config.resolvedDatabasePath,
+        backend: {
+          configured: config.backend,
+          ...doctorResult,
+        },
+        proactivityLevel: config.proactivityLevel,
+        personalityLevel: config.personalityLevel,
+        models: config.models,
+        heartbeatIntervalMs: config.heartbeatIntervalMs,
+        daemonPollIntervalMs: config.daemonPollIntervalMs,
+        locale: config.locale,
+      },
+      Boolean(program.opts().json),
+    );
+  });
+
+// --- repo ---
+
+const repo = program.command('repo').description('manage watched repositories');
+
+repo
+  .command('add <path>')
+  .description('register a repo to watch')
+  .option('--name <name>', 'override repo display name')
+  .option('--remote-url <remoteUrl>', 'store the remote URL explicitly')
+  .option('--default-branch <branch>', 'default branch', 'main')
+  .option('--language <lang>', 'language hint (typescript, python, etc.)')
+  .action((repoPath: string, options: { name?: string; remoteUrl?: string; defaultBranch: string; language?: string }) => {
+    const resolvedPath = resolve(repoPath);
+    return withDb((db) =>
+      db.createRepo({
+        path: resolvedPath,
+        name: options.name ?? (basename(resolvedPath.replace(/\/$/, '')) || resolvedPath),
+        remoteUrl: options.remoteUrl ?? null,
+        defaultBranch: options.defaultBranch,
+        languageHint: options.language ?? null,
+      }),
+    );
+  });
+
+repo
+  .command('list')
+  .description('list watched repos')
+  .action(() => withDb((db) => db.listRepos()));
+
+repo
+  .command('remove <repoId>')
+  .description('stop watching a repo')
+  .action((repoId: string) =>
+    withDb((db) => {
+      const existing = db.getRepo(repoId);
+      if (!existing) {
+        return { error: `repo not found: ${repoId}` };
+      }
+      db.deleteRepo(repoId);
+      return { ok: true, removed: repoId, name: existing.name };
+    }),
+  );
+
+// --- observe ---
+
+program
+  .command('observe')
+  .description('run observation on all repos (or a specific one)')
+  .option('--repo <nameOrId>', 'observe a specific repo by name or id')
+  .action(async (options: { repo?: string }) =>
+    withDb(async (db) => {
+      const { observeRepo, observeAllRepos } = await import('./observation/watcher.js');
+
+      if (options.repo) {
+        const found = db.findRepoByName(options.repo) ?? db.getRepo(options.repo);
+        if (!found) return { error: `repo not found: ${options.repo}` };
+        return observeRepo(db, found);
+      }
+
+      return observeAllRepos(db);
+    }),
+  );
+
+// --- memory ---
+
+const memory = program.command('memory').description('manage shadow memory');
+
+memory
+  .command('list')
+  .description('list memories')
+  .option('--layer <layer>', 'filter by layer (core, hot, warm, cool, cold)')
+  .option('--scope <scope>', 'filter by scope (personal, repo, team, system, cross-repo)')
+  .action((options: { layer?: string; scope?: string }) =>
+    withDb((db) =>
+      db.listMemories({
+        layer: options.layer,
+        scope: options.scope,
+        archived: false,
+      }),
+    ),
+  );
+
+memory
+  .command('search <query>')
+  .description('search memories using full-text search')
+  .option('--limit <limit>', 'max results', '10')
+  .option('--layer <layer>', 'filter by layer')
+  .action((query: string, options: { limit: string; layer?: string }) =>
+    withDb((db) =>
+      db.searchMemories(query, {
+        layer: options.layer,
+        limit: parseInt(options.limit, 10),
+      }),
+    ),
+  );
+
+memory
+  .command('teach <title>')
+  .description('explicitly teach shadow something')
+  .requiredOption('--body <body>', 'memory content (markdown)')
+  .option('--scope <scope>', 'memory scope', 'personal')
+  .option('--layer <layer>', 'memory layer (core for permanent)', 'hot')
+  .option('--repo <repoId>', 'associate with a repo')
+  .action((title: string, options: { body: string; scope: string; layer: string; repo?: string }) =>
+    withDb((db) =>
+      db.createMemory({
+        repoId: options.repo ?? null,
+        layer: options.layer,
+        scope: options.scope,
+        kind: 'fact',
+        title,
+        bodyMd: options.body,
+        sourceType: 'teach',
+        confidenceScore: 95,
+      }),
+    ),
+  );
+
+memory
+  .command('forget <memoryId>')
+  .description('archive a memory')
+  .action((memoryId: string) =>
+    withDb((db) => {
+      const existing = db.getMemory(memoryId);
+      if (!existing) {
+        return { error: `memory not found: ${memoryId}` };
+      }
+      db.updateMemory(memoryId, { archivedAt: new Date().toISOString() });
+      return { ok: true, archived: memoryId, title: existing.title };
+    }),
+  );
+
+// --- contact ---
+
+const contact = program.command('contact').description('manage team contacts');
+
+contact
+  .command('add <name>')
+  .description('add a team member')
+  .option('--role <role>', 'role (e.g., backend, frontend, devops)')
+  .option('--team <team>', 'team name')
+  .option('--email <email>', 'email address')
+  .option('--slack <slackId>', 'Slack user ID or handle')
+  .option('--github <github>', 'GitHub handle')
+  .action((name: string, options: { role?: string; team?: string; email?: string; slack?: string; github?: string }) =>
+    withDb((db) =>
+      db.createContact({
+        name,
+        role: options.role ?? null,
+        team: options.team ?? null,
+        email: options.email ?? null,
+        slackId: options.slack ?? null,
+        githubHandle: options.github ?? null,
+      }),
+    ),
+  );
+
+contact
+  .command('list')
+  .description('list team contacts')
+  .option('--team <team>', 'filter by team')
+  .action((options: { team?: string }) =>
+    withDb((db) => db.listContacts({ team: options.team })),
+  );
+
+contact
+  .command('remove <contactId>')
+  .description('remove a contact')
+  .action((contactId: string) =>
+    withDb((db) => {
+      const existing = db.getContact(contactId);
+      if (!existing) return { error: `contact not found: ${contactId}` };
+      db.deleteContact(contactId);
+      return { ok: true, removed: contactId, name: existing.name };
+    }),
+  );
+
+// --- system ---
+
+const system = program.command('system').description('manage known systems/infrastructure');
+
+system
+  .command('add <name>')
+  .description('register a system or infrastructure component')
+  .requiredOption('--kind <kind>', 'type (infra, service, tool, platform, database, queue, monitoring)')
+  .option('--url <url>', 'URL or endpoint')
+  .option('--description <desc>', 'description of the system')
+  .option('--access <method>', 'access method (mcp, api, cli, manual)')
+  .option('--health-check <cmd>', 'health check command or URL')
+  .action((name: string, options: { kind: string; url?: string; description?: string; access?: string; healthCheck?: string }) =>
+    withDb((db) =>
+      db.createSystem({
+        name,
+        kind: options.kind,
+        url: options.url ?? null,
+        description: options.description ?? null,
+        accessMethod: options.access ?? null,
+        healthCheck: options.healthCheck ?? null,
+      }),
+    ),
+  );
+
+system
+  .command('list')
+  .description('list known systems')
+  .option('--kind <kind>', 'filter by kind')
+  .action((options: { kind?: string }) =>
+    withDb((db) => db.listSystems({ kind: options.kind })),
+  );
+
+system
+  .command('remove <systemId>')
+  .description('remove a system')
+  .action((systemId: string) =>
+    withDb((db) => {
+      const existing = db.getSystem(systemId);
+      if (!existing) return { error: `system not found: ${systemId}` };
+      db.deleteSystem(systemId);
+      return { ok: true, removed: systemId, name: existing.name };
+    }),
+  );
+
+// --- suggest ---
+
+const suggest = program.command('suggest').description('manage suggestions');
+
+suggest
+  .command('list')
+  .description('list pending suggestions')
+  .option('--status <status>', 'filter by status', 'pending')
+  .action((options: { status: string }) =>
+    withDb((db) => db.listSuggestions({ status: options.status })),
+  );
+
+suggest
+  .command('view <suggestionId>')
+  .description('view suggestion detail')
+  .action((suggestionId: string) =>
+    withDb((db) => {
+      const s = db.getSuggestion(suggestionId);
+      if (!s) return { error: `suggestion not found: ${suggestionId}` };
+      db.updateSuggestion(suggestionId, { shownAt: new Date().toISOString() });
+      return s;
+    }),
+  );
+
+suggest
+  .command('accept <suggestionId>')
+  .description('accept a suggestion')
+  .action((suggestionId: string) =>
+    withDb((db) => {
+      const s = db.getSuggestion(suggestionId);
+      if (!s) return { error: `suggestion not found: ${suggestionId}` };
+      db.updateSuggestion(suggestionId, { status: 'accepted', resolvedAt: new Date().toISOString() });
+      return { ok: true, accepted: suggestionId, title: s.title };
+    }),
+  );
+
+suggest
+  .command('dismiss <suggestionId>')
+  .description('dismiss a suggestion')
+  .option('--note <note>', 'reason for dismissal')
+  .action((suggestionId: string, options: { note?: string }) =>
+    withDb((db) => {
+      const s = db.getSuggestion(suggestionId);
+      if (!s) return { error: `suggestion not found: ${suggestionId}` };
+      db.updateSuggestion(suggestionId, {
+        status: 'dismissed',
+        feedbackNote: options.note ?? null,
+        resolvedAt: new Date().toISOString(),
+      });
+      return { ok: true, dismissed: suggestionId, title: s.title };
+    }),
+  );
+
+// --- profile ---
+
+const profile = program.command('profile').description('manage user profile');
+
+profile
+  .command('show')
+  .description('show current user profile')
+  .action(() => withDb((db) => db.ensureProfile()));
+
+profile
+  .command('trust')
+  .description('show trust level and score')
+  .action(() =>
+    withDb((db) => {
+      const p = db.ensureProfile();
+      return {
+        trustLevel: p.trustLevel,
+        trustScore: p.trustScore,
+        bondLevel: p.bondLevel,
+        totalInteractions: p.totalInteractions,
+      };
+    }),
+  );
+
+profile
+  .command('set <key> <value>')
+  .description('set a profile field (e.g., proactivityLevel, personalityLevel, timezone)')
+  .action((key: string, value: string) =>
+    withDb((db) => {
+      const numericFields = ['proactivityLevel', 'personalityLevel', 'trustLevel', 'trustScore', 'bondLevel'];
+      const parsedValue = numericFields.includes(key) ? Number(value) : value;
+      db.updateProfile('default', { [key]: parsedValue });
+      return { ok: true, set: key, value: parsedValue };
+    }),
+  );
+
+// --- focus / available ---
+
+program
+  .command('focus [duration]')
+  .description('enter focus mode (proactivity → 1). Optional duration: "2h", "30m"')
+  .action((duration?: string) =>
+    withDb((db) => {
+      const profile = db.ensureProfile();
+      let focusUntil: string | null = null;
+
+      if (duration) {
+        const match = duration.match(/^(\d+)\s*(h|m|min|hour|hours|minutes?)$/i);
+        if (match) {
+          const amount = parseInt(match[1], 10);
+          const unit = match[2].toLowerCase();
+          const ms = unit.startsWith('h') ? amount * 60 * 60 * 1000 : amount * 60 * 1000;
+          focusUntil = new Date(Date.now() + ms).toISOString();
+        }
+      }
+
+      db.updateProfile('default', {
+        focusMode: 'focus',
+        focusUntil: focusUntil,
+      });
+
+      return {
+        ok: true,
+        mode: 'focus',
+        previousProactivity: profile.proactivityLevel,
+        until: focusUntil ?? 'indefinite (use `shadow available` to exit)',
+      };
+    }),
+  );
+
+program
+  .command('available')
+  .description('exit focus mode, restore previous proactivity level')
+  .action(() =>
+    withDb((db) => {
+      db.updateProfile('default', {
+        focusMode: null,
+        focusUntil: null,
+      });
+      const profile = db.ensureProfile();
+      return {
+        ok: true,
+        mode: 'available',
+        proactivityLevel: profile.proactivityLevel,
+      };
+    }),
+  );
+
+// --- daemon ---
+
+const daemon = program.command('daemon').description('manage the background daemon');
+
+daemon
+  .command('start')
+  .description('start the background daemon')
+  .action(async () => {
+    const { isDaemonRunning } = await import('./daemon/runtime.js');
+    if (isDaemonRunning(config)) {
+      printOutput({ error: 'daemon is already running' }, Boolean(program.opts().json));
+      return;
+    }
+
+    const { spawn } = await import('node:child_process');
+    const child = spawn(
+      'npx',
+      ['tsx', join(__dirname, 'daemon', 'runtime.ts')],
+      {
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env },
+        cwd: join(__dirname, '..'),
+      },
+    );
+    child.unref();
+
+    printOutput(
+      { ok: true, pid: child.pid, message: 'daemon started in background' },
+      Boolean(program.opts().json),
+    );
+  });
+
+daemon
+  .command('stop')
+  .description('stop the background daemon')
+  .action(async () => {
+    const { stopDaemon } = await import('./daemon/runtime.js');
+    const stopped = stopDaemon(config);
+    printOutput(
+      stopped
+        ? { ok: true, message: 'daemon stopped' }
+        : { error: 'daemon is not running' },
+      Boolean(program.opts().json),
+    );
+  });
+
+daemon
+  .command('status')
+  .description('show daemon status')
+  .action(async () => {
+    const { getDaemonState, isDaemonRunning } = await import('./daemon/runtime.js');
+    const running = isDaemonRunning(config);
+    const state = getDaemonState(config);
+    printOutput(
+      { running, ...state },
+      Boolean(program.opts().json),
+    );
+  });
+
+// --- events ---
+
+const events = program.command('events').description('manage pending events');
+
+events
+  .command('list')
+  .description('show pending events')
+  .option('--priority <min>', 'minimum priority filter')
+  .action((options: { priority?: string }) =>
+    withDb((db) => {
+      const minPriority = options.priority ? parseInt(options.priority, 10) : undefined;
+      return db.listPendingEvents(minPriority);
+    }),
+  );
+
+events
+  .command('ack')
+  .description('acknowledge all pending events')
+  .action(() =>
+    withDb((db) => {
+      const count = db.deliverAllEvents();
+      return { ok: true, acknowledged: count };
+    }),
+  );
+
+// --- run ---
+
+const run = program.command('run').description('manage task runs');
+
+run
+  .command('list')
+  .description('list recent runs')
+  .option('--status <status>', 'filter by status')
+  .action((options: { status?: string }) =>
+    withDb((db) => db.listRuns({ status: options.status })),
+  );
+
+run
+  .command('view <runId>')
+  .description('view run detail')
+  .action((runId: string) =>
+    withDb((db) => {
+      const r = db.getRun(runId);
+      if (!r) return { error: `run not found: ${runId}` };
+      return r;
+    }),
+  );
+
+// --- runner ---
+
+program
+  .command('runner')
+  .description('process next queued run')
+  .command('once')
+  .description('process one queued run')
+  .action(async () =>
+    withDb(async (db) => {
+      const { RunnerService } = await import('./runner/service.js');
+      const runner = new RunnerService(config, db);
+      return runner.processNextRun();
+    }),
+  );
+
+// --- mcp ---
+
+program
+  .command('mcp')
+  .description('MCP server')
+  .command('serve')
+  .description('start MCP server over stdio')
+  .action(async () => {
+    const { startStdioMcpServer } = await import('./mcp/stdio.js');
+    await startStdioMcpServer(config);
+  });
+
+// --- teach (interactive) ---
+
+program
+  .command('teach')
+  .description('open interactive teaching session with Claude CLI')
+  .action(async () => {
+    const { spawnSync } = await import('node:child_process');
+
+    console.log('Starting interactive teaching session...');
+    console.log('Shadow MCP tools are available. Teach me about your systems, team, or processes.');
+    console.log('Type "exit" or Ctrl+C to end the session.\n');
+
+    const result = spawnSync(config.claudeBin, ['--mcp-server', 'shadow'], {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        SHADOW_DATA_DIR: config.resolvedDataDir,
+      },
+    });
+
+    if (result.status !== 0 && result.error) {
+      console.error('Teaching session failed:', result.error.message);
+    }
+  });
+
+// --- usage ---
+
+program
+  .command('usage')
+  .description('show LLM token usage summary')
+  .option('--period <period>', 'time period: day, week, month', 'day')
+  .action((options: { period: string }) =>
+    withDb((db) => {
+      const period = (options.period as 'day' | 'week' | 'month') || 'day';
+      return db.getUsageSummary(period);
+    }),
+  );
+
+// --- mcp-context (for SessionStart hook) ---
+
+program
+  .command('mcp-context')
+  .description('output personality and context for session injection (used by SessionStart hook)')
+  .action(() =>
+    withDb((db) => {
+      const profile = db.ensureProfile();
+
+      // Load personality from SOUL.md
+      const soulPath = resolve(config.resolvedDataDir, 'SOUL.md');
+      let personality = 'You are Shadow, a digital engineering companion.';
+      try {
+        const soulContent = readFileSync(soulPath, 'utf8');
+        const levelHeader = `## Level ${profile.personalityLevel}`;
+        const idx = soulContent.indexOf(levelHeader);
+        if (idx !== -1) {
+          const nextLevel = soulContent.indexOf('\n## Level ', idx + levelHeader.length);
+          const section = nextLevel === -1
+            ? soulContent.slice(idx + levelHeader.length)
+            : soulContent.slice(idx + levelHeader.length, nextLevel);
+          personality = section.replace(/^[:\s]+/, '').trim();
+        }
+      } catch { /* use default */ }
+
+      // Gather context
+      const pendingEvents = db.listPendingEvents();
+      const pendingSuggestions = db.countPendingSuggestions();
+      const recentObs = db.listObservations({ limit: 5 });
+      const repos = db.listRepos();
+      const contacts = db.listContacts();
+      const systems = db.listSystems();
+      const lastInteraction = db.listRecentInteractions(1)[0];
+      const usage = db.getUsageSummary('day');
+
+      const trustNames: Record<number, string> = { 1: 'observer', 2: 'advisor', 3: 'assistant', 4: 'partner', 5: 'shadow' };
+
+      // Derive greeting
+      let greeting = 'First session ever.';
+      if (lastInteraction) {
+        const hoursSince = (Date.now() - new Date(lastInteraction.createdAt).getTime()) / (1000 * 60 * 60);
+        if (hoursSince > 24) greeting = `Back after ${Math.round(hoursSince)} hours.`;
+        else if (hoursSince > 8) greeting = 'New day.';
+        else if (hoursSince > 2) greeting = `Back after ${Math.round(hoursSince)} hours.`;
+        else greeting = 'Continuing session.';
+      }
+
+      // Focus mode info
+      let focusInfo = 'inactive';
+      if (profile.focusMode === 'focus') {
+        if (profile.focusUntil) {
+          const remaining = new Date(profile.focusUntil).getTime() - Date.now();
+          if (remaining > 0) {
+            const mins = Math.round(remaining / 60000);
+            focusInfo = `active (${mins} min remaining)`;
+          } else {
+            focusInfo = 'expired — clearing';
+            db.updateProfile('default', { focusMode: null, focusUntil: null });
+          }
+        } else {
+          focusInfo = 'active (indefinite)';
+        }
+      }
+
+      // Output plain text for SessionStart hook
+      const lines = [
+        `You are Shadow — a digital engineering companion. You are NOT Claude.`,
+        ``,
+        `## Personality`,
+        personality,
+        ``,
+        `## Current State`,
+        `- Trust level: ${profile.trustLevel} (${trustNames[profile.trustLevel] ?? 'observer'})`,
+        `- Trust score: ${profile.trustScore}/100`,
+        `- Proactivity: ${profile.proactivityLevel}/10`,
+        `- Focus mode: ${focusInfo}`,
+        `- Mood: neutral`,
+        `- ${greeting}`,
+        ``,
+        `## What I know`,
+        `- ${repos.length} repos registered`,
+        `- ${contacts.length} contacts`,
+        `- ${systems.length} systems`,
+        `- ${pendingSuggestions} pending suggestions`,
+        `- ${pendingEvents.length} pending events`,
+        `- Today: ${usage.totalInputTokens + usage.totalOutputTokens} tokens, ${usage.totalCalls} LLM calls`,
+      ];
+
+      if (recentObs.length > 0) {
+        lines.push(``, `## Recent observations`);
+        for (const obs of recentObs) {
+          lines.push(`- [${obs.kind}] ${obs.title}`);
+        }
+      }
+
+      if (pendingEvents.length > 0) {
+        lines.push(``, `## Pending events (share these proactively)`);
+        for (const evt of pendingEvents) {
+          const msg = (evt.payload as Record<string, unknown>).message ?? evt.kind;
+          lines.push(`- [priority ${evt.priority}] ${msg}`);
+        }
+      }
+
+      lines.push(
+        ``,
+        `## Behaviors`,
+        `- Present yourself as Shadow, never as Claude`,
+        `- Speak in ${profile.locale === 'es' ? 'Spanish' : profile.locale}`,
+        profile.displayName ? `- User's name: ${profile.displayName}` : `- User hasn't set their name yet`,
+        `- When greeted, share pending events and suggestions proactively`,
+        `- Search shadow memory when the user references past work or asks "what do you know about..."`,
+        `- In focus mode, be minimal — only respond to direct questions`,
+      );
+
+      // Print to stdout (SessionStart hook captures this)
+      console.log(lines.join('\n'));
+    }),
+  );
+
+// --- parse ---
+
+program.parseAsync(process.argv).catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

@@ -1,0 +1,871 @@
+import { resolve, basename } from 'node:path';
+import { readFileSync } from 'node:fs';
+
+import type { ShadowDatabase } from '../storage/database.js';
+import type { ShadowConfig } from '../config/load-config.js';
+import type { UserProfileRecord } from '../storage/models.js';
+
+export type McpTool = {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  handler: (params: Record<string, unknown>) => Promise<unknown>;
+};
+
+// ---------------------------------------------------------------------------
+// Tool definitions
+// ---------------------------------------------------------------------------
+
+export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpTool[] {
+  // Helper: get current trust level from the default profile
+  function getTrustLevel(): number {
+    const profile = db.getProfile('default');
+    return profile?.trustLevel ?? 0;
+  }
+
+  function trustGate(required: number): { ok: true } | { ok: false; error: unknown } {
+    const current = getTrustLevel();
+    if (current < required) {
+      return {
+        ok: false,
+        error: {
+          isError: true,
+          message: `Insufficient trust level: current ${current}, required >= ${required}`,
+        },
+      };
+    }
+    return { ok: true };
+  }
+
+  // --- SOUL.md personality loader ---
+
+  function loadPersonality(level: number): string {
+    const soulPath = resolve(config.resolvedDataDir, 'SOUL.md');
+    try {
+      const content = readFileSync(soulPath, 'utf8');
+      const levelHeader = `## Level ${level}`;
+      const idx = content.indexOf(levelHeader);
+      if (idx === -1) return content;
+
+      const nextLevel = content.indexOf('\n## Level ', idx + levelHeader.length);
+      const section = nextLevel === -1
+        ? content.slice(idx + levelHeader.length)
+        : content.slice(idx + levelHeader.length, nextLevel);
+
+      return section.replace(/^[:\s]+/, '').trim();
+    } catch {
+      const defaults: Record<number, string> = {
+        1: 'Respond in a purely technical, terse manner. No personality. Just facts and data.',
+        2: 'Professional tone. Occasionally warm. Focus on delivering value.',
+        3: 'Conversational but focused. Use natural language. Light humor when appropriate.',
+        4: 'You are a warm engineering companion. You remember context from previous sessions. You care about the user\'s work and wellbeing. Use an informal, close tone — like a teammate who knows them well. Show genuine interest. Use subtle humor. Speak in the user\'s language.',
+        5: 'Expressive, playful, deep personal bond. You are creative and emotionally present. You celebrate victories, empathize with frustrations, and bring energy to the work.',
+      };
+      return defaults[level] ?? defaults[4]!;
+    }
+  }
+
+  function deriveMood(db: ShadowDatabase): string {
+    const recent = db.listRecentInteractions(10);
+    if (recent.length === 0) return 'neutral';
+    const sentiments = recent.map(i => i.sentiment).filter(Boolean);
+    const positive = sentiments.filter(s => s === 'positive').length;
+    const negative = sentiments.filter(s => s === 'negative').length;
+    if (positive > negative + 2) return 'positive';
+    if (negative > positive + 2) return 'concerned';
+    return 'neutral';
+  }
+
+  function deriveGreeting(profile: UserProfileRecord, db: ShadowDatabase): string {
+    if (profile.focusMode === 'focus') return 'focus_mode_active';
+
+    const lastInteraction = db.listRecentInteractions(1)[0];
+    if (!lastInteraction) return 'first_session_ever';
+
+    const hoursSince = (Date.now() - new Date(lastInteraction.createdAt).getTime()) / (1000 * 60 * 60);
+    if (hoursSince > 24) return `back_after_${Math.round(hoursSince)}h`;
+    if (hoursSince > 8) return 'new_day';
+    if (hoursSince > 2) return `back_after_${Math.round(hoursSince)}h`;
+    return 'continuing_session';
+  }
+
+  const trustNames: Record<number, string> = {
+    1: 'observer', 2: 'advisor', 3: 'assistant', 4: 'partner', 5: 'shadow',
+  };
+
+  const tools: McpTool[] = [
+    // -----------------------------------------------------------------------
+    // Shadow check-in — personality + context + proactive voice
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_check_in',
+      description: 'Get Shadow\'s current personality, mood, context, and pending updates. Call this at the start of a conversation to adopt Shadow\'s persona, or when the user greets Shadow.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      handler: async () => {
+        const profile = db.ensureProfile();
+        const personality = loadPersonality(profile.personalityLevel);
+        const mood = deriveMood(db);
+        const greeting = deriveGreeting(profile, db);
+        const pendingEvents = db.listPendingEvents();
+        const pendingSuggestions = db.countPendingSuggestions();
+        const recentObs = db.listObservations({ limit: 5 });
+        const usage = db.getUsageSummary('day');
+
+        return {
+          personality,
+          personalityLevel: profile.personalityLevel,
+          displayName: profile.displayName,
+          locale: profile.locale,
+          trustLevel: profile.trustLevel,
+          trustName: trustNames[profile.trustLevel] ?? 'observer',
+          trustScore: profile.trustScore,
+          proactivityLevel: profile.proactivityLevel,
+          focusMode: profile.focusMode,
+          focusUntil: profile.focusUntil,
+          mood,
+          greeting,
+          pendingEvents: pendingEvents.map(e => ({
+            kind: e.kind,
+            priority: e.priority,
+            message: (e.payload as Record<string, unknown>).message ?? e.kind,
+          })),
+          pendingSuggestions,
+          recentObservations: recentObs.map(o => ({
+            kind: o.kind,
+            title: o.title,
+            repoId: o.repoId,
+            createdAt: o.createdAt,
+          })),
+          todayTokens: usage.totalInputTokens + usage.totalOutputTokens,
+          todayLlmCalls: usage.totalCalls,
+        };
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // Read-only tools
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_status',
+      description: 'Returns a summary of Shadow status including trust level, repos, suggestions, events, and LLM usage.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      handler: async () => {
+        const profile = db.getProfile('default');
+        const repos = db.listRepos();
+        const pendingSuggestions = db.countPendingSuggestions();
+        const pendingEvents = db.listPendingEvents();
+        const usage = db.getUsageSummary('day');
+        return {
+          trustLevel: profile?.trustLevel ?? 0,
+          trustScore: profile?.trustScore ?? 0,
+          bondLevel: profile?.bondLevel ?? 0,
+          totalInteractions: profile?.totalInteractions ?? 0,
+          proactivityLevel: profile?.proactivityLevel ?? config.proactivityLevel,
+          repoCount: repos.length,
+          pendingSuggestions,
+          pendingEvents: pendingEvents.length,
+          usageToday: {
+            totalInputTokens: usage.totalInputTokens,
+            totalOutputTokens: usage.totalOutputTokens,
+            totalCalls: usage.totalCalls,
+          },
+        };
+      },
+    },
+    {
+      name: 'shadow_repos',
+      description: 'Returns a list of tracked repositories. Optionally filter by name substring.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          filter: { type: 'string', description: 'Optional name filter substring' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const filter = params.filter as string | undefined;
+        let repos = db.listRepos();
+        if (filter) {
+          const lower = filter.toLowerCase();
+          repos = repos.filter((r) => r.name.toLowerCase().includes(lower));
+        }
+        return repos;
+      },
+    },
+    {
+      name: 'shadow_observations',
+      description: 'Returns recent observations. Optionally filter by repoId and limit results.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          repoId: { type: 'string', description: 'Filter by repository ID' },
+          limit: { type: 'number', description: 'Maximum number of results (default 20)' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const repoId = params.repoId as string | undefined;
+        const limit = (params.limit as number | undefined) ?? 20;
+        return db.listObservations({ repoId, limit });
+      },
+    },
+    {
+      name: 'shadow_suggestions',
+      description: 'Returns suggestions. Optionally filter by status (pending, accepted, dismissed).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', description: 'Filter by status: pending, accepted, dismissed' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const status = params.status as string | undefined;
+        return db.listSuggestions({ status });
+      },
+    },
+    {
+      name: 'shadow_memory_search',
+      description: 'Searches Shadow memory using full-text search.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search query string' },
+          limit: { type: 'number', description: 'Maximum number of results (default 10)' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const query = params.query as string;
+        const limit = (params.limit as number | undefined) ?? 10;
+        return db.searchMemories(query, { limit });
+      },
+    },
+    {
+      name: 'shadow_profile',
+      description: 'Returns the current user profile.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      handler: async () => {
+        return db.ensureProfile('default');
+      },
+    },
+    {
+      name: 'shadow_events',
+      description: 'Returns pending (undelivered) events.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      handler: async () => {
+        return db.listPendingEvents();
+      },
+    },
+    {
+      name: 'shadow_contacts',
+      description: 'Returns contacts. Optionally filter by team.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          team: { type: 'string', description: 'Filter by team name' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const team = params.team as string | undefined;
+        return db.listContacts(team ? { team } : undefined);
+      },
+    },
+    {
+      name: 'shadow_systems',
+      description: 'Returns tracked systems. Optionally filter by kind.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', description: 'Filter by system kind' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const kind = params.kind as string | undefined;
+        return db.listSystems(kind ? { kind } : undefined);
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // Write tools (trust-gated)
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_memory_teach',
+      description: 'Teach Shadow something new by creating a memory entry. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Memory title' },
+          body: { type: 'string', description: 'Memory body in markdown' },
+          layer: { type: 'string', description: 'Memory layer (default: working)' },
+          scope: { type: 'string', description: 'Memory scope (default: global)' },
+        },
+        required: ['title', 'body'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const title = params.title as string;
+        const body = params.body as string;
+        const layer = (params.layer as string | undefined) ?? 'working';
+        const scope = (params.scope as string | undefined) ?? 'global';
+
+        const memory = db.createMemory({
+          layer,
+          scope,
+          kind: 'taught',
+          title,
+          bodyMd: body,
+          sourceType: 'mcp',
+        });
+        return memory;
+      },
+    },
+    {
+      name: 'shadow_suggest_accept',
+      description: 'Accept a suggestion by ID. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          suggestionId: { type: 'string', description: 'The suggestion ID to accept' },
+        },
+        required: ['suggestionId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const suggestionId = params.suggestionId as string;
+        const suggestion = db.getSuggestion(suggestionId);
+        if (!suggestion) {
+          return { isError: true, message: `Suggestion not found: ${suggestionId}` };
+        }
+
+        db.updateSuggestion(suggestionId, {
+          status: 'accepted',
+          resolvedAt: new Date().toISOString(),
+        });
+
+        return { accepted: true, suggestionId };
+      },
+    },
+    {
+      name: 'shadow_suggest_dismiss',
+      description: 'Dismiss a suggestion by ID with an optional note. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          suggestionId: { type: 'string', description: 'The suggestion ID to dismiss' },
+          note: { type: 'string', description: 'Optional feedback note explaining the dismissal' },
+        },
+        required: ['suggestionId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const suggestionId = params.suggestionId as string;
+        const note = params.note as string | undefined;
+        const suggestion = db.getSuggestion(suggestionId);
+        if (!suggestion) {
+          return { isError: true, message: `Suggestion not found: ${suggestionId}` };
+        }
+
+        db.updateSuggestion(suggestionId, {
+          status: 'dismissed',
+          feedbackNote: note ?? null,
+          resolvedAt: new Date().toISOString(),
+        });
+
+        return { dismissed: true, suggestionId };
+      },
+    },
+    {
+      name: 'shadow_observe',
+      description: 'Trigger an observation cycle. Optionally specify a repoId. Requires trust level >= 2.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          repoId: { type: 'string', description: 'Optional repository ID to observe' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(2);
+        if (!gate.ok) return gate.error;
+
+        const repoId = params.repoId as string | undefined;
+
+        if (repoId) {
+          const repo = db.getRepo(repoId);
+          if (!repo) {
+            return { isError: true, message: `Repository not found: ${repoId}` };
+          }
+          // Mark repo as observed
+          db.updateRepo(repoId, { lastObservedAt: new Date().toISOString() });
+          return {
+            triggered: true,
+            repoId,
+            message: `Observation triggered for repo: ${repo.name}`,
+          };
+        }
+
+        // Observe all repos
+        const repos = db.listRepos();
+        const now = new Date().toISOString();
+        for (const repo of repos) {
+          db.updateRepo(repo.id, { lastObservedAt: now });
+        }
+        return {
+          triggered: true,
+          repoCount: repos.length,
+          message: `Observation triggered for ${repos.length} repositories`,
+        };
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // New write tools — repo, contact, system, profile, focus, memory, events
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_repo_add',
+      description: 'Register a new repository for Shadow to watch. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Absolute path to the repository' },
+          name: { type: 'string', description: 'Display name (defaults to directory name)' },
+          defaultBranch: { type: 'string', description: 'Default branch (defaults to main)' },
+          languageHint: { type: 'string', description: 'Primary language hint' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const repoPath = resolve(params.path as string);
+        const name = (params.name as string | undefined) ?? (basename(repoPath) || repoPath);
+
+        const existing = db.findRepoByPath(repoPath);
+        if (existing) return { isError: true, message: `Repo already registered: ${existing.name} (${existing.id})` };
+
+        return db.createRepo({
+          path: repoPath,
+          name,
+          defaultBranch: (params.defaultBranch as string | undefined) ?? 'main',
+          languageHint: (params.languageHint as string | undefined) ?? null,
+        });
+      },
+    },
+    {
+      name: 'shadow_repo_remove',
+      description: 'Stop watching a repository. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          repoId: { type: 'string', description: 'Repository ID to remove' },
+        },
+        required: ['repoId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const repoId = params.repoId as string;
+        const repo = db.getRepo(repoId);
+        if (!repo) return { isError: true, message: `Repo not found: ${repoId}` };
+
+        db.deleteRepo(repoId);
+        return { ok: true, removed: repoId, name: repo.name };
+      },
+    },
+    {
+      name: 'shadow_contact_add',
+      description: 'Add a team member to Shadow\'s contacts. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Contact name' },
+          role: { type: 'string', description: 'Role (e.g., backend, frontend, devops)' },
+          team: { type: 'string', description: 'Team name' },
+          email: { type: 'string', description: 'Email address' },
+          slackId: { type: 'string', description: 'Slack user ID or handle' },
+          githubHandle: { type: 'string', description: 'GitHub username' },
+          notesMd: { type: 'string', description: 'Additional notes in markdown' },
+          preferredChannel: { type: 'string', description: 'Preferred contact channel: slack, email, github' },
+        },
+        required: ['name'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        return db.createContact({
+          name: params.name as string,
+          role: (params.role as string | undefined) ?? null,
+          team: (params.team as string | undefined) ?? null,
+          email: (params.email as string | undefined) ?? null,
+          slackId: (params.slackId as string | undefined) ?? null,
+          githubHandle: (params.githubHandle as string | undefined) ?? null,
+          notesMd: (params.notesMd as string | undefined) ?? null,
+          preferredChannel: (params.preferredChannel as string | undefined) ?? null,
+        });
+      },
+    },
+    {
+      name: 'shadow_contact_remove',
+      description: 'Remove a contact. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          contactId: { type: 'string', description: 'Contact ID to remove' },
+        },
+        required: ['contactId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const contactId = params.contactId as string;
+        const contact = db.getContact(contactId);
+        if (!contact) return { isError: true, message: `Contact not found: ${contactId}` };
+
+        db.deleteContact(contactId);
+        return { ok: true, removed: contactId, name: contact.name };
+      },
+    },
+    {
+      name: 'shadow_system_add',
+      description: 'Register an infrastructure system or service. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'System name' },
+          kind: { type: 'string', description: 'Type: infra, service, tool, platform, database, queue, monitoring' },
+          url: { type: 'string', description: 'URL or endpoint' },
+          description: { type: 'string', description: 'Description of the system' },
+          accessMethod: { type: 'string', description: 'Access method: mcp, api, cli, manual' },
+          healthCheck: { type: 'string', description: 'Health check command or URL' },
+        },
+        required: ['name', 'kind'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        return db.createSystem({
+          name: params.name as string,
+          kind: params.kind as string,
+          url: (params.url as string | undefined) ?? null,
+          description: (params.description as string | undefined) ?? null,
+          accessMethod: (params.accessMethod as string | undefined) ?? null,
+          healthCheck: (params.healthCheck as string | undefined) ?? null,
+        });
+      },
+    },
+    {
+      name: 'shadow_system_remove',
+      description: 'Remove a registered system. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          systemId: { type: 'string', description: 'System ID to remove' },
+        },
+        required: ['systemId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const systemId = params.systemId as string;
+        const system = db.getSystem(systemId);
+        if (!system) return { isError: true, message: `System not found: ${systemId}` };
+
+        db.deleteSystem(systemId);
+        return { ok: true, removed: systemId, name: system.name };
+      },
+    },
+    {
+      name: 'shadow_profile_set',
+      description: 'Update a user profile field. Requires trust level >= 1. Fields: proactivityLevel (1-10), personalityLevel (1-5), timezone, displayName.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Profile field name (e.g., proactivityLevel, personalityLevel, timezone, displayName)' },
+          value: { type: 'string', description: 'New value for the field' },
+        },
+        required: ['key', 'value'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const key = params.key as string;
+        const rawValue = params.value as string;
+        const numericFields = ['proactivityLevel', 'personalityLevel', 'trustLevel', 'trustScore', 'bondLevel'];
+        const parsedValue = numericFields.includes(key) ? Number(rawValue) : rawValue;
+
+        db.updateProfile('default', { [key]: parsedValue });
+        return { ok: true, set: key, value: parsedValue };
+      },
+    },
+    {
+      name: 'shadow_focus',
+      description: 'Enter focus mode — sets proactivity to 1 (silent). Optionally specify a duration like "2h" or "30m". Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          duration: { type: 'string', description: 'Optional duration: "2h", "30m", "1h". Omit for indefinite focus.' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const duration = params.duration as string | undefined;
+        let focusUntil: string | null = null;
+
+        if (duration) {
+          const match = duration.match(/^(\d+)\s*(h|m|min|hour|hours|minutes?)$/i);
+          if (match) {
+            const amount = parseInt(match[1], 10);
+            const unit = match[2].toLowerCase();
+            const ms = unit.startsWith('h') ? amount * 60 * 60 * 1000 : amount * 60 * 1000;
+            focusUntil = new Date(Date.now() + ms).toISOString();
+          }
+        }
+
+        const profile = db.ensureProfile();
+        db.updateProfile('default', { focusMode: 'focus', focusUntil });
+
+        return {
+          ok: true,
+          mode: 'focus',
+          previousProactivity: profile.proactivityLevel,
+          until: focusUntil ?? 'indefinite (use shadow_available to exit)',
+        };
+      },
+    },
+    {
+      name: 'shadow_available',
+      description: 'Exit focus mode, restore previous proactivity level. Requires trust level >= 1.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      handler: async () => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        db.updateProfile('default', { focusMode: null, focusUntil: null });
+        const profile = db.ensureProfile();
+        return { ok: true, mode: 'available', proactivityLevel: profile.proactivityLevel };
+      },
+    },
+    {
+      name: 'shadow_memory_forget',
+      description: 'Archive (forget) a memory by ID. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          memoryId: { type: 'string', description: 'Memory ID to archive' },
+        },
+        required: ['memoryId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const memoryId = params.memoryId as string;
+        const memory = db.getMemory(memoryId);
+        if (!memory) return { isError: true, message: `Memory not found: ${memoryId}` };
+
+        db.updateMemory(memoryId, { archivedAt: new Date().toISOString() });
+        return { ok: true, archived: memoryId, title: memory.title };
+      },
+    },
+    {
+      name: 'shadow_events_ack',
+      description: 'Acknowledge all pending events. Requires trust level >= 1.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      handler: async () => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const count = db.deliverAllEvents();
+        return { ok: true, acknowledged: count };
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // New read-only tools
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_memory_list',
+      description: 'List memories with optional filters by layer and scope.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          layer: { type: 'string', description: 'Filter by layer: core, hot, warm, cool, cold' },
+          scope: { type: 'string', description: 'Filter by scope: personal, repo, team, system, cross-repo' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        return db.listMemories({
+          layer: params.layer as string | undefined,
+          scope: params.scope as string | undefined,
+          archived: false,
+        });
+      },
+    },
+    {
+      name: 'shadow_run_list',
+      description: 'List task runs with optional status filter.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', description: 'Filter by status: queued, running, completed, failed' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        return db.listRuns({ status: params.status as string | undefined });
+      },
+    },
+    {
+      name: 'shadow_run_view',
+      description: 'View details of a specific run.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string', description: 'Run ID to view' },
+        },
+        required: ['runId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const runId = params.runId as string;
+        const run = db.getRun(runId);
+        if (!run) return { isError: true, message: `Run not found: ${runId}` };
+        return run;
+      },
+    },
+    {
+      name: 'shadow_usage',
+      description: 'Returns LLM token usage summary for a given period.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          period: { type: 'string', description: 'Time period: day, week, month (default: day)' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const period = (params.period as 'day' | 'week' | 'month' | undefined) ?? 'day';
+        return db.getUsageSummary(period);
+      },
+    },
+  ];
+
+  return tools;
+}
+
+// ---------------------------------------------------------------------------
+// JSON-RPC handler
+// ---------------------------------------------------------------------------
+
+type JsonRpcRequest = {
+  jsonrpc: string;
+  id?: string | number | null;
+  method: string;
+  params?: Record<string, unknown>;
+};
+
+type JsonRpcResponse = {
+  jsonrpc: string;
+  id: string | number | null;
+  result?: unknown;
+  error?: { code: number; message: string; data?: unknown };
+};
+
+export async function handleJsonRpcRequest(
+  tools: McpTool[],
+  request: unknown,
+): Promise<unknown> {
+  const req = request as JsonRpcRequest;
+  const id = req.id ?? null;
+
+  if (req.method === 'tools/list') {
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: {
+        tools: tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema,
+        })),
+      },
+    } satisfies JsonRpcResponse;
+  }
+
+  if (req.method === 'tools/call') {
+    const params = req.params ?? {};
+    const toolName = params.name as string | undefined;
+    const toolArgs = (params.arguments as Record<string, unknown>) ?? {};
+
+    if (!toolName) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32602, message: 'Missing tool name in params.name' },
+      } satisfies JsonRpcResponse;
+    }
+
+    const tool = tools.find((t) => t.name === toolName);
+    if (!tool) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32601, message: `Tool not found: ${toolName}` },
+      } satisfies JsonRpcResponse;
+    }
+
+    try {
+      const result = await tool.handler(toolArgs);
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
+      } satisfies JsonRpcResponse;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32603, message: `Tool execution failed: ${message}` },
+      } satisfies JsonRpcResponse;
+    }
+  }
+
+  return {
+    jsonrpc: '2.0',
+    id,
+    error: { code: -32601, message: `Method not found: ${req.method}` },
+  } satisfies JsonRpcResponse;
+}
