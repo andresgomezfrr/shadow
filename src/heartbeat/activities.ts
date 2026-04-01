@@ -95,6 +95,74 @@ function summarizeInteractions(interactions: { file: string; tool: string; cmd: 
   return lines.join('\n');
 }
 
+// --- Conversation loading ---
+
+type ConversationTurn = { ts: string; role: string; text: string; session: string };
+
+function loadRecentConversations(config: ShadowConfig, sinceIso: string): ConversationTurn[] {
+  const convPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
+  try {
+    const content = readFileSync(convPath, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const since = new Date(sinceIso).getTime();
+    const entries: ConversationTurn[] = [];
+
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as ConversationTurn;
+        if (new Date(entry.ts).getTime() > since) {
+          entries.push(entry);
+        }
+      } catch { /* skip */ }
+    }
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+function summarizeConversations(conversations: ConversationTurn[]): string {
+  if (conversations.length === 0) return '';
+
+  // Group by session
+  const sessions = new Map<string, ConversationTurn[]>();
+  for (const turn of conversations) {
+    const sid = turn.session || 'unknown';
+    const list = sessions.get(sid) ?? [];
+    list.push(turn);
+    sessions.set(sid, list);
+  }
+
+  const lines: string[] = [`${conversations.length} conversation turns across ${sessions.size} session(s):`];
+
+  for (const [sid, turns] of sessions) {
+    lines.push(`\nSession ${sid.slice(0, 8)}... (${turns.length} turns):`);
+    for (const turn of turns.slice(-10)) { // last 10 turns per session
+      const prefix = turn.role === 'user' ? '  User' : '  Claude';
+      const text = turn.text.slice(0, 200);
+      lines.push(`  ${prefix}: "${text}${turn.text.length > 200 ? '...' : ''}"`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function rotateConversationsLog(config: ShadowConfig): void {
+  const convPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
+  try {
+    const content = readFileSync(convPath, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const kept = lines.filter(line => {
+      try {
+        const entry = JSON.parse(line) as { ts: string };
+        return entry.ts > twoHoursAgo;
+      } catch { return false; }
+    });
+    fsWriteFileSync(convPath, kept.length > 0 ? kept.join('\n') + '\n' : '', 'utf8');
+  } catch { /* fine */ }
+}
+
 export async function activityAnalyze(
   ctx: HeartbeatContext,
   observations: ObservationRecord[],
@@ -105,7 +173,11 @@ export async function activityAnalyze(
   const recentInteractions = loadRecentInteractions(ctx.config, twoHoursAgo);
   const interactionSummary = summarizeInteractions(recentInteractions);
 
-  if (observations.length === 0 && recentInteractions.length === 0) {
+  // Load recent conversations (what was actually discussed)
+  const recentConversations = loadRecentConversations(ctx.config, twoHoursAgo);
+  const conversationSummary = summarizeConversations(recentConversations);
+
+  if (observations.length === 0 && recentInteractions.length === 0 && recentConversations.length === 0) {
     return { patternsDetected: 0, memoriesCreated: 0, llmCalls: 0, tokensUsed: 0 };
   }
 
@@ -183,8 +255,17 @@ export async function activityAnalyze(
     '',
     '## Data Sources',
     observations.length > 0 ? `### Git Observations\n${observationSummaries}\n` : '',
-    interactionSummary ? `### Claude CLI Activity\n${interactionSummary}\n` : '',
+    interactionSummary ? `### Tool Usage (files edited, commands run)\n${interactionSummary}\n` : '',
+    conversationSummary ? `### Conversations (what was actually discussed)\n${conversationSummary}\n` : '',
     existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
+    '',
+    'IMPORTANT: Conversations are the richest source. From them extract:',
+    '- What projects/features the user is working on',
+    '- Design decisions discussed ("lets use React for the dashboard")',
+    '- User preferences and feedback ("the memories are too granular")',
+    '- Goals and intent ("I want Shadow to be a full companion")',
+    '- Problems discussed and solutions found',
+    '',
     'Respond with JSON only.',
   ].join('\n');
 
@@ -297,8 +378,9 @@ export async function activityAnalyze(
     try { applyTrustDelta(ctx.db, 'interaction_logged'); } catch { /* ignore */ }
   }
 
-  // Rotate interactions log after processing
+  // Rotate logs after processing
   rotateInteractionsLog(ctx.config, new Date().toISOString());
+  rotateConversationsLog(ctx.config);
 
   return { patternsDetected, memoriesCreated, llmCalls, tokensUsed };
 }

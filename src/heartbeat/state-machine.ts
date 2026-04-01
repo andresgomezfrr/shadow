@@ -121,6 +121,25 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
     });
   } catch { /* no interactions file */ }
 
+  // Also check for recent conversations
+  let hasRecentConversations = false;
+  try {
+    const { readFileSync: readFs } = await import('node:fs');
+    const { resolve: resolvePath } = await import('node:path');
+    const convPath = resolvePath(ctx.config.resolvedDataDir, 'conversations.jsonl');
+    const convContent = readFs(convPath, 'utf8');
+    const convLines = convContent.trim().split('\n').filter(Boolean);
+    const convSince = ctx.lastHeartbeat?.startedAt
+      ? new Date(ctx.lastHeartbeat.startedAt).getTime()
+      : Date.now() - 60 * 60 * 1000;
+    hasRecentConversations = convLines.some(line => {
+      try {
+        const entry = JSON.parse(line) as { ts: string };
+        return new Date(entry.ts).getTime() > convSince;
+      } catch { return false; }
+    });
+  } catch { /* no conversations file */ }
+
   // --- OBSERVE phase (always runs after wake) ---
   result.phases.push('observe');
   ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'observe', activity: 'observing repos' });
@@ -138,7 +157,7 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
   const needsConsolidation = shouldConsolidate(ctx.db);
 
   // Smart heartbeat: skip LLM phases only if nothing to process (no observations AND no interactions)
-  const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasObservations && !hasRecentInteractions;
+  const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasObservations && !hasRecentInteractions && !hasRecentConversations;
 
   // Debug logging
   if (ctx.config.logLevel === 'debug') {
@@ -164,7 +183,7 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
   }
 
   // --- ANALYZE phase ---
-  const hasWorkToDo = hasObservations || unprocessedCount > 0 || hasRecentInteractions;
+  const hasWorkToDo = hasObservations || unprocessedCount > 0 || hasRecentInteractions || hasRecentConversations;
   if (hasWorkToDo && !focusActive) {
     result.phases.push('analyze');
     ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'analyze', activity: 'analyzing observations' });

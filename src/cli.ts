@@ -269,10 +269,41 @@ if [ -n "$TOOL_NAME" ]; then
 fi
 `, 'utf8');
 
+      // User prompt capture hook (conversations)
+      const userPromptPath = resolve(config.resolvedDataDir, 'user-prompt.sh');
+      const conversationsPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
+      writeFileSync(userPromptPath, `#!/bin/bash
+# Shadow UserPromptSubmit hook — captures what the user says
+INPUT=$(cat)
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty' 2>/dev/null | head -c 500)
+SESSION=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
+if [ -n "$PROMPT" ]; then
+  ESCAPED=$(echo "$PROMPT" | jq -Rs .)
+  echo "{\\"ts\\":\\"$TIMESTAMP\\",\\"role\\":\\"user\\",\\"text\\":$ESCAPED,\\"session\\":\\"$SESSION\\"}" >> "${conversationsPath}"
+fi
+`, 'utf8');
+
+      // Stop hook — captures Claude's responses
+      const stopHookPath = resolve(config.resolvedDataDir, 'stop.sh');
+      writeFileSync(stopHookPath, `#!/bin/bash
+# Shadow Stop hook — captures what Claude responds
+INPUT=$(cat)
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+MSG=$(echo "$INPUT" | jq -r '.last_assistant_message // empty' 2>/dev/null | head -c 500)
+SESSION=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
+if [ -n "$MSG" ]; then
+  ESCAPED=$(echo "$MSG" | jq -Rs .)
+  echo "{\\"ts\\":\\"$TIMESTAMP\\",\\"role\\":\\"assistant\\",\\"text\\":$ESCAPED,\\"session\\":\\"$SESSION\\"}" >> "${conversationsPath}"
+fi
+`, 'utf8');
+
       // Make scripts executable
       chmodSync(statuslinePath, '755');
       chmodSync(sessionStartPath, '755');
       chmodSync(postToolPath, '755');
+      chmodSync(userPromptPath, '755');
+      chmodSync(stopHookPath, '755');
 
       // Update ~/.claude/settings.json with hooks and statusLine
       const settingsPath = resolve(homedir(), '.claude', 'settings.json');
@@ -305,6 +336,18 @@ fi
         hooks: [{ type: 'command', command: postToolPath, async: true }],
       };
       hooks.PostToolUse = [postToolHook];
+
+      // UserPromptSubmit hook — capture what the user says
+      hooks.UserPromptSubmit = [{
+        matcher: '',
+        hooks: [{ type: 'command', command: userPromptPath, async: true }],
+      }];
+
+      // Stop hook — capture Claude's responses
+      hooks.Stop = [{
+        matcher: '',
+        hooks: [{ type: 'command', command: stopHookPath, async: true }],
+      }];
 
       settings.hooks = hooks;
 
