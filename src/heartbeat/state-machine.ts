@@ -159,11 +159,6 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
   // Smart heartbeat: skip LLM phases only if nothing to process (no observations AND no interactions)
   const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasObservations && !hasRecentInteractions && !hasRecentConversations;
 
-  // Debug logging
-  if (ctx.config.logLevel === 'debug') {
-    console.error(`[heartbeat] unprocessedOrNew=${hasNewObservationsSinceLastBeat} observeCreated=${hasObservations} skip=${skipLlmPhases}`);
-  }
-
   if (skipLlmPhases) {
     // Nothing new to process — go straight to notify then idle
     result.phases.push('notify');

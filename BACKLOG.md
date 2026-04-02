@@ -32,14 +32,14 @@ Body renderizado con Markdown component. Expand muestra: body, tags, scope, conf
 ### Logs del daemon en dashboard
 Los `console.error` del heartbeat van a `daemon.stderr.log` pero no son accesibles desde el dashboard. Endpoint `/api/logs` + página.
 
-### KeepAlive genera procesos zombie
-El plist con `KeepAlive: true` relanza el daemon tras stop. Con el graceful shutdown implementado es menos urgente, pero debería ser `KeepAlive: false` + `RunAtLoad: true` para evitar relanzamientos no deseados.
+### `[done]` KeepAlive genera procesos zombie
+Plist ahora usa `KeepAlive.Crashed: true` — solo relanza en crash, no tras stop limpio.
 
-### patterns.ts es dead code
-`src/observation/patterns.ts` (~104 líneas) exporta `detectPatterns()` pero nunca se llama. Decidir: integrar en el analyze phase como input adicional, o borrar.
+### `[done]` patterns.ts dead code
+Eliminado. 104 líneas de dead code removidas.
 
-### logLevel config sin usar
-`config.logLevel` existe en el schema pero solo se usa en un debug statement del state machine. O implementar logging estructurado o eliminar la opción.
+### `[done]` logLevel config sin usar
+Eliminado el único debug block. Config se mantiene en schema para futuro uso.
 
 ---
 

@@ -417,7 +417,10 @@ fi
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>Crashed</key>
+    <true/>
+  </dict>
   <key>StandardOutPath</key>
   <string>${resolve(config.resolvedDataDir, 'daemon.stdout.log')}</string>
   <key>StandardErrorPath</key>
