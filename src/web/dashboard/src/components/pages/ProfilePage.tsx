@@ -122,10 +122,7 @@ export function ProfilePage() {
             <span className="text-text-dim">Score:</span> <span className="text-text">{profile.trustScore.toFixed(1)}/100</span>
           </div>
           <div>
-            <span className="text-text-dim">Bond:</span> <span className="text-text">{profile.bondLevel}</span>
-          </div>
-          <div>
-            <span className="text-text-dim">Interactions:</span> <span className="text-text">{profile.totalInteractions}</span>
+            <span className="text-text-dim">Interactions:</span> <span className="text-text">{profile.totalInteractions.toLocaleString()}</span>
           </div>
         </div>
         <p className="text-xs text-text-muted mt-3">Trust level increases automatically with usage. It cannot be changed manually.</p>

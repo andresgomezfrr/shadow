@@ -802,6 +802,8 @@ export class ShadowDatabase {
         input.trustDelta ?? 0.0,
         now,
       );
+    // Increment totalInteractions on profile
+    try { this.database.prepare('UPDATE user_profile SET total_interactions = total_interactions + 1').run(); } catch { /* */ }
     return this.getInteraction(id)!;
   }
 
