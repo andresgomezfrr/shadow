@@ -30,6 +30,42 @@ Segundo nivel de FilterTabs derivado dinámicamente de los kinds presentes. Solo
 
 ---
 
+## Prioridad media — Refactoring
+
+### Extraer route handlers de web/server.ts
+handleApi() monolítico ~330 líneas. Dividir en módulos por dominio (routes/suggestions.ts, routes/runs.ts, etc.)
+
+### Extraer fases de activities.ts en módulos
+activities.ts tiene extract, suggest, consolidate, reflect. Cada fase en su propio módulo bajo heartbeat/.
+
+### Extraer subcomponentes de RunsPage, SuggestionsPage, JobsPage
+Páginas con alto churn. Extraer cards, filters, actions en componentes reutilizables.
+
+### Extraer JobListView compartido Morning + Jobs
+Duplicación de renderizado de jobs entre MorningPage y JobsPage.
+
+### Extraer timeAgo/formatTokens a utils/format.ts
+Funciones duplicadas en 5+ páginas del dashboard.
+
+### Middleware error handling + body parsing en web server
+parseJsonBody con Zod validation. Consistencia en try/catch.
+
+## Prioridad media — Tests
+
+### Tests ShadowDatabase CRUD + FTS5 + migraciones
+El fundamento de Shadow sin cobertura. SQLite in-memory.
+
+### Integration tests job orchestration
+Registro de jobs, cadencias, recuperación ante fallos. Mock del LLM.
+
+### Tests MCP trust gating
+Verificar que los 20 write tools respetan trust gates.
+
+### Tests RunsPage filtros + lifecycle
+Renderizado por filtro, transiciones de estado.
+
+---
+
 ## Prioridad baja
 
 ### Logs del daemon en dashboard
@@ -92,6 +128,27 @@ Shadow se conecta a Slack, Linear, GitHub vía MCP servers externos. Puede: noti
 
 ### 🟡 Multi-repo operations
 Sugerencias y runs que afectan múltiples repos simultáneamente. El schema ya soporta `repo_ids_json` pero la UI y el runner solo usan el primary repo.
+
+### 🟡 Validación Zod de resultados LLM por tipo de job
+Schemas Zod para output de extract/observe/suggest. safeParse en la frontera LLM → DB.
+
+### 🟡 Circuit breaker para LLM calls
+Tras N fallos consecutivos, abrir circuito y saltar calls por cooldown configurable.
+
+### 🟡 Scoring de señal en conversaciones
+Ponderar conversaciones por densidad (tool uses, edits, errores) antes del prompt de analyze.
+
+### 🟡 Validar completitud env vars → config en startup
+Detectar campos del schema Zod sin mapeo a SHADOW_* env var.
+
+### 🟡 Generar BACKLOG.md desde DB con `shadow backlog`
+Comando CLI que genera backlog desde sugerencias pending + observaciones activas.
+
+### 🟡 `shadow docs check` — drift detection
+Comparar CLAUDE.md contra código real: tools count, routes, schema tables.
+
+### 🟡 Detección de contradicciones entre memorias
+FTS5 similarity check al crear/enseñar memorias. Si contradice existente → marcar para revisión.
 
 ---
 

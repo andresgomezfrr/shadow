@@ -330,7 +330,7 @@ async function handleApi(
         const claudeBin = config.claudeBin ?? 'claude';
         if (config.claudeExtraPath) env.PATH = `${config.claudeExtraPath}:${env.PATH ?? ''}`;
 
-        const result = await new Promise<{ stdout: string }>((resolve) => {
+        const result = await new Promise<{ stdout: string; error?: boolean; message?: string }>((resolve) => {
           const child = spawnChild(claudeBin, [
             '--print', '--output-format', 'json',
             '--session-id', sessionId,
@@ -338,11 +338,17 @@ async function handleApi(
           ], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
           const chunks: Buffer[] = [];
           child.stdout.on('data', (d: Buffer) => chunks.push(d));
-          const timer = setTimeout(() => child.kill('SIGTERM'), 120_000);
-          child.on('close', () => { clearTimeout(timer); resolve({ stdout: Buffer.concat(chunks).toString('utf8') }); });
-          child.on('error', () => { clearTimeout(timer); resolve({ stdout: '' }); });
+          const timer = setTimeout(() => {
+            child.kill('SIGTERM');
+            setTimeout(() => child.kill('SIGKILL'), 5_000); // SIGKILL fallback
+          }, 120_000);
+          child.on('close', () => { clearTimeout(timer); resolve({ stdout: Buffer.concat(chunks).toString('utf8'), error: false }); });
+          child.on('error', (err) => { clearTimeout(timer); resolve({ stdout: '', error: true, message: err.message }); });
         });
 
+        if (result.error) {
+          return json(res, { error: 'Failed to create session', detail: result.message }, 500);
+        }
         let finalSessionId = sessionId;
         try {
           const out = JSON.parse(result.stdout || '{}') as { session_id?: string };
@@ -354,7 +360,8 @@ async function handleApi(
     }
 
     if (pathname === '/api/profile') {
-      const body = JSON.parse(await readBody(req));
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(await readBody(req)); } catch { return json(res, { error: 'Invalid JSON body' }, 400); }
       const numericFields = ['proactivityLevel', 'personalityLevel', 'trustLevel', 'trustScore', 'bondLevel'];
       const updates: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(body)) {
@@ -373,7 +380,8 @@ async function handleApi(
     }
 
     if (pathname === '/api/focus') {
-      const body = JSON.parse(await readBody(req));
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(await readBody(req)); } catch { return json(res, { error: 'Invalid JSON body' }, 400); }
       if (body.mode === 'focus') {
         let focusUntil: string | null = null;
         if (body.duration) {
