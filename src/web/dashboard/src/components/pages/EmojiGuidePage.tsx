@@ -84,7 +84,6 @@ export function EmojiGuidePage() {
         <p className="text-sm text-text-dim mb-3">Shown at the end of the status line when there&apos;s something pending.</p>
         <Table rows={[
           ['💡3', 'suggestions', '3 pending suggestions to review'],
-          ['📬2', 'events', '2 pending events to acknowledge'],
           ['♥ 12m', 'heartbeat', 'Next heartbeat in 12 minutes'],
           ['♥ now', 'heartbeat', 'Heartbeat running right now'],
         ]} />
