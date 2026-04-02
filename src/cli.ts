@@ -195,6 +195,9 @@ if [ "$FOCUS" = "focus" ]; then
 # Priority 2: Active heartbeat phase
 elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTBEAT_PHASE" != "idle" ]; then
   case "$HEARTBEAT_PHASE" in
+    *cleanup*)
+      case $V in 0) MASCOT="{•_•}🧹" ;; 1) MASCOT="{•‿•}♻️" ;; *) MASCOT="{•_•}🗑️" ;; esac
+      MCOLOR="$CY"; ACTIVITY_TEXT="cleaning" ;;
     *observe*)
       case $V in 0) MASCOT="{°_°}" ;; 1) MASCOT="{°.°}" ;; *) MASCOT="{°_°}." ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="observing" ;;
