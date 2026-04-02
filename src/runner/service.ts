@@ -203,8 +203,8 @@ export class RunnerService {
 
       writeFileSync(join(artifactDir, 'summary.md'), summaryContent, 'utf-8');
 
-      // Update run status
-      const finalStatus = isSuccess ? 'completed' : 'failed';
+      // Update run status — child execution runs go straight to 'executed' (no review needed)
+      const finalStatus = isSuccess ? (run.parentRunId ? 'executed' : 'completed') : 'failed';
       this.db.updateRun(run.id, {
         status: finalStatus,
         resultSummaryMd: result.summaryHint ?? result.output,
