@@ -233,30 +233,28 @@ export function JobsPage() {
                   <span className="text-xs text-text-muted ml-auto shrink-0">{timeAgo(hb.startedAt)}</span>
                 </div>
 
-                {active && (
+                {active && hb.result && (
                   <div className="flex gap-4 mt-2 text-xs text-text-dim">
-                    {hb.observationsCreated > 0 && <span>{hb.observationsCreated} obs</span>}
-                    {hb.suggestionsCreated > 0 && <span>{hb.suggestionsCreated} sug</span>}
-                    {hb.memoriesPromoted > 0 && <span>{hb.memoriesPromoted} mem promoted</span>}
-                    {hb.memoriesDemoted > 0 && <span>{hb.memoriesDemoted} mem demoted</span>}
-                    {hb.eventsQueued > 0 && <span>{hb.eventsQueued} events</span>}
+                    {Object.entries(hb.result as Record<string, unknown>)
+                      .filter(([, v]) => typeof v === 'number' && v > 0)
+                      .map(([k, v]) => <span key={k}>{v} {k.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>)}
                   </div>
                 )}
 
                 {isOpen && (
                   <div className="mt-3 animate-fade-in bg-bg rounded p-3 text-xs text-text-dim space-y-1">
-                    <div><span className="text-accent">id:</span> {hb.id}</div>
                     <div><span className="text-accent">phases:</span> {(hb.phases ?? []).join(' → ')}</div>
                     <div><span className="text-accent">duration:</span> {duration}</div>
-                    <div><span className="text-accent">llm calls:</span> {hb.llmCalls}</div>
-                    <div><span className="text-accent">tokens:</span> {hb.tokensUsed.toLocaleString()}</div>
-                    <div><span className="text-accent">observations:</span> {hb.observationsCreated}</div>
-                    <div><span className="text-accent">suggestions:</span> {hb.suggestionsCreated}</div>
-                    <div><span className="text-accent">memories promoted:</span> {hb.memoriesPromoted}</div>
-                    <div><span className="text-accent">memories demoted:</span> {hb.memoriesDemoted}</div>
-                    <div><span className="text-accent">events queued:</span> {hb.eventsQueued}</div>
+                    {hb.llmCalls > 0 && <div><span className="text-accent">llm calls:</span> {hb.llmCalls}</div>}
+                    {hb.tokensUsed > 0 && <div><span className="text-accent">tokens:</span> {hb.tokensUsed.toLocaleString()}</div>}
+                    {hb.result && Object.entries(hb.result as Record<string, unknown>)
+                      .filter(([, v]) => v != null && v !== 0 && v !== '')
+                      .map(([k, v]) => (
+                        <div key={k}><span className="text-accent">{k.replace(/([A-Z])/g, ' $1').toLowerCase()}:</span> {String(v)}</div>
+                      ))}
                     <div><span className="text-accent">started:</span> {new Date(hb.startedAt).toLocaleString()}</div>
                     {hb.finishedAt && <div><span className="text-accent">finished:</span> {new Date(hb.finishedAt).toLocaleString()}</div>}
+                    <div className="text-text-muted pt-1">{hb.id}</div>
                   </div>
                 )}
               </div>
