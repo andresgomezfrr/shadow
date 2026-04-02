@@ -407,13 +407,27 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         worked = true;
       }
 
+      // --- Stale run detector ---
+      const staleRunCandidates = _db.listRuns({ status: 'running' });
+      const STALE_RUN_MS = 10 * 60 * 1000; // 10min
+      for (const sr of staleRunCandidates) {
+        const elapsed = sr.startedAt ? Date.now() - new Date(sr.startedAt).getTime() : 0;
+        if (elapsed > STALE_RUN_MS) {
+          console.error(`[daemon] Marked stale run ${sr.id.slice(0, 8)} as failed (${Math.round(elapsed / 60000)}m)`);
+          _db.updateRun(sr.id, { status: 'failed', errorSummary: 'Stale: exceeded 10min timeout', finishedAt: new Date().toISOString() });
+        }
+      }
+
       // --- Run processing ---
       const queuedRuns = _db.listRuns({ status: 'queued' });
       if (queuedRuns.length > 0) {
         try {
           const { RunnerService } = await import('../runner/service.js');
           const runner = new RunnerService(config, _db);
-          await runner.processNextRun();
+          await Promise.race([
+            runner.processNextRun(),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('run timeout (8min)')), JOB_TIMEOUT_MS)),
+          ]);
           worked = true;
         } catch (runErr) {
           console.error('[daemon] Run processing failed:', runErr instanceof Error ? runErr.message : runErr);
