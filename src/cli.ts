@@ -1005,7 +1005,7 @@ daemon
     const { execSync } = await import('node:child_process');
 
     // Kill stale processes first to avoid EADDRINUSE
-    try { execSync('pkill -9 -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
+    try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
     try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
     await new Promise(r => setTimeout(r, 1000));
 
@@ -1057,7 +1057,7 @@ daemon
     }
 
     // Kill ALL shadow daemon processes (tsx runtime.ts + node on port 3700)
-    try { execSync('pkill -9 -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
+    try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
     try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
 
     // Clean up PID file
@@ -1078,7 +1078,7 @@ daemon
     if (existsSync(plistPath)) {
       try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
     }
-    try { execSync('pkill -9 -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
+    try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
     try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
 
     const { stopDaemon } = await import('./daemon/runtime.js');

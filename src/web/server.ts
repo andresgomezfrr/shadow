@@ -431,7 +431,12 @@ export async function startWebServer(port: number = 3700, _existingDb?: ShadowDa
     }
   });
 
-  server.listen(port, () => {
-    console.log(`Shadow dashboard: http://localhost:${port}`);
+  return new Promise<{ close: () => void }>((resolve) => {
+    server.listen(port, () => {
+      console.log(`Shadow dashboard: http://localhost:${port}`);
+      resolve({
+        close: () => { try { server.close(); db.close(); } catch { /* best-effort */ } },
+      });
+    });
   });
 }

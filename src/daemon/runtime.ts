@@ -149,9 +149,13 @@ export function stopDaemon(config: ShadowConfig): boolean {
 export async function startDaemon(config: ShadowConfig): Promise<void> {
   let running = true;
   let db: ShadowDatabase | null = null;
+  let webServer: { close: () => void } | null = null;
+  let sleepReject: (() => void) | null = null;
 
   const shutdown = () => {
     running = false;
+    // Interrupt any active sleep so the loop exits immediately
+    if (sleepReject) sleepReject();
   };
 
   process.on('SIGTERM', shutdown);
@@ -170,7 +174,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     // Step 3b: Start web server
     try {
       const { startWebServer } = await import('../web/server.js');
-      await startWebServer(3700, db);
+      webServer = await startWebServer(3700, db);
     } catch {
       // web module not available — continue without it
     }
@@ -294,17 +298,20 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
       writeDaemonState(config, state);
 
-      // Sleep
-      await sleep(sleepMs);
+      // Sleep (interruptible by SIGTERM)
+      await new Promise<void>((resolve, reject) => {
+        sleepReject = reject;
+        setTimeout(resolve, sleepMs);
+      }).catch(() => { /* interrupted by shutdown */ });
+      sleepReject = null;
     }
   } finally {
-    // Step 6: Cleanup
+    // Step 6: Graceful cleanup
+    if (webServer) {
+      try { webServer.close(); } catch { /* best-effort */ }
+    }
     if (db) {
-      try {
-        db.close();
-      } catch {
-        // best-effort
-      }
+      try { db.close(); } catch { /* best-effort */ }
     }
     removePidFile(config);
 
