@@ -282,17 +282,27 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         if (reactivated > 0) console.error(`[daemon] Reactivated ${reactivated} snoozed suggestions`);
       } catch { /* ignore */ }
 
+      // Live phase tracking — updates daemon state file so status line can show current phase
+      const setPhase = (phase: string | null) => {
+        lastHeartbeatPhase = phase;
+        state.lastHeartbeatPhase = phase;
+        writeDaemonState(config, state);
+      };
+
       // --- Job: heartbeat (extract + observe) ---
       if (shouldRunJob('heartbeat', config.heartbeatIntervalMs)) {
         const { runHeartbeat } = await import('../heartbeat/state-machine.js');
         // Get last heartbeat BEFORE creating the new job — otherwise getLastJob returns the new one
         const previousHeartbeat = _db.getLastJob('heartbeat');
+
+        setPhase('observe');
         await runJobType('heartbeat', async () => {
           const profile = _db.ensureProfile();
           const pendingEvts = _db.listPendingEvents().length;
+          setPhase('analyze');
           const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts });
           lastHeartbeatAt = new Date().toISOString();
-          lastHeartbeatPhase = null;
+          setPhase(null);
           nextHeartbeatAt = new Date(Date.now() + config.heartbeatIntervalMs).toISOString();
           return {
             llmCalls: result.llmCalls, tokensUsed: result.tokensUsed, phases: result.phases,
@@ -309,11 +319,13 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const pendingCount = _db.countPendingSuggestions();
         if (hadActivity && profile.trustLevel >= 2 && pendingCount < 30) {
           const { activitySuggest, activityNotify } = await import('../heartbeat/activities.js');
+          setPhase('suggest');
           await runJobType('suggest', async () => {
             const unprocessed = _db.listObservations({ processed: false });
             const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
             const suggestResult = await activitySuggest(ctx, unprocessed);
             await activityNotify(ctx);
+            setPhase(null);
             return {
               llmCalls: suggestResult.llmCalls, tokensUsed: suggestResult.tokensUsed,
               phases: ['suggest', 'notify'],
@@ -326,10 +338,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       // --- Job: consolidate (every 6h) ---
       if (shouldRunJob('consolidate', 6 * 60 * 60 * 1000)) {
         const { activityConsolidate } = await import('../heartbeat/activities.js');
+        setPhase('consolidate');
         await runJobType('consolidate', async () => {
           const profile = _db.ensureProfile();
           const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
           const consolidateResult = await activityConsolidate(ctx);
+          setPhase(null);
           return {
             llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,
             phases: ['consolidate'],
@@ -342,10 +356,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       // --- Job: reflect (every 24h) ---
       if (shouldRunJob('reflect', 24 * 60 * 60 * 1000)) {
         const { activityReflect } = await import('../heartbeat/activities.js');
+        setPhase('reflect');
         await runJobType('reflect', async () => {
           const profile = _db.ensureProfile();
           const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
           const reflectResult = await activityReflect(ctx);
+          setPhase(null);
           return {
             llmCalls: reflectResult.llmCalls, tokensUsed: reflectResult.tokensUsed,
             phases: ['reflect'],
