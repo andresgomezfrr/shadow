@@ -107,7 +107,13 @@ async function handleApi(
 
     if (pathname === '/api/suggestions') {
       const status = params.get('status') ?? undefined;
-      const suggestions = db.listSuggestions({ status });
+      let suggestions = db.listSuggestions({ status });
+      // Sort pending suggestions by rank score (best first)
+      if (status === 'pending' && suggestions.length > 0) {
+        const profile = db.ensureProfile();
+        const { computeRankScore } = await import('../suggestion/ranking.js');
+        suggestions.sort((a, b) => computeRankScore(b, profile) - computeRankScore(a, profile));
+      }
       return json(res, suggestions);
     }
 

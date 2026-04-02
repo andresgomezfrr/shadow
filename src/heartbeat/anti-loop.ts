@@ -14,7 +14,7 @@ export type AntiLoopState = {
 // --- Constants ---
 
 const MIN_OBSERVE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const MAX_PENDING_SUGGESTIONS = 3;
+const MAX_PENDING_SUGGESTIONS = 30;
 const MIN_CONSOLIDATION_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const MAX_HEARTBEAT_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const IDLE_ESCALATION_THRESHOLD = 5;

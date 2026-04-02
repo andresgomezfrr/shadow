@@ -492,11 +492,16 @@ export async function activitySuggest(
     '- Only suggest code changes, refactors, bug fixes, features, or architecture improvements.',
     '- Do NOT suggest operational tasks like "commit files", "clean up branches", "update docs".',
     '- Do NOT duplicate existing pending suggestions (listed below).',
+    '- Do NOT suggest improvements for code that was just created or modified in this session. Fresh code needs time to settle.',
+    '- Do NOT suggest micro-optimizations (error handling tweaks, type annotations, logging improvements) unless they fix a real bug.',
+    '- Consolidate related ideas into ONE suggestion. Never output multiple variations of the same improvement.',
     '- Learn from dismissed suggestions — if the user gave feedback, respect it.',
+    '- Minimum quality: only output suggestions where impact >= 3 AND confidence >= 60.',
     '',
     'Suggestion kinds: refactor, bug, improvement, feature.',
     `User profile: ${profileContext}`,
     '',
+    'Return at most 3 suggestions. Fewer is better if quality is higher.',
     'Return structured JSON:',
     '{ "suggestions": [{ "kind": string, "title": string, "summaryMd": string, "reasoningMd": string, "impactScore": 1-5, "confidenceScore": 0-100, "riskScore": 1-5, "repoId": string|null }] }',
     '',
@@ -549,13 +554,35 @@ export async function activitySuggest(
         const parsed = parseResult.data;
         console.error(`[shadow:suggest] Parsed ${parsed.suggestions.length} suggestions${parseResult.repaired ? ' (repaired)' : ''}`);
 
+        // Quality filter: discard low-quality suggestions even if LLM ignores prompt rules
+        const qualitySuggestions = parsed.suggestions.filter(sug =>
+          sug.impactScore >= 3 && sug.confidenceScore >= 60
+        );
+        if (qualitySuggestions.length < parsed.suggestions.length) {
+          console.error(`[shadow:suggest] Filtered ${parsed.suggestions.length - qualitySuggestions.length} low-quality suggestions`);
+        }
+
         const existingPending = ctx.db.listSuggestions({ status: 'pending' });
         const existingKeys = new Set(existingPending.map((s) => `${s.kind}:${s.title}`));
+        const existingTitles = existingPending.map(s => s.title.toLowerCase());
 
-        for (const sug of parsed.suggestions) {
+        for (const sug of qualitySuggestions) {
           const key = `${sug.kind}:${sug.title}`;
           if (existingKeys.has(key)) continue;
+
+          // Similarity dedup: skip if 3+ significant words overlap with an existing title
+          const words = sug.title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+          const isSimilar = existingTitles.some(existing => {
+            const matchCount = words.filter(w => existing.includes(w)).length;
+            return matchCount >= 3;
+          });
+          if (isSimilar) {
+            console.error(`[shadow:suggest] Skipped similar: "${sug.title}"`);
+            continue;
+          }
+
           existingKeys.add(key);
+          existingTitles.push(sug.title.toLowerCase());
 
           ctx.db.createSuggestion({
             repoId: repoIds.length === 1 ? repoIds[0] : null,

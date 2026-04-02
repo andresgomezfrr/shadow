@@ -306,7 +306,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const hbResult = (lastHbJob?.result ?? {}) as Record<string, number>;
         const hadActivity = (hbResult.observationsCreated ?? 0) > 0;
         const profile = _db.ensureProfile();
-        if (hadActivity && profile.trustLevel >= 2) {
+        const pendingCount = _db.countPendingSuggestions();
+        if (hadActivity && profile.trustLevel >= 2 && pendingCount < 30) {
           const { activitySuggest, activityNotify } = await import('../heartbeat/activities.js');
           await runJobType('suggest', async () => {
             const unprocessed = _db.listObservations({ processed: false });
