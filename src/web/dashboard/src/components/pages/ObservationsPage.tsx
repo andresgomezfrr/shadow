@@ -1,6 +1,6 @@
 import { useApi } from '../../hooks/useApi';
-import { fetchObservations, acknowledgeObservation, resolveObservation, reopenObservation } from '../../api/client';
-import { ThumbsFeedback } from '../common/ThumbsFeedback';
+import { fetchObservations, fetchFeedbackState, acknowledgeObservation, resolveObservation, reopenObservation } from '../../api/client';
+import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { SEVERITY_COLORS, STATUS_COLORS } from '../../api/types';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
@@ -18,6 +18,7 @@ const STATUS_OPTIONS = [
 export function ObservationsPage() {
   const [status, setStatus] = useState('active');
   const { data, refresh } = useApi(() => fetchObservations(50, status), [status], 30_000);
+  const { data: fbState } = useApi(() => fetchFeedbackState('observation'), [], 60_000);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
 
@@ -97,7 +98,7 @@ export function ObservationsPage() {
                       className="text-xs text-orange hover:underline bg-transparent border-none cursor-pointer"
                     >reopen</button>
                   )}
-                  <ThumbsFeedback targetKind="observation" targetId={obs.id} />
+                  <ThumbsFeedback targetKind="observation" targetId={obs.id} initial={thumbsFromAction(fbState?.[obs.id])} />
                   <span className="text-xs text-text-muted shrink-0">
                     {new Date(obs.lastSeenAt).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
                   </span>

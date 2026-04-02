@@ -85,6 +85,9 @@ export const markRunExecutedManual = (id: string) =>
 export const archiveRun = (id: string) =>
   api<{ ok: boolean }>(`/api/runs/${id}/archive`, { method: 'POST' });
 
+export const fetchFeedbackState = (targetKind: string) =>
+  api<Record<string, string>>(`/api/feedback-state?targetKind=${targetKind}`);
+
 export const sendFeedback = (targetKind: string, targetId: string, action: string, note?: string) =>
   api<{ ok: boolean }>('/api/feedback', {
     method: 'POST',

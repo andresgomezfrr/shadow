@@ -180,6 +180,18 @@ async function handleApi(
       const runs = db.listRuns({ status, repoId });
       return json(res, runs);
     }
+
+    if (pathname === '/api/feedback-state') {
+      const targetKind = params.get('targetKind');
+      if (!targetKind) return json(res, { error: 'Missing targetKind' }, 400);
+      const all = db.listFeedback(targetKind, 200);
+      const state: Record<string, string> = {};
+      for (const f of all) {
+        if (!f.action.startsWith('thumbs_')) continue;
+        if (!state[f.targetId]) state[f.targetId] = f.action;
+      }
+      return json(res, state);
+    }
   }
 
   // --- POST routes ---

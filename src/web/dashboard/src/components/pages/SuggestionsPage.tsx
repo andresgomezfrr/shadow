@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
-import { fetchSuggestions, fetchRepos, fetchRuns, acceptSuggestion, dismissSuggestion } from '../../api/client';
-import { ThumbsFeedback } from '../common/ThumbsFeedback';
+import { fetchSuggestions, fetchRepos, fetchRuns, fetchFeedbackState, acceptSuggestion, dismissSuggestion } from '../../api/client';
+import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { FilterTabs } from '../common/FilterTabs';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
@@ -55,6 +55,7 @@ export function SuggestionsPage() {
   );
   const { data: repos } = useApi(fetchRepos, [], 60_000);
   const { data: runs } = useApi(fetchRuns, [], 30_000);
+  const { data: fbState } = useApi(() => fetchFeedbackState('suggestion'), [], 60_000);
 
   // Derive available kinds from data for filter tabs
   const kinds = rawData ? [...new Set(rawData.map((s) => s.kind))].sort() : [];
@@ -146,7 +147,7 @@ export function SuggestionsPage() {
                     <Badge title="Impact: how much value this change would bring (1=low, 5=high)" className="text-green bg-green/15">↑{s.impactScore}</Badge>
                     <Badge title="Confidence: how sure Shadow is about this suggestion (0-100%)" className="text-blue bg-blue/15">{Math.round(s.confidenceScore)}%</Badge>
                     {s.riskScore > 1 && <Badge title="Risk: potential for breaking things (1=safe, 5=dangerous)" className="text-orange bg-orange/15">⚠ {s.riskScore}</Badge>}
-                    <ThumbsFeedback targetKind="suggestion" targetId={s.id} />
+                    <ThumbsFeedback targetKind="suggestion" targetId={s.id} initial={thumbsFromAction(fbState?.[s.id])} />
                   </div>
                 </div>
                 {s.status === 'pending' && (

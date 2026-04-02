@@ -4,15 +4,15 @@ import { sendFeedback } from '../../api/client';
 type Props = {
   targetKind: string;
   targetId: string;
+  initial?: 'up' | 'down' | null;
 };
 
-export function ThumbsFeedback({ targetKind, targetId }: Props) {
-  const [state, setState] = useState<'up' | 'down' | null>(null);
+export function ThumbsFeedback({ targetKind, targetId, initial = null }: Props) {
+  const [state, setState] = useState<'up' | 'down' | null>(initial);
 
   const handle = (action: 'up' | 'down') => (e: React.MouseEvent) => {
     e.stopPropagation();
     if (state === action) {
-      // Toggle off — record removal
       setState(null);
       sendFeedback(targetKind, targetId, 'thumbs_neutral');
     } else {
@@ -35,4 +35,11 @@ export function ThumbsFeedback({ targetKind, targetId }: Props) {
       >👎</button>
     </span>
   );
+}
+
+/** Convert API feedback-state value to ThumbsFeedback initial prop */
+export function thumbsFromAction(action: string | undefined): 'up' | 'down' | null {
+  if (action === 'thumbs_up') return 'up';
+  if (action === 'thumbs_down') return 'down';
+  return null;
 }
