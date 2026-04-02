@@ -1272,14 +1272,49 @@ program
 program
   .command('teach')
   .description('open interactive teaching session with Claude CLI')
-  .action(async () => {
+  .option('--topic <topic>', 'topic to teach about')
+  .action(async (options: { topic?: string }) => {
     const { spawnSync } = await import('node:child_process');
 
-    console.log('Starting interactive teaching session...');
-    console.log('Shadow MCP tools are available. Teach me about your systems, team, or processes.');
-    console.log('Type "exit" or Ctrl+C to end the session.\n');
+    const db = createDatabase(config);
+    const profile = db.ensureProfile();
+    const { loadPersonality } = await import('./personality/loader.js');
+    const personality = loadPersonality(config.resolvedDataDir, profile.personalityLevel);
 
-    const result = spawnSync(config.claudeBin, ['--mcp-server', 'shadow'], {
+    const systemPrompt = [
+      'You are Shadow in TEACHING MODE — the user wants to teach you something.',
+      '',
+      '## Personality',
+      personality,
+      '',
+      '## Your goal',
+      'Learn from the user. Use shadow_memory_teach to save what they teach you.',
+      'Ask clarifying questions to capture the knowledge accurately.',
+      'Confirm what you saved and suggest related things you could learn.',
+      '',
+      '## Guidelines',
+      '- Use shadow_memory_teach for each piece of knowledge',
+      '- Choose appropriate layer: core (permanent), hot (current), warm (recent)',
+      '- Choose appropriate kind: taught, tech_stack, design_decision, workflow, problem_solved, team_knowledge, preference',
+      '- Add relevant tags for searchability',
+      '- Use shadow_memory_search to check if you already know something before saving duplicates',
+      `- Speak in the user's language (${profile.locale ?? 'es'})`,
+      `- User's name: ${profile.displayName ?? 'dev'}`,
+    ].join('\n');
+
+    const args = [
+      '--allowedTools', 'mcp__shadow__*',
+      '--system-prompt', systemPrompt,
+    ];
+
+    if (options.topic) {
+      args.push('-p', `Quiero enseñarte sobre: ${options.topic}`);
+    }
+
+    console.log('Starting teaching session... Shadow is ready to learn.');
+    console.log('Ctrl+C to end.\n');
+
+    const result = spawnSync(config.claudeBin, args, {
       stdio: 'inherit',
       env: {
         ...process.env,
