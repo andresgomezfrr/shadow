@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -87,6 +88,27 @@ export class RunnerService {
         });
       }
 
+      // For execution runs, create a git worktree
+      let worktreePath: string | null = null;
+      if (run.kind === 'execution' && repos[0].path !== '.') {
+        const branchName = `shadow/${run.id.slice(0, 8)}`;
+        worktreePath = join(repos[0].path, '.shadow-worktrees', run.id.slice(0, 8));
+        try {
+          mkdirSync(join(repos[0].path, '.shadow-worktrees'), { recursive: true });
+          execSync(`git worktree add "${worktreePath}" -b "${branchName}"`, {
+            cwd: repos[0].path,
+            stdio: 'pipe',
+            timeout: 10_000,
+          });
+          // Override repo path with worktree path for execution
+          repos[0] = { ...repos[0], path: worktreePath };
+          this.db.updateRun(run.id, { worktreePath });
+        } catch (wtErr) {
+          console.error('[runner] Failed to create worktree, running in main repo:', wtErr instanceof Error ? wtErr.message : wtErr);
+          worktreePath = null;
+        }
+      }
+
       // 4. Load relevant memories
       const suggestion = run.suggestionId
         ? this.db.getSuggestion(run.suggestionId)
@@ -120,11 +142,36 @@ export class RunnerService {
         ? `\n\n## Repositories involved\n${repos.map((r) => `- ${r.name} (${r.path})`).join('\n')}`
         : `\n\n## Repository\n- ${repos[0].name} (${repos[0].path})`;
 
+      // Trust-gated behavior: at trust <= 2, generate a plan; at higher trust, execute
+      const currentProfile = this.db.ensureProfile();
+      // Plan-only mode: generate implementation plan, not code
+      // Execution runs (child of a plan) skip this restriction
+      const planOnly = run.kind !== 'execution' && currentProfile.trustLevel <= 2;
+      const taskSection = planOnly
+        ? [
+            '\n\n## Task',
+            run.prompt,
+            '',
+            'IMPORTANT: Generate a detailed IMPLEMENTATION PLAN only. Do NOT write code directly.',
+            'Structure your response as:',
+            '## Files to modify',
+            'List each file path and what needs to change.',
+            '## Changes per file',
+            'For each file, describe the specific changes and why.',
+            '## Risks and edge cases',
+            'What could go wrong.',
+            '## Verification steps',
+            'How to test the changes.',
+            '',
+            'Format as clean Markdown.',
+          ].join('\n')
+        : `\n\n## Task\n${run.prompt}`;
+
       const fullPrompt = [
         personalityPrompt,
         repoContext,
         memoryContext,
-        `\n\n## Task\n${run.prompt}`,
+        taskSection,
       ].join('');
 
       // Prepare artifact directory
@@ -180,6 +227,7 @@ export class RunnerService {
         resultSummaryMd: result.summaryHint ?? result.output.slice(0, 500),
         errorSummary: isSuccess ? null : (result.output.slice(0, 500) || 'Execution failed'),
         artifactDir,
+        sessionId: result.sessionId ?? null,
         finishedAt,
       });
 

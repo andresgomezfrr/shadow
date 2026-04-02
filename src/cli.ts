@@ -112,7 +112,7 @@ ${endMarker}`;
 # Shadow status line for Claude Code
 # Shows Shadow's current state with emojis — alive and expressive
 
-SHADOW_CLI="${process.execPath} ${resolve(shadowSrcDir, 'cli.js')}"
+SHADOW_CLI="${resolve(shadowSrcDir, '..', 'node_modules', '.bin', 'tsx')} ${resolve(shadowSrcDir, 'cli.ts')}"
 CACHE_FILE="${config.resolvedDataDir}/statusline-cache.txt"
 CACHE_TTL=15
 
@@ -209,18 +209,7 @@ else
   ACTIVITY_TEXT="sleeping"
 fi
 
-# Build the line
-LINE="$ACTIVITY_EMOJI Shadow"
-
-# Add activity
-if [ -n "$ACTIVITY_TEXT" ]; then
-  LINE="$LINE $ACTIVITY_TEXT"
-fi
-
-# Add trust badge
-LINE="$LINE $TEMOJI"
-
-# Add mood + energy emojis
+# Mood + energy emojis
 MOOD_EMOJI=""
 case "$MOOD" in
   happy) MOOD_EMOJI="😊" ;;
@@ -239,7 +228,14 @@ case "$ENERGY" in
   *) ENERGY_EMOJI="🔋" ;;
 esac
 
-LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI"
+# Build the line: activity | mood+energy+trust | notifications | heartbeat
+LINE="$ACTIVITY_EMOJI Shadow"
+
+if [ -n "$ACTIVITY_TEXT" ]; then
+  LINE="$LINE $ACTIVITY_TEXT"
+fi
+
+LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI $TEMOJI"
 
 # Add notifications
 if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
@@ -248,12 +244,6 @@ fi
 
 if [ "$EVENTS" -gt 0 ] 2>/dev/null; then
   LINE="$LINE | 📬$EVENTS"
-fi
-
-# Add token usage if significant
-if [ "$TOKENS" -gt 1000 ] 2>/dev/null; then
-  KTOKENS=$(( TOKENS / 1000 ))
-  LINE="$LINE | \${KTOKENS}k tok"
 fi
 
 # Next heartbeat countdown (timestamps are UTC)
@@ -275,7 +265,7 @@ echo "$LINE" > "$CACHE_FILE"
       // Session start hook script
       writeFileSync(sessionStartPath, `#!/bin/bash
 # Shadow SessionStart hook — injects personality and context
-exec ${process.execPath} ${resolve(shadowSrcDir, 'cli.js')} mcp-context 2>/dev/null
+exec ${resolve(shadowSrcDir, '..', 'node_modules', '.bin', 'tsx')} ${resolve(shadowSrcDir, 'cli.ts')} mcp-context 2>/dev/null
 `, 'utf8');
 
       // Post-tool-use hook script (auto-learning)
@@ -435,7 +425,7 @@ fi
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <string>${homedir()}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
     <key>SHADOW_DATA_DIR</key>
     <string>${config.resolvedDataDir}</string>
   </dict>
@@ -1012,11 +1002,17 @@ daemon
   .command('start')
   .description('start the background daemon')
   .action(async () => {
+    const { execSync } = await import('node:child_process');
+
+    // Kill stale processes first to avoid EADDRINUSE
+    try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
+    try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
+    await new Promise(r => setTimeout(r, 1000));
+
     // Try launchd first
     const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
     if (existsSync(plistPath)) {
       try {
-        const { execSync } = await import('node:child_process');
         execSync(`launchctl bootstrap gui/$(id -u) ${plistPath} 2>/dev/null || launchctl kickstart gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
         printOutput({ ok: true, message: 'daemon started via launchd' }, Boolean(program.opts().json));
         return;
@@ -1052,26 +1048,55 @@ daemon
   .command('stop')
   .description('stop the background daemon')
   .action(async () => {
-    const { stopDaemon } = await import('./daemon/runtime.js');
-
-    // Try launchd first
+    const { execSync } = await import('node:child_process');
     const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
+
+    // Unload launchd service
     if (existsSync(plistPath)) {
-      try {
-        const { execSync } = await import('node:child_process');
-        execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' });
-        printOutput({ ok: true, message: 'daemon stopped (launchd service unloaded)' }, Boolean(program.opts().json));
-        return;
-      } catch { /* fallback to PID-based stop */ }
+      try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
     }
 
-    const stopped = stopDaemon(config);
-    printOutput(
-      stopped
-        ? { ok: true, message: 'daemon stopped' }
-        : { error: 'daemon is not running' },
-      Boolean(program.opts().json),
-    );
+    // Kill ALL shadow daemon processes (tsx runtime.ts + node on port 3700)
+    try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
+    try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
+
+    // Clean up PID file
+    const { stopDaemon } = await import('./daemon/runtime.js');
+    stopDaemon(config);
+
+    printOutput({ ok: true, message: 'daemon stopped' }, Boolean(program.opts().json));
+  });
+
+daemon
+  .command('restart')
+  .description('restart the background daemon (picks up code changes)')
+  .action(async () => {
+    const { execSync } = await import('node:child_process');
+    const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
+
+    // Stop everything
+    if (existsSync(plistPath)) {
+      try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
+    }
+    try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
+    try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
+
+    const { stopDaemon } = await import('./daemon/runtime.js');
+    stopDaemon(config);
+
+    // Wait for port to free
+    await new Promise(r => setTimeout(r, 1500));
+
+    // Start
+    if (existsSync(plistPath)) {
+      try {
+        execSync(`launchctl bootstrap gui/$(id -u) ${plistPath} 2>/dev/null || launchctl kickstart gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
+        printOutput({ ok: true, message: 'daemon restarted via launchd' }, Boolean(program.opts().json));
+        return;
+      } catch { /* fallback */ }
+    }
+
+    printOutput({ error: 'could not restart — plist not found' }, Boolean(program.opts().json));
   });
 
 daemon
@@ -1085,6 +1110,17 @@ daemon
       { running, ...state },
       Boolean(program.opts().json),
     );
+  });
+
+// --- heartbeat ---
+
+program
+  .command('heartbeat')
+  .description('trigger a heartbeat cycle immediately')
+  .action(async () => {
+    const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');
+    writeFileSync(triggerPath, new Date().toISOString(), 'utf-8');
+    printOutput({ triggered: true, message: 'heartbeat triggered — daemon will pick it up on next tick' }, Boolean(program.opts().json));
   });
 
 // --- events ---

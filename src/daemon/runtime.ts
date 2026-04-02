@@ -205,6 +205,13 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       let worked = false;
       const tickStart = new Date();
 
+      // --- Check for heartbeat trigger ---
+      const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');
+      if (existsSync(triggerPath)) {
+        try { unlinkSync(triggerPath); } catch { /* ignore */ }
+        nextHeartbeatAt = new Date(0).toISOString(); // force immediate
+      }
+
       // --- Heartbeat tick ---
       const heartbeatDue =
         nextHeartbeatAt && new Date(nextHeartbeatAt) <= tickStart;
@@ -233,6 +240,19 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         nextHeartbeatAt = new Date(
           Date.now() + config.heartbeatIntervalMs,
         ).toISOString();
+      }
+
+      // --- Run processing tick ---
+      const queuedRuns = db.listRuns({ status: 'queued' });
+      if (queuedRuns.length > 0) {
+        try {
+          const { RunnerService } = await import('../runner/service.js');
+          const runner = new RunnerService(config, db);
+          await runner.processNextRun();
+          worked = true;
+        } catch (runErr) {
+          console.error('[daemon] Run processing failed:', runErr instanceof Error ? runErr.message : runErr);
+        }
       }
 
       // --- Fast tick ---

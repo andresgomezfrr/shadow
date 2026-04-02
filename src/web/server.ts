@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDatabase, type ShadowDatabase } from '../storage/database.js';
@@ -44,6 +44,15 @@ async function handleApi(
   // --- GET routes ---
   if (req.method === 'GET') {
     if (pathname === '/api/status') {
+      const config = loadConfig();
+      let nextHeartbeatAt: string | null = null;
+      try {
+        const statePath = resolve(config.resolvedDataDir, 'daemon.json');
+        if (existsSync(statePath)) {
+          const raw = JSON.parse(readFileSync(statePath, 'utf-8'));
+          nextHeartbeatAt = raw.nextHeartbeatAt ?? null;
+        }
+      } catch { /* ignore */ }
       const profile = db.ensureProfile();
       const memoriesCount = db.listMemories().length;
       const pendingSuggestions = db.countPendingSuggestions();
@@ -63,6 +72,7 @@ async function handleApi(
         },
         usage,
         lastHeartbeat,
+        nextHeartbeatAt,
       });
     }
 
@@ -85,7 +95,9 @@ async function handleApi(
 
     if (pathname === '/api/observations') {
       const limit = parseInt(params.get('limit') ?? '20', 10);
-      const observations = db.listObservations({ limit });
+      const status = params.get('status') ?? 'all';
+      const repoId = params.get('repoId') ?? undefined;
+      const observations = db.listObservations({ limit, status, repoId });
       return json(res, observations);
     }
 
@@ -108,23 +120,8 @@ async function handleApi(
     }
 
     if (pathname === '/api/heartbeats') {
-      // ShadowDatabase only exposes getLastHeartbeat(); access internal db for listing
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const internal = (db as any).database;
-      const rows = internal
-        .prepare('SELECT * FROM heartbeats ORDER BY started_at DESC LIMIT 20')
-        .all() as Record<string, unknown>[];
-      const heartbeats = rows.map((r) => ({
-        id: String(r.id),
-        phase: String(r.phase),
-        activity: r.activity != null ? String(r.activity) : null,
-        reposObserved: r.repos_observed_json ? JSON.parse(String(r.repos_observed_json)) : [],
-        observationsCreated: Number(r.observations_created ?? 0),
-        suggestionsCreated: Number(r.suggestions_created ?? 0),
-        durationMs: r.duration_ms != null ? Number(r.duration_ms) : null,
-        startedAt: String(r.started_at),
-        finishedAt: r.finished_at != null ? String(r.finished_at) : null,
-      }));
+      const limit = parseInt(params.get('limit') ?? '30', 10);
+      const heartbeats = db.listHeartbeats(limit);
       return json(res, heartbeats);
     }
 
@@ -139,7 +136,7 @@ async function handleApi(
       const sinceIso = todayStart.toISOString();
       const profile = db.ensureProfile();
       const repos = db.listRepos();
-      const observations = db.listObservations({ limit: 100 });
+      const observations = db.listObservations({ status: 'active', limit: 100 });
       const todayObs = observations.filter((o) => o.createdAt > sinceIso);
       const memories = db.listMemories({ archived: false });
       const todayMemories = memories.filter((m) => m.createdAt > sinceIso);
@@ -180,14 +177,95 @@ async function handleApi(
     const match = pathname.match(/^\/api\/suggestions\/([^/]+)\/(accept|dismiss)$/);
     if (match) {
       const [, id, action] = match;
-      const now = new Date().toISOString();
       if (action === 'accept') {
-        db.updateSuggestion(id, { status: 'accepted', resolvedAt: now });
+        const { acceptSuggestion } = await import('../suggestion/engine.js');
+        const result = acceptSuggestion(db, id);
+        if (!result.ok) return json(res, { error: 'Cannot accept — suggestion not pending' }, 400);
+        const updated = db.getSuggestion(id);
+        return json(res, { ...updated, runId: result.runCreated });
       } else {
-        db.updateSuggestion(id, { status: 'dismissed', resolvedAt: now });
+        const { dismissSuggestion } = await import('../suggestion/engine.js');
+        let note: string | undefined;
+        try { const body = JSON.parse(await readBody(req)); note = body.note; } catch { /* no body is ok */ }
+        dismissSuggestion(db, id, note);
+        const updated = db.getSuggestion(id);
+        return json(res, updated);
       }
-      const updated = db.getSuggestion(id);
-      return json(res, updated);
+    }
+
+    const obsMatch = pathname.match(/^\/api\/observations\/([^/]+)\/(acknowledge|resolve|reopen)$/);
+    if (obsMatch) {
+      const [, obsId, action] = obsMatch;
+      const obs = db.getObservation(obsId);
+      if (!obs) return json(res, { error: 'Not found' }, 404);
+      const statusMap: Record<string, string> = { acknowledge: 'acknowledged', resolve: 'resolved', reopen: 'active' };
+      db.updateObservationStatus(obsId, statusMap[action]);
+      return json(res, db.getObservation(obsId));
+    }
+
+    // --- Run actions ---
+    const runArchiveMatch = pathname.match(/^\/api\/runs\/([^/]+)\/archive$/);
+    if (runArchiveMatch) {
+      const [, runId] = runArchiveMatch;
+      const run = db.getRun(runId);
+      if (!run) return json(res, { error: 'Run not found' }, 404);
+      db.updateRun(runId, { archived: true });
+      return json(res, { ok: true });
+    }
+
+    const runMatch = pathname.match(/^\/api\/runs\/([^/]+)\/(execute|session)$/);
+    if (runMatch) {
+      const [, runId, action] = runMatch;
+      const run = db.getRun(runId);
+      if (!run) return json(res, { error: 'Run not found' }, 404);
+      if (run.status !== 'completed') return json(res, { error: 'Run must be completed' }, 400);
+
+      if (action === 'execute') {
+        // Create a child run that executes the plan
+        const childRun = db.createRun({
+          repoId: run.repoId,
+          repoIds: run.repoIds,
+          suggestionId: run.suggestionId,
+          parentRunId: run.id,
+          kind: 'execution',
+          prompt: `Implement the following plan. Write the actual code changes.\n\n${run.resultSummaryMd}`,
+        });
+        return json(res, { runId: childRun.id, status: 'queued' });
+      }
+
+      if (action === 'session') {
+        // If the run already has a sessionId, return it
+        if (run.sessionId) {
+          const repo = db.getRepo(run.repoId);
+          const repoPath = repo?.path ?? process.cwd();
+          return json(res, { sessionId: run.sessionId, command: `cd ${repoPath} && claude --resume ${run.sessionId}` });
+        }
+        // Create a new session by running claude with --print to seed it
+        const config = loadConfig();
+        const { spawnSync } = await import('node:child_process');
+        const { randomUUID } = await import('node:crypto');
+        const sessionId: string = randomUUID();
+        const prompt = `You are Shadow, helping implement a plan. Here is the context:\n\n## Plan\n${run.resultSummaryMd}\n\n## Original suggestion\n${run.prompt}\n\nReady to help implement this. What would you like to start with?`;
+        const env: Record<string, string> = { ...process.env as Record<string, string> };
+        const claudeBin = config.claudeBin ?? 'claude';
+        if (config.claudeExtraPath) env.PATH = `${config.claudeExtraPath}:${env.PATH ?? ''}`;
+        const repo = db.getRepo(run.repoId);
+        const cwd = repo?.path ?? process.cwd();
+        const result = spawnSync(claudeBin, [
+          '--print', '--output-format', 'json',
+          '--system-prompt', 'You are Shadow, an engineering companion. Help the user implement the plan step by step.',
+          '--session-id', sessionId,
+          prompt,
+        ], { cwd, encoding: 'utf8', timeout: 120_000, env });
+        // Parse session_id from output (may differ from what we passed)
+        let finalSessionId = sessionId;
+        try {
+          const out = JSON.parse(result.stdout || '{}') as { session_id?: string };
+          if (out.session_id) finalSessionId = out.session_id;
+        } catch { /* use generated */ }
+        db.updateRun(runId, { sessionId: finalSessionId });
+        return json(res, { sessionId: finalSessionId, command: `cd ${cwd} && claude --resume ${finalSessionId}` });
+      }
     }
 
     if (pathname === '/api/profile') {
@@ -225,6 +303,13 @@ async function handleApi(
         db.updateProfile('default', { focusMode: null, focusUntil: null });
       }
       return json(res, db.ensureProfile());
+    }
+
+    if (pathname === '/api/heartbeat/trigger') {
+      const config = loadConfig();
+      const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');
+      writeFileSync(triggerPath, new Date().toISOString(), 'utf-8');
+      return json(res, { triggered: true });
     }
   }
 

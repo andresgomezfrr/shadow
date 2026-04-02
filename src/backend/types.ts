@@ -40,6 +40,7 @@ export type BackendExecutionResult = {
   summaryHint: string | null;
   inputTokens?: number;
   outputTokens?: number;
+  sessionId?: string;
 };
 
 // --- Doctor result ---

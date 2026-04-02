@@ -14,6 +14,10 @@ export class ClaudeCliAdapter implements BackendAdapter {
 
     const args = ['--print', '--output-format', 'json'];
 
+    // Override system prompt so the model acts as a pure JSON analysis engine
+    // Without this, it loads CLAUDE.md/hooks context and may reject the prompt
+    args.push('--system-prompt', 'You are a JSON-only analysis engine for the Shadow engineering companion. Output raw JSON only. Never wrap in markdown fences. Never add explanations before or after the JSON.');
+
     if (pack.model) {
       args.push('--model', pack.model);
     }
@@ -54,10 +58,12 @@ export class ClaudeCliAdapter implements BackendAdapter {
       let outputText = result.stdout || '';
       let inputTokens: number | undefined;
       let outputTokens: number | undefined;
+      let sessionId: string | undefined;
 
       try {
         const jsonOutput = JSON.parse(outputText) as {
           result?: string;
+          session_id?: string;
           usage?: { input_tokens?: number; output_tokens?: number };
           cost_usd?: number;
           duration_ms?: number;
@@ -66,6 +72,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
         outputText = jsonOutput.result ?? outputText;
         inputTokens = jsonOutput.usage?.input_tokens;
         outputTokens = jsonOutput.usage?.output_tokens;
+        sessionId = jsonOutput.session_id;
       } catch {
         // Not JSON — use raw text output (fallback)
       }
@@ -79,6 +86,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
         summaryHint: null,
         inputTokens,
         outputTokens,
+        sessionId,
       };
     } catch (error) {
       return {
