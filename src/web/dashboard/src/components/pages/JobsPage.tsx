@@ -69,6 +69,7 @@ const TYPE_FILTERS = [
   { label: 'All', value: '' },
   { label: 'Heartbeat', value: 'heartbeat' },
   { label: 'Suggest', value: 'suggest' },
+  { label: 'Reflect', value: 'reflect' },
   { label: 'Consolidate', value: 'consolidate' },
 ];
 
@@ -153,6 +154,12 @@ export function JobsPage() {
           <span className="text-text-muted">every 6h</span>
           <span className="text-text-muted">·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.consolidate?.nextAt, now)}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge className={TYPE_COLORS.reflect}>reflect</Badge>
+          <span className="text-text-muted">every 24h</span>
+          <span className="text-text-muted">·</span>
+          <span className="text-text font-mono">{formatCountdown(schedule?.reflect?.nextAt, now)}</span>
         </div>
       </div>
 

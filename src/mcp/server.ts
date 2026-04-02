@@ -806,7 +806,68 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     },
 
     // -----------------------------------------------------------------------
-    // New read-only tools
+    // Feedback + Soul
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_feedback',
+      description: 'List recent user feedback (thumbs up/down, dismiss reasons, archive reasons, corrections).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          targetKind: { type: 'string', description: 'Filter by kind: observation, suggestion, memory, run' },
+          limit: { type: 'number', description: 'Max entries (default 30)' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const targetKind = params.targetKind as string | undefined;
+        const limit = (params.limit as number | undefined) ?? 30;
+        return db.listFeedback(targetKind, limit);
+      },
+    },
+    {
+      name: 'shadow_soul',
+      description: 'Read Shadow\'s current soul reflection — the synthesized understanding of the developer.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      handler: async () => {
+        const all = db.listMemories({ archived: false });
+        const soul = all.find(m => m.kind === 'soul_reflection');
+        if (!soul) return { exists: false, body: null };
+        return { exists: true, body: soul.bodyMd, updatedAt: soul.updatedAt };
+      },
+    },
+    {
+      name: 'shadow_soul_update',
+      description: 'Update Shadow\'s soul reflection. Creates if first time, updates if exists. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          body: { type: 'string', description: 'The new soul reflection in markdown' },
+        },
+        required: ['body'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+        const body = params.body as string;
+        const all = db.listMemories({ archived: false });
+        const existing = all.find(m => m.kind === 'soul_reflection');
+        if (existing) {
+          db.updateMemory(existing.id, { bodyMd: body });
+          return { ok: true, action: 'updated', memoryId: existing.id };
+        }
+        const mem = db.createMemory({
+          layer: 'core', scope: 'personal', kind: 'soul_reflection',
+          title: 'Shadow soul reflection', bodyMd: body,
+          sourceType: 'reflect', confidenceScore: 95, relevanceScore: 1.0,
+        });
+        return { ok: true, action: 'created', memoryId: mem.id };
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // Other read-only tools
     // -----------------------------------------------------------------------
     {
       name: 'shadow_memory_list',

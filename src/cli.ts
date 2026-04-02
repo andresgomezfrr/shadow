@@ -1160,6 +1160,15 @@ program
     printOutput({ triggered: true, message: 'heartbeat triggered — daemon will pick it up on next tick' }, Boolean(program.opts().json));
   });
 
+program
+  .command('reflect')
+  .description('trigger a soul reflection immediately')
+  .action(async () => {
+    const triggerPath = resolve(config.resolvedDataDir, 'reflect-trigger');
+    writeFileSync(triggerPath, new Date().toISOString(), 'utf-8');
+    printOutput({ triggered: true, message: 'reflect triggered — daemon will pick it up on next tick' }, Boolean(program.opts().json));
+  });
+
 // --- events ---
 
 const events = program.command('events').description('manage pending events');

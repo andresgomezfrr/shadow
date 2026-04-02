@@ -222,6 +222,12 @@ export async function activityAnalyze(
   const adapter = selectAdapter(ctx.config);
   const model = getModel(ctx, 'analyze');
   const effort = getEffort(ctx, 'analyze');
+
+  // Load soul reflection for context in extract/observe prompts
+  const soulReflection = ctx.db.listMemories({ archived: false })
+    .find(m => m.kind === 'soul_reflection')?.bodyMd ?? '';
+  const soulSection = soulReflection ? `### Shadow's understanding of the developer\n${soulReflection}\n` : '';
+
   let llmCalls = 0;
   let tokensUsed = 0;
   let patternsDetected = 0;
@@ -254,6 +260,7 @@ export async function activityAnalyze(
       'Return 1-3 insights. Confidence: 90+ for facts, 70-89 for inferences.',
       '',
       dataSources,
+      soulSection,
       existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
       (() => {
         const mf = ctx.db.listFeedback('memory', 10).filter(f => f.note);
@@ -323,6 +330,7 @@ export async function activityAnalyze(
       'Only actionable insights. Not activity logs. Include up to 5 file paths per observation.',
       '',
       dataSources,
+      soulSection,
       activeObsSummary ? `### Active Observations (DO NOT recreate — resolve if no longer valid)\n${activeObsSummary}\n` : '',
       dismissFeedback ? `### User Feedback (learn from this)\n${dismissFeedback}\n` : '',
       (() => {
@@ -772,4 +780,69 @@ export async function activityNotify(
   }
 
   return { eventsQueued };
+}
+
+// --- Activity: Reflect ---
+
+export async function activityReflect(
+  ctx: HeartbeatContext,
+): Promise<{ llmCalls: number; tokensUsed: number }> {
+  const adapter = selectAdapter(ctx.config);
+
+  const prompt = [
+    'You are Shadow, reflecting on your relationship with your developer.',
+    '',
+    'Use your MCP tools to gather ALL the context you need:',
+    '- shadow_soul: read your current soul reflection (evolve it, don\'t start from scratch)',
+    '- shadow_memory_list: review core and hot memories',
+    '- shadow_observations: active observations',
+    '- shadow_suggestions: patterns of accepted vs dismissed',
+    '- shadow_feedback: all user feedback (thumbs, dismiss reasons, corrections)',
+    '- shadow_profile: trust, mood, preferences',
+    `- Read ${ctx.config.resolvedDataDir}/SOUL.md for your base personality`,
+    '',
+    'Then evolve your soul reflection. If you found a previous soul_reflection,',
+    'evolve it — keep what\'s still true, adjust what changed, add new understanding.',
+    'If this is your first reflection, create it from scratch using SOUL.md as base.',
+    '',
+    'Never lose personality or context that\'s still valid.',
+    '',
+    'Structure as markdown with these sections:',
+    '## Work style',
+    '## What they value in Shadow',
+    '## What to avoid',
+    '## Current focus',
+    '## Communication preferences',
+    '',
+    'After generating the reflection, save it using shadow_soul_update.',
+  ].join('\n');
+
+  const pack: ObjectivePack = {
+    repos: [],
+    title: 'Shadow Reflect',
+    goal: 'Evolve soul reflection based on accumulated feedback and memories',
+    prompt,
+    relevantMemories: [],
+    model: 'opus',
+    effort: 'high',
+    systemPrompt: null, // Full MCP access — Claude reads and writes everything himself
+  };
+
+  let tokensUsed = 0;
+  try {
+    const result = await adapter.execute(pack);
+    tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    ctx.db.recordLlmUsage({
+      source: 'reflect',
+      sourceId: null,
+      model: 'opus',
+      inputTokens: result.inputTokens ?? 0,
+      outputTokens: result.outputTokens ?? 0,
+    });
+    console.error(`[shadow:reflect] Completed. Tokens: ${tokensUsed}`);
+  } catch (e) {
+    console.error('[shadow:reflect] Failed:', e instanceof Error ? e.message : e);
+  }
+
+  return { llmCalls: 1, tokensUsed };
 }

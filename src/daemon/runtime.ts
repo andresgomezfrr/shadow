@@ -224,8 +224,9 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
     // --- Job scheduler helpers ---
     function shouldRunJob(type: string, intervalMs: number): boolean {
-      const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');
-      if (type === 'heartbeat' && existsSync(triggerPath)) {
+      // Check for manual trigger files
+      const triggerPath = resolve(config.resolvedDataDir, `${type}-trigger`);
+      if (existsSync(triggerPath)) {
         try { unlinkSync(triggerPath); } catch { /* */ }
         return true;
       }
@@ -315,6 +316,22 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
             llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,
             phases: ['consolidate'],
             result: { memoriesPromoted: consolidateResult.memoriesPromoted, memoriesDemoted: consolidateResult.memoriesDemoted },
+          };
+        });
+        worked = true;
+      }
+
+      // --- Job: reflect (every 24h) ---
+      if (shouldRunJob('reflect', 24 * 60 * 60 * 1000)) {
+        const { activityReflect } = await import('../heartbeat/activities.js');
+        await runJobType('reflect', async () => {
+          const profile = _db.ensureProfile();
+          const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
+          const reflectResult = await activityReflect(ctx);
+          return {
+            llmCalls: reflectResult.llmCalls, tokensUsed: reflectResult.tokensUsed,
+            phases: ['reflect'],
+            result: {},
           };
         });
         worked = true;

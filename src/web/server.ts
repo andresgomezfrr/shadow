@@ -85,6 +85,11 @@ async function handleApi(
             const nextAt = lastCon ? new Date(new Date(lastCon.startedAt).getTime() + 6 * 60 * 60 * 1000).toISOString() : null;
             return { intervalMs: 6 * 60 * 60 * 1000, nextAt };
           })(),
+          reflect: (() => {
+            const lastRef = db.getLastJob('reflect');
+            const nextAt = lastRef ? new Date(new Date(lastRef.startedAt).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
+            return { intervalMs: 24 * 60 * 60 * 1000, nextAt };
+          })(),
         },
       });
     }

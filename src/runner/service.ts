@@ -138,6 +138,7 @@ export class RunnerService {
         '## Instructions',
         'You have access to the filesystem and Shadow MCP tools (shadow_memory_search, shadow_observations, etc.).',
         'Use them to gather any additional context you need.',
+        'Use shadow_soul to read your understanding of the developer before planning.',
         '',
         planOnly
           ? [
