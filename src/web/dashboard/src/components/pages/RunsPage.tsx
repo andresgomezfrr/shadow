@@ -129,7 +129,16 @@ export function RunsPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge title="Status" className={statusClass}>{run.status}</Badge>
                   <Badge title="Run kind" className="text-text-dim bg-border">{run.kind}</Badge>
-                  {run.parentRunId && <Badge title="Child of another run" className="text-purple bg-purple/15">child</Badge>}
+                  {run.parentRunId && (
+                    <a href={`/runs?highlight=${run.parentRunId}`} onClick={(e) => e.stopPropagation()} className="no-underline">
+                      <Badge title="View parent plan" className="text-purple bg-purple/15 hover:bg-purple/25">↑ parent</Badge>
+                    </a>
+                  )}
+                  {data?.some((r) => r.parentRunId === run.id) && (
+                    <a href={`/runs?highlight=${data.find((r) => r.parentRunId === run.id)!.id}`} onClick={(e) => e.stopPropagation()} className="no-underline">
+                      <Badge title="View child execution" className="text-green bg-green/15 hover:bg-green/25">↓ child</Badge>
+                    </a>
+                  )}
                   <span className="text-[13px] flex-1 truncate">{run.prompt.slice(0, 80)}</span>
                   {duration && <span className="text-xs text-text-muted">{duration}</span>}
                   <span className="text-xs text-text-muted shrink-0">{timeAgo(run.createdAt)}</span>

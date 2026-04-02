@@ -204,14 +204,23 @@ export class RunnerService {
       writeFileSync(join(artifactDir, 'summary.md'), summaryContent, 'utf-8');
 
       // Update run status
+      const finalStatus = isSuccess ? 'completed' : 'failed';
       this.db.updateRun(run.id, {
-        status: isSuccess ? 'completed' : 'failed',
+        status: finalStatus,
         resultSummaryMd: result.summaryHint ?? result.output,
         errorSummary: isSuccess ? null : (result.output.slice(0, 500) || 'Execution failed'),
         artifactDir,
         sessionId: result.sessionId ?? null,
         finishedAt,
       });
+
+      // If this is a child execution run, update parent status accordingly
+      if (run.parentRunId) {
+        this.db.updateRun(run.parentRunId, {
+          status: isSuccess ? 'executed' : 'failed',
+          finishedAt,
+        });
+      }
 
       // Record LLM usage
       if (result.inputTokens !== undefined || result.outputTokens !== undefined) {
@@ -264,6 +273,11 @@ export class RunnerService {
         errorSummary: errorMessage.slice(0, 500),
         finishedAt,
       });
+
+      // If child failed, mark parent as failed too
+      if (run.parentRunId) {
+        this.db.updateRun(run.parentRunId, { status: 'failed', finishedAt });
+      }
 
       // Apply failure trust delta
       const profile = this.db.ensureProfile();
