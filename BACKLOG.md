@@ -44,8 +44,8 @@ Páginas con alto churn. Extraer cards, filters, actions en componentes reutiliz
 ### Extraer JobListView compartido Morning + Jobs
 Duplicación de renderizado de jobs entre MorningPage y JobsPage.
 
-### Extraer timeAgo/formatTokens a utils/format.ts
-Funciones duplicadas en 5+ páginas del dashboard.
+### `[done]` Extraer timeAgo/formatTokens a utils/format.ts
+4 funciones (timeAgo, formatTokens, useNow, formatCountdown) extraídas de 7 páginas a utils/format.ts.
 
 ### Middleware error handling + body parsing en web server
 parseJsonBody con Zod validation. Consistencia en try/catch.
