@@ -7,38 +7,26 @@ Actualizado 2026-04-02.
 ## Prioridad alta
 
 ### `[done]` Analyze prompt con contexto de observaciones existentes
-Analyze recibe observaciones activas + feedback de dismiss. No recrea observaciones existentes.
-
 ### `[done]` Feedback loop: dismiss/accept enriquecen futuras sugerencias
-El suggest prompt recibe: sugerencias dismissed con notas, sugerencias aceptadas (lo que el usuario valora), y pending existentes (no duplicar).
-
 ### `[done]` Observaciones auto-resolve por condición
-El LLM en analyze revisa observaciones activas contra el estado actual del repo. Si una ya no aplica, la incluye en `resolvedObservations` con razón. Se auto-resuelve con log.
-
 ### `[done]` Run result truncado a 500 chars
-Resultado completo guardado sin truncar.
 
 ---
 
 ## Prioridad media
 
 ### `[done]` Sugerencias operativas no son útiles
-Suggest prompt ahora instruye: solo sugerencias técnicas, no operativas. No "commit files" ni "clean branches".
-
 ### `[done]` Sugerencias aceptadas/dismissed influyen en futuras
-Suggest prompt recibe historial de accepted y dismissed con feedback.
-
 ### `[done]` Dashboard — markdown rendering
-react-markdown instalado. Markdown component con estilos Tailwind. Aplicado en RunsPage, SuggestionsPage, MorningPage.
-
 ### `[done]` Dashboard — sidebar badges con contadores
-Sidebar muestra badges numéricas en: Suggestions (pending), Observations (active), Runs (to review). Se actualiza cada 15s via /api/status.
-
 ### `[done]` Morning page mejorada
-Secciones: greeting, metrics (5 cards), last heartbeat phases, what Shadow learned (memorias), runs to review (links), pending suggestions (accept/dismiss with reason), observations (links), repos.
-
 ### `[done]` Memorias con trazabilidad al heartbeat
-Migration v8: `source_id` column en memories. Analyze pasa heartbeat ID a createMemory. Se puede filtrar memorias por heartbeat.
+
+### Markdown en MemoriesPage
+Las memorias tienen `bodyMd` pero se muestran como texto plano. Renderizar con el componente Markdown existente al expandir.
+
+### MemoriesPage — body expandible
+Las memorias solo muestran título. Al hacer click debería expandirse mostrando el body renderizado en markdown, tags, layer, kind, source, y fecha.
 
 ---
 
@@ -48,7 +36,13 @@ Migration v8: `source_id` column en memories. Analyze pasa heartbeat ID a create
 Los `console.error` del heartbeat van a `daemon.stderr.log` pero no son accesibles desde el dashboard. Endpoint `/api/logs` + página.
 
 ### KeepAlive genera procesos zombie
-El plist con `KeepAlive: true` relanza el daemon tras stop, causando duplicados y EADDRINUSE. Cambiar a `KeepAlive: false` + `RunAtLoad: true`.
+El plist con `KeepAlive: true` relanza el daemon tras stop. Con el graceful shutdown implementado es menos urgente, pero debería ser `KeepAlive: false` + `RunAtLoad: true` para evitar relanzamientos no deseados.
+
+### patterns.ts es dead code
+`src/observation/patterns.ts` (~104 líneas) exporta `detectPatterns()` pero nunca se llama. Decidir: integrar en el analyze phase como input adicional, o borrar.
+
+### logLevel config sin usar
+`config.logLevel` existe en el schema pero solo se usa en un debug statement del state machine. O implementar logging estructurado o eliminar la opción.
 
 ---
 
@@ -62,7 +56,7 @@ Agrupación temporal (1-2 semanas) que incluye repos, PRs, docs y tickets. Ciclo
 
 ### Dos tipos de heartbeat
 - **(a) Frecuente** — actividad reciente: conversaciones, interacciones.
-- **(b) Mantenimiento** — rota entre repos, no revisa todos cada vez. Escala con +40 repos.
+- **(b) Mantenimiento** — rota entre repos progresivamente, no revisa todos cada vez. Escala con +40 repos.
 
 ### Semantic search (sqlite-vec)
 Búsqueda híbrida FTS5 + vector search para memorias.
@@ -72,6 +66,24 @@ Paginación real, filtros, agrupación, rendimiento en todas las vistas.
 
 ### Execute plan — verificación de resultado
 Revisar diff generado, correr tests, presentar resumen de cambios. Merge desde dashboard a trust 4+.
+
+### Trust 3: session pre-loaded con archivos relevantes
+La sesión de Claude CLI debería incluir los file contents del plan, no solo el texto. Shadow lee los archivos relevantes y los inyecta en el prompt de la sesión.
+
+### Trust 4: ejecución autónoma con review
+Accept ejecuta autónomamente: branch, Claude CLI con plan, captura diff. Dashboard muestra diff para review. Approve → commit. Discard → borra branch.
+
+### Trust 5: full autonomy
+Branch + implement + test + PR. Si tests pasan → commit + PR. Si fallan → retry una vez. Morning brief muestra PRs completados.
+
+### `shadow teach` — enseñanza interactiva
+Comando CLI que abre sesión Claude CLI con los MCP tools de Shadow activos. El usuario enseña interactivamente y Shadow guarda memorias en tiempo real.
+
+### Comunicación externa via MCP servers
+Shadow se conecta a Slack, Linear, GitHub vía MCP servers externos. Puede: notificar en Slack, crear issues en Linear, comentar en PRs.
+
+### Multi-repo operations
+Sugerencias y runs que afectan múltiples repos simultáneamente. El schema ya soporta `repo_ids_json` pero la UI y el runner solo usan el primary repo.
 
 ---
 
@@ -91,3 +103,9 @@ Los eventos se marcan delivered inmediatamente. Investigar si la página tiene s
 
 ### Status line path frágil
 Si cambia la versión de node, el path hardcodeado en el plist se rompe. Hacer dinámico.
+
+### ASCII art mascota en status bar
+Evaluar un animalito en one-line ASCII art que reaccione representando a Shadow visualmente.
+
+### CLAUDE.md desactualizado
+Dice 30 MCP tools (son 33), 13 routes (son 16). Faltan los 3 observation lifecycle tools. Actualizar Current State section.
