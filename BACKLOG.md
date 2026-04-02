@@ -12,8 +12,8 @@ Analyze recibe observaciones activas + feedback de dismiss. No recrea observacio
 ### `[done]` Feedback loop: dismiss/accept enriquecen futuras sugerencias
 El suggest prompt recibe: sugerencias dismissed con notas, sugerencias aceptadas (lo que el usuario valora), y pending existentes (no duplicar).
 
-### Observaciones auto-resolve por condición
-"15 archivos sin commitear" debería resolverse sola tras un commit. El heartbeat verifica condiciones previas de observaciones activas y las resuelve automáticamente. Incluir nota de resolución automática.
+### `[done]` Observaciones auto-resolve por condición
+El LLM en analyze revisa observaciones activas contra el estado actual del repo. Si una ya no aplica, la incluye en `resolvedObservations` con razón. Se auto-resuelve con log.
 
 ### `[done]` Run result truncado a 500 chars
 Resultado completo guardado sin truncar.

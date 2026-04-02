@@ -253,10 +253,11 @@ export async function activityAnalyze(
     'ONLY create memories that would be useful if the developer opened a completely',
     'different project tomorrow. Ask yourself: "would I want to know this in 3 months?"',
     '',
-    'Return JSON with three fields:',
+    'Return JSON with four fields:',
     '{',
     '  "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core", "scope": "personal"|"repo"|"cross-repo" }],',
     '  "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure", "title": string, "detail": string, "severity": "info"|"warning"|"high", "files": string[] }],',
+    '  "resolvedObservations": [{ "title": string, "reason": string }],',
     '  "profileUpdates": { "moodHint": "neutral"|"happy"|"focused"|"tired"|"frustrated"|"excited"|"concerned", "energyLevel": "low"|"normal"|"high" }',
     '}',
     '',
@@ -300,7 +301,7 @@ export async function activityAnalyze(
     interactionSummary ? `### Tool Usage (files edited, commands run)\n${interactionSummary}\n` : '',
     conversationSummary ? `### Conversations (what was actually discussed)\n${conversationSummary}\n` : '',
     existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
-    activeObsSummary ? `### Active Observations (DO NOT recreate these — they already exist)\n${activeObsSummary}\n` : '',
+    activeObsSummary ? `### Active Observations (DO NOT recreate these — they already exist)\nReview these against the current repo status. If any no longer apply (e.g. files were committed, issue was fixed), include them in "resolvedObservations" with a reason.\n${activeObsSummary}\n` : '',
     dismissFeedback ? `### User Feedback on Suggestions (learn from this)\n${dismissFeedback}\n` : '',
     '',
     'IMPORTANT: Conversations are the richest source. From them extract:',
@@ -449,6 +450,19 @@ export async function activityAnalyze(
               context,
             });
             observationsCreated++;
+          }
+        }
+
+        // Auto-resolve observations the LLM says no longer apply
+        const resolvedObs = (parsed as Record<string, unknown>).resolvedObservations as Array<{ title?: string; reason?: string }> | undefined;
+        if (resolvedObs && Array.isArray(resolvedObs)) {
+          for (const ro of resolvedObs) {
+            if (!ro.title) continue;
+            const match = activeObservations.find(o => o.title === ro.title);
+            if (match && match.status === 'active') {
+              ctx.db.updateObservationStatus(match.id, 'resolved');
+              console.error(`[shadow:analyze] Auto-resolved observation: "${ro.title}" — ${ro.reason ?? 'condition no longer applies'}`);
+            }
           }
         }
       } catch (parseErr) {
