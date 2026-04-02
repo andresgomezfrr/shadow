@@ -43,6 +43,23 @@ Historical record of completed backlog items.
 - **JSON repair para LLM outputs truncados** — repairJson() cierra estructuras abiertas, safeParseJson() pipeline completo con Zod + recovery parcial.
 - **Suggestion Snooze** — pending → snoozed → re-pending. Dropdown 3h/6h/1d/3d/7d. Engine + daemon tick + API + MCP tool + CLI + dashboard (SuggestionsPage + MorningPage).
 
+## Completada 2026-04-03
+
+- **Suggestion quality control** — Dedup por similaridad (3+ palabras), quality filter (impact>=3, confidence>=60), prompt tightening (max 3, no micro-optimizations), pending cap 30, ranked API
+- **Ghost mascot live phase tracking** — setPhase() escribe al daemon.json en tiempo real. Status line muestra analyzing/suggesting/consolidating/reflecting/cleaning
+- **Ghost mascot nuevos** — Reflect `{-_-}~` (blue), cleanup `{•_•}🧹` (yellow), emojis actualizados para learning/analyzing/ready
+- **Pulsing heart** — ♥︎/♡ alterna cada 15s en status line
+- **shadow teach rewrite** — System prompt en teaching mode, personalidad SOUL.md, --allowedTools, --topic flag
+- **totalInteractions counter** — Incrementa en createInteraction(), bondLevel eliminado de UI
+- **Fix daemon hang** — 8min Promise.race timeout en heartbeat/suggest/consolidate/reflect/runner. Stale run detector (10min). lastHeartbeatAt siempre se actualiza.
+- **Stale run detector** — Runs stuck en 'running' >10min se marcan failed automáticamente
+- **Parent↔child run links** — Badges clickables ↑parent/↓child en RunsPage, auto-status propagation, child→executed (no to review)
+- **Eliminado anti-loop.ts** — Código muerto (0 callers), reemplazado por job system. Ejecutado desde plan generado por Shadow.
+- **shadow teach** — Sesión interactiva Claude CLI con MCP tools para enseñar
+- **Fix cyan color** — --color-cyan añadido al CSS theme, watching/learning visibles en emoji guide
+- **Cleanup phase visible** — Añadida al state machine, aparece en detalles del heartbeat
+- **L2 validado end-to-end** — Accept → plan → execute → worktree + branch. Limitación conocida: escritura bloqueada en --print mode (para L3).
+
 ## Long-term / Arquitectura (completada 2026-04-02)
 
 - **Feedback loop completo** — Tabla feedback, 👍/👎 toggle, razones en dismiss/resolve/discard

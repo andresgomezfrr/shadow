@@ -1,6 +1,6 @@
 # Shadow — Backlog
 
-Actualizado 2026-04-02. Items completados en [COMPLETED.md](COMPLETED.md).
+Actualizado 2026-04-03. Items completados en [COMPLETED.md](COMPLETED.md).
 
 ---
 
@@ -76,8 +76,8 @@ Búsqueda híbrida FTS5 + vector search para memorias.
 ### UI preparada para escala (+40 repos)
 Paginación real, filtros, agrupación, rendimiento.
 
-### `shadow teach` — enseñanza interactiva
-Sesión Claude CLI con MCP tools para enseñar interactivamente.
+### ~~`shadow teach` — enseñanza interactiva~~ ✅
+**Done**: System prompt teaching mode, personalidad SOUL.md, --allowedTools, --topic flag.
 
 ### Comunicación externa via MCP servers
 Slack, Linear, GitHub vía MCP servers externos.
