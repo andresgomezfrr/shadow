@@ -133,11 +133,11 @@ export function JobsPage() {
       {/* Job schedule */}
       <div className="bg-card border border-border rounded-lg p-3 mb-4 text-xs space-y-1.5">
         <div className="flex items-center gap-3 flex-wrap">
-          <Badge className={TYPE_COLORS.heartbeat}>heartbeat</Badge>
+          <Badge title="Extracts memories and generates observations from your conversations and activity" className={TYPE_COLORS.heartbeat}>heartbeat</Badge>
           <span className="text-text-muted">every 15m · </span>
           <span className="text-text font-mono">{formatCountdown(schedule?.heartbeat?.nextAt, now)}</span>
           <span className="text-text-muted">→ if activity →</span>
-          <Badge className={TYPE_COLORS.suggest}>suggest</Badge>
+          <Badge title="Generates actionable technical suggestions based on observations" className={TYPE_COLORS.suggest}>suggest</Badge>
           <button
             onClick={handleTrigger}
             disabled={!canTrigger}
@@ -147,13 +147,13 @@ export function JobsPage() {
           </button>
         </div>
         <div className="flex items-center gap-3">
-          <Badge className={TYPE_COLORS.consolidate}>consolidate</Badge>
+          <Badge title="Promotes and demotes memories between layers based on access patterns" className={TYPE_COLORS.consolidate}>consolidate</Badge>
           <span className="text-text-muted">every 6h</span>
           <span className="text-text-muted">·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.consolidate?.nextAt, now)}</span>
         </div>
         <div className="flex items-center gap-3">
-          <Badge className={TYPE_COLORS.reflect}>reflect</Badge>
+          <Badge title="Synthesizes all feedback and memories into Shadow's soul — understanding of you" className={TYPE_COLORS.reflect}>reflect</Badge>
           <span className="text-text-muted">every 24h</span>
           <span className="text-text-muted">·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.reflect?.nextAt, now)}</span>
