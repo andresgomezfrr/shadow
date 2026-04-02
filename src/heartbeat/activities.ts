@@ -13,6 +13,7 @@ import { selectAdapter } from '../backend/index.js';
 import { applyTrustDelta } from '../profile/trust.js';
 
 import type { HeartbeatContext } from './state-machine.js';
+import { ExtractResponseSchema, ObserveResponseSchema, SuggestResponseSchema } from './schemas.js';
 
 // --- Activity: Observe ---
 
@@ -280,34 +281,34 @@ export async function activityAnalyze(
 
     if (result.status === 'success' && result.output) {
       try {
-        const parsed = JSON.parse(extractJson(result.output)) as {
-          insights?: Array<{ kind?: string; title?: string; bodyMd?: string; confidence?: number; tags?: string[]; layer?: string; scope?: string }>;
-          profileUpdates?: { moodHint?: string; energyLevel?: string };
-        };
-        console.error(`[shadow:extract] ${parsed.insights?.length ?? 0} insights, profile: ${JSON.stringify(parsed.profileUpdates ?? {})}`);
+        const zodResult = ExtractResponseSchema.safeParse(JSON.parse(extractJson(result.output)));
+        if (!zodResult.success) {
+          console.error(`[shadow:extract] Zod validation failed: ${zodResult.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+          console.error(`[shadow:extract] Raw (200): ${result.output.slice(0, 200)}`);
+        } else {
+          const parsed = zodResult.data;
+          console.error(`[shadow:extract] ${parsed.insights.length} insights, profile: ${JSON.stringify(parsed.profileUpdates ?? {})}`);
 
-        if (parsed.profileUpdates) {
-          const pu: Record<string, unknown> = {};
-          if (parsed.profileUpdates.moodHint) pu.moodHint = parsed.profileUpdates.moodHint;
-          if (parsed.profileUpdates.energyLevel) pu.energyLevel = parsed.profileUpdates.energyLevel;
-          if (Object.keys(pu).length > 0) ctx.db.updateProfile(ctx.profile.id, pu);
-        }
-        for (const insight of parsed.insights ?? []) {
-          if (!insight.title || !insight.bodyMd) continue;
-          const layer = ['core', 'hot', 'warm'].includes(insight.layer ?? '') ? insight.layer! : 'hot';
-          const scope = ['personal', 'repo', 'team', 'system', 'cross-repo'].includes(insight.scope ?? '') ? insight.scope! : 'personal';
-          ctx.db.createMemory({
-            repoId: repoIds.size === 1 ? [...repoIds][0] : null,
-            layer, scope, kind: insight.kind ?? 'pattern', title: insight.title, bodyMd: insight.bodyMd,
-            tags: insight.tags ?? [], sourceType: 'heartbeat', sourceId: heartbeatId ?? null,
-            confidenceScore: insight.confidence ?? 60, relevanceScore: 0.6,
-          });
-          memoriesCreated++;
-          if (insight.kind === 'pattern') patternsDetected++;
+          if (parsed.profileUpdates) {
+            const pu: Record<string, unknown> = {};
+            if (parsed.profileUpdates.moodHint) pu.moodHint = parsed.profileUpdates.moodHint;
+            if (parsed.profileUpdates.energyLevel) pu.energyLevel = parsed.profileUpdates.energyLevel;
+            if (Object.keys(pu).length > 0) ctx.db.updateProfile(ctx.profile.id, pu);
+          }
+          for (const insight of parsed.insights) {
+            ctx.db.createMemory({
+              repoId: repoIds.size === 1 ? [...repoIds][0] : null,
+              layer: insight.layer, scope: insight.scope, kind: insight.kind, title: insight.title, bodyMd: insight.bodyMd,
+              tags: insight.tags, sourceType: 'heartbeat', sourceId: heartbeatId ?? null,
+              confidenceScore: insight.confidence, relevanceScore: 0.6,
+            });
+            memoriesCreated++;
+            if (insight.kind === 'pattern') patternsDetected++;
+          }
         }
       } catch (e) {
         console.error('[shadow:extract] Parse failed:', e instanceof Error ? e.message : e);
-        console.error('[shadow:extract] Raw (500):', result.output.slice(0, 500));
+        console.error('[shadow:extract] Raw (200):', result.output.slice(0, 200));
       }
     }
   } catch (e) {
@@ -388,32 +389,35 @@ export async function activityAnalyze(
 
     if (result.status === 'success' && result.output) {
       try {
-        const parsed = JSON.parse(extractJson(result.output)) as {
-          observations?: Array<{ kind?: string; title?: string; detail?: string; severity?: string; files?: string[] }>;
-        };
-        console.error(`[shadow:observe] ${parsed.observations?.length ?? 0} new observations`);
+        const zodResult = ObserveResponseSchema.safeParse(JSON.parse(extractJson(result.output)));
+        if (!zodResult.success) {
+          console.error(`[shadow:observe] Zod validation failed: ${zodResult.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+          console.error(`[shadow:observe] Raw (200): ${result.output.slice(0, 200)}`);
+        } else {
+          const parsed = zodResult.data;
+          console.error(`[shadow:observe] ${parsed.observations.length} new observations`);
 
-        for (const obs of parsed.observations ?? []) {
-          if (!obs.title) continue;
-          const firstRepoId = repoIds.size > 0 ? [...repoIds][0] : (repoContexts.length > 0 ? repoContexts[0].repoId : null);
-          if (!firstRepoId) continue;
-          const repo = repoContexts.find((rc) => rc.repoId === firstRepoId);
-          const context: Record<string, unknown> = {
-            repoName: repo?.repoName ?? 'unknown', branch: repo?.currentBranch ?? 'unknown',
-            files: Array.isArray(obs.files) ? obs.files.slice(0, 5) : [],
-          };
-          const sessionIds = [...new Set(recentConversations.map((c) => c.session).filter(Boolean))];
-          if (sessionIds.length > 0) context.sessionIds = sessionIds;
-          ctx.db.createObservation({
-            repoId: firstRepoId, sourceKind: 'llm', sourceId: null,
-            kind: obs.kind ?? 'pattern', severity: obs.severity ?? 'info',
-            title: obs.title, detail: { description: obs.detail ?? '' }, context,
-          });
-          observationsCreated++;
+          for (const obs of parsed.observations) {
+            const firstRepoId = repoIds.size > 0 ? [...repoIds][0] : (repoContexts.length > 0 ? repoContexts[0].repoId : null);
+            if (!firstRepoId) continue;
+            const repo = repoContexts.find((rc) => rc.repoId === firstRepoId);
+            const context: Record<string, unknown> = {
+              repoName: repo?.repoName ?? 'unknown', branch: repo?.currentBranch ?? 'unknown',
+              files: obs.files.slice(0, 5),
+            };
+            const sessionIds = [...new Set(recentConversations.map((c) => c.session).filter(Boolean))];
+            if (sessionIds.length > 0) context.sessionIds = sessionIds;
+            ctx.db.createObservation({
+              repoId: firstRepoId, sourceKind: 'llm', sourceId: null,
+              kind: obs.kind, severity: obs.severity,
+              title: obs.title, detail: { description: obs.detail }, context,
+            });
+            observationsCreated++;
+          }
         }
       } catch (e) {
         console.error('[shadow:observe] Parse failed:', e instanceof Error ? e.message : e);
-        console.error('[shadow:observe] Raw (500):', result.output.slice(0, 500));
+        console.error('[shadow:observe] Raw (200):', result.output.slice(0, 200));
       }
     }
   } catch (e) {
@@ -573,43 +577,33 @@ export async function activitySuggest(
           }
         }
 
-        const parsed = JSON.parse(jsonStr) as {
-          suggestions?: Array<{
-            kind?: string;
-            title?: string;
-            summaryMd?: string;
-            reasoningMd?: string;
-            impactScore?: number;
-            confidenceScore?: number;
-            riskScore?: number;
-            repoId?: string | null;
-          }>;
-        };
+        const zodResult = SuggestResponseSchema.safeParse(JSON.parse(jsonStr));
+        if (!zodResult.success) {
+          console.error(`[shadow:suggest] Zod validation failed: ${zodResult.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+          console.error(`[shadow:suggest] Raw (200): ${jsonStr.slice(0, 200)}`);
+        } else {
+          const parsed = zodResult.data;
+          console.error(`[shadow:suggest] Parsed ${parsed.suggestions.length} suggestions`);
 
-        console.error(`[shadow:suggest] Parsed ${parsed.suggestions?.length ?? 0} suggestions`);
-
-        if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
-          // Dedup: skip suggestions that already exist as pending with same kind+title
           const existingPending = ctx.db.listSuggestions({ status: 'pending' });
           const existingKeys = new Set(existingPending.map((s) => `${s.kind}:${s.title}`));
 
           for (const sug of parsed.suggestions) {
-            if (!sug.title || !sug.summaryMd) continue;
-            const key = `${sug.kind ?? 'improvement'}:${sug.title}`;
+            const key = `${sug.kind}:${sug.title}`;
             if (existingKeys.has(key)) continue;
             existingKeys.add(key);
 
             ctx.db.createSuggestion({
-              repoId: repoIds.length === 1 ? repoIds[0] : null, // Never trust LLM repoId — use observation context
+              repoId: repoIds.length === 1 ? repoIds[0] : null,
               repoIds,
               sourceObservationId: observations[0]?.id ?? null,
-              kind: sug.kind ?? 'improvement',
+              kind: sug.kind,
               title: sug.title,
               summaryMd: sug.summaryMd,
-              reasoningMd: sug.reasoningMd ?? null,
-              impactScore: sug.impactScore ?? 3,
-              confidenceScore: sug.confidenceScore ?? 70,
-              riskScore: sug.riskScore ?? 2,
+              reasoningMd: sug.reasoningMd,
+              impactScore: sug.impactScore,
+              confidenceScore: sug.confidenceScore,
+              riskScore: sug.riskScore,
               requiredTrustLevel: ctx.profile.trustLevel,
             });
             suggestionsCreated++;
