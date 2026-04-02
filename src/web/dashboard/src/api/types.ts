@@ -240,7 +240,7 @@ export type DailySummary = {
   pendingSuggestions: Suggestion[];
   repos: { id: string; name: string; path: string; lastObservedAt: string | null }[];
   tokens: { input: number; output: number; calls: number };
-  lastHeartbeat: { startedAt: string; phases: string[]; observationsCreated: number } | null;
+  recentJobs: Job[];
 };
 
 export const TRUST_NAMES: Record<number, string> = {

@@ -165,7 +165,7 @@ async function handleApi(
       const usage = db.getUsageSummary('day');
       const events = db.listPendingEvents();
       const runsToReview = db.listRuns({ status: 'completed' });
-      const lastHeartbeat = db.getLastJob('heartbeat');
+      const recentJobs = db.listJobs({ limit: 5 });
       return json(res, {
         date: todayStart.toISOString().split('T')[0],
         profile,
@@ -182,7 +182,7 @@ async function handleApi(
         pendingSuggestions: suggestions.slice(0, 20),
         repos: repos.map((r) => ({ id: r.id, name: r.name, path: r.path, lastObservedAt: r.lastObservedAt })),
         tokens: { input: usage.totalInputTokens, output: usage.totalOutputTokens, calls: usage.totalCalls },
-        lastHeartbeat: lastHeartbeat ? { startedAt: lastHeartbeat.startedAt, phases: lastHeartbeat.phases, observationsCreated: (lastHeartbeat.result as Record<string, number>).observationsCreated ?? 0 } : null,
+        recentJobs,
       });
     }
 

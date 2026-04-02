@@ -133,16 +133,27 @@ export function MorningPage() {
         <MetricCard label="Tokens" value={formatTokens(data.tokens.input + data.tokens.output)} />
       </div>
 
-      {/* Last heartbeat */}
-      {data.lastHeartbeat && (
+      {/* Recent jobs */}
+      {data.recentJobs && data.recentJobs.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-lg font-semibold mb-3">💜 Last heartbeat</h2>
-          <div className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-2 flex-wrap text-xs">
-            {(data.lastHeartbeat.phases ?? []).filter((p) => !['wake', 'idle', 'notify'].includes(p)).map((p, i) => (
-              <Badge key={i} className={p === 'analyze' ? 'text-purple bg-purple/15' : p === 'suggest' ? 'text-accent bg-accent-soft' : 'text-text-dim bg-border'}>{p}</Badge>
-            ))}
-            {data.lastHeartbeat.observationsCreated > 0 && <span className="text-text-dim">{data.lastHeartbeat.observationsCreated} observations created</span>}
-            <span className="text-text-muted ml-auto">{timeAgo(data.lastHeartbeat.startedAt)}</span>
+          <h2 className="text-lg font-semibold mb-3">⚙️ Recent jobs</h2>
+          <div className="flex flex-col gap-1.5">
+            {data.recentJobs.map((job) => {
+              const phases = (job.phases ?? []).filter((p: string) => !['wake', 'idle', 'notify'].includes(p));
+              const typeColors: Record<string, string> = { heartbeat: 'text-purple bg-purple/15', suggest: 'text-accent bg-accent-soft', consolidate: 'text-orange bg-orange/15' };
+              const duration = job.durationMs != null ? `${(job.durationMs / 1000).toFixed(1)}s` : '';
+              return (
+                <div key={job.id} className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center gap-2 flex-wrap text-xs">
+                  <Badge className={typeColors[job.type] ?? 'text-text-dim bg-border'}>{job.type}</Badge>
+                  {phases.length > 0 ? phases.map((p: string, i: number) => (
+                    <span key={i} className="text-text-muted">{p}</span>
+                  )) : <span className="text-text-muted">skip</span>}
+                  {job.llmCalls > 0 && <span className="text-text-muted">· {job.llmCalls} LLM</span>}
+                  {duration && <span className="text-text-muted">· {duration}</span>}
+                  <span className="text-text-muted ml-auto">{timeAgo(job.startedAt)}</span>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
