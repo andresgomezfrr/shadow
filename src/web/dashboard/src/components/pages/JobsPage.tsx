@@ -170,7 +170,7 @@ export function JobsPage() {
       {!data ? (
         <div className="text-text-dim">Loading...</div>
       ) : data.length === 0 ? (
-        <EmptyState icon="💜" title="No heartbeats" description="Shadow hasn't executed any cycles yet" />
+        <EmptyState icon="⚙️" title="No jobs" description="Shadow hasn't executed any cycles yet" />
       ) : (
         <div className="flex flex-col gap-1.5">
           {data.map((hb) => {
