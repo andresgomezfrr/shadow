@@ -44,16 +44,23 @@ function SuggestionReviewCard({
 
   return (
     <div className={`bg-card border border-border rounded-lg p-5 transition-all ${leaving ? 'animate-slide-out' : ''}`}>
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex-1 min-w-0">
           <div className="font-medium text-[15px]">{suggestion.title}</div>
-          <div className="text-xs text-text-dim mt-0.5">{suggestion.kind}</div>
+          <div className="flex items-center gap-2 text-xs text-text-muted mt-0.5 flex-wrap">
+            <span>{suggestion.kind}</span>
+            <span>·</span>
+            <span>{timeAgo(suggestion.createdAt)}</span>
+            {suggestion.sourceObservationId && (
+              <><span>·</span><a href={`/observations?highlight=${suggestion.sourceObservationId}`} className="text-accent hover:underline">from observation</a></>
+            )}
+          </div>
         </div>
         <div className="flex gap-1.5 shrink-0">
-          <Badge className="text-green bg-green/15">↑{suggestion.impactScore}</Badge>
-          <Badge className="text-blue bg-blue/15">{Math.round(suggestion.confidenceScore * 100)}%</Badge>
-          {suggestion.riskScore > 0.3 && (
-            <Badge className="text-orange bg-orange/15">⚠ {suggestion.riskScore.toFixed(1)}</Badge>
+          <Badge title="Impact: how much value (1=low, 5=high)" className="text-green bg-green/15">↑{suggestion.impactScore}</Badge>
+          <Badge title="Confidence (0-100%)" className="text-blue bg-blue/15">{Math.round(suggestion.confidenceScore)}%</Badge>
+          {suggestion.riskScore > 1 && (
+            <Badge title="Risk: breaking potential (1=safe, 5=dangerous)" className="text-orange bg-orange/15">⚠ {suggestion.riskScore}</Badge>
           )}
         </div>
       </div>
@@ -162,6 +169,7 @@ export function MorningPage() {
                 <div key={obs.id} className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">
                   <Badge className={sevClass}>{obs.severity}</Badge>
                   <Badge className="text-text-dim bg-border">{obs.kind}</Badge>
+                  {obs.votes > 1 && <Badge className="text-orange bg-orange/15">{obs.votes}x</Badge>}
                   <span className="text-[13px] flex-1 truncate">{obs.title}</span>
                 </div>
               );

@@ -76,6 +76,11 @@ export type Observation = {
   severity: string;
   title: string;
   detail: Record<string, unknown>;
+  context: Record<string, unknown>;
+  votes: number;
+  status: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
   processed: boolean;
   suggestionId: string | null;
   createdAt: string;
@@ -105,10 +110,16 @@ export type Suggestion = {
 export type Heartbeat = {
   id: string;
   phase: string;
+  phases: string[];
   activity: string | null;
   reposObserved: string[];
   observationsCreated: number;
   suggestionsCreated: number;
+  llmCalls: number;
+  tokensUsed: number;
+  eventsQueued: number;
+  memoriesPromoted: number;
+  memoriesDemoted: number;
   durationMs: number | null;
   startedAt: string;
   finishedAt: string | null;
@@ -158,12 +169,16 @@ export type Run = {
   repoId: string;
   repoIds: string[];
   suggestionId: string | null;
+  parentRunId: string | null;
   kind: string;
   status: string;
   prompt: string;
   resultSummaryMd: string | null;
   errorSummary: string | null;
   artifactDir: string | null;
+  sessionId: string | null;
+  worktreePath: string | null;
+  archived: boolean;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;
@@ -187,6 +202,7 @@ export type StatusResponse = {
   };
   usage: UsageSummary;
   lastHeartbeat: Heartbeat | null;
+  nextHeartbeatAt: string | null;
 };
 
 export type DailySummary = {
@@ -232,6 +248,14 @@ export const LAYER_COLORS: Record<string, string> = {
 export const SEVERITY_COLORS: Record<string, string> = {
   info: 'text-blue bg-blue/15',
   warning: 'text-orange bg-orange/15',
+  high: 'text-red bg-red/15',
   error: 'text-red bg-red/15',
   critical: 'text-red bg-red/25',
+};
+
+export const STATUS_COLORS: Record<string, string> = {
+  active: 'text-green bg-green/15',
+  acknowledged: 'text-blue bg-blue/15',
+  resolved: 'text-text-dim bg-text-muted/15',
+  expired: 'text-text-muted bg-text-muted/10',
 };

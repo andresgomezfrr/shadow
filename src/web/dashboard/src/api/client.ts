@@ -43,8 +43,8 @@ export const fetchMemories = (params?: { q?: string; layer?: string }) =>
 export const fetchSuggestions = (params?: { status?: string }) =>
   api<Suggestion[]>(`/api/suggestions${qs({ status: params?.status })}`);
 
-export const fetchObservations = (limit = 20) =>
-  api<Observation[]>(`/api/observations?limit=${limit}`);
+export const fetchObservations = (limit = 20, status?: string) =>
+  api<Observation[]>(`/api/observations${qs({ limit: String(limit), status })}`);
 
 export const fetchRepos = () => api<Repo[]>('/api/repos');
 
@@ -66,11 +66,36 @@ export const fetchRuns = (params?: { status?: string; repoId?: string }) =>
 
 // --- POST ---
 
+export const executeRun = (id: string) =>
+  api<{ runId: string; status: string }>(`/api/runs/${id}/execute`, { method: 'POST' });
+
+export const createRunSession = (id: string) =>
+  api<{ sessionId: string; command: string }>(`/api/runs/${id}/session`, { method: 'POST' });
+
+export const archiveRun = (id: string) =>
+  api<{ ok: boolean }>(`/api/runs/${id}/archive`, { method: 'POST' });
+
+export const acknowledgeObservation = (id: string) =>
+  api<Observation>(`/api/observations/${id}/acknowledge`, { method: 'POST' });
+
+export const resolveObservation = (id: string) =>
+  api<Observation>(`/api/observations/${id}/resolve`, { method: 'POST' });
+
+export const reopenObservation = (id: string) =>
+  api<Observation>(`/api/observations/${id}/reopen`, { method: 'POST' });
+
+export const triggerHeartbeat = () =>
+  api<{ triggered: boolean }>('/api/heartbeat/trigger', { method: 'POST' });
+
 export const acceptSuggestion = (id: string) =>
   api<Suggestion>(`/api/suggestions/${id}/accept`, { method: 'POST' });
 
-export const dismissSuggestion = (id: string) =>
-  api<Suggestion>(`/api/suggestions/${id}/dismiss`, { method: 'POST' });
+export const dismissSuggestion = (id: string, note?: string) =>
+  api<Suggestion>(`/api/suggestions/${id}/dismiss`, {
+    method: 'POST',
+    headers: note ? { 'Content-Type': 'application/json' } : undefined,
+    body: note ? JSON.stringify({ note }) : undefined,
+  });
 
 export const updateProfile = (updates: Partial<UserProfile>) =>
   api<UserProfile>('/api/profile', {

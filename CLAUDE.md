@@ -332,34 +332,9 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 - **`shadow summary`** — daily activity summary
 - **Trust score**: ~9 (growing with usage, needs 15 for level 2/suggestions)
 
-## Next Steps (for new sessions)
+## Backlog
 
-### Priority 1: Observation improvements (planned, not implemented)
-1. **Enriched context** — observations should include: repo name, file paths involved, session ID where discussed. Currently only have kind + title + detail string.
-2. **Vote system** — when the same observation is detected again (e.g., "uncommitted files" persists), don't create a duplicate — increment a `votes` counter on the existing one. Higher votes = higher priority in dashboard.
-3. **Lifecycle** — observations need states:
-   - `active` → new, visible in dashboard
-   - `acknowledged` → user saw it (clicked in dashboard or `events ack`)
-   - `resolved` → condition no longer applies, or auto after 48h
-   - `expired` → after 7 days without interaction
-   Dashboard morning brief should only show `active` observations.
-4. **Schema changes needed**: Add columns to `observations` table:
-   - `votes INTEGER DEFAULT 1`
-   - `status TEXT DEFAULT 'active'` (active/acknowledged/resolved/expired)
-   - `first_seen_at TEXT` (when first detected)
-   - `last_seen_at TEXT` (when last voted)
-   - `context_json TEXT` (repo name, files, session ID)
-
-### Priority 2: Other improvements
-5. **Suggest phase** — trust needs to reach 15+ (level 2) for suggestions to generate. Currently ~9. Consider accelerating trust growth or manually boosting for testing.
-6. **Dashboard observations page** — render LLM observations with enriched context (repo badges, file lists, vote count). Group by kind.
-7. **Semantic search (sqlite-vec)** — hybrid FTS5 + vector search for memories. Requires embedding model.
-8. **Tests** — zero test coverage. At minimum: database CRUD, FTS5 search, heartbeat state machine, observation creation.
-
-### Known issues
-- Dashboard observations page still has `[object Object]` rendering for some detail fields (arrays of objects)
-- `observationsCreated` in heartbeat result always shows 0 because observations are created inside analyze, not observe phase. The counter needs updating.
-- Old git-based observations still in DB from before the rewrite. Consider purging with: `DELETE FROM observations WHERE source_kind = 'repo'`
+All pending improvements, features, and known issues are tracked in [`BACKLOG.md`](BACKLOG.md).
 
 ### Architecture notes for new sessions
 - **Conversations are the richest data source** — the analyze prompt prioritizes them. Tool interactions and repo context are secondary.
