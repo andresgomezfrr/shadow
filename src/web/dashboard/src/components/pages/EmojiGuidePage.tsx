@@ -29,6 +29,7 @@ export function EmojiGuidePage() {
           ['yellow', '{°_°}..', '{°_°}...', '{°.°}..', 'analyzing', 'Heartbeat: extract + observe'],
           ['green', '{•ᴗ•}💡', '{•‿•}💡', '{•ᴗ•}!', 'suggesting', 'Heartbeat: generating ideas'],
           ['yellow', '{•_•}⚙', '{•‿•}⚙', '{•_•}~', 'consolidating', 'Heartbeat: memory maintenance'],
+          ['blue', '{-_-}~', '{-‿-}~', '{-_-}..', 'reflecting', 'Daily soul reflection'],
           ['purple', '{•̀_•́}', '{•̀‿•́}', '{•̀_•́}▸', 'focus', 'Focus mode active'],
           ['dim', '{-_-}z', '{-_-}zz', '{-‿-}zzZ', 'sleeping', 'Daemon off'],
           ['dim', '{-_-}', '{-_-}.', '{-‿-}', 'tired', 'Mood: tired'],
@@ -135,6 +136,7 @@ const COLOR_CLASSES: Record<string, string> = {
   cyan: 'text-cyan',
   yellow: 'text-orange',
   green: 'text-green',
+  blue: 'text-blue',
   red: 'text-red',
   dim: 'text-text-muted',
 };
@@ -159,7 +161,7 @@ function GhostTable({ rows }: { rows: [string, string, string, string, string, s
             return (
               <tr key={i} className="border-t border-border hover:bg-card-hover transition-colors">
                 <td className="px-4 py-2.5">
-                  <span className={`inline-block w-3 h-3 rounded-full ${color === 'purple' ? 'bg-purple' : color === 'cyan' ? 'bg-cyan' : color === 'yellow' ? 'bg-orange' : color === 'green' ? 'bg-green' : color === 'red' ? 'bg-red' : 'bg-text-muted'}`} />
+                  <span className={`inline-block w-3 h-3 rounded-full ${color === 'purple' ? 'bg-purple' : color === 'cyan' ? 'bg-cyan' : color === 'yellow' ? 'bg-orange' : color === 'green' ? 'bg-green' : color === 'blue' ? 'bg-blue' : color === 'red' ? 'bg-red' : 'bg-text-muted'}`} />
                 </td>
                 <td className={`px-4 py-2.5 font-mono ${cls}`}>{v1}</td>
                 <td className={`px-4 py-2.5 font-mono ${cls}`}>{v2}</td>

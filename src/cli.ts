@@ -171,6 +171,7 @@ CP="\\033[35m"  # purple (idle)
 CC="\\033[36m"  # cyan (active)
 CY="\\033[33m"  # yellow (analyzing)
 CG="\\033[32m"  # green (positive)
+CB="\\033[34m"  # blue (reflecting)
 CR="\\033[31m"  # red (alert)
 CD="\\033[2m"   # dim (sleeping)
 
@@ -206,6 +207,9 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
     *consolidat*)
       case $V in 0) MASCOT="{•_•}⚙" ;; 1) MASCOT="{•‿•}⚙" ;; *) MASCOT="{•_•}~" ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="consolidating" ;;
+    *reflect*)
+      case $V in 0) MASCOT="{-_-}~" ;; 1) MASCOT="{-‿-}~" ;; *) MASCOT="{-_-}.." ;; esac
+      MCOLOR="$CB"; ACTIVITY_TEXT="reflecting" ;;
     *)
       case $V in 0) MASCOT="{•_•}" ;; 1) MASCOT="{•‿•}" ;; *) MASCOT="{•_•}~" ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="working" ;;
