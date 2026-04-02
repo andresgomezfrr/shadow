@@ -6,27 +6,27 @@ Actualizado 2026-04-02.
 
 ## Prioridad alta
 
-### Analyze prompt con contexto de observaciones existentes
-El analyze repite las mismas observaciones porque no sabe qué ya observó. Pasar observaciones activas al prompt para evitar duplicación y generar insights más profundos.
+### `[done]` Analyze prompt con contexto de observaciones existentes
+Analyze recibe observaciones activas + feedback de dismiss. No recrea observaciones existentes.
 
-### Feedback loop: dismiss/accept enriquecen memorias y futuras sugerencias
-Las notas de dismiss y los patrones de accept/dismiss deberían guardarse como memorias o pasarse al suggest prompt. Shadow no aprende del feedback real del usuario.
+### `[done]` Feedback loop: dismiss/accept enriquecen futuras sugerencias
+El suggest prompt recibe: sugerencias dismissed con notas, sugerencias aceptadas (lo que el usuario valora), y pending existentes (no duplicar).
 
 ### Observaciones auto-resolve por condición
 "15 archivos sin commitear" debería resolverse sola tras un commit. El heartbeat verifica condiciones previas de observaciones activas y las resuelve automáticamente. Incluir nota de resolución automática.
 
-### Run result truncado a 500 chars
-Los planes de implementación generados se truncan. Guardar el resultado completo en `result_summary_md` o leer del artifact file en el dashboard.
+### `[done]` Run result truncado a 500 chars
+Resultado completo guardado sin truncar.
 
 ---
 
 ## Prioridad media
 
-### Sugerencias operativas no son útiles
-Shadow genera "commitear archivos" — no es una sugerencia de código. Afinar el prompt del suggest para que genere solo sugerencias técnicas actionables.
+### `[done]` Sugerencias operativas no son útiles
+Suggest prompt ahora instruye: solo sugerencias técnicas, no operativas. No "commit files" ni "clean branches".
 
-### Sugerencias aceptadas/dismissed influyen en futuras
-Si el usuario siempre accepta "refactor" y dismissea "docs", Shadow debería adaptarse. Pasar historial de accept/dismiss al prompt del suggest.
+### `[done]` Sugerencias aceptadas/dismissed influyen en futuras
+Suggest prompt recibe historial de accepted y dismissed con feedback.
 
 ### Dashboard — markdown rendering
 Resultados de runs y sugerencias contienen markdown que se renderiza como texto plano. Usar react-markdown para tablas, code blocks, headers.

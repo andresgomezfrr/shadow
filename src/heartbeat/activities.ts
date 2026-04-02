@@ -234,6 +234,19 @@ export async function activityAnalyze(
     .map(m => `- [${m.layer}] ${m.title}`)
     .join('\n');
 
+  // Active observations — so the LLM knows what Shadow already flagged
+  const activeObservations = ctx.db.listObservations({ status: 'active', limit: 20 });
+  const activeObsSummary = activeObservations.length > 0
+    ? activeObservations.map(o => `- [${o.severity}/${o.kind}] ${o.title} (${o.votes}x seen)`).join('\n')
+    : '';
+
+  // Recent feedback — dismissed suggestions with notes teach Shadow what NOT to suggest
+  const recentDismissed = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10);
+  const dismissFeedback = recentDismissed
+    .filter(s => s.feedbackNote)
+    .map(s => `- "${s.title}" — dismissed: ${s.feedbackNote}`)
+    .join('\n');
+
   const prompt = [
     'You are Shadow, extracting DURABLE KNOWLEDGE from engineering sessions.',
     '',
@@ -287,6 +300,8 @@ export async function activityAnalyze(
     interactionSummary ? `### Tool Usage (files edited, commands run)\n${interactionSummary}\n` : '',
     conversationSummary ? `### Conversations (what was actually discussed)\n${conversationSummary}\n` : '',
     existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
+    activeObsSummary ? `### Active Observations (DO NOT recreate these — they already exist)\n${activeObsSummary}\n` : '',
+    dismissFeedback ? `### User Feedback on Suggestions (learn from this)\n${dismissFeedback}\n` : '',
     '',
     'IMPORTANT: Conversations are the richest source. From them extract:',
     '- What projects/features the user is working on',
@@ -509,9 +524,33 @@ export async function activitySuggest(
     `Verbosity: ${ctx.profile.verbosity}`,
   ].join(', ');
 
+  // Gather feedback from recently dismissed suggestions
+  const recentDismissed = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10);
+  const dismissFeedback = recentDismissed
+    .filter(s => s.feedbackNote)
+    .map(s => `- "${s.title}" — dismissed: ${s.feedbackNote}`)
+    .join('\n');
+
+  // Recently accepted suggestions — Shadow knows what the user values
+  const recentAccepted = ctx.db.listSuggestions({ status: 'accepted' }).slice(0, 5);
+  const acceptedContext = recentAccepted
+    .map(s => `- "${s.title}" (${s.kind}) — accepted`)
+    .join('\n');
+
+  // Existing pending suggestions — don't duplicate
+  const existingPending = ctx.db.listSuggestions({ status: 'pending' });
+  const pendingTitles = existingPending.map(s => `- ${s.title}`).join('\n');
+
   const prompt = [
-    'Based on the following observations and context, propose actionable suggestions.',
-    'Suggestion kinds: refactor, bug, improvement, feature, docs.',
+    'Based on the following observations and context, propose actionable TECHNICAL suggestions.',
+    '',
+    'IMPORTANT RULES:',
+    '- Only suggest code changes, refactors, bug fixes, features, or architecture improvements.',
+    '- Do NOT suggest operational tasks like "commit files", "clean up branches", "update docs".',
+    '- Do NOT duplicate existing pending suggestions (listed below).',
+    '- Learn from dismissed suggestions — if the user gave feedback, respect it.',
+    '',
+    'Suggestion kinds: refactor, bug, improvement, feature.',
     `User profile: ${profileContext}`,
     '',
     'Return structured JSON:',
@@ -521,6 +560,9 @@ export async function activitySuggest(
     observationSummaries,
     '',
     relevantMemories.length > 0 ? `## Relevant Memories\n${memorySummaries}\n` : '',
+    pendingTitles ? `## Already Pending (DO NOT duplicate)\n${pendingTitles}\n` : '',
+    dismissFeedback ? `## Dismissed by User (learn from this feedback)\n${dismissFeedback}\n` : '',
+    acceptedContext ? `## Accepted by User (this is what they value)\n${acceptedContext}\n` : '',
     'Respond with JSON only.',
   ].join('\n');
 

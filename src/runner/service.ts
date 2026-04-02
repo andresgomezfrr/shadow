@@ -224,7 +224,7 @@ export class RunnerService {
       // Update run status
       this.db.updateRun(run.id, {
         status: isSuccess ? 'completed' : 'failed',
-        resultSummaryMd: result.summaryHint ?? result.output.slice(0, 500),
+        resultSummaryMd: result.summaryHint ?? result.output,
         errorSummary: isSuccess ? null : (result.output.slice(0, 500) || 'Execution failed'),
         artifactDir,
         sessionId: result.sessionId ?? null,
