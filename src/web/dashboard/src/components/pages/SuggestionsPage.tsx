@@ -1,3 +1,4 @@
+import { timeAgo } from '../../utils/format';
 import { useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
@@ -22,15 +23,6 @@ const STATUS_DOTS: Record<string, string> = {
   dismissed: 'bg-text-muted',
 };
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
 
 function repoName(repos: Repo[] | null, repoId: string | null): string | null {
   if (!repoId || !repos) return null;

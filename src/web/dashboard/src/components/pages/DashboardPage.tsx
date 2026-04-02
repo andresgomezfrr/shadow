@@ -1,14 +1,10 @@
+import { formatTokens } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
 import { fetchStatus } from '../../api/client';
 import { TRUST_NAMES, MOOD_EMOJIS } from '../../api/types';
 import { MetricCard } from '../common/MetricCard';
 import { ProgressBar } from '../common/ProgressBar';
 
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
-  return String(n);
-}
 
 export function DashboardPage() {
   const { data } = useApi(fetchStatus, [], 30_000);

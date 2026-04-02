@@ -1,3 +1,4 @@
+import { formatTokens } from '../../utils/format';
 import { useState } from 'react';
 import { useApi } from '../../hooks/useApi';
 import { fetchUsage } from '../../api/client';
@@ -10,11 +11,6 @@ const PERIODS = [
   { label: 'Month', value: 'month' },
 ];
 
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
-  return String(n);
-}
 
 export function UsagePage() {
   const [period, setPeriod] = useState('week');
