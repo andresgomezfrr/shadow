@@ -169,22 +169,22 @@ function getModel(ctx: HeartbeatContext, phase: 'analyze' | 'suggest' | 'consoli
   return models?.[phase] ?? ctx.config.models[phase];
 }
 
+function getEffort(ctx: HeartbeatContext, phase: 'analyze' | 'suggest' | 'consolidate' | 'runner'): string {
+  const prefs = ctx.profile.preferences as Record<string, unknown> | undefined;
+  const efforts = prefs?.efforts as Record<string, string> | undefined;
+  return efforts?.[phase] ?? ctx.config.efforts[phase];
+}
+
 export async function activityAnalyze(
   ctx: HeartbeatContext,
   observations: ObservationRecord[],
   heartbeatId?: string,
 ): Promise<{ patternsDetected: number; memoriesCreated: number; llmCalls: number; tokensUsed: number; observationsCreated: number }> {
-  // Load recent interactions from Claude CLI sessions
-  // Use a wider window (2h) to capture enough context, not just since last heartbeat
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const recentInteractions = loadRecentInteractions(ctx.config, twoHoursAgo);
   const interactionSummary = summarizeInteractions(recentInteractions);
-
-  // Load recent conversations (what was actually discussed)
   const recentConversations = loadRecentConversations(ctx.config, twoHoursAgo);
   const conversationSummary = summarizeConversations(recentConversations);
-
-  // Collect lightweight repo context (branch, uncommitted files, recent commits)
   const repoContexts = collectAllRepoContexts(ctx.db);
   const repoContextSummary = summarizeRepoContexts(repoContexts);
 
@@ -192,11 +192,9 @@ export async function activityAnalyze(
     return { patternsDetected: 0, memoriesCreated: 0, llmCalls: 0, tokensUsed: 0, observationsCreated: 0 };
   }
 
-  // Gather file paths and topics from observations for memory retrieval
   const filePaths: string[] = [];
   const topics: string[] = [];
   const repoIds = new Set<string>();
-
   for (const obs of observations) {
     repoIds.add(obs.repoId);
     topics.push(obs.kind);
@@ -204,306 +202,201 @@ export async function activityAnalyze(
     const detail = obs.detail as Record<string, unknown>;
     if (typeof detail.file === 'string') filePaths.push(detail.file);
   }
-
-  // Also extract file paths from interactions
   for (const i of recentInteractions) {
     if (i.file) filePaths.push(i.file);
   }
 
-  // Get relevant memories for context
   const relevantMemories = findRelevantMemories(ctx.db, {
     filePaths: [...new Set(filePaths)].slice(0, 20),
     topics: [...new Set(topics)],
     repoId: repoIds.size === 1 ? [...repoIds][0] : undefined,
   });
 
-  // Build the analysis prompt
-  const observationSummaries = observations.length > 0
-    ? observations.map((obs) =>
-        `- [${obs.severity}] ${obs.kind}: ${obs.title} (repo: ${obs.repoId})`,
-      ).join('\n')
-    : 'No new git observations.';
-
-  const memorySummaries = relevantMemories.map((mem) =>
-    `- [${mem.layer}/${mem.kind}] ${mem.title}: ${mem.bodyMd.slice(0, 200)}`,
-  ).join('\n');
-
-  // Include ALL existing hot+core memories for dedup
-  const allHotCore = ctx.db.listMemories({ archived: false });
-  const existingMemories = allHotCore
-    .filter(m => m.layer === 'core' || m.layer === 'hot')
-    .map(m => `- [${m.layer}] ${m.title}`)
-    .join('\n');
-
-  // Active observations — so the LLM knows what Shadow already flagged
-  const activeObservations = ctx.db.listObservations({ status: 'active', limit: 20 });
-  const activeObsSummary = activeObservations.length > 0
-    ? activeObservations.map(o => `- [${o.severity}/${o.kind}] ${o.title} (${o.votes}x seen)`).join('\n')
-    : '';
-
-  // Recent feedback — dismissed suggestions with notes teach Shadow what NOT to suggest
-  const recentDismissed = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10);
-  const dismissFeedback = recentDismissed
-    .filter(s => s.feedbackNote)
-    .map(s => `- "${s.title}" — dismissed: ${s.feedbackNote}`)
-    .join('\n');
-
-  const prompt = [
-    'You are Shadow, extracting DURABLE KNOWLEDGE from engineering sessions.',
-    '',
-    'ONLY create memories that would be useful if the developer opened a completely',
-    'different project tomorrow. Ask yourself: "would I want to know this in 3 months?"',
-    '',
-    'Return JSON with four fields:',
-    '{',
-    '  "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core", "scope": "personal"|"repo"|"cross-repo" }],',
-    '  "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure", "title": string, "detail": string, "severity": "info"|"warning"|"high", "files": string[] }],',
-    '  "resolvedObservations": [{ "title": string, "reason": string }],',
-    '  "profileUpdates": { "moodHint": "neutral"|"happy"|"focused"|"tired"|"frustrated"|"excited"|"concerned", "energyLevel": "low"|"normal"|"high" }',
-    '}',
-    '',
-    'Observations are ACTIONABLE INSIGHTS — things worth flagging to the developer:',
-    '- improvement: "cli.ts is 1200+ lines — consider extracting route handlers"',
-    '- risk: "uncommitted work across 2 repos — consider committing before switching context"',
-    '- opportunity: "user discussed adding a feature but hasn\'t started — could suggest implementation"',
-    '- pattern: "developer always works on heartbeat after modifying activities.ts"',
-    '- infrastructure: "no tests configured for the shadow repo"',
-    'Only create observations for things that are ACTIONABLE. Not activity logs.',
-    'For each observation, include a "files" array with up to 5 relevant file paths (empty array if none).',
-    '',
-    'For profileUpdates, infer from the conversations and activity:',
-    '- moodHint: "frustrated" if user complains about bugs/issues, "excited" if celebrating wins, "focused" if deep in implementation, "tired" if working late or short messages, "happy" if positive tone, "concerned" if discussing risks/problems, "neutral" if unclear',
-    '- energyLevel: "high" if lots of activity and engagement, "low" if sparse or late-night work, "normal" otherwise',
-    '- Always include profileUpdates even if mood/energy seem neutral',
-    '',
-    'GOOD memories (CREATE THESE):',
-    '- "Shadow uses SQLite with WAL mode + busy_timeout=5000 for concurrent access" (tech_stack)',
-    '- "FTS5 content-sync tables: use bm25() on alias, not table name" (problem_solved)',
-    '- "User prefers Spanish for conversation, English for code" (preference)',
-    '- "Deploy goes through ArgoCD, main branch auto-deploys to staging" (team_knowledge)',
-    '- "Auth tokens stored in httpOnly cookies, refreshed via /api/refresh" (design_decision)',
-    '',
-    'BAD memories (NEVER CREATE):',
-    '- Session descriptions: "5 tool calls", "light session", "largest session yet"',
-    '- Tool usage stats: "high Edit:Read ratio", "Grep usage declining"',
-    '- Obvious facts: "cli.ts is the main file", "working on shadow repo"',
-    '- Activity logs: "edited 3 files", "ran npm build"',
-    '- Ephemeral state: "file remains uncommitted", "focused on X this session"',
-    '',
-    'Kinds: tech_stack, design_decision, workflow, problem_solved, team_knowledge, preference',
-    '',
-    'LAYER RULES (strict):',
-    'Layer "core" = knowledge you would need if rewriting the project from scratch.',
-    '  GOOD core: "Shadow uses SQLite WAL mode", "User prefers Spanish", "Deploy goes through ArgoCD"',
-    '  BAD core: bug fixes, implementation details, feature descriptions, session summaries, TODO lists',
-    'Layer "hot" = currently relevant but will change. Default to "hot" when unsure.',
-    '  GOOD hot: "spawnSync was blocking the event loop — fixed with async spawn", "RunsPage defaults to completed filter"',
-    'When in doubt, use "hot". Most things are "hot". Only use "core" for foundational truths.',
-    '',
-    'Confidence: 90+ for explicit facts, 70-89 for strong inferences.',
-    'Return 1-3 insights. Always try to find at least 1 useful thing to remember.',
-    'If you see files being edited, infer what the project does and what tech stack it uses.',
-    'If you see commands being run, infer the developer\'s workflow and preferences.',
-    '',
-    '## Data Sources',
+  // Shared data sections
+  const dataSources = [
     repoContextSummary ? `### Repository Status\n${repoContextSummary}\n` : '',
-    interactionSummary ? `### Tool Usage (files edited, commands run)\n${interactionSummary}\n` : '',
-    conversationSummary ? `### Conversations (what was actually discussed)\n${conversationSummary}\n` : '',
-    existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
-    activeObsSummary ? `### Active Observations (DO NOT recreate these — they already exist)\nReview these against the current repo status. If any no longer apply (e.g. files were committed, issue was fixed), include them in "resolvedObservations" with a reason.\n${activeObsSummary}\n` : '',
-    dismissFeedback ? `### User Feedback on Suggestions (learn from this)\n${dismissFeedback}\n` : '',
-    '',
-    'IMPORTANT: Conversations are the richest source. From them extract:',
-    '- What projects/features the user is working on',
-    '- Design decisions discussed ("lets use React for the dashboard")',
-    '- User preferences and feedback ("the memories are too granular")',
-    '- Goals and intent ("I want Shadow to be a full companion")',
-    '- Problems discussed and solutions found',
-    '',
-    'Respond with JSON only.',
-  ].join('\n');
+    interactionSummary ? `### Tool Usage\n${interactionSummary}\n` : '',
+    conversationSummary ? `### Conversations\n${conversationSummary}\n` : '',
+  ].filter(Boolean).join('\n');
 
-  const pack: ObjectivePack = {
-    repos: [],
-    title: 'Heartbeat Analysis',
-    goal: 'Analyze recent observations for patterns and insights',
-    prompt,
-    relevantMemories,
-    model: getModel(ctx, 'analyze'),
-  };
-
-  // Placeholder: log what would be sent and simulate a response
-  // In production, this would call: const result = await selectAdapter(ctx.config).execute(pack);
+  const adapter = selectAdapter(ctx.config);
+  const model = getModel(ctx, 'analyze');
+  const effort = getEffort(ctx, 'analyze');
   let llmCalls = 0;
   let tokensUsed = 0;
   let patternsDetected = 0;
   let memoriesCreated = 0;
   let observationsCreated = 0;
 
+  // ========== CALL 1: Extract (memories + mood) ==========
   try {
-    const adapter = selectAdapter(ctx.config);
-    const result = await adapter.execute(pack);
-    llmCalls = 1;
-    tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    const existingMemories = ctx.db.listMemories({ archived: false })
+      .filter(m => m.layer === 'core' || m.layer === 'hot')
+      .map(m => `- [${m.layer}] ${m.title}`)
+      .join('\n');
 
-    // Record token usage
-    ctx.db.recordLlmUsage({
-      source: 'heartbeat_analyze',
-      sourceId: null,
-      model: getModel(ctx, 'analyze'),
-      inputTokens: result.inputTokens ?? 0,
-      outputTokens: result.outputTokens ?? 0,
+    const extractPrompt = [
+      'Extract DURABLE KNOWLEDGE from this engineering session.',
+      'Ask: "would I want to know this in 3 months?"',
+      '',
+      'Return JSON:',
+      '{ "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core", "scope": "personal"|"repo"|"cross-repo" }],',
+      '  "profileUpdates": { "moodHint": "neutral"|"happy"|"focused"|"tired"|"frustrated"|"excited"|"concerned", "energyLevel": "low"|"normal"|"high" } }',
+      '',
+      'Kinds: tech_stack, design_decision, workflow, problem_solved, team_knowledge, preference',
+      '',
+      'LAYER RULES:',
+      '"core" = needed if rewriting from scratch. "hot" = relevant now but may change.',
+      'Default to "hot". Bug fixes, implementation details, feature descriptions → "hot".',
+      'Only "core" for: tech stack choices, user preferences, architectural truths.',
+      '',
+      'BAD memories (NEVER CREATE): session summaries, tool stats, obvious facts, activity logs, ephemeral state.',
+      'Return 1-3 insights. Confidence: 90+ for facts, 70-89 for inferences.',
+      '',
+      dataSources,
+      existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
+      'Respond with JSON only.',
+    ].join('\n');
+
+    const result = await adapter.execute({
+      repos: [], title: 'Heartbeat Extract', goal: 'Extract knowledge + mood', prompt: extractPrompt,
+      relevantMemories, model, effort,
     });
+    llmCalls++;
+    tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    ctx.db.recordLlmUsage({ source: 'heartbeat_extract', sourceId: heartbeatId ?? null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
-    // Parse insights from LLM response
     if (result.status === 'success' && result.output) {
       try {
-        // Extract JSON from output — Claude CLI may wrap it in markdown fences
-        let jsonStr = result.output.trim();
-        const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (jsonMatch) {
-          jsonStr = jsonMatch[1].trim();
-        }
-        // Also try to find raw JSON object
-        if (!jsonStr.startsWith('{')) {
-          const braceIdx = jsonStr.indexOf('{');
-          const lastBrace = jsonStr.lastIndexOf('}');
-          if (braceIdx !== -1 && lastBrace !== -1) {
-            jsonStr = jsonStr.slice(braceIdx, lastBrace + 1);
-          }
-        }
-
-        const parsed = JSON.parse(jsonStr) as {
-          insights?: Array<{
-            kind?: string;
-            title?: string;
-            bodyMd?: string;
-            confidence?: number;
-            tags?: string[];
-            layer?: string;
-            scope?: string;
-          }>;
-          observations?: Array<{
-            kind?: string;
-            title?: string;
-            detail?: string;
-            severity?: string;
-          }>;
-          profileUpdates?: {
-            moodHint?: string;
-            energyLevel?: string;
-          };
+        const parsed = JSON.parse(extractJson(result.output)) as {
+          insights?: Array<{ kind?: string; title?: string; bodyMd?: string; confidence?: number; tags?: string[]; layer?: string; scope?: string }>;
+          profileUpdates?: { moodHint?: string; energyLevel?: string };
         };
+        console.error(`[shadow:extract] ${parsed.insights?.length ?? 0} insights, profile: ${JSON.stringify(parsed.profileUpdates ?? {})}`);
 
-        console.error(`[shadow:analyze] Parsed ${parsed.insights?.length ?? 0} insights, ${parsed.observations?.length ?? 0} observations, profileUpdates: ${JSON.stringify(parsed.profileUpdates ?? {})}`);
-
-        // Apply profile updates (mood, energy)
         if (parsed.profileUpdates) {
           const pu: Record<string, unknown> = {};
           if (parsed.profileUpdates.moodHint) pu.moodHint = parsed.profileUpdates.moodHint;
           if (parsed.profileUpdates.energyLevel) pu.energyLevel = parsed.profileUpdates.energyLevel;
-          if (Object.keys(pu).length > 0) {
-            ctx.db.updateProfile(ctx.profile.id, pu);
-            console.error(`[shadow:analyze] Updated profile: ${JSON.stringify(pu)}`);
-          }
+          if (Object.keys(pu).length > 0) ctx.db.updateProfile(ctx.profile.id, pu);
         }
-        if (parsed.insights && Array.isArray(parsed.insights)) {
-          for (const insight of parsed.insights) {
-            if (!insight.title || !insight.bodyMd) continue;
-
-            const layer = ['core', 'hot', 'warm'].includes(insight.layer ?? '') ? insight.layer! : 'hot';
-            const scope = ['personal', 'repo', 'team', 'system', 'cross-repo'].includes(insight.scope ?? '') ? insight.scope! : 'personal';
-
-            ctx.db.createMemory({
-              repoId: repoIds.size === 1 ? [...repoIds][0] : null,
-              layer,
-              scope,
-              kind: insight.kind ?? 'pattern',
-              title: insight.title,
-              bodyMd: insight.bodyMd,
-              tags: insight.tags ?? [],
-              sourceType: 'heartbeat',
-              sourceId: heartbeatId ?? null,
-              confidenceScore: insight.confidence ?? 60,
-              relevanceScore: 0.6,
-            });
-            memoriesCreated++;
-            if (insight.kind === 'pattern') patternsDetected++;
-          }
+        for (const insight of parsed.insights ?? []) {
+          if (!insight.title || !insight.bodyMd) continue;
+          const layer = ['core', 'hot', 'warm'].includes(insight.layer ?? '') ? insight.layer! : 'hot';
+          const scope = ['personal', 'repo', 'team', 'system', 'cross-repo'].includes(insight.scope ?? '') ? insight.scope! : 'personal';
+          ctx.db.createMemory({
+            repoId: repoIds.size === 1 ? [...repoIds][0] : null,
+            layer, scope, kind: insight.kind ?? 'pattern', title: insight.title, bodyMd: insight.bodyMd,
+            tags: insight.tags ?? [], sourceType: 'heartbeat', sourceId: heartbeatId ?? null,
+            confidenceScore: insight.confidence ?? 60, relevanceScore: 0.6,
+          });
+          memoriesCreated++;
+          if (insight.kind === 'pattern') patternsDetected++;
         }
-
-        // Create LLM-generated observations with enriched context
-        if (parsed.observations && Array.isArray(parsed.observations)) {
-          for (const obs of parsed.observations) {
-            if (!obs.title) continue;
-            const firstRepoId = repoIds.size > 0 ? [...repoIds][0] : (repoContexts.length > 0 ? repoContexts[0].repoId : null);
-            if (!firstRepoId) continue;
-
-            const repo = repoContexts.find((rc) => rc.repoId === firstRepoId);
-            const obsAny = obs as Record<string, unknown>;
-            const context: Record<string, unknown> = {
-              repoName: repo?.repoName ?? 'unknown',
-              branch: repo?.currentBranch ?? 'unknown',
-              files: Array.isArray(obsAny.files) ? (obsAny.files as string[]).slice(0, 5) : [],
-            };
-            const sessionIds = [...new Set(recentConversations.map((c) => c.session).filter(Boolean))];
-            if (sessionIds.length > 0) context.sessionIds = sessionIds;
-
-            ctx.db.createObservation({
-              repoId: firstRepoId,
-              sourceKind: 'llm',
-              sourceId: null,
-              kind: obs.kind ?? 'pattern',
-              severity: obs.severity ?? 'info',
-              title: obs.title,
-              detail: { description: obs.detail ?? '' },
-              context,
-            });
-            observationsCreated++;
-          }
-        }
-
-        // Auto-resolve observations the LLM says no longer apply
-        const resolvedObs = (parsed as Record<string, unknown>).resolvedObservations as Array<{ title?: string; reason?: string }> | undefined;
-        if (resolvedObs && Array.isArray(resolvedObs)) {
-          for (const ro of resolvedObs) {
-            if (!ro.title) continue;
-            const match = activeObservations.find(o => o.title === ro.title);
-            if (match && match.status === 'active') {
-              ctx.db.updateObservationStatus(match.id, 'resolved');
-              console.error(`[shadow:analyze] Auto-resolved observation: "${ro.title}" — ${ro.reason ?? 'condition no longer applies'}`);
-            }
-          }
-        }
-      } catch (parseErr) {
-        // Log parse failures so we can debug
-        console.error('[shadow:analyze] Failed to parse LLM output:', parseErr instanceof Error ? parseErr.message : parseErr);
-        console.error('[shadow:analyze] Raw output (first 500 chars):', result.output.slice(0, 500));
+      } catch (e) {
+        console.error('[shadow:extract] Parse failed:', e instanceof Error ? e.message : e);
+        console.error('[shadow:extract] Raw (500):', result.output.slice(0, 500));
       }
     }
-  } catch (llmErr) {
-    // Log LLM failures
-    console.error('[shadow:analyze] LLM call failed:', llmErr instanceof Error ? llmErr.message : llmErr);
+  } catch (e) {
+    console.error('[shadow:extract] LLM failed:', e instanceof Error ? e.message : e);
   }
 
-  // Mark all observations as processed
-  for (const obs of observations) {
-    ctx.db.markObservationProcessed(obs.id);
+  // ========== CALL 2: Observe (observations + auto-resolve) ==========
+  try {
+    const activeObservations = ctx.db.listObservations({ status: 'active', limit: 20 });
+    const activeObsSummary = activeObservations.map(o => `- [${o.severity}/${o.kind}] ${o.title} (${o.votes}x)`).join('\n');
+    const dismissFeedback = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10)
+      .filter(s => s.feedbackNote).map(s => `- "${s.title}" — dismissed: ${s.feedbackNote}`).join('\n');
+
+    const observePrompt = [
+      'Generate ACTIONABLE OBSERVATIONS about the developer\'s work.',
+      '',
+      'Return JSON:',
+      '{ "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure", "title": string, "detail": string, "severity": "info"|"warning"|"high", "files": string[] }],',
+      '  "resolvedObservations": [{ "title": string, "reason": string }] }',
+      '',
+      'Only actionable insights. Not activity logs. Include up to 5 file paths per observation.',
+      '',
+      dataSources,
+      activeObsSummary ? `### Active Observations (DO NOT recreate — resolve if no longer valid)\n${activeObsSummary}\n` : '',
+      dismissFeedback ? `### User Feedback (learn from this)\n${dismissFeedback}\n` : '',
+      'Respond with JSON only.',
+    ].join('\n');
+
+    const result = await adapter.execute({
+      repos: [], title: 'Heartbeat Observe', goal: 'Generate observations', prompt: observePrompt,
+      relevantMemories: [], model, effort,
+    });
+    llmCalls++;
+    tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    ctx.db.recordLlmUsage({ source: 'heartbeat_observe', sourceId: heartbeatId ?? null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+
+    if (result.status === 'success' && result.output) {
+      try {
+        const parsed = JSON.parse(extractJson(result.output)) as {
+          observations?: Array<{ kind?: string; title?: string; detail?: string; severity?: string; files?: string[] }>;
+          resolvedObservations?: Array<{ title?: string; reason?: string }>;
+        };
+        console.error(`[shadow:observe] ${parsed.observations?.length ?? 0} observations, ${parsed.resolvedObservations?.length ?? 0} resolved`);
+
+        for (const obs of parsed.observations ?? []) {
+          if (!obs.title) continue;
+          const firstRepoId = repoIds.size > 0 ? [...repoIds][0] : (repoContexts.length > 0 ? repoContexts[0].repoId : null);
+          if (!firstRepoId) continue;
+          const repo = repoContexts.find((rc) => rc.repoId === firstRepoId);
+          const context: Record<string, unknown> = {
+            repoName: repo?.repoName ?? 'unknown', branch: repo?.currentBranch ?? 'unknown',
+            files: Array.isArray(obs.files) ? obs.files.slice(0, 5) : [],
+          };
+          const sessionIds = [...new Set(recentConversations.map((c) => c.session).filter(Boolean))];
+          if (sessionIds.length > 0) context.sessionIds = sessionIds;
+          ctx.db.createObservation({
+            repoId: firstRepoId, sourceKind: 'llm', sourceId: null,
+            kind: obs.kind ?? 'pattern', severity: obs.severity ?? 'info',
+            title: obs.title, detail: { description: obs.detail ?? '' }, context,
+          });
+          observationsCreated++;
+        }
+
+        for (const ro of parsed.resolvedObservations ?? []) {
+          if (!ro.title) continue;
+          const match = activeObservations.find(o => o.title === ro.title);
+          if (match && match.status === 'active') {
+            ctx.db.updateObservationStatus(match.id, 'resolved');
+            console.error(`[shadow:observe] Auto-resolved: "${ro.title}" — ${ro.reason ?? 'no longer applies'}`);
+          }
+        }
+      } catch (e) {
+        console.error('[shadow:observe] Parse failed:', e instanceof Error ? e.message : e);
+        console.error('[shadow:observe] Raw (500):', result.output.slice(0, 500));
+      }
+    }
+  } catch (e) {
+    console.error('[shadow:observe] LLM failed:', e instanceof Error ? e.message : e);
   }
 
-  // Trust: heartbeat completion + interaction logging
-  if (llmCalls > 0) {
-    try { applyTrustDelta(ctx.db, 'heartbeat_completed'); } catch { /* ignore */ }
-  }
-  if (recentInteractions.length >= 10) {
-    try { applyTrustDelta(ctx.db, 'interaction_logged'); } catch { /* ignore */ }
-  }
-
-  // Rotate logs after processing
+  // Post-processing
+  for (const obs of observations) ctx.db.markObservationProcessed(obs.id);
+  if (llmCalls > 0) { try { applyTrustDelta(ctx.db, 'heartbeat_completed'); } catch { /* */ } }
+  if (recentInteractions.length >= 10) { try { applyTrustDelta(ctx.db, 'interaction_logged'); } catch { /* */ } }
   rotateInteractionsLog(ctx.config, new Date().toISOString());
   rotateConversationsLog(ctx.config);
 
   return { patternsDetected, memoriesCreated, llmCalls, tokensUsed, observationsCreated };
+}
+
+/** Extract JSON from LLM output — handles markdown fences and preamble */
+function extractJson(output: string): string {
+  let s = output.trim();
+  const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) return fenceMatch[1].trim();
+  if (!s.startsWith('{')) {
+    const start = s.indexOf('{');
+    const end = s.lastIndexOf('}');
+    if (start !== -1 && end !== -1) return s.slice(start, end + 1);
+  }
+  return s;
 }
 
 // --- Activity: Suggest ---
@@ -597,6 +490,7 @@ export async function activitySuggest(
     prompt,
     relevantMemories,
     model: getModel(ctx, 'suggest'),
+    effort: getEffort(ctx, 'suggest'),
   };
 
   let llmCalls = 0;

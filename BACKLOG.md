@@ -41,6 +41,15 @@ Eliminado. 104 líneas de dead code removidas.
 ### `[done]` logLevel config sin usar
 Eliminado el único debug block. Config se mantiene en schema para futuro uso.
 
+### `[done]` Prompts demasiado complejos — split analyze en 2 llamadas
+Analyze dividido en Extract (memories + mood, effort medium) y Observe (observations + auto-resolve, effort medium). Cada prompt focado, menos reglas, mejor calidad.
+
+### `[done]` Effort level configurable por fase
+`--effort` flag en CLI adapter. Defaults: analyze=medium, suggest=high, consolidate=medium, runner=high. Configurable via env vars y dashboard profile.
+
+### `[done]` MCP tool shadow_memory_update
+Permite cambiar layer, body, tags, kind, scope de una memoria existente. Ya no hace falta SQL directo.
+
 ---
 
 ## Long-term / Arquitectura

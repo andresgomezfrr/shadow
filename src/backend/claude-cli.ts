@@ -21,6 +21,9 @@ export class ClaudeCliAdapter implements BackendAdapter {
     if (pack.model) {
       args.push('--model', pack.model);
     }
+    if (pack.effort) {
+      args.push('--effort', pack.effort);
+    }
 
     args.push(pack.prompt);
 

@@ -7,6 +7,13 @@ export const ModelsSchema = z.object({
   runner: z.string().default('sonnet'),
 });
 
+export const EffortsSchema = z.object({
+  analyze: z.string().default('medium'),
+  suggest: z.string().default('high'),
+  consolidate: z.string().default('medium'),
+  runner: z.string().default('high'),
+});
+
 export const ConfigSchema = z.object({
   env: z.enum(['development', 'test', 'production']).default('development'),
   dataDir: z.string().min(1).optional(),
@@ -24,6 +31,12 @@ export const ConfigSchema = z.object({
     suggest: 'opus',
     consolidate: 'sonnet',
     runner: 'sonnet',
+  }),
+  efforts: EffortsSchema.default({
+    analyze: 'medium',
+    suggest: 'high',
+    consolidate: 'medium',
+    runner: 'high',
   }),
   locale: z.string().default('es'),
 });

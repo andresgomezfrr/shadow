@@ -26,6 +26,7 @@ export type ObjectivePack = {
   relevantMemories: MemoryRecord[];
   artifactDir?: string;
   model?: string;
+  effort?: string;
   timeoutMs?: number;
 };
 

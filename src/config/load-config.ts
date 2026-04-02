@@ -16,6 +16,12 @@ export function loadConfig(): ShadowConfig {
   if (process.env.SHADOW_MODEL_CONSOLIDATE) modelsInput.consolidate = process.env.SHADOW_MODEL_CONSOLIDATE;
   if (process.env.SHADOW_MODEL_RUNNER) modelsInput.runner = process.env.SHADOW_MODEL_RUNNER;
 
+  const effortsInput: Record<string, string> = {};
+  if (process.env.SHADOW_EFFORT_ANALYZE) effortsInput.analyze = process.env.SHADOW_EFFORT_ANALYZE;
+  if (process.env.SHADOW_EFFORT_SUGGEST) effortsInput.suggest = process.env.SHADOW_EFFORT_SUGGEST;
+  if (process.env.SHADOW_EFFORT_CONSOLIDATE) effortsInput.consolidate = process.env.SHADOW_EFFORT_CONSOLIDATE;
+  if (process.env.SHADOW_EFFORT_RUNNER) effortsInput.runner = process.env.SHADOW_EFFORT_RUNNER;
+
   const parsed = ConfigSchema.parse({
     env: process.env.SHADOW_ENV,
     dataDir: process.env.SHADOW_DATA_DIR,
@@ -29,6 +35,7 @@ export function loadConfig(): ShadowConfig {
     proactivityLevel: process.env.SHADOW_PROACTIVITY_LEVEL,
     personalityLevel: process.env.SHADOW_PERSONALITY_LEVEL,
     models: Object.keys(modelsInput).length > 0 ? modelsInput : undefined,
+    efforts: Object.keys(effortsInput).length > 0 ? effortsInput : undefined,
     locale: process.env.SHADOW_LOCALE,
   });
 

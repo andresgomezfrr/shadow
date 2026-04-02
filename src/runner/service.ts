@@ -192,6 +192,7 @@ export class RunnerService {
         relevantMemories,
         artifactDir,
         model: this.config.models.runner,
+        effort: this.config.efforts.runner,
         timeoutMs: this.config.runnerTimeoutMs,
       };
 

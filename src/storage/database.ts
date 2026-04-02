@@ -507,12 +507,20 @@ export class ShadowDatabase {
     return results;
   }
 
-  updateMemory(id: string, updates: Partial<Pick<MemoryRecord, 'layer' | 'title' | 'bodyMd' | 'confidenceScore' | 'relevanceScore' | 'accessCount' | 'lastAccessedAt' | 'promotedFrom' | 'demotedTo' | 'archivedAt'>>): void {
+  updateMemory(id: string, updates: Partial<Pick<MemoryRecord, 'layer' | 'scope' | 'kind' | 'title' | 'bodyMd' | 'tags' | 'confidenceScore' | 'relevanceScore' | 'accessCount' | 'lastAccessedAt' | 'promotedFrom' | 'demotedTo' | 'archivedAt'>>): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
-      sets.push(`${toSnake(key)} = ?`);
-      values.push((value ?? null) as SQLValue);
+      if (key === 'tags') {
+        sets.push('tags_json = ?');
+        values.push(JSON.stringify(value));
+      } else if (key === 'bodyMd') {
+        sets.push('body_md = ?');
+        values.push((value ?? null) as SQLValue);
+      } else {
+        sets.push(`${toSnake(key)} = ?`);
+        values.push((value ?? null) as SQLValue);
+      }
     }
     if (sets.length === 0) return;
     sets.push('updated_at = ?');

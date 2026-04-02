@@ -752,6 +752,39 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
       },
     },
     {
+      name: 'shadow_memory_update',
+      description: 'Update a memory: change layer, body, tags, kind, or scope. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          memoryId: { type: 'string', description: 'Memory ID to update' },
+          layer: { type: 'string', description: 'New layer: core, hot, warm, cool, cold' },
+          body: { type: 'string', description: 'New body markdown' },
+          kind: { type: 'string', description: 'New kind' },
+          scope: { type: 'string', description: 'New scope' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'New tags' },
+        },
+        required: ['memoryId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+        const id = params.memoryId as string;
+        const memory = db.getMemory(id);
+        if (!memory) return { isError: true, message: `Memory not found: ${id}` };
+        const updates: Record<string, unknown> = {};
+        if (params.layer) updates.layer = params.layer;
+        if (params.body) updates.bodyMd = params.body;
+        if (params.kind) updates.kind = params.kind;
+        if (params.scope) updates.scope = params.scope;
+        if (params.tags) updates.tags = params.tags;
+        if (Object.keys(updates).length === 0) return { isError: true, message: 'No updates provided' };
+        db.updateMemory(id, updates as Parameters<typeof db.updateMemory>[1]);
+        return { ok: true, memoryId: id, updated: Object.keys(updates) };
+      },
+    },
+    {
       name: 'shadow_events_ack',
       description: 'Acknowledge all pending events. Requires trust level >= 1.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
