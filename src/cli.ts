@@ -276,9 +276,7 @@ LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI $TEMOJI"
 if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
   LINE="$LINE | 💡$SUGGESTIONS"
 fi
-if [ "$EVENTS" -gt 0 ] 2>/dev/null; then
-  LINE="$LINE | 📬$EVENTS"
-fi
+# Events removed from status line — delivered immediately, always noise
 
 # Heartbeat countdown
 if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
