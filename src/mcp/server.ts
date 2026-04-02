@@ -85,7 +85,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         const greeting = deriveGreeting(profile, db);
         const pendingEvents = db.listPendingEvents();
         const pendingSuggestions = db.countPendingSuggestions();
-        const recentObs = db.listObservations({ limit: 5 });
+        const recentObs = db.listObservations({ status: 'active', limit: 5 });
         const usage = db.getUsageSummary('day');
 
         return {
@@ -111,6 +111,8 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
             kind: o.kind,
             title: o.title,
             repoId: o.repoId,
+            votes: o.votes,
+            severity: o.severity,
             createdAt: o.createdAt,
           })),
           todayTokens: usage.totalInputTokens + usage.totalOutputTokens,
@@ -171,19 +173,21 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     },
     {
       name: 'shadow_observations',
-      description: 'Returns recent observations. Optionally filter by repoId and limit results.',
+      description: 'Returns recent observations. Optionally filter by repoId, status, and limit results.',
       inputSchema: {
         type: 'object',
         properties: {
           repoId: { type: 'string', description: 'Filter by repository ID' },
+          status: { type: 'string', description: 'Filter by status: active (default), acknowledged, resolved, expired, all' },
           limit: { type: 'number', description: 'Maximum number of results (default 20)' },
         },
         additionalProperties: false,
       },
       handler: async (params) => {
         const repoId = params.repoId as string | undefined;
+        const status = (params.status as string | undefined) ?? 'active';
         const limit = (params.limit as number | undefined) ?? 20;
-        return db.listObservations({ repoId, limit });
+        return db.listObservations({ repoId, status, limit });
       },
     },
     {
@@ -326,12 +330,11 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
           return { isError: true, message: `Suggestion not found: ${suggestionId}` };
         }
 
-        db.updateSuggestion(suggestionId, {
-          status: 'accepted',
-          resolvedAt: new Date().toISOString(),
-        });
+        const { acceptSuggestion } = await import('../suggestion/engine.js');
+        const result = acceptSuggestion(db, suggestionId);
+        if (!result.ok) return { isError: true, message: 'Cannot accept — suggestion not pending' };
 
-        return { accepted: true, suggestionId };
+        return { accepted: true, suggestionId, runCreated: result.runCreated };
       },
     },
     {
@@ -364,6 +367,72 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         });
 
         return { dismissed: true, suggestionId };
+      },
+    },
+    {
+      name: 'shadow_observation_ack',
+      description: 'Acknowledge an observation by ID, marking it as seen. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          observationId: { type: 'string', description: 'Observation ID to acknowledge' },
+        },
+        required: ['observationId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+        const id = params.observationId as string;
+        const obs = db.getObservation(id);
+        if (!obs) return { isError: true, message: `Observation not found: ${id}` };
+        if (obs.status !== 'active') return { isError: true, message: `Observation is ${obs.status}, not active` };
+        db.updateObservationStatus(id, 'acknowledged');
+        return { ok: true, observationId: id, status: 'acknowledged' };
+      },
+    },
+    {
+      name: 'shadow_observation_resolve',
+      description: 'Resolve an observation by ID, marking the issue as handled. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          observationId: { type: 'string', description: 'Observation ID to resolve' },
+        },
+        required: ['observationId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+        const id = params.observationId as string;
+        const obs = db.getObservation(id);
+        if (!obs) return { isError: true, message: `Observation not found: ${id}` };
+        if (obs.status === 'resolved') return { isError: true, message: 'Already resolved' };
+        db.updateObservationStatus(id, 'resolved');
+        return { ok: true, observationId: id, status: 'resolved' };
+      },
+    },
+    {
+      name: 'shadow_observation_reopen',
+      description: 'Reopen a resolved or acknowledged observation, setting it back to active. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          observationId: { type: 'string', description: 'Observation ID to reopen' },
+        },
+        required: ['observationId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+        const id = params.observationId as string;
+        const obs = db.getObservation(id);
+        if (!obs) return { isError: true, message: `Observation not found: ${id}` };
+        if (obs.status === 'active') return { isError: true, message: 'Already active' };
+        db.updateObservationStatus(id, 'active');
+        return { ok: true, observationId: id, status: 'active' };
       },
     },
     {
@@ -770,7 +839,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
 
         const profile = db.ensureProfile();
         const repos = db.listRepos();
-        const observations = db.listObservations({ limit: 100 });
+        const observations = db.listObservations({ status: 'active', limit: 100 });
         const todayObs = observations.filter(o => o.createdAt > sinceIso);
         const memories = db.listMemories({ archived: false });
         const todayMemories = memories.filter(m => m.createdAt > sinceIso);

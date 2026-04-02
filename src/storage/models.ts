@@ -112,6 +112,11 @@ export type ObservationRecord = {
   severity: string;
   title: string;
   detail: Record<string, unknown>;
+  context: Record<string, unknown>;
+  votes: number;
+  status: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
   processed: boolean;
   suggestionId: string | null;
   createdAt: string;
@@ -145,10 +150,16 @@ export type SuggestionRecord = {
 export type HeartbeatRecord = {
   id: string;
   phase: string;
+  phases: string[];
   activity: string | null;
   reposObserved: string[];
   observationsCreated: number;
   suggestionsCreated: number;
+  llmCalls: number;
+  tokensUsed: number;
+  eventsQueued: number;
+  memoriesPromoted: number;
+  memoriesDemoted: number;
   durationMs: number | null;
   startedAt: string;
   finishedAt: string | null;
@@ -187,12 +198,16 @@ export type RunRecord = {
   repoId: string;
   repoIds: string[];
   suggestionId: string | null;
+  parentRunId: string | null;
   kind: string;
   status: string;
   prompt: string;
   resultSummaryMd: string | null;
   errorSummary: string | null;
   artifactDir: string | null;
+  sessionId: string | null;
+  worktreePath: string | null;
+  archived: boolean;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;

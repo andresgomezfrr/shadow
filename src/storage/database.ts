@@ -81,6 +81,7 @@ export type CreateObservationInput = {
   severity?: string;
   title: string;
   detail?: Record<string, unknown>;
+  context?: Record<string, unknown>;
 };
 
 export type CreateSuggestionInput = {
@@ -101,6 +102,7 @@ export type CreateRunInput = {
   repoId: string;
   repoIds?: string[];
   suggestionId?: string | null;
+  parentRunId?: string | null;
   kind: string;
   prompt: string;
 };
@@ -527,12 +529,35 @@ export class ShadowDatabase {
   // --- Observations ---
 
   createObservation(input: CreateObservationInput): ObservationRecord {
-    const id = randomUUID();
     const now = new Date().toISOString();
+
+    // Dedup: look for existing active/acknowledged observation with same key
+    const existing = this.database
+      .prepare(
+        `SELECT id, votes, context_json FROM observations
+         WHERE repo_id = ? AND kind = ? AND title = ? AND status IN ('active', 'acknowledged')
+         LIMIT 1`,
+      )
+      .get(input.repoId, input.kind, input.title) as
+      | { id: string; votes: number; context_json: string }
+      | undefined;
+
+    if (existing) {
+      const oldContext = jsonParse(existing.context_json, {} as Record<string, unknown>);
+      const merged = mergeContext(oldContext, input.context ?? {});
+      this.database
+        .prepare('UPDATE observations SET votes = votes + 1, last_seen_at = ?, context_json = ? WHERE id = ?')
+        .run(now, JSON.stringify(merged), existing.id);
+      return this.getObservation(existing.id)!;
+    }
+
+    const id = randomUUID();
     this.database
       .prepare(
-        `INSERT INTO observations (id, repo_id, source_kind, source_id, kind, severity, title, detail_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO observations
+         (id, repo_id, source_kind, source_id, kind, severity, title, detail_json, context_json,
+          votes, status, first_seen_at, last_seen_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?, ?)`,
       )
       .run(
         id,
@@ -543,6 +568,9 @@ export class ShadowDatabase {
         input.severity ?? 'info',
         input.title,
         JSON.stringify(input.detail ?? {}),
+        JSON.stringify(input.context ?? {}),
+        now,
+        now,
         now,
       );
     return this.getObservation(id)!;
@@ -553,7 +581,7 @@ export class ShadowDatabase {
     return row ? mapObservation(row) : null;
   }
 
-  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; limit?: number }): ObservationRecord[] {
+  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; limit?: number }): ObservationRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -569,11 +597,15 @@ export class ShadowDatabase {
       clauses.push('processed = ?');
       values.push(filters.processed ? 1 : 0);
     }
+    if (filters?.status && filters.status !== 'all') {
+      clauses.push('status = ?');
+      values.push(filters.status);
+    }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     const limit = filters?.limit ? `LIMIT ${filters.limit}` : '';
     return this.database
-      .prepare(`SELECT * FROM observations ${where} ORDER BY created_at DESC ${limit}`)
+      .prepare(`SELECT * FROM observations ${where} ORDER BY votes DESC, last_seen_at DESC ${limit}`)
       .all(...values)
       .map(mapObservation);
   }
@@ -589,6 +621,28 @@ export class ShadowDatabase {
     this.database
       .prepare('UPDATE observations SET processed = 1, suggestion_id = ? WHERE id = ?')
       .run(suggestionId ?? null, id);
+  }
+
+  updateObservationStatus(id: string, status: string): void {
+    this.database
+      .prepare('UPDATE observations SET status = ? WHERE id = ?')
+      .run(status, id);
+  }
+
+  resolveStaleObservations(): number {
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const result = this.database
+      .prepare(`UPDATE observations SET status = 'resolved' WHERE status = 'active' AND last_seen_at < ?`)
+      .run(cutoff);
+    return (result as unknown as { changes: number }).changes;
+  }
+
+  expireStaleObservations(): number {
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const result = this.database
+      .prepare(`UPDATE observations SET status = 'expired' WHERE status IN ('active', 'acknowledged') AND last_seen_at < ?`)
+      .run(cutoff);
+    return (result as unknown as { changes: number }).changes;
   }
 
   // --- Suggestions ---
@@ -681,12 +735,15 @@ export class ShadowDatabase {
     return row ? mapHeartbeat(row) : null;
   }
 
-  updateHeartbeat(id: string, updates: Partial<Pick<HeartbeatRecord, 'phase' | 'activity' | 'reposObserved' | 'observationsCreated' | 'suggestionsCreated' | 'durationMs' | 'finishedAt'>>): void {
+  updateHeartbeat(id: string, updates: Partial<Pick<HeartbeatRecord, 'phase' | 'phases' | 'activity' | 'reposObserved' | 'observationsCreated' | 'suggestionsCreated' | 'llmCalls' | 'tokensUsed' | 'eventsQueued' | 'memoriesPromoted' | 'memoriesDemoted' | 'durationMs' | 'finishedAt'>>): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
       if (key === 'reposObserved') {
         sets.push('repos_observed_json = ?');
+        values.push(JSON.stringify(value));
+      } else if (key === 'phases') {
+        sets.push('phases_json = ?');
         values.push(JSON.stringify(value));
       } else {
         sets.push(`${toSnake(key)} = ?`);
@@ -703,6 +760,13 @@ export class ShadowDatabase {
       .prepare('SELECT * FROM heartbeats ORDER BY started_at DESC LIMIT 1')
       .get();
     return row ? mapHeartbeat(row) : null;
+  }
+
+  listHeartbeats(limit = 20): HeartbeatRecord[] {
+    return this.database
+      .prepare(`SELECT * FROM heartbeats ORDER BY started_at DESC LIMIT ?`)
+      .all(limit)
+      .map(mapHeartbeat);
   }
 
   // --- Interactions ---
@@ -793,14 +857,15 @@ export class ShadowDatabase {
     const now = new Date().toISOString();
     this.database
       .prepare(
-        `INSERT INTO runs (id, repo_id, repo_ids_json, suggestion_id, kind, prompt, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, repo_id, repo_ids_json, suggestion_id, parent_run_id, kind, prompt, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
         input.repoId,
         JSON.stringify(input.repoIds ?? []),
         input.suggestionId ?? null,
+        input.parentRunId ?? null,
         input.kind,
         input.prompt,
         now,
@@ -813,7 +878,7 @@ export class ShadowDatabase {
     return row ? mapRun(row) : null;
   }
 
-  listRuns(filters?: { status?: string; repoId?: string }): RunRecord[] {
+  listRuns(filters?: { status?: string; repoId?: string; archived?: boolean }): RunRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -825,6 +890,14 @@ export class ShadowDatabase {
       clauses.push('repo_id = ?');
       values.push(filters.repoId);
     }
+    // Default: hide archived unless explicitly requested
+    if (filters?.archived === true) {
+      clauses.push('archived = 1');
+    } else if (filters?.archived !== undefined) {
+      clauses.push('archived = 0');
+    } else {
+      clauses.push('archived = 0');
+    }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     return this.database
@@ -833,7 +906,7 @@ export class ShadowDatabase {
       .map(mapRun);
   }
 
-  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'startedAt' | 'finishedAt'>>): void {
+  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'archived' | 'startedAt' | 'finishedAt'>>): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
@@ -1083,10 +1156,35 @@ function mapObservation(row: unknown): ObservationRecord {
     severity: str(d.severity),
     title: str(d.title),
     detail: jsonParse(d.detail_json, {}),
+    context: jsonParse(d.context_json, {}),
+    votes: num(d.votes ?? 1),
+    status: str(d.status ?? 'active'),
+    firstSeenAt: str(d.first_seen_at ?? d.created_at),
+    lastSeenAt: str(d.last_seen_at ?? d.created_at),
     processed: bool(d.processed),
     suggestionId: strOrNull(d.suggestion_id),
     createdAt: str(d.created_at),
   };
+}
+
+function mergeContext(
+  old: Record<string, unknown>,
+  fresh: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = { ...old, ...fresh };
+  if (Array.isArray(old.files) && Array.isArray(fresh.files)) {
+    merged.files = [...new Set([...(old.files as string[]), ...(fresh.files as string[])])];
+  }
+  const sessions = new Set<string>();
+  if (old.sessionId) sessions.add(String(old.sessionId));
+  if (Array.isArray(old.sessionIds)) (old.sessionIds as string[]).forEach((s) => sessions.add(s));
+  if (fresh.sessionId) sessions.add(String(fresh.sessionId));
+  if (Array.isArray(fresh.sessionIds)) (fresh.sessionIds as string[]).forEach((s) => sessions.add(s));
+  if (sessions.size > 0) {
+    merged.sessionIds = [...sessions];
+    delete merged.sessionId;
+  }
+  return merged;
 }
 
 function mapSuggestion(row: unknown): SuggestionRecord {
@@ -1118,10 +1216,16 @@ function mapHeartbeat(row: unknown): HeartbeatRecord {
   return {
     id: str(d.id),
     phase: str(d.phase),
+    phases: jsonParse(d.phases_json, []),
     activity: strOrNull(d.activity),
     reposObserved: jsonParse(d.repos_observed_json, []),
     observationsCreated: num(d.observations_created),
     suggestionsCreated: num(d.suggestions_created),
+    llmCalls: num(d.llm_calls ?? 0),
+    tokensUsed: num(d.tokens_used ?? 0),
+    eventsQueued: num(d.events_queued ?? 0),
+    memoriesPromoted: num(d.memories_promoted ?? 0),
+    memoriesDemoted: num(d.memories_demoted ?? 0),
     durationMs: d.duration_ms != null ? num(d.duration_ms) : null,
     startedAt: str(d.started_at),
     finishedAt: strOrNull(d.finished_at),
@@ -1163,12 +1267,16 @@ function mapRun(row: unknown): RunRecord {
     repoId: str(d.repo_id),
     repoIds: jsonParse(d.repo_ids_json, []),
     suggestionId: strOrNull(d.suggestion_id),
+    parentRunId: strOrNull(d.parent_run_id),
     kind: str(d.kind),
     status: str(d.status),
     prompt: str(d.prompt),
     resultSummaryMd: strOrNull(d.result_summary_md),
     errorSummary: strOrNull(d.error_summary),
     artifactDir: strOrNull(d.artifact_dir),
+    sessionId: strOrNull(d.session_id),
+    worktreePath: strOrNull(d.worktree_path),
+    archived: bool(d.archived),
     startedAt: strOrNull(d.started_at),
     finishedAt: strOrNull(d.finished_at),
     createdAt: str(d.created_at),

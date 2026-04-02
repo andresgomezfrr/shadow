@@ -172,7 +172,7 @@ function getModel(ctx: HeartbeatContext, phase: 'analyze' | 'suggest' | 'consoli
 export async function activityAnalyze(
   ctx: HeartbeatContext,
   observations: ObservationRecord[],
-): Promise<{ patternsDetected: number; memoriesCreated: number; llmCalls: number; tokensUsed: number }> {
+): Promise<{ patternsDetected: number; memoriesCreated: number; llmCalls: number; tokensUsed: number; observationsCreated: number }> {
   // Load recent interactions from Claude CLI sessions
   // Use a wider window (2h) to capture enough context, not just since last heartbeat
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
@@ -188,7 +188,7 @@ export async function activityAnalyze(
   const repoContextSummary = summarizeRepoContexts(repoContexts);
 
   if (observations.length === 0 && recentInteractions.length === 0 && recentConversations.length === 0) {
-    return { patternsDetected: 0, memoriesCreated: 0, llmCalls: 0, tokensUsed: 0 };
+    return { patternsDetected: 0, memoriesCreated: 0, llmCalls: 0, tokensUsed: 0, observationsCreated: 0 };
   }
 
   // Gather file paths and topics from observations for memory retrieval
@@ -243,7 +243,7 @@ export async function activityAnalyze(
     'Return JSON with three fields:',
     '{',
     '  "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core", "scope": "personal"|"repo"|"cross-repo" }],',
-    '  "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure", "title": string, "detail": string, "severity": "info"|"warning"|"high" }],',
+    '  "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure", "title": string, "detail": string, "severity": "info"|"warning"|"high", "files": string[] }],',
     '  "profileUpdates": { "moodHint": "neutral"|"happy"|"focused"|"tired"|"frustrated"|"excited"|"concerned", "energyLevel": "low"|"normal"|"high" }',
     '}',
     '',
@@ -254,6 +254,7 @@ export async function activityAnalyze(
     '- pattern: "developer always works on heartbeat after modifying activities.ts"',
     '- infrastructure: "no tests configured for the shadow repo"',
     'Only create observations for things that are ACTIONABLE. Not activity logs.',
+    'For each observation, include a "files" array with up to 5 relevant file paths (empty array if none).',
     '',
     'For profileUpdates, infer from the conversations and activity:',
     '- moodHint: "frustrated" if user complains about bugs/issues, "excited" if celebrating wins, "focused" if deep in implementation, "tired" if working late or short messages, "happy" if positive tone, "concerned" if discussing risks/problems, "neutral" if unclear',
@@ -312,6 +313,7 @@ export async function activityAnalyze(
   let tokensUsed = 0;
   let patternsDetected = 0;
   let memoriesCreated = 0;
+  let observationsCreated = 0;
 
   try {
     const adapter = selectAdapter(ctx.config);
@@ -404,13 +406,23 @@ export async function activityAnalyze(
           }
         }
 
-        // Create LLM-generated observations
+        // Create LLM-generated observations with enriched context
         if (parsed.observations && Array.isArray(parsed.observations)) {
           for (const obs of parsed.observations) {
             if (!obs.title) continue;
-            // Use first repo if available, otherwise use the shadow repo or skip
             const firstRepoId = repoIds.size > 0 ? [...repoIds][0] : (repoContexts.length > 0 ? repoContexts[0].repoId : null);
             if (!firstRepoId) continue;
+
+            const repo = repoContexts.find((rc) => rc.repoId === firstRepoId);
+            const obsAny = obs as Record<string, unknown>;
+            const context: Record<string, unknown> = {
+              repoName: repo?.repoName ?? 'unknown',
+              branch: repo?.currentBranch ?? 'unknown',
+              files: Array.isArray(obsAny.files) ? (obsAny.files as string[]).slice(0, 5) : [],
+            };
+            const sessionIds = [...new Set(recentConversations.map((c) => c.session).filter(Boolean))];
+            if (sessionIds.length > 0) context.sessionIds = sessionIds;
+
             ctx.db.createObservation({
               repoId: firstRepoId,
               sourceKind: 'llm',
@@ -419,7 +431,9 @@ export async function activityAnalyze(
               severity: obs.severity ?? 'info',
               title: obs.title,
               detail: { description: obs.detail ?? '' },
+              context,
             });
+            observationsCreated++;
           }
         }
       } catch (parseErr) {
@@ -450,7 +464,7 @@ export async function activityAnalyze(
   rotateInteractionsLog(ctx.config, new Date().toISOString());
   rotateConversationsLog(ctx.config);
 
-  return { patternsDetected, memoriesCreated, llmCalls, tokensUsed };
+  return { patternsDetected, memoriesCreated, llmCalls, tokensUsed, observationsCreated };
 }
 
 // --- Activity: Suggest ---
@@ -541,7 +555,21 @@ export async function activitySuggest(
     // Parse suggestions from LLM response
     if (result.status === 'success' && result.output) {
       try {
-        const parsed = JSON.parse(result.output) as {
+        // Extract JSON — LLM may wrap in markdown fences
+        let jsonStr = result.output.trim();
+        const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[1].trim();
+        }
+        if (!jsonStr.startsWith('{')) {
+          const braceIdx = jsonStr.indexOf('{');
+          const lastBrace = jsonStr.lastIndexOf('}');
+          if (braceIdx !== -1 && lastBrace !== -1) {
+            jsonStr = jsonStr.slice(braceIdx, lastBrace + 1);
+          }
+        }
+
+        const parsed = JSON.parse(jsonStr) as {
           suggestions?: Array<{
             kind?: string;
             title?: string;
@@ -554,9 +582,18 @@ export async function activitySuggest(
           }>;
         };
 
+        console.error(`[shadow:suggest] Parsed ${parsed.suggestions?.length ?? 0} suggestions`);
+
         if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
+          // Dedup: skip suggestions that already exist as pending with same kind+title
+          const existingPending = ctx.db.listSuggestions({ status: 'pending' });
+          const existingKeys = new Set(existingPending.map((s) => `${s.kind}:${s.title}`));
+
           for (const sug of parsed.suggestions) {
             if (!sug.title || !sug.summaryMd) continue;
+            const key = `${sug.kind ?? 'improvement'}:${sug.title}`;
+            if (existingKeys.has(key)) continue;
+            existingKeys.add(key);
 
             ctx.db.createSuggestion({
               repoId: sug.repoId ?? (repoIds.length === 1 ? repoIds[0] : null),
@@ -574,12 +611,13 @@ export async function activitySuggest(
             suggestionsCreated++;
           }
         }
-      } catch {
-        // Failed to parse LLM output — not fatal
+      } catch (parseErr) {
+        console.error('[shadow:suggest] Failed to parse LLM output:', parseErr instanceof Error ? parseErr.message : parseErr);
+        console.error('[shadow:suggest] Raw output (first 500 chars):', result.output.slice(0, 500));
       }
     }
-  } catch {
-    // LLM call failed — continue without suggestions
+  } catch (llmErr) {
+    console.error('[shadow:suggest] LLM call failed:', llmErr instanceof Error ? llmErr.message : llmErr);
   }
 
   return { suggestionsCreated, llmCalls, tokensUsed };
@@ -711,6 +749,10 @@ function rotateInteractionsLog(config: ShadowConfig, cutoffIso: string): void {
 export async function activityNotify(
   ctx: HeartbeatContext,
 ): Promise<{ eventsQueued: number }> {
+  // Observation lifecycle maintenance
+  ctx.db.resolveStaleObservations();
+  ctx.db.expireStaleObservations();
+
   let eventsQueued = 0;
 
   // Check proactivity level to decide what gets queued
@@ -739,8 +781,8 @@ export async function activityNotify(
     eventsQueued++;
   }
 
-  // Check for high-severity observations that should trigger immediate notifications
-  const recentObservations = ctx.db.listObservations({ processed: false, limit: 50 });
+  // Check for high-severity active observations that should trigger immediate notifications
+  const recentObservations = ctx.db.listObservations({ status: 'active', limit: 50 });
   const criticalObservations = recentObservations.filter(
     (obs) => obs.severity === 'high' || obs.severity === 'critical',
   );

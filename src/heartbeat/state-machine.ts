@@ -172,13 +172,19 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
     result.eventsQueued = notifyResult.eventsQueued;
 
     result.phases.push('idle');
+    result.durationMs = Date.now() - startTime;
     ctx.db.updateHeartbeat(heartbeatRecord.id, {
       phase: 'idle',
+      phases: result.phases,
       activity: null,
-      durationMs: Date.now() - startTime,
+      durationMs: result.durationMs,
+      llmCalls: result.llmCalls,
+      tokensUsed: result.tokensUsed,
+      eventsQueued: result.eventsQueued,
+      memoriesPromoted: result.memoriesPromoted,
+      memoriesDemoted: result.memoriesDemoted,
       finishedAt: new Date().toISOString(),
     });
-    result.durationMs = Date.now() - startTime;
     return result;
   }
 
@@ -193,6 +199,7 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
 
     result.llmCalls += analyzeResult.llmCalls;
     result.tokensUsed += analyzeResult.tokensUsed;
+    result.observationsCreated += analyzeResult.observationsCreated ?? 0;
 
     // --- SUGGEST phase ---
     // Suggest if notable observations AND trust >= 2 AND not in focus mode
@@ -236,8 +243,16 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
 
   ctx.db.updateHeartbeat(heartbeatRecord.id, {
     phase: 'idle',
+    phases: result.phases,
     activity: null,
+    observationsCreated: result.observationsCreated,
+    suggestionsCreated: result.suggestionsCreated,
     durationMs: result.durationMs,
+    llmCalls: result.llmCalls,
+    tokensUsed: result.tokensUsed,
+    eventsQueued: result.eventsQueued,
+    memoriesPromoted: result.memoriesPromoted,
+    memoriesDemoted: result.memoriesDemoted,
     finishedAt: new Date().toISOString(),
   });
 

@@ -293,6 +293,64 @@ export const migrations: Migration[] = [
       SELECT rowid, title, body_md, tags_json FROM memories;
     `,
   },
+  {
+    version: 3,
+    name: 'observation_lifecycle',
+    sql: `
+      -- Observation lifecycle: votes, status, timestamps, context
+      ALTER TABLE observations ADD COLUMN votes INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE observations ADD COLUMN status TEXT NOT NULL DEFAULT 'active';
+      ALTER TABLE observations ADD COLUMN first_seen_at TEXT;
+      ALTER TABLE observations ADD COLUMN last_seen_at TEXT;
+      ALTER TABLE observations ADD COLUMN context_json TEXT NOT NULL DEFAULT '{}';
+
+      -- Backfill timestamps from created_at
+      UPDATE observations SET first_seen_at = created_at, last_seen_at = created_at WHERE first_seen_at IS NULL;
+
+      -- Mark old repo-source observations as expired
+      UPDATE observations SET status = 'expired' WHERE source_kind = 'repo';
+
+      -- Index for status-filtered queries
+      CREATE INDEX IF NOT EXISTS idx_observations_status ON observations(status, last_seen_at DESC);
+
+      -- Index for dedup lookups
+      CREATE INDEX IF NOT EXISTS idx_observations_dedup ON observations(repo_id, kind, title);
+    `,
+  },
+  {
+    version: 4,
+    name: 'heartbeat_phases',
+    sql: `
+      ALTER TABLE heartbeats ADD COLUMN phases_json TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
+  {
+    version: 5,
+    name: 'heartbeat_stats',
+    sql: `
+      ALTER TABLE heartbeats ADD COLUMN llm_calls INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE heartbeats ADD COLUMN tokens_used INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE heartbeats ADD COLUMN events_queued INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE heartbeats ADD COLUMN memories_promoted INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE heartbeats ADD COLUMN memories_demoted INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
+  {
+    version: 6,
+    name: 'run_session',
+    sql: `
+      ALTER TABLE runs ADD COLUMN session_id TEXT;
+      ALTER TABLE runs ADD COLUMN parent_run_id TEXT;
+    `,
+  },
+  {
+    version: 7,
+    name: 'run_worktree_archive',
+    sql: `
+      ALTER TABLE runs ADD COLUMN worktree_path TEXT;
+      ALTER TABLE runs ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {
