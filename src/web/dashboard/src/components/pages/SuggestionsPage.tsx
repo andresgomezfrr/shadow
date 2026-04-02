@@ -46,13 +46,19 @@ export function SuggestionsPage() {
     // If highlighting, show all so the item is visible regardless of status
     return highlightId ? '' : 'pending';
   });
-  const { data, refresh } = useApi(
+  const [kindFilter, setKindFilter] = useState('');
+  const { data: rawData, refresh } = useApi(
     () => fetchSuggestions({ status: status || undefined }),
     [status],
     30_000,
   );
   const { data: repos } = useApi(fetchRepos, [], 60_000);
   const { data: runs } = useApi(fetchRuns, [], 30_000);
+
+  // Derive available kinds from data for filter tabs
+  const kinds = rawData ? [...new Set(rawData.map((s) => s.kind))].sort() : [];
+  const kindOptions = [{ label: 'All', value: '' }, ...kinds.map((k) => ({ label: k, value: k }))];
+  const data = rawData && kindFilter ? rawData.filter((s) => s.kind === kindFilter) : rawData;
 
   // Handle highlight
   if (highlightId && !pulseId && data?.some((s) => s.id === highlightId)) {
@@ -90,10 +96,16 @@ export function SuggestionsPage() {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
         <h1 className="text-xl font-semibold">Suggestions</h1>
         <FilterTabs options={STATUSES} active={status} onChange={setStatus} />
       </div>
+      {kinds.length > 1 && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs text-text-muted">Kind:</span>
+          <FilterTabs options={kindOptions} active={kindFilter} onChange={setKindFilter} />
+        </div>
+      )}
 
       {runCreated && (
         <div className="mb-4 p-3 rounded-lg bg-green/10 border border-green/30 text-sm text-green">
