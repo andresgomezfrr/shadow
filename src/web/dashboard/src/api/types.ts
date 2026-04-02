@@ -214,12 +214,16 @@ export type DailySummary = {
     observationsToday: number;
     memoriesCreatedToday: number;
     pendingSuggestions: number;
+    runsToReview: number;
     pendingEvents: number;
   };
   topObservations: Observation[];
+  recentMemories: { id: string; title: string; kind: string; layer: string; createdAt: string }[];
+  runsToReview: Run[];
   pendingSuggestions: Suggestion[];
   repos: { id: string; name: string; path: string; lastObservedAt: string | null }[];
   tokens: { input: number; output: number; calls: number };
+  lastHeartbeat: { startedAt: string; phases: string[]; observationsCreated: number } | null;
 };
 
 export const TRUST_NAMES: Record<number, string> = {

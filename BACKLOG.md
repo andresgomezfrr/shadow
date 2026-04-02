@@ -34,8 +34,8 @@ react-markdown instalado. Markdown component con estilos Tailwind. Aplicado en R
 ### `[done]` Dashboard — sidebar badges con contadores
 Sidebar muestra badges numéricas en: Suggestions (pending), Observations (active), Runs (to review). Se actualiza cada 15s via /api/status.
 
-### Morning page mejorada
-No resume bien la actividad. Incluir: qué aprendió Shadow (memorias nuevas), sugerencias pendientes, runs to review, estado de repos.
+### `[done]` Morning page mejorada
+Secciones: greeting, metrics (5 cards), last heartbeat phases, what Shadow learned (memorias), runs to review (links), pending suggestions (accept/dismiss with reason), observations (links), repos.
 
 ### Memorias con trazabilidad al heartbeat
 No se puede ver "qué aprendió Shadow en este heartbeat". Añadir `heartbeat_id` o `source_id` a memories.

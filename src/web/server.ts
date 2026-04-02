@@ -147,6 +147,8 @@ async function handleApi(
       const suggestions = db.listSuggestions({ status: 'pending' });
       const usage = db.getUsageSummary('day');
       const events = db.listPendingEvents();
+      const runsToReview = db.listRuns({ status: 'completed' });
+      const lastHeartbeat = db.getLastHeartbeat();
       return json(res, {
         date: todayStart.toISOString().split('T')[0],
         profile,
@@ -154,12 +156,16 @@ async function handleApi(
           observationsToday: todayObs.length,
           memoriesCreatedToday: todayMemories.length,
           pendingSuggestions: suggestions.length,
+          runsToReview: runsToReview.length,
           pendingEvents: events.length,
         },
         topObservations: todayObs.slice(0, 10),
+        recentMemories: todayMemories.slice(0, 5).map((m) => ({ id: m.id, title: m.title, kind: m.kind, layer: m.layer, createdAt: m.createdAt })),
+        runsToReview: runsToReview.slice(0, 5),
         pendingSuggestions: suggestions.slice(0, 20),
         repos: repos.map((r) => ({ id: r.id, name: r.name, path: r.path, lastObservedAt: r.lastObservedAt })),
         tokens: { input: usage.totalInputTokens, output: usage.totalOutputTokens, calls: usage.totalCalls },
+        lastHeartbeat: lastHeartbeat ? { startedAt: lastHeartbeat.startedAt, phases: lastHeartbeat.phases, observationsCreated: lastHeartbeat.observationsCreated } : null,
       });
     }
 

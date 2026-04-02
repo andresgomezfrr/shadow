@@ -95,7 +95,8 @@ export function MorningPage() {
   }, [refresh]);
 
   const handleDismiss = useCallback(async (id: string) => {
-    await dismissSuggestion(id);
+    const note = window.prompt('Reason for dismissing (optional):');
+    await dismissSuggestion(id, note || undefined);
     setDismissed((s) => new Set(s).add(id));
     refresh();
   }, [refresh]);
@@ -124,12 +125,61 @@ export function MorningPage() {
       </div>
 
       {/* Activity summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-        <MetricCard label="Observations today" value={data.activity.observationsToday} />
-        <MetricCard label="New memories" value={data.activity.memoriesCreatedToday} />
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
+        <MetricCard label="Observations" value={data.activity.observationsToday} />
+        <MetricCard label="Memories" value={data.activity.memoriesCreatedToday} />
         <MetricCard label="Suggestions" value={data.activity.pendingSuggestions} accent />
-        <MetricCard label="Tokens used" value={formatTokens(data.tokens.input + data.tokens.output)} />
+        <MetricCard label="Runs to review" value={data.activity.runsToReview} accent={data.activity.runsToReview > 0} />
+        <MetricCard label="Tokens" value={formatTokens(data.tokens.input + data.tokens.output)} />
       </div>
+
+      {/* Last heartbeat */}
+      {data.lastHeartbeat && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold mb-3">💜 Last heartbeat</h2>
+          <div className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-2 flex-wrap text-xs">
+            {(data.lastHeartbeat.phases ?? []).filter((p) => !['wake', 'idle', 'notify'].includes(p)).map((p, i) => (
+              <Badge key={i} className={p === 'analyze' ? 'text-purple bg-purple/15' : p === 'suggest' ? 'text-accent bg-accent-soft' : 'text-text-dim bg-border'}>{p}</Badge>
+            ))}
+            {data.lastHeartbeat.observationsCreated > 0 && <span className="text-text-dim">{data.lastHeartbeat.observationsCreated} observations created</span>}
+            <span className="text-text-muted ml-auto">{timeAgo(data.lastHeartbeat.startedAt)}</span>
+          </div>
+        </section>
+      )}
+
+      {/* What Shadow learned */}
+      {data.recentMemories && data.recentMemories.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold mb-3">🧠 What Shadow learned today</h2>
+          <div className="flex flex-col gap-1.5">
+            {data.recentMemories.map((m) => (
+              <div key={m.id} className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center gap-2">
+                <Badge className="text-purple bg-purple/15">{m.layer}</Badge>
+                <Badge className="text-text-dim bg-border">{m.kind}</Badge>
+                <span className="text-[13px] flex-1 truncate">{m.title}</span>
+                <span className="text-xs text-text-muted shrink-0">{timeAgo(m.createdAt)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Runs to review */}
+      {data.runsToReview && data.runsToReview.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold mb-3">▶ Runs to review</h2>
+          <div className="flex flex-col gap-1.5">
+            {data.runsToReview.map((r) => (
+              <a key={r.id} href={`/runs?highlight=${r.id}`} className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center gap-2 hover:border-accent transition-colors no-underline">
+                <Badge className="text-green bg-green/15">completed</Badge>
+                <Badge className="text-text-dim bg-border">{r.kind}</Badge>
+                <span className="text-[13px] text-text flex-1 truncate">{r.prompt.slice(0, 80)}</span>
+                <span className="text-xs text-text-muted shrink-0">{timeAgo(r.createdAt)}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Suggestions queue */}
       <section className="mb-8">
@@ -162,17 +212,17 @@ export function MorningPage() {
       {/* Today's observations */}
       {data.topObservations.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-lg font-semibold mb-4">👀 Today's observations</h2>
+          <h2 className="text-lg font-semibold mb-4">👀 Active observations</h2>
           <div className="flex flex-col gap-2">
             {data.topObservations.map((obs) => {
               const sevClass = SEVERITY_COLORS[obs.severity] ?? SEVERITY_COLORS.info;
               return (
-                <div key={obs.id} className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">
+                <a key={obs.id} href={`/observations?highlight=${obs.id}`} className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3 hover:border-accent transition-colors no-underline">
                   <Badge className={sevClass}>{obs.severity}</Badge>
                   <Badge className="text-text-dim bg-border">{obs.kind}</Badge>
                   {obs.votes > 1 && <Badge className="text-orange bg-orange/15">{obs.votes}x</Badge>}
-                  <span className="text-[13px] flex-1 truncate">{obs.title}</span>
-                </div>
+                  <span className="text-[13px] text-text flex-1 truncate">{obs.title}</span>
+                </a>
               );
             })}
           </div>
