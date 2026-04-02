@@ -28,11 +28,11 @@ Suggest prompt ahora instruye: solo sugerencias técnicas, no operativas. No "co
 ### `[done]` Sugerencias aceptadas/dismissed influyen en futuras
 Suggest prompt recibe historial de accepted y dismissed con feedback.
 
-### Dashboard — markdown rendering
-Resultados de runs y sugerencias contienen markdown que se renderiza como texto plano. Usar react-markdown para tablas, code blocks, headers.
+### `[done]` Dashboard — markdown rendering
+react-markdown instalado. Markdown component con estilos Tailwind. Aplicado en RunsPage, SuggestionsPage, MorningPage.
 
-### Dashboard — sidebar badges con contadores
-Mostrar en el sidebar: pending suggestions, runs to review, observaciones active. El usuario sabe dónde hay cosas pendientes sin navegar.
+### `[done]` Dashboard — sidebar badges con contadores
+Sidebar muestra badges numéricas en: Suggestions (pending), Observations (active), Runs (to review). Se actualiza cada 15s via /api/status.
 
 ### Morning page mejorada
 No resume bien la actividad. Incluir: qué aprendió Shadow (memorias nuevas), sugerencias pendientes, runs to review, estado de repos.

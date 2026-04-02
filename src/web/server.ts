@@ -61,11 +61,15 @@ async function handleApi(
       const systemsCount = db.listSystems().length;
       const lastHeartbeat = db.getLastHeartbeat();
       const usage = db.getUsageSummary('day');
+      const activeObservations = db.listObservations({ status: 'active' }).length;
+      const runsToReview = db.listRuns({ status: 'completed' }).length;
       return json(res, {
         profile,
         counts: {
           memories: memoriesCount,
           pendingSuggestions,
+          activeObservations,
+          runsToReview,
           repos: reposCount,
           contacts: contactsCount,
           systems: systemsCount,

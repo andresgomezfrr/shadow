@@ -196,6 +196,8 @@ export type StatusResponse = {
   counts: {
     memories: number;
     pendingSuggestions: number;
+    activeObservations: number;
+    runsToReview: number;
     repos: number;
     contacts: number;
     systems: number;

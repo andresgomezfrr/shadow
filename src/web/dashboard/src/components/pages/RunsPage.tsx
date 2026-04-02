@@ -2,6 +2,7 @@ import { useApi } from '../../hooks/useApi';
 import { useHighlight } from '../../hooks/useHighlight';
 import { fetchRuns, executeRun, createRunSession, discardRun, markRunExecutedManual, archiveRun } from '../../api/client';
 import { Badge } from '../common/Badge';
+import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
 import { FilterTabs } from '../common/FilterTabs';
 import { useState, useCallback } from 'react';
@@ -173,8 +174,8 @@ export function RunsPage() {
                     )}
 
                     {run.resultSummaryMd && (
-                      <div className="bg-bg rounded p-3 text-xs text-text-dim whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
-                        {run.resultSummaryMd}
+                      <div className="bg-bg rounded p-3 max-h-96 overflow-y-auto">
+                        <Markdown>{run.resultSummaryMd}</Markdown>
                       </div>
                     )}
 

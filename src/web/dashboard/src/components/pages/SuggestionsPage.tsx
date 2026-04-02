@@ -4,6 +4,7 @@ import { useApi } from '../../hooks/useApi';
 import { fetchSuggestions, fetchRepos, fetchRuns, acceptSuggestion, dismissSuggestion } from '../../api/client';
 import { FilterTabs } from '../common/FilterTabs';
 import { Badge } from '../common/Badge';
+import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
 import type { Repo } from '../../api/types';
 
@@ -126,7 +127,7 @@ export function SuggestionsPage() {
                         <><span>·</span><a href={`/observations?highlight=${s.sourceObservationId}`} className="text-accent hover:underline">from observation</a></>
                       )}
                     </div>
-                    <div className="text-[13px] text-text-dim leading-relaxed">{s.summaryMd}</div>
+                    <Markdown>{s.summaryMd}</Markdown>
                   </div>
                   <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
                     <Badge title="Impact: how much value this change would bring (1=low, 5=high)" className="text-green bg-green/15">↑{s.impactScore}</Badge>

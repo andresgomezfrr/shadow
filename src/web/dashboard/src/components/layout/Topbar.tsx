@@ -1,10 +1,8 @@
-import { useApi } from '../../hooks/useApi';
-import { fetchStatus } from '../../api/client';
 import { TRUST_NAMES, MOOD_EMOJIS } from '../../api/types';
+import type { StatusResponse } from '../../api/types';
 
-export function Topbar() {
-  const { data } = useApi(fetchStatus, [], 30_000);
-  const profile = data?.profile;
+export function Topbar({ status }: { status?: StatusResponse | null }) {
+  const profile = status?.profile;
   const trustLevel = profile?.trustLevel ?? 1;
   const trustName = TRUST_NAMES[trustLevel] ?? 'Unknown';
   const mood = profile?.moodHint ?? 'neutral';

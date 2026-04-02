@@ -4,6 +4,7 @@ import { fetchDailySummary, acceptSuggestion, dismissSuggestion } from '../../ap
 import { TRUST_NAMES, MOOD_EMOJIS, SEVERITY_COLORS } from '../../api/types';
 import type { Suggestion } from '../../api/types';
 import { Badge } from '../common/Badge';
+import { Markdown } from '../common/Markdown';
 import { MetricCard } from '../common/MetricCard';
 import { EmptyState } from '../common/EmptyState';
 
@@ -64,7 +65,7 @@ function SuggestionReviewCard({
           )}
         </div>
       </div>
-      <div className="text-[13px] text-text-dim leading-relaxed mb-4">{suggestion.summaryMd}</div>
+      <div className="mb-4"><Markdown>{suggestion.summaryMd}</Markdown></div>
       <div className="flex gap-2">
         <button
           onClick={() => handleAction('accept')}
