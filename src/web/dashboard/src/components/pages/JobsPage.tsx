@@ -75,7 +75,7 @@ const TYPE_FILTERS = [
 
 const TYPE_COLORS: Record<string, string> = {
   heartbeat: 'text-purple bg-purple/15',
-  suggest: 'text-accent bg-accent-soft',
+  suggest: 'text-green bg-green/15',
   consolidate: 'text-orange bg-orange/15',
   reflect: 'text-blue bg-blue/15',
 };
@@ -134,9 +134,10 @@ export function JobsPage() {
       <div className="bg-card border border-border rounded-lg p-3 mb-4 text-xs space-y-1.5">
         <div className="flex items-center gap-3 flex-wrap">
           <Badge className={TYPE_COLORS.heartbeat}>heartbeat</Badge>
-          <span className="text-text-muted">every 15m</span>
-          <span className="text-text-muted">·</span>
+          <span className="text-text-muted">every 15m · </span>
           <span className="text-text font-mono">{formatCountdown(schedule?.heartbeat?.nextAt, now)}</span>
+          <span className="text-text-muted">→ if activity →</span>
+          <Badge className={TYPE_COLORS.suggest}>suggest</Badge>
           <button
             onClick={handleTrigger}
             disabled={!canTrigger}
@@ -144,10 +145,6 @@ export function JobsPage() {
           >
             {hasRunning ? 'Running...' : triggered ? 'Triggered...' : 'Trigger'}
           </button>
-        </div>
-        <div className="flex items-center gap-3">
-          <Badge className={TYPE_COLORS.suggest}>suggest</Badge>
-          <span className="text-text-muted">after heartbeat with activity</span>
         </div>
         <div className="flex items-center gap-3">
           <Badge className={TYPE_COLORS.consolidate}>consolidate</Badge>
@@ -194,9 +191,9 @@ export function JobsPage() {
                   className="bg-accent/5 border border-accent/30 rounded-lg px-4 py-3 animate-pulse"
                 >
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Badge className="text-accent bg-accent-soft">running</Badge>
-                    <Badge className={PHASE_STYLES[hb.phase] ?? PHASE_STYLES.idle}>{hb.phase}</Badge>
-                    {hb.activity && <span className="text-xs text-text-dim">{hb.activity}</span>}
+                    <Badge className={TYPE_COLORS[hb.type] ?? 'text-text-dim bg-border'}>{hb.type}</Badge>
+                    <span className="text-xs text-accent">running</span>
+                    {hb.activity && <span className="text-xs text-text-dim">· {hb.activity}</span>}
                     <span className="text-xs text-text-muted ml-auto">{timeAgo(hb.startedAt)}</span>
                   </div>
                 </div>
@@ -227,9 +224,7 @@ export function JobsPage() {
               >
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge className={TYPE_COLORS[hb.type] ?? 'text-text-dim bg-border'}>{hb.type}</Badge>
-                  {phases.map((p, i) => (
-                    <Badge key={i} className={PHASE_STYLES[p] ?? PHASE_STYLES.idle}>{p}</Badge>
-                  ))}
+                  <span className="text-xs text-text-muted">{phases.join(' → ')}</span>
                   <span className="text-xs text-text-muted">{duration}</span>
                   {hb.llmCalls > 0 && (
                     <span className="text-xs text-purple">{hb.llmCalls} LLM</span>
