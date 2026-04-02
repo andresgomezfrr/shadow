@@ -113,8 +113,8 @@ FTS5 similarity check al crear/enseñar memorias. Si contradice existente → ma
 ### Execute plan — verificación de resultado
 Revisar diff generado, correr tests, presentar resumen de cambios.
 
-### Suggestion Snooze
-Estado intermedio: pending → snoozed → re-pending tras X días. "No ahora, pero recuérdamelo." CLI + dashboard + MCP tool.
+### ~~Suggestion Snooze~~ ✅
+Estado intermedio: pending → snoozed → re-pending tras X días. **Done**: engine + daemon tick + API + MCP + CLI + dashboard dropdown (3h/6h/1d/3d/7d).
 
 ### LLM Memory Extraction post-Run
 Cuando un run completa, analizar el output con LLM para extraer memorias ("este repo necesita X para compilar"). El output se guarda pero no se analiza.
