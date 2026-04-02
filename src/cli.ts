@@ -282,15 +282,17 @@ if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
 fi
 # Events removed from status line — delivered immediately, always noise
 
-# Heartbeat countdown
+# Heartbeat countdown (heart pulses between ♥︎ and ♡ each refresh)
 if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
   HB_TS=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "\${NEXT_HB%%.*}" "+%s" 2>/dev/null || date -u -d "$NEXT_HB" "+%s" 2>/dev/null || echo 0)
   NOW_TS=$(date +%s)
   HB_REMAINING=$(( (HB_TS - NOW_TS) / 60 ))
+  BEAT=$(( NOW_TS / 15 % 2 ))
+  if [ "$BEAT" -eq 0 ]; then HB_ICON="♥︎"; else HB_ICON="♡"; fi
   if [ "$HB_REMAINING" -gt 0 ] 2>/dev/null; then
-    LINE="$LINE | ♥ \${HB_REMAINING}m"
+    LINE="$LINE | \$HB_ICON \${HB_REMAINING}m"
   else
-    LINE="$LINE | ♥ now"
+    LINE="$LINE | \$HB_ICON now"
   fi
 fi
 
