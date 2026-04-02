@@ -298,22 +298,36 @@ async function handleApi(
           const repoPath = repo?.path ?? process.cwd();
           return json(res, { sessionId: run.sessionId, command: `cd ${repoPath} && claude --resume ${run.sessionId}` });
         }
-        // Create a new session by running claude with --print to seed it (async, doesn't block web server)
+        // Create a session seeded with the plan + context. No --system-prompt so Claude has MCP access.
         const config = loadConfig();
         const { spawn: spawnChild } = await import('node:child_process');
         const { randomUUID } = await import('node:crypto');
         const sessionId: string = randomUUID();
-        const prompt = `You are Shadow, helping implement a plan. Here is the context:\n\n## Plan\n${run.resultSummaryMd}\n\n## Original suggestion\n${run.prompt}\n\nReady to help implement this. What would you like to start with?`;
+        const suggestion = run.suggestionId ? db.getSuggestion(run.suggestionId) : null;
+        const repo = db.getRepo(run.repoId);
+        const cwd = repo?.path ?? process.cwd();
+        const prompt = [
+          `You are Shadow, helping implement a plan. You have MCP tools and filesystem access.`,
+          '',
+          `## Suggestion: ${suggestion?.title ?? run.kind}`,
+          suggestion?.summaryMd ?? run.prompt,
+          suggestion?.reasoningMd ? `\n## Reasoning\n${suggestion.reasoningMd}` : '',
+          run.resultSummaryMd ? `\n## Plan\n${run.resultSummaryMd}` : '',
+          '',
+          `## Repository\n- ${repo?.name ?? 'unknown'} (${cwd})`,
+          repo?.testCommand ? `- Test: \`${repo.testCommand}\`` : '',
+          repo?.buildCommand ? `- Build: \`${repo.buildCommand}\`` : '',
+          '',
+          'Use shadow_memory_search for relevant context. Read files as needed.',
+          'Ready to help implement this. What would you like to start with?',
+        ].filter(Boolean).join('\n');
         const env: Record<string, string> = { ...process.env as Record<string, string> };
         const claudeBin = config.claudeBin ?? 'claude';
         if (config.claudeExtraPath) env.PATH = `${config.claudeExtraPath}:${env.PATH ?? ''}`;
-        const repo = db.getRepo(run.repoId);
-        const cwd = repo?.path ?? process.cwd();
 
         const result = await new Promise<{ stdout: string }>((resolve) => {
           const child = spawnChild(claudeBin, [
             '--print', '--output-format', 'json',
-            '--system-prompt', 'You are Shadow, an engineering companion. Help the user implement the plan step by step.',
             '--session-id', sessionId,
             prompt,
           ], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });

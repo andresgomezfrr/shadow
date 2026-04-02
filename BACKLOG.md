@@ -63,8 +63,8 @@ Tabla `feedback` (migration v9). Razón en: resolve observación, dismiss sugere
 ### `[done]` 🔴 Job system Phase 1 → [`docs/plan-job-system.md`](docs/plan-job-system.md)
 Tabla `jobs` (migration v10), scheduler en daemon, suggest separado del heartbeat, consolidate cada 6h. Dashboard Jobs con filter tabs por tipo. **Pendiente: reflect job.**
 
-### 🔴 Trust levels redesign → [`docs/plan-trust-levels.md`](docs/plan-trust-levels.md)
-L1-2: plan completo + open session. L3: execute con branch/draft PR. L4: proactivo con LLM evaluator. L5: auto-merge selectivo por repo. **Depende de feedback loop y job system.**
+### `[done]` 🔴 Trust L2 complete → [`docs/plan-trust-levels.md`](docs/plan-trust-levels.md)
+L2: plan completo (Claude MCP + filesystem), Open Session con briefing rico, Execute manual en worktree + branch. **Pendiente: L3 auto-execute con confidence/doubts gate, L4 proactivo, L5 auto-merge.**
 
 ### 🟡 Reflect job (dentro de job system)
 Job diario que sintetiza feedback + memorias → SOUL dinámico. Actualiza la "personalidad aprendida" de Shadow. Complementa SOUL.md estático. Opus + effort high.

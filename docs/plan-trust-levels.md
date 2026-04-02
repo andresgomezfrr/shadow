@@ -7,17 +7,19 @@ Trust levels define how much autonomy Shadow has. The progression is about **who
 ## Levels
 
 ### L1-2 — Observer/Advisor (0-35)
-- Accept sugerencia → **plan completo** (con archivos + memorias + contexto)
-- Open session disponible — tú implementas con contexto
-- Shadow **no ejecuta** — solo genera planes
-- Razón: Shadow aún no te conoce lo suficiente para ejecutar con calidad
+- Accept sugerencia → **plan completo** (Claude usa MCP + filesystem para generar plan detallado)
+- **Open session** — tú implementas con contexto (briefing + MCP tools)
+- **Execute** — disponible como acción manual. Shadow implementa en worktree + branch. Pero tú decides cuándo pulsar.
+- Shadow propone, tú decides qué hacer con la propuesta.
 
 ### L3 — Assistant (35-60)
-- Accept → plan completo → puedes:
-  - **Open session** — tú implementas
-  - **Execute** — Shadow implementa en worktree, crea branch `shadow/xxx`, deja **draft PR** o branch con diff
-- Review obligatorio. Shadow nunca mergea en L3.
-- El plan incluye archivos leídos, memorias relevantes, observaciones relacionadas
+- Accept → genera plan → **auto-execute si no tiene dudas**
+- Shadow evalúa su propio plan: `{ confidence: 'high' | 'medium' | 'low', doubts: string[] }`
+- **Sin dudas (confidence high)** → auto-execute en worktree + branch. Te deja el branch/draft PR listo.
+- **Con dudas** → se comporta como L2. Deja el plan en `completed`, espera tu input.
+- Shadow nunca mergea en L3. Review obligatorio.
+- Las dudas pueden ser: archivo no encontrado, cambio multi-repo ambiguo, observaciones contradictorias, test command desconocido.
+- TODO: diseñar mecanismo de feedback para responder dudas de Shadow (¿chat en el dashboard? ¿nota en el run?)
 
 ### L4 — Partner (60-85)
 - Shadow actúa **proactivamente** — no espera accept
@@ -39,14 +41,17 @@ Trust levels define how much autonomy Shadow has. The progression is about **who
 
 ## Resumen
 
-| Nivel | Quién inicia | Qué produce | Quién mergea |
-|---|---|---|---|
-| L1-2 | Tú (accept) | Plan completo + Open session | Tú (manual) |
-| L3 | Tú (accept) | Branch + diff / draft PR | Tú (review) |
-| L4 | Shadow (filtrado por evaluator) | PR ready + tests verdes | Tú (review) |
-| L5 | Shadow | PR + merge donde permitido | Shadow (permisos) / Tú (resto) |
+| Nivel | Quién inicia | Quién ejecuta | Condición | Quién mergea |
+|---|---|---|---|---|
+| L1-2 | Tú (accept) | Tú (open session) o Shadow (execute manual) | Tú decides | Tú |
+| L3 | Tú (accept) | Shadow (auto si sin dudas) o tú (si dudas) | confidence=high + no doubts | Tú (review) |
+| L4 | Shadow (proactivo) | Shadow (filtrado por evaluator) | evaluator pass | Tú (review) |
+| L5 | Shadow | Shadow | evaluator + permisos | Shadow (donde permitido) / Tú (resto) |
 
 ## Prerequisitos
-- Feedback loop completo (ver plan-feedback-loop.md)
-- Job system (ver plan-job-system.md)
-- GitHub MCP integration (para PRs)
+- ✅ Feedback loop completo
+- ✅ Job system
+- ✅ Runner con MCP delegation
+- Para L3: confidence/doubts en plan output
+- Para L4: LLM evaluator job, GitHub MCP integration
+- Para L5: auto-merge config per repo
