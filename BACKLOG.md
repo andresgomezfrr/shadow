@@ -89,8 +89,8 @@ Sugerencias y runs que afectan múltiples repos simultáneamente. El schema ya s
 ### Tests
 Zero test coverage. Mínimo: database CRUD, FTS5 search, heartbeat state machine, observation dedup, suggestion lifecycle, run pipeline.
 
-### Memorias mal clasificadas en core
-Revisar criterio del prompt de analyze para layer core vs hot.
+### `[done]` Memorias mal clasificadas en core
+4 archivadas (obsoletas/duplicados), 8 movidas a hot (bug fixes, detalles de implementación). Prompt afinado: "core = lo que necesitarías si reescribes desde cero". Default a hot cuando hay duda.
 
 ### `[done]` Emoji Guide desactualizada
 Actualizada: status line example corregido (mood+energy antes de trust), tokens eliminados de notificaciones.
