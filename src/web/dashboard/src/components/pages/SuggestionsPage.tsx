@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
-import { fetchSuggestions, fetchRepos, fetchRuns, acceptSuggestion, dismissSuggestion, sendFeedback } from '../../api/client';
+import { fetchSuggestions, fetchRepos, fetchRuns, acceptSuggestion, dismissSuggestion } from '../../api/client';
+import { ThumbsFeedback } from '../common/ThumbsFeedback';
 import { FilterTabs } from '../common/FilterTabs';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
@@ -145,16 +146,7 @@ export function SuggestionsPage() {
                     <Badge title="Impact: how much value this change would bring (1=low, 5=high)" className="text-green bg-green/15">↑{s.impactScore}</Badge>
                     <Badge title="Confidence: how sure Shadow is about this suggestion (0-100%)" className="text-blue bg-blue/15">{Math.round(s.confidenceScore)}%</Badge>
                     {s.riskScore > 1 && <Badge title="Risk: potential for breaking things (1=safe, 5=dangerous)" className="text-orange bg-orange/15">⚠ {s.riskScore}</Badge>}
-                    <button
-                      onClick={() => sendFeedback('suggestion', s.id, 'thumbs_up')}
-                      className="text-xs bg-transparent border-none cursor-pointer opacity-40 hover:opacity-100 transition-opacity"
-                      title="More like this"
-                    >👍</button>
-                    <button
-                      onClick={() => sendFeedback('suggestion', s.id, 'thumbs_down')}
-                      className="text-xs bg-transparent border-none cursor-pointer opacity-40 hover:opacity-100 transition-opacity"
-                      title="Less like this"
-                    >👎</button>
+                    <ThumbsFeedback targetKind="suggestion" targetId={s.id} />
                   </div>
                 </div>
                 {s.status === 'pending' && (
