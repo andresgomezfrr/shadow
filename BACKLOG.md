@@ -113,5 +113,17 @@ FTS5 similarity check al crear/enseñar memorias. Si contradice existente → ma
 ### Execute plan — verificación de resultado
 Revisar diff generado, correr tests, presentar resumen de cambios.
 
+### Suggestion Snooze
+Estado intermedio: pending → snoozed → re-pending tras X días. "No ahora, pero recuérdamelo." CLI + dashboard + MCP tool.
+
+### LLM Memory Extraction post-Run
+Cuando un run completa, analizar el output con LLM para extraer memorias ("este repo necesita X para compilar"). El output se guarda pero no se analiza.
+
+### Idle Escalation
+Tras 5 heartbeats consecutivos sin actividad (0 insights, 0 observations), duplicar intervalo (max 1h). Ahorra tokens cuando no hay trabajo activo.
+
+### Suggestion Expiry → Preference Memory
+Cuando una sugerencia expira sin respuesta, generar memoria: "usuario ignora sugerencias de tipo X". Feedback implícito que alimenta futuras sugerencias.
+
 ### Configurable allowedTools → [`docs/plan-allowed-tools-config.md`](docs/plan-allowed-tools-config.md)
 User configura qué MCPs externos puede usar Shadow (GitHub, Slack, Linear).
