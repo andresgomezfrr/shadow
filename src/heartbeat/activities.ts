@@ -572,7 +572,7 @@ export async function activitySuggest(
             existingKeys.add(key);
 
             ctx.db.createSuggestion({
-              repoId: sug.repoId ?? (repoIds.length === 1 ? repoIds[0] : null),
+              repoId: repoIds.length === 1 ? repoIds[0] : null, // Never trust LLM repoId — use observation context
               repoIds,
               sourceObservationId: observations[0]?.id ?? null,
               kind: sug.kind ?? 'improvement',

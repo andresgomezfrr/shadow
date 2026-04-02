@@ -207,22 +207,28 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     // db is guaranteed non-null at this point (created in Step 2)
     const _db = db!;
 
-    // --- Stale job detector: mark abandoned running jobs as failed ---
-    const staleJobs = _db.listJobs({ status: 'running' });
-    const staleThresholdMs = 30 * 60 * 1000;
-    for (const job of staleJobs) {
-      const age = Date.now() - new Date(job.startedAt).getTime();
-      if (age > staleThresholdMs) {
-        _db.updateJob(job.id, {
-          status: 'failed',
-          result: { error: 'stale — daemon restarted while job was running' },
-          finishedAt: new Date().toISOString(),
-        });
-        console.error(`[daemon] Marked stale job ${job.type}/${job.id.slice(0, 8)} as failed (age: ${Math.round(age / 60000)}m)`);
+    // --- Job scheduler helpers ---
+
+    function cleanStaleJobs(): void {
+      const staleJobs = _db.listJobs({ status: 'running' });
+      const staleThresholdMs = 10 * 60 * 1000; // 10min — no job should take longer
+      for (const job of staleJobs) {
+        const age = Date.now() - new Date(job.startedAt).getTime();
+        if (age > staleThresholdMs) {
+          _db.updateJob(job.id, {
+            status: 'failed',
+            result: { error: `stale — stuck running for ${Math.round(age / 60000)}m` },
+            finishedAt: new Date().toISOString(),
+          });
+          console.error(`[daemon] Marked stale job ${job.type}/${job.id.slice(0, 8)} as failed (${Math.round(age / 60000)}m)`);
+        }
       }
     }
 
-    // --- Job scheduler helpers ---
+    // Clean stale jobs on startup
+    cleanStaleJobs();
+
+    // --- Job scheduler continued ---
     function shouldRunJob(type: string, intervalMs: number): boolean {
       // Check for manual trigger files
       const triggerPath = resolve(config.resolvedDataDir, `${type}-trigger`);
@@ -265,6 +271,9 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     while (running) {
       let worked = false;
       const tickStart = new Date();
+
+      // Clean stale jobs every tick (catches jobs stuck by suspend/crash)
+      cleanStaleJobs();
 
       // --- Job: heartbeat (extract + observe) ---
       if (shouldRunJob('heartbeat', config.heartbeatIntervalMs)) {

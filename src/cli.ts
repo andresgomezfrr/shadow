@@ -285,7 +285,7 @@ if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
   HB_REMAINING=$(( (HB_TS - NOW_TS) / 60 ))
   if [ "$HB_REMAINING" -gt 0 ] 2>/dev/null; then
     LINE="$LINE | ♥ \${HB_REMAINING}m"
-  elif [ "$HB_REMAINING" -ge 0 ] 2>/dev/null; then
+  else
     LINE="$LINE | ♥ now"
   fi
 fi
