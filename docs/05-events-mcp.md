@@ -1,5 +1,7 @@
 # Phase 5 — Events + MCP
 
+> **⚠️ Historical document** — This was the original v0.3 design spec. The implementation has evolved significantly. For current architecture see [CLAUDE.md](../CLAUDE.md) and [docs/README.md](README.md).
+
 **Status: Not started**
 
 ## Goal
@@ -208,7 +210,9 @@ export async function startStdioMcpServer(
   "tools": [
     {
       "name": "shadow_memory_search",
-      "description": "Search Shadow's memory using FTS5. Returns ranked results with BM25 scoring. All memory retrieval goes through this tool.\n\nExample: { \"query\": \"authentication testing\" }",
+      "description": "Search Shadow's memory using FTS5. Returns ranked results with BM25 scoring. All memory retrieval goes through this tool.
+
+Example: { \"query\": \"authentication testing\" }",
       "inputSchema": {
         "type": "object",
         "properties": {

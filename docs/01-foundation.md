@@ -1,5 +1,7 @@
 # Phase 1 — Foundation
 
+> **⚠️ Historical document** — This was the original v0.3 design spec. The implementation has evolved significantly. For current architecture see [CLAUDE.md](../CLAUDE.md) and [docs/README.md](README.md).
+
 **Status: DONE**
 
 ## Goal

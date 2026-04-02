@@ -1,5 +1,7 @@
 # Phase 4 — Suggestion Lifecycle + Runner
 
+> **⚠️ Historical document** — This was the original v0.3 design spec. The implementation has evolved significantly. For current architecture see [CLAUDE.md](../CLAUDE.md) and [docs/README.md](README.md).
+
 **Status: Not started**
 
 ## Goal
@@ -244,11 +246,13 @@ function buildPrompt(
 ): string {
   const memorySection = pack.relevantMemories
     .map(m => `- ${m.title}: ${m.bodyMd}`)
-    .join('\n');
+    .join('
+');
 
   const repoSection = pack.repos
     .map(r => `- ${r.name}: ${r.path} (${r.languages?.join(', ') ?? 'unknown'})`)
-    .join('\n');
+    .join('
+');
 
   const personality = config.personalityLevel ?? 'neutral';
 
@@ -271,7 +275,8 @@ function buildPrompt(
     `- Work directly in the repository working tree.`,
     `- Do not create commits or push anything.`,
     `- Print a concise summary of what changed.`,
-  ].join('\n');
+  ].join('
+');
 }
 ```
 
