@@ -10,7 +10,7 @@ import {
 
 // --- Types ---
 
-export type HeartbeatPhase = 'wake' | 'observe' | 'analyze' | 'notify' | 'idle';
+export type HeartbeatPhase = 'wake' | 'observe' | 'cleanup' | 'analyze' | 'notify' | 'idle';
 
 export type HeartbeatContext = {
   config: ShadowConfig;
@@ -119,8 +119,9 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
     return result;
   }
 
-  // --- ANALYZE phase ---
+  // --- CLEANUP + ANALYZE phase ---
   if ((hasObservations || unprocessedCount > 0 || hasRecentInteractions || hasRecentConversations) && !focusActive) {
+    result.phases.push('cleanup');
     result.phases.push('analyze');
     const unprocessed = ctx.db.listObservations({ processed: false });
     const analyzeResult = await activityAnalyze(ctx, unprocessed);

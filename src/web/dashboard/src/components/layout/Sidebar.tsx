@@ -15,7 +15,7 @@ const NAV_ITEMS: { to: string; icon: string; label: string; countKey?: keyof Cou
   { to: '/usage', icon: '📈', label: 'Usage' },
   { to: '/jobs', icon: '⚙️', label: 'Jobs' },
   { to: '/runs', icon: '▶', label: 'Runs', countKey: 'runsToReview' },
-  { to: '/profile', icon: '⚙', label: 'Settings' },
+  { to: '/profile', icon: '👾', label: 'Settings' },
   { to: '/emoji-guide', icon: '📖', label: 'Emoji Guide' },
 ];
 
