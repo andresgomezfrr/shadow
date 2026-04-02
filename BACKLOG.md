@@ -89,8 +89,8 @@ Sugerencias y runs multi-repo. Schema lo soporta, UI no.
 
 ## Long-term — Features (evaluar)
 
-### Validación Zod de resultados LLM por tipo de job
-Schemas Zod para output de extract/observe/suggest. safeParse en frontera LLM → DB.
+### ~~Validación Zod de resultados LLM por tipo de job~~ ✅
+Schemas Zod para output de extract/observe/suggest. safeParse en frontera LLM → DB. **Done**: schemas.ts + safeParse en activities.ts.
 
 ### Circuit breaker para LLM calls
 Tras N fallos consecutivos, abrir circuito y saltar calls por cooldown.

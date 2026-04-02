@@ -37,6 +37,10 @@ Historical record of completed backlog items.
 - **CLAUDE.md actualizado** — 37 tools, 15 routes, Current State completo
 - **Memorias mal clasificadas en core** — Prompt afinado, 4 archivadas, 8 movidas a hot
 
+## Long-term / Features (completada 2026-04-02)
+
+- **Validación Zod de resultados LLM por tipo de job** — schemas.ts con ExtractResponseSchema, ObserveResponseSchema, SuggestResponseSchema. safeParse en activities.ts reemplaza `as {}` casts.
+
 ## Long-term / Arquitectura (completada 2026-04-02)
 
 - **Feedback loop completo** — Tabla feedback, 👍/👎 toggle, razones en dismiss/resolve/discard
