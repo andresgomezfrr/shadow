@@ -278,11 +278,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       // --- Job: heartbeat (extract + observe) ---
       if (shouldRunJob('heartbeat', config.heartbeatIntervalMs)) {
         const { runHeartbeat } = await import('../heartbeat/state-machine.js');
+        // Get last heartbeat BEFORE creating the new job — otherwise getLastJob returns the new one
+        const previousHeartbeat = _db.getLastJob('heartbeat');
         await runJobType('heartbeat', async () => {
           const profile = _db.ensureProfile();
-          const lastHb = _db.getLastJob('heartbeat');
           const pendingEvts = _db.listPendingEvents().length;
-          const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: lastHb, pendingEventCount: pendingEvts });
+          const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts });
           lastHeartbeatAt = new Date().toISOString();
           lastHeartbeatPhase = null;
           nextHeartbeatAt = new Date(Date.now() + config.heartbeatIntervalMs).toISOString();
