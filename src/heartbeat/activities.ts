@@ -275,6 +275,7 @@ export async function activityAnalyze(
     });
     llmCalls++;
     tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    console.error(`[shadow:extract] status=${result.status} tokens=${(result.inputTokens ?? 0) + (result.outputTokens ?? 0)}`);
     ctx.db.recordLlmUsage({ source: 'heartbeat_extract', sourceId: heartbeatId ?? null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
     if (result.status === 'success' && result.output) {

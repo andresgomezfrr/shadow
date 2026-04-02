@@ -34,7 +34,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
     // Always allow Shadow's own MCP tools without permission prompts
     args.push('--allowedTools', 'mcp__shadow__*');
 
-    args.push(pack.prompt);
+    // Prompt via stdin — avoids ARG_MAX limit with large prompts (conversations, memories, etc.)
 
     const env = { ...process.env };
     if (this.config.claudeExtraPath) {
@@ -45,7 +45,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
 
     try {
       const { stdout, stderr, exitCode } = await spawnAsync(
-        this.config.claudeBin, args, { cwd, timeout: timeoutMs, env },
+        this.config.claudeBin, args, { cwd, timeout: timeoutMs, env, stdin: pack.prompt },
       );
 
       const finishedAt = new Date().toISOString();
@@ -89,7 +89,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
         exitCode,
         startedAt,
         finishedAt,
-        output: outputText,
+        output: outputText || stderr,
         summaryHint: null,
         inputTokens,
         outputTokens,
@@ -146,7 +146,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
 function spawnAsync(
   command: string,
   args: string[],
-  options: { cwd: string; timeout: number; env: Record<string, string | undefined> },
+  options: { cwd: string; timeout: number; env: Record<string, string | undefined>; stdin?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
@@ -154,6 +154,14 @@ function spawnAsync(
       env: options.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+
+    // Write prompt to stdin if provided
+    if (options.stdin) {
+      child.stdin.write(options.stdin);
+      child.stdin.end();
+    } else {
+      child.stdin.end();
+    }
 
     const chunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
