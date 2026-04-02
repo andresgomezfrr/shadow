@@ -25,6 +25,9 @@ Actualizado 2026-04-02.
 ### `[done]` Markdown en MemoriesPage + body expandible
 Body renderizado con Markdown component. Expand muestra: body, tags, scope, confidence, source (type + heartbeat ID), accesses, dates.
 
+### Suggestions — filtro por kind
+Segundo nivel de quick filters en SuggestionsPage para filtrar por tipo: feature, bug, improvement, refactor. Debajo o al lado del filtro de status actual.
+
 ---
 
 ## Prioridad baja
