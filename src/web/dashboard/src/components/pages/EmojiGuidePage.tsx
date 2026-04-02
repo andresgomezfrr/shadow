@@ -23,14 +23,14 @@ export function EmojiGuidePage() {
         <p className="text-sm text-text-dim mb-3">Shadow&apos;s face in the status line. Changes expression based on state, with random micro-variations between refreshes. Color indicates activity type.</p>
         <GhostTable rows={[
           ['purple', '{•‿•}', '{•_•}', '{•‿•}♪', 'ready (neutral)', 'Idle, waiting'],
-          ['green', '{•ᴗ•}', '{•ᴗ•}♪', '{•‿•}~', 'ready (happy)', 'Idle, good mood'],
+          ['green', '{•ᴗ•}', '{•ᴗ•}🎶', '{•‿•}🏓', 'ready (happy)', 'Idle, good mood'],
           ['cyan', '{•‿•}', '{•.•}', '{•_•}.', 'watching', 'Few recent interactions'],
-          ['cyan', '{°_°}', '{°‿°}', '{°_°}~', 'learning', 'Many interactions, absorbing'],
+          ['cyan', '{°_°}📚', '{°‿°}✏️', '{°_°}📖', 'learning', 'Many interactions, absorbing'],
           ['yellow', '{•_•}🧹', '{•‿•}♻️', '{•_•}🗑️', 'cleaning', 'Heartbeat: observation cleanup'],
-          ['yellow', '{°_°}..', '{°_°}...', '{°.°}..', 'analyzing', 'Heartbeat: extract + observe'],
+          ['yellow', '{°_°}..', '{°_°}...', '{°.°}🔎', 'analyzing', 'Heartbeat: extract + observe'],
           ['green', '{•ᴗ•}💡', '{•‿•}💡', '{•ᴗ•}!', 'suggesting', 'Heartbeat: generating ideas'],
           ['yellow', '{•_•}⚙', '{•‿•}⚙', '{•_•}~', 'consolidating', 'Heartbeat: memory maintenance'],
-          ['blue', '{-_-}~', '{-‿-}~', '{-_-}..', 'reflecting', 'Daily soul reflection'],
+          ['blue', '{-_-}~', '{-‿-}~', '{-_-}💭', 'reflecting', 'Daily soul reflection'],
           ['purple', '{•̀_•́}', '{•̀‿•́}', '{•̀_•́}▸', 'focus', 'Focus mode active'],
           ['dim', '{-_-}z', '{-_-}zz', '{-‿-}zzZ', 'sleeping', 'Daemon off'],
           ['dim', '{-_-}', '{-_-}.', '{-‿-}', 'tired', 'Mood: tired'],

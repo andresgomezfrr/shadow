@@ -202,7 +202,7 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
       case $V in 0) MASCOT="{°_°}" ;; 1) MASCOT="{°.°}" ;; *) MASCOT="{°_°}." ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="observing" ;;
     *analyze*)
-      case $V in 0) MASCOT="{°_°}.." ;; 1) MASCOT="{°_°}..." ;; *) MASCOT="{°.°}.." ;; esac
+      case $V in 0) MASCOT="{°_°}.." ;; 1) MASCOT="{°_°}..." ;; *) MASCOT="{°.°}🔎" ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="analyzing" ;;
     *suggest*)
       case $V in 0) MASCOT="{•ᴗ•}💡" ;; 1) MASCOT="{•‿•}💡" ;; *) MASCOT="{•ᴗ•}!" ;; esac
@@ -211,7 +211,7 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
       case $V in 0) MASCOT="{•_•}⚙" ;; 1) MASCOT="{•‿•}⚙" ;; *) MASCOT="{•_•}~" ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="consolidating" ;;
     *reflect*)
-      case $V in 0) MASCOT="{-_-}~" ;; 1) MASCOT="{-‿-}~" ;; *) MASCOT="{-_-}.." ;; esac
+      case $V in 0) MASCOT="{-_-}~" ;; 1) MASCOT="{-‿-}~" ;; *) MASCOT="{-_-}💭" ;; esac
       MCOLOR="$CB"; ACTIVITY_TEXT="reflecting" ;;
     *)
       case $V in 0) MASCOT="{•_•}" ;; 1) MASCOT="{•‿•}" ;; *) MASCOT="{•_•}~" ;; esac
@@ -220,7 +220,7 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
 
 # Priority 3: Recent activity
 elif [ "$RECENT_ACTIVITY" -gt 5 ] 2>/dev/null; then
-  case $V in 0) MASCOT="{°_°}" ;; 1) MASCOT="{°‿°}" ;; *) MASCOT="{°_°}~" ;; esac
+  case $V in 0) MASCOT="{°_°}📚" ;; 1) MASCOT="{°‿°}✏️" ;; *) MASCOT="{°_°}📖" ;; esac
   MCOLOR="$CC"; ACTIVITY_TEXT="learning"
 
 elif [ "$RECENT_ACTIVITY" -gt 0 ] 2>/dev/null; then
@@ -232,7 +232,7 @@ elif [ "$DAEMON_RUNNING" = "true" ]; then
   ACTIVITY_TEXT="ready"
   case "$MOOD" in
     happy|excited)
-      case $V in 0) MASCOT="{•ᴗ•}" ;; 1) MASCOT="{•ᴗ•}♪" ;; *) MASCOT="{•‿•}~" ;; esac
+      case $V in 0) MASCOT="{•ᴗ•}" ;; 1) MASCOT="{•ᴗ•}🎶" ;; *) MASCOT="{•‿•}🏓" ;; esac
       MCOLOR="$CG" ;;
     frustrated)
       case $V in 0) MASCOT="{>_<}" ;; 1) MASCOT="{>_<}!" ;; *) MASCOT="{>.<}" ;; esac
