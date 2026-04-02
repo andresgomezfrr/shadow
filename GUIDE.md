@@ -236,13 +236,13 @@ Cuando abres Claude CLI, Shadow se presenta segun su personalidad porque:
 
 ---
 
-## 29 MCP Tools disponibles
+## 37 MCP Tools disponibles
 
 ### Personalidad
 `shadow_check_in` — personalidad, mood, contexto, eventos pendientes. Claude lo llama automaticamente.
 
-### Lectura (13)
-`shadow_status`, `shadow_repos`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`
+### Lectura (16)
+`shadow_status`, `shadow_repos`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`, `shadow_daily_summary`, `shadow_feedback`, `shadow_soul`
 
-### Escritura (15)
-`shadow_repo_add`, `shadow_repo_remove`, `shadow_contact_add`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_observe`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`
+### Escritura (20)
+`shadow_repo_add`, `shadow_repo_remove`, `shadow_contact_add`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_observe`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`

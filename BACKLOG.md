@@ -58,16 +58,16 @@ Permite cambiar layer, body, tags, kind, scope de una memoria existente. Ya no h
 ## Long-term / Arquitectura
 
 ### `[done]` 🔴 Feedback loop completo → [`docs/plan-feedback-loop.md`](docs/plan-feedback-loop.md)
-Tabla `feedback` (migration v9). Razón en: resolve observación, dismiss sugerencia, discard run, archive/modify memoria. Feedback se pasa a extract + observe prompts. MCP tools aceptan `reason` param. **Pendiente: 👍/👎 buttons en dashboard cards.**
+Tabla `feedback` (migration v9). Razón en: resolve observación, dismiss sugerencia, discard run, archive/modify memoria. 👍/👎 toggle buttons con persistencia. Feedback se pasa a extract + observe prompts.
 
-### `[done]` 🔴 Job system Phase 1 → [`docs/plan-job-system.md`](docs/plan-job-system.md)
-Tabla `jobs` (migration v10), scheduler en daemon, suggest separado del heartbeat, consolidate cada 6h. Dashboard Jobs con filter tabs por tipo. **Pendiente: reflect job.**
+### `[done]` 🔴 Job system → [`docs/plan-job-system.md`](docs/plan-job-system.md)
+Tabla `jobs` (migration v10), scheduler en daemon. Jobs: heartbeat (15min), suggest (reactivo), consolidate (6h), reflect (24h). Heartbeats table dropped. Dashboard Jobs con filter tabs + schedule header.
 
 ### `[done]` 🔴 Trust L2 complete → [`docs/plan-trust-levels.md`](docs/plan-trust-levels.md)
 L2: plan completo (Claude MCP + filesystem), Open Session con briefing rico, Execute manual en worktree + branch. **Pendiente: L3 auto-execute con confidence/doubts gate, L4 proactivo, L5 auto-merge.**
 
-### 🟡 Reflect job (dentro de job system)
-Job diario que sintetiza feedback + memorias → SOUL dinámico. Actualiza la "personalidad aprendida" de Shadow. Complementa SOUL.md estático. Opus + effort high.
+### `[done]` 🟡 Reflect job
+Job diario (Opus + effort high). Sintetiza feedback + memorias + observaciones → soul reflection. Se inyecta en extract/observe prompts. MCP tools: shadow_feedback, shadow_soul, shadow_soul_update.
 
 ### 🟡 Concepto de Proyecto
 Entidad contenedora que agrupa repos, memorias, sugerencias y observaciones. Un proyecto es permanente (ej: "Shadow", "Platform").
@@ -116,4 +116,4 @@ Plist ya no hardcodea node path. Scripts usan tsx binstub con fallback a npx. Ho
 Ghost mascot `{•‿•}` con 13 estados, 3 variantes cada uno (micro-animaciones), colores ANSI por estado (purple/cyan/yellow/green/red/dim). Reemplaza el emoji de actividad. "Shadow" removido del texto — la cara ES Shadow.
 
 ### `[done]` CLAUDE.md desactualizado
-Actualizado: 33 tools, 16 routes, Current State reescrito.
+Actualizado: 37 tools (17 read + 19 write L1 + 1 write L2), 15 routes, Current State reescrito con job system, reflect, feedback loop, ghost mascot.
