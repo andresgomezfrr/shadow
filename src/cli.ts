@@ -112,7 +112,13 @@ ${endMarker}`;
 # Shadow status line for Claude Code
 # Shows Shadow's current state with emojis — alive and expressive
 
-SHADOW_CLI="${resolve(shadowSrcDir, '..', 'node_modules', '.bin', 'tsx')} ${resolve(shadowSrcDir, 'cli.ts')}"
+SHADOW_DIR="${resolve(shadowSrcDir, '..')}"
+# Use project-relative paths so it survives node version changes
+SHADOW_CLI="$SHADOW_DIR/node_modules/.bin/tsx $SHADOW_DIR/src/cli.ts"
+# Fallback: if tsx not found (e.g. after npm rebuild), try npx
+if [ ! -x "$SHADOW_DIR/node_modules/.bin/tsx" ]; then
+  SHADOW_CLI="npx --prefix $SHADOW_DIR tsx $SHADOW_DIR/src/cli.ts"
+fi
 CACHE_FILE="${config.resolvedDataDir}/statusline-cache.txt"
 CACHE_TTL=15
 
@@ -265,7 +271,10 @@ echo "$LINE" > "$CACHE_FILE"
       // Session start hook script
       writeFileSync(sessionStartPath, `#!/bin/bash
 # Shadow SessionStart hook — injects personality and context
-exec ${resolve(shadowSrcDir, '..', 'node_modules', '.bin', 'tsx')} ${resolve(shadowSrcDir, 'cli.ts')} mcp-context 2>/dev/null
+SHADOW_DIR="${resolve(shadowSrcDir, '..')}"
+TSX="$SHADOW_DIR/node_modules/.bin/tsx"
+if [ ! -x "$TSX" ]; then TSX="npx --prefix $SHADOW_DIR tsx"; fi
+exec $TSX "$SHADOW_DIR/src/cli.ts" mcp-context 2>/dev/null
 `, 'utf8');
 
       // Post-tool-use hook script (auto-learning)
@@ -408,7 +417,6 @@ fi
   <string>com.shadow.daemon</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${process.execPath}</string>
     <string>${resolve(shadowSrcDir, '..', 'node_modules', '.bin', 'tsx')}</string>
     <string>${resolve(shadowSrcDir, 'daemon', 'runtime.ts')}</string>
   </array>

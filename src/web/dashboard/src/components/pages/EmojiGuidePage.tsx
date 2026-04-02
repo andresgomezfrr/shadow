@@ -8,10 +8,10 @@ export function EmojiGuidePage() {
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-3">Status Line</h2>
         <div className="bg-bg rounded-lg px-4 py-3 font-mono text-sm mb-4">
-          📝 Shadow learning 🔍 | 🎯⚡️ | 💡2 | ♥ 12m
+          📝 Shadow learning | 🎯⚡️ 🔍 | 💡2 | ♥ 12m
         </div>
         <p className="text-sm text-text-dim">
-          <span className="text-text">Activity</span> + Shadow + <span className="text-text">state</span> + <span className="text-text">trust badge</span> | <span className="text-text">mood + energy</span> | <span className="text-text">notifications</span> | <span className="text-text">heartbeat countdown</span>
+          <span className="text-text">Activity</span> + Shadow + <span className="text-text">state</span> | <span className="text-text">mood + energy + trust badge</span> | <span className="text-text">notifications</span> | <span className="text-text">heartbeat countdown</span>
         </p>
       </section>
 
@@ -80,7 +80,6 @@ export function EmojiGuidePage() {
         <Table rows={[
           ['💡3', 'suggestions', '3 pending suggestions to review'],
           ['📬2', 'events', '2 pending events to acknowledge'],
-          ['5k tok', 'tokens', '5000 tokens used today'],
           ['♥ 12m', 'heartbeat', 'Next heartbeat in 12 minutes'],
           ['♥ now', 'heartbeat', 'Heartbeat running right now'],
         ]} />

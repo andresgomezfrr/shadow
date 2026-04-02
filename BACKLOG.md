@@ -92,14 +92,14 @@ Zero test coverage. Mínimo: database CRUD, FTS5 search, heartbeat state machine
 ### Memorias mal clasificadas en core
 Revisar criterio del prompt de analyze para layer core vs hot.
 
-### Emoji Guide desactualizada
-No refleja el status bar actual.
+### `[done]` Emoji Guide desactualizada
+Actualizada: status line example corregido (mood+energy antes de trust), tokens eliminados de notificaciones.
 
 ### Events: clarificar propósito
 Los eventos se marcan delivered inmediatamente. Investigar si la página tiene sentido o se solapa con heartbeats/observaciones.
 
-### Status line path frágil
-Si cambia la versión de node, el path hardcodeado en el plist se rompe. Hacer dinámico.
+### `[done]` Status line path frágil
+Plist ya no hardcodea node path. Scripts usan tsx binstub con fallback a npx. Hooks resuelven paths relativos al proyecto.
 
 ### ASCII art mascota en status bar
 Evaluar un animalito en one-line ASCII art que reaccione representando a Shadow visualmente.
