@@ -5,6 +5,7 @@ import type { Memory } from '../../api/types';
 import { FilterTabs } from '../common/FilterTabs';
 import { SearchInput } from '../common/SearchInput';
 import { Badge } from '../common/Badge';
+import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
 
 const LAYERS = [
@@ -80,17 +81,19 @@ export function MemoriesPage() {
                   )}
                 </div>
                 {isOpen && (
-                  <div className="mt-3 text-sm text-text-dim leading-relaxed animate-fade-in">
-                    <p>{m.bodyMd}</p>
+                  <div className="mt-3 animate-fade-in space-y-2">
+                    <Markdown>{m.bodyMd}</Markdown>
                     {m.tags.length > 0 && (
-                      <div className="flex gap-1 mt-2 flex-wrap">
+                      <div className="flex gap-1 flex-wrap">
                         {m.tags.map((t) => (
                           <Badge key={t} className="text-text-muted bg-border">{t}</Badge>
                         ))}
                       </div>
                     )}
-                    <div className="text-xs text-text-muted mt-2">
-                      Scope: {m.scope} &middot; Source: {m.sourceType} &middot; Accesos: {m.accessCount}
+                    <div className="text-xs text-text-muted space-y-0.5">
+                      <div>Scope: {m.scope} · Confidence: {m.confidenceScore}% · Accesses: {m.accessCount}</div>
+                      <div>Source: {m.sourceType}{m.sourceId ? ` · ${m.sourceId.slice(0, 8)}` : ''}</div>
+                      <div>Created: {new Date(m.createdAt).toLocaleString()}{m.lastAccessedAt ? ` · Last accessed: ${new Date(m.lastAccessedAt).toLocaleString()}` : ''}</div>
                     </div>
                   </div>
                 )}

@@ -22,11 +22,8 @@ Actualizado 2026-04-02.
 ### `[done]` Morning page mejorada
 ### `[done]` Memorias con trazabilidad al heartbeat
 
-### Markdown en MemoriesPage
-Las memorias tienen `bodyMd` pero se muestran como texto plano. Renderizar con el componente Markdown existente al expandir.
-
-### MemoriesPage — body expandible
-Las memorias solo muestran título. Al hacer click debería expandirse mostrando el body renderizado en markdown, tags, layer, kind, source, y fecha.
+### `[done]` Markdown en MemoriesPage + body expandible
+Body renderizado con Markdown component. Expand muestra: body, tags, scope, confidence, source (type + heartbeat ID), accesses, dates.
 
 ---
 
@@ -107,5 +104,5 @@ Si cambia la versión de node, el path hardcodeado en el plist se rompe. Hacer d
 ### ASCII art mascota en status bar
 Evaluar un animalito en one-line ASCII art que reaccione representando a Shadow visualmente.
 
-### CLAUDE.md desactualizado
-Dice 30 MCP tools (son 33), 13 routes (son 16). Faltan los 3 observation lifecycle tools. Actualizar Current State section.
+### `[done]` CLAUDE.md desactualizado
+Actualizado: 33 tools, 16 routes, Current State reescrito.

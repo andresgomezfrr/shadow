@@ -52,6 +52,7 @@ export type Memory = {
   bodyMd: string;
   tags: string[];
   sourceType: string;
+  sourceId: string | null;
   confidenceScore: number;
   relevanceScore: number;
   accessCount: number;
