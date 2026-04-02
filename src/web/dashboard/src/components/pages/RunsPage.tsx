@@ -31,7 +31,8 @@ const STATUS_FILTERS = [
 ];
 
 export function RunsPage() {
-  const [statusFilter, setStatusFilter] = useState('completed');
+  const hasHighlight = new URLSearchParams(window.location.search).has('highlight');
+  const [statusFilter, setStatusFilter] = useState(hasHighlight ? '' : 'completed');
   const { data, refresh } = useApi(
     () => fetchRuns({ status: statusFilter || undefined }),
     [statusFilter],
