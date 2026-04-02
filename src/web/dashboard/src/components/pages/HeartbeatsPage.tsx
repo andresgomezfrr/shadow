@@ -45,17 +45,23 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-function useCountdown(targetIso: string | null | undefined): string {
+function useNow(): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+  return now;
+}
+
+function formatCountdown(targetIso: string | null | undefined, now: number): string {
   if (!targetIso) return '--:--';
   const diff = new Date(targetIso).getTime() - now;
   if (diff <= 0) return 'now';
-  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const mins = Math.floor((diff % 3600000) / 60000);
   const secs = Math.floor((diff % 60000) / 1000);
+  if (hours > 0) return `${hours}h ${mins}m`;
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
@@ -78,7 +84,8 @@ export function JobsPage() {
   const { data, refresh } = useApi(() => fetchJobs(typeFilter || undefined), [typeFilter], 15_000);
   const { data: status } = useApi(fetchStatus, [], 15_000);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const countdown = useCountdown(status?.nextHeartbeatAt);
+  const now = useNow();
+  const schedule = (status as Record<string, unknown>)?.jobSchedule as Record<string, { intervalMs?: number; nextAt?: string | null; trigger?: string }> | undefined;
 
   const toggle = (id: string) => {
     setExpanded((s) => {
@@ -110,27 +117,42 @@ export function JobsPage() {
   const todayActive = todayBeats.filter(isActive);
   const todayLlmCalls = todayBeats.reduce((sum, hb) => sum + hb.llmCalls, 0);
   const todayTokens = todayBeats.reduce((sum, hb) => sum + hb.tokensUsed, 0);
-  const todayObs = todayBeats.reduce((sum, hb) => sum + hb.observationsCreated, 0);
+  const todayObs = todayBeats.reduce((sum, hb) => sum + (((hb.result ?? {}) as Record<string, number>).observationsCreated ?? 0), 0);
 
   const hasRunning = data?.some((hb) => !hb.finishedAt) ?? false;
   const canTrigger = !triggered && !hasRunning;
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-2 flex-wrap">
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
         <h1 className="text-xl font-semibold">Jobs</h1>
         <FilterTabs options={TYPE_FILTERS} active={typeFilter} onChange={setTypeFilter} />
       </div>
-      <div className="flex items-center gap-4 mb-4">
-        <div className="flex items-center gap-3 ml-auto">
-          <span className="text-sm text-text-muted">Next in <span className="text-text font-mono">{countdown}</span></span>
+
+      {/* Job schedule */}
+      <div className="bg-card border border-border rounded-lg p-3 mb-4 text-xs space-y-1.5">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Badge className={TYPE_COLORS.heartbeat}>heartbeat</Badge>
+          <span className="text-text-muted">every 15m</span>
+          <span className="text-text-muted">·</span>
+          <span className="text-text font-mono">{formatCountdown(schedule?.heartbeat?.nextAt, now)}</span>
           <button
             onClick={handleTrigger}
             disabled={!canTrigger}
-            className="px-3 py-1.5 text-xs rounded-lg bg-accent-soft text-accent border-none cursor-pointer hover:bg-accent/25 transition-colors disabled:opacity-50"
+            className="px-2 py-0.5 text-xs rounded bg-accent-soft text-accent border-none cursor-pointer hover:bg-accent/25 transition-colors disabled:opacity-50 ml-auto"
           >
-            {hasRunning ? 'Running...' : triggered ? 'Triggered...' : 'Trigger now'}
+            {hasRunning ? 'Running...' : triggered ? 'Triggered...' : 'Trigger'}
           </button>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge className={TYPE_COLORS.suggest}>suggest</Badge>
+          <span className="text-text-muted">after heartbeat with activity</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge className={TYPE_COLORS.consolidate}>consolidate</Badge>
+          <span className="text-text-muted">every 6h</span>
+          <span className="text-text-muted">·</span>
+          <span className="text-text font-mono">{formatCountdown(schedule?.consolidate?.nextAt, now)}</span>
         </div>
       </div>
 

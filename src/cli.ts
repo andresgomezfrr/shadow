@@ -577,7 +577,7 @@ program
       const contacts = db.listContacts();
       const pendingSuggestions = db.countPendingSuggestions();
       const pendingEvents = db.listPendingEvents().length;
-      const lastHeartbeat = db.getLastHeartbeat();
+      const lastHeartbeat = db.getLastJob('heartbeat');
       const recentInteractions = db.listRecentInteractions(5);
       const usage = db.getUsageSummary('day');
 

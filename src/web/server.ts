@@ -77,6 +77,15 @@ async function handleApi(
         usage,
         lastHeartbeat,
         nextHeartbeatAt,
+        jobSchedule: {
+          heartbeat: { intervalMs: 15 * 60 * 1000, nextAt: nextHeartbeatAt },
+          suggest: { trigger: 'after heartbeat with activity' },
+          consolidate: (() => {
+            const lastCon = db.getLastJob('consolidate');
+            const nextAt = lastCon ? new Date(new Date(lastCon.startedAt).getTime() + 6 * 60 * 60 * 1000).toISOString() : null;
+            return { intervalMs: 6 * 60 * 60 * 1000, nextAt };
+          })(),
+        },
       });
     }
 
