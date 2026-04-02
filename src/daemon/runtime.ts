@@ -290,25 +290,37 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       };
 
       // --- Job: heartbeat (extract + observe) ---
+      // Timeout: 8min total (< 10min stale threshold). Prevents daemon from hanging on stuck LLM calls.
+      const JOB_TIMEOUT_MS = 8 * 60 * 1000;
+
       if (shouldRunJob('heartbeat', config.heartbeatIntervalMs)) {
         const { runHeartbeat } = await import('../heartbeat/state-machine.js');
         // Get last heartbeat BEFORE creating the new job — otherwise getLastJob returns the new one
         const previousHeartbeat = _db.getLastJob('heartbeat');
 
         setPhase('observe');
-        await runJobType('heartbeat', async () => {
-          const profile = _db.ensureProfile();
-          const pendingEvts = _db.listPendingEvents().length;
-          setPhase('analyze');
-          const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts });
-          lastHeartbeatAt = new Date().toISOString();
+        try {
+          await Promise.race([
+            runJobType('heartbeat', async () => {
+              const profile = _db.ensureProfile();
+              const pendingEvts = _db.listPendingEvents().length;
+              setPhase('analyze');
+              const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts });
+              setPhase(null);
+              return {
+                llmCalls: result.llmCalls, tokensUsed: result.tokensUsed, phases: result.phases,
+                result: { observationsCreated: result.observationsCreated },
+              };
+            }),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('heartbeat timeout (8min)')), JOB_TIMEOUT_MS)),
+          ]);
+        } catch (hbErr) {
+          console.error('[daemon] Heartbeat failed/timeout:', hbErr instanceof Error ? hbErr.message : hbErr);
           setPhase(null);
-          nextHeartbeatAt = new Date(Date.now() + config.heartbeatIntervalMs).toISOString();
-          return {
-            llmCalls: result.llmCalls, tokensUsed: result.tokensUsed, phases: result.phases,
-            result: { observationsCreated: result.observationsCreated },
-          };
-        });
+        }
+        // Always update timestamps, even on failure
+        lastHeartbeatAt = new Date().toISOString();
+        nextHeartbeatAt = new Date(Date.now() + config.heartbeatIntervalMs).toISOString();
         worked = true;
 
         // --- Job: suggest (runs right after heartbeat if there was activity) ---
@@ -320,18 +332,26 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         if (hadActivity && profile.trustLevel >= 2 && pendingCount < 30) {
           const { activitySuggest, activityNotify } = await import('../heartbeat/activities.js');
           setPhase('suggest');
-          await runJobType('suggest', async () => {
-            const unprocessed = _db.listObservations({ processed: false });
-            const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
-            const suggestResult = await activitySuggest(ctx, unprocessed);
-            await activityNotify(ctx);
+          try {
+            await Promise.race([
+              runJobType('suggest', async () => {
+                const unprocessed = _db.listObservations({ processed: false });
+                const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
+                const suggestResult = await activitySuggest(ctx, unprocessed);
+                await activityNotify(ctx);
+                setPhase(null);
+                return {
+                  llmCalls: suggestResult.llmCalls, tokensUsed: suggestResult.tokensUsed,
+                  phases: ['suggest', 'notify'],
+                  result: { suggestionsCreated: suggestResult.suggestionsCreated },
+                };
+              }),
+              new Promise<never>((_, reject) => setTimeout(() => reject(new Error('suggest timeout (8min)')), JOB_TIMEOUT_MS)),
+            ]);
+          } catch (sugErr) {
+            console.error('[daemon] Suggest failed/timeout:', sugErr instanceof Error ? sugErr.message : sugErr);
             setPhase(null);
-            return {
-              llmCalls: suggestResult.llmCalls, tokensUsed: suggestResult.tokensUsed,
-              phases: ['suggest', 'notify'],
-              result: { suggestionsCreated: suggestResult.suggestionsCreated },
-            };
-          });
+          }
         }
       }
 
@@ -339,17 +359,25 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       if (shouldRunJob('consolidate', 6 * 60 * 60 * 1000)) {
         const { activityConsolidate } = await import('../heartbeat/activities.js');
         setPhase('consolidate');
-        await runJobType('consolidate', async () => {
-          const profile = _db.ensureProfile();
-          const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
-          const consolidateResult = await activityConsolidate(ctx);
+        try {
+          await Promise.race([
+            runJobType('consolidate', async () => {
+              const profile = _db.ensureProfile();
+              const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
+              const consolidateResult = await activityConsolidate(ctx);
+              setPhase(null);
+              return {
+                llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,
+                phases: ['consolidate'],
+                result: { memoriesPromoted: consolidateResult.memoriesPromoted, memoriesDemoted: consolidateResult.memoriesDemoted },
+              };
+            }),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('consolidate timeout (8min)')), JOB_TIMEOUT_MS)),
+          ]);
+        } catch (conErr) {
+          console.error('[daemon] Consolidate failed/timeout:', conErr instanceof Error ? conErr.message : conErr);
           setPhase(null);
-          return {
-            llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,
-            phases: ['consolidate'],
-            result: { memoriesPromoted: consolidateResult.memoriesPromoted, memoriesDemoted: consolidateResult.memoriesDemoted },
-          };
-        });
+        }
         worked = true;
       }
 
@@ -357,17 +385,25 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       if (shouldRunJob('reflect', 24 * 60 * 60 * 1000)) {
         const { activityReflect } = await import('../heartbeat/activities.js');
         setPhase('reflect');
-        await runJobType('reflect', async () => {
-          const profile = _db.ensureProfile();
-          const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
-          const reflectResult = await activityReflect(ctx);
+        try {
+          await Promise.race([
+            runJobType('reflect', async () => {
+              const profile = _db.ensureProfile();
+              const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
+              const reflectResult = await activityReflect(ctx);
+              setPhase(null);
+              return {
+                llmCalls: reflectResult.llmCalls, tokensUsed: reflectResult.tokensUsed,
+                phases: ['reflect'],
+                result: {},
+              };
+            }),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('reflect timeout (8min)')), JOB_TIMEOUT_MS)),
+          ]);
+        } catch (refErr) {
+          console.error('[daemon] Reflect failed/timeout:', refErr instanceof Error ? refErr.message : refErr);
           setPhase(null);
-          return {
-            llmCalls: reflectResult.llmCalls, tokensUsed: reflectResult.tokensUsed,
-            phases: ['reflect'],
-            result: {},
-          };
-        });
+        }
         worked = true;
       }
 

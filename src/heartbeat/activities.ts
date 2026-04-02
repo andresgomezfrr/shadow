@@ -284,7 +284,7 @@ export async function activityAnalyze(
       const parseResult = safeParseJson(result.output, ExtractResponseSchema, 'extract');
       if (!parseResult.success) {
         console.error(`[shadow:extract] ${parseResult.error}`);
-        console.error(`[shadow:extract] Raw (200): ${result.output.slice(0, 200)}`);
+        console.error(`[shadow:extract] Raw (500): ${result.output.slice(0, 500)}`);
       } else {
         const parsed = parseResult.data;
         console.error(`[shadow:extract] ${parsed.insights.length} insights, profile: ${JSON.stringify(parsed.profileUpdates ?? {})}${parseResult.repaired ? ' (repaired)' : ''}`);
@@ -387,7 +387,7 @@ export async function activityAnalyze(
       const parseResult = safeParseJson(result.output, ObserveResponseSchema, 'observe');
       if (!parseResult.success) {
         console.error(`[shadow:observe] ${parseResult.error}`);
-        console.error(`[shadow:observe] Raw (200): ${result.output.slice(0, 200)}`);
+        console.error(`[shadow:observe] Raw (500): ${result.output.slice(0, 500)}`);
       } else {
         const parsed = parseResult.data;
         console.error(`[shadow:observe] ${parsed.observations.length} new observations${parseResult.repaired ? ' (repaired)' : ''}`);
