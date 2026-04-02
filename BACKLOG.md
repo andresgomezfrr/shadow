@@ -95,8 +95,8 @@ Revisar criterio del prompt de analyze para layer core vs hot.
 ### `[done]` Emoji Guide desactualizada
 Actualizada: status line example corregido (mood+energy antes de trust), tokens eliminados de notificaciones.
 
-### Events: clarificar propósito
-Los eventos se marcan delivered inmediatamente. Investigar si la página tiene sentido o se solapa con heartbeats/observaciones.
+### Events → Activity feed
+Convertir la página Events (actualmente vacía — eventos se marcan delivered inmediatamente) en un activity feed real: heartbeats, observations creadas, suggestions aceptadas, runs completados. Tipo timeline de actividad. Página oculta del sidebar hasta que se implemente.
 
 ### `[done]` Status line path frágil
 Plist ya no hardcodea node path. Scripts usan tsx binstub con fallback a npx. Hooks resuelven paths relativos al proyecto.
