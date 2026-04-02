@@ -283,6 +283,8 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
           body: { type: 'string', description: 'Memory body in markdown' },
           layer: { type: 'string', description: 'Memory layer (default: working)' },
           scope: { type: 'string', description: 'Memory scope (default: global)' },
+          kind: { type: 'string', description: 'Memory kind: taught, tech_stack, design_decision, workflow, problem_solved, team_knowledge, preference (default: taught)' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Tags for searchability' },
         },
         required: ['title', 'body'],
         additionalProperties: false,
@@ -295,13 +297,16 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         const body = params.body as string;
         const layer = (params.layer as string | undefined) ?? 'working';
         const scope = (params.scope as string | undefined) ?? 'global';
+        const kind = (params.kind as string | undefined) ?? 'taught';
+        const tags = (params.tags as string[] | undefined) ?? [];
 
         const memory = db.createMemory({
           layer,
           scope,
-          kind: 'taught',
+          kind,
           title,
           bodyMd: body,
+          tags,
           sourceType: 'mcp',
         });
         // Trust: teaching increases trust

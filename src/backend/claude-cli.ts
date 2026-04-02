@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 
 import type { ShadowConfig } from '../config/load-config.js';
 import type { BackendAdapter, BackendDoctorResult, BackendExecutionResult, ObjectivePack } from './types.js';
@@ -32,30 +32,25 @@ export class ClaudeCliAdapter implements BackendAdapter {
     const cwd = pack.repos.length > 0 ? pack.repos[0].path : process.cwd();
 
     try {
-      const result = spawnSync(this.config.claudeBin, args, {
-        cwd,
-        timeout: timeoutMs,
-        encoding: 'utf8',
-        env,
-        maxBuffer: 10 * 1024 * 1024,
-      });
+      const { stdout, stderr, exitCode } = await spawnAsync(
+        this.config.claudeBin, args, { cwd, timeout: timeoutMs, env },
+      );
 
       const finishedAt = new Date().toISOString();
 
-      if (result.error) {
-        const isTimeout = (result.error as NodeJS.ErrnoException).code === 'ETIMEDOUT';
+      if (exitCode === null) {
         return {
-          status: isTimeout ? 'timeout' : 'failure',
-          exitCode: result.status,
+          status: 'timeout',
+          exitCode: null,
           startedAt,
           finishedAt,
-          output: result.stderr || result.error.message,
+          output: stderr || 'Process timed out',
           summaryHint: null,
         };
       }
 
       // Parse JSON output from Claude CLI to extract text and token usage
-      let outputText = result.stdout || '';
+      let outputText = stdout;
       let inputTokens: number | undefined;
       let outputTokens: number | undefined;
       let sessionId: string | undefined;
@@ -78,8 +73,8 @@ export class ClaudeCliAdapter implements BackendAdapter {
       }
 
       return {
-        status: result.status === 0 ? 'success' : 'failure',
-        exitCode: result.status,
+        status: exitCode === 0 ? 'success' : 'failure',
+        exitCode,
         startedAt,
         finishedAt,
         output: outputText,
@@ -132,4 +127,49 @@ export class ClaudeCliAdapter implements BackendAdapter {
       };
     }
   }
+}
+
+// --- Async spawn helper (doesn't block the event loop) ---
+
+function spawnAsync(
+  command: string,
+  args: string[],
+  options: { cwd: string; timeout: number; env: Record<string, string | undefined> },
+): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    const chunks: Buffer[] = [];
+    const errChunks: Buffer[] = [];
+    child.stdout.on('data', (d: Buffer) => chunks.push(d));
+    child.stderr.on('data', (d: Buffer) => errChunks.push(d));
+
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, options.timeout);
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({
+        stdout: Buffer.concat(chunks).toString('utf8'),
+        stderr: Buffer.concat(errChunks).toString('utf8'),
+        exitCode: timedOut ? null : code,
+      });
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({
+        stdout: '',
+        stderr: err.message,
+        exitCode: null,
+      });
+    });
+  });
 }

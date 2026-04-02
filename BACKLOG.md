@@ -1,90 +1,93 @@
 # Shadow — Backlog
 
-Backlog de mejoras, features e issues pendientes. Creado 2026-04-02.
+Actualizado 2026-04-02.
 
 ---
 
-## Arquitectura / Modelo de datos
+## Prioridad alta
 
-### Concepto de Proyecto (long-term)
-Entidad contenedora que agrupa repos, memorias, sugerencias y observaciones. Un proyecto es algo permanente (ej: "Shadow", "Platform"). Varios proyectos componen un Sistema. Actualmente no existe esta agrupación — todo está suelto o asociado a repos individuales.
+### Analyze prompt con contexto de observaciones existentes
+El analyze repite las mismas observaciones porque no sabe qué ya observó. Pasar observaciones activas al prompt para evitar duplicación y generar insights más profundos.
 
-### Concepto de Tarea/Iniciativa (short/mid-term)
-Agrupación temporal (1-2 semanas) que incluye repos, PRs, docs y tickets involucrados. Diferente de Proyecto: tiene ciclo de vida acotado, con inicio y fin. Algo como un "work stream" o "sprint goal".
+### Feedback loop: dismiss/accept enriquecen memorias y futuras sugerencias
+Las notas de dismiss y los patrones de accept/dismiss deberían guardarse como memorias o pasarse al suggest prompt. Shadow no aprende del feedback real del usuario.
 
-### Dos tipos de heartbeat/jobs
-Separar el heartbeat actual en:
-- **(a) Frecuente** — actividad reciente: conversaciones, interacciones, estado actual.
-- **(b) Mantenimiento** — rota entre repos progresivamente, no revisa todos en cada iteración. Escala mejor con +40 repos.
+### Observaciones auto-resolve por condición
+"15 archivos sin commitear" debería resolverse sola tras un commit. El heartbeat verifica condiciones previas de observaciones activas y las resuelve automáticamente. Incluir nota de resolución automática.
 
----
-
-## Observaciones
-
-### Enriched context
-Observaciones deben incluir: repo name, file paths involucrados, session ID donde se discutió. Actualmente solo tienen kind + title + detail string.
-
-### Vote system (dedup)
-Cuando la misma observación se detecta de nuevo, no duplicar — incrementar `votes` en la existente. Mayor votes = mayor prioridad en dashboard. Parcialmente implementado, revisar.
-
-### Lifecycle de observaciones
-Estados: `active` → `acknowledged` → `resolved` → `expired`. Dashboard morning brief solo debe mostrar `active`.
-
-### Schema changes para observaciones
-Añadir columnas a `observations`:
-- `votes INTEGER DEFAULT 1`
-- `status TEXT DEFAULT 'active'` (active/acknowledged/resolved/expired)
-- `first_seen_at TEXT`
-- `last_seen_at TEXT`
-- `context_json TEXT` (repo name, files, session ID)
+### Run result truncado a 500 chars
+Los planes de implementación generados se truncan. Guardar el resultado completo en `result_summary_md` o leer del artifact file en el dashboard.
 
 ---
 
-## Memorias
+## Prioridad media
 
-### Memorias mal clasificadas en core
-Revisar qué memorias están en layer `core` que no deberían. Posible problema en el criterio de clasificación del prompt de analyze.
+### Sugerencias operativas no son útiles
+Shadow genera "commitear archivos" — no es una sugerencia de código. Afinar el prompt del suggest para que genere solo sugerencias técnicas actionables.
+
+### Sugerencias aceptadas/dismissed influyen en futuras
+Si el usuario siempre accepta "refactor" y dismissea "docs", Shadow debería adaptarse. Pasar historial de accept/dismiss al prompt del suggest.
+
+### Dashboard — markdown rendering
+Resultados de runs y sugerencias contienen markdown que se renderiza como texto plano. Usar react-markdown para tablas, code blocks, headers.
+
+### Dashboard — sidebar badges con contadores
+Mostrar en el sidebar: pending suggestions, runs to review, observaciones active. El usuario sabe dónde hay cosas pendientes sin navegar.
+
+### Morning page mejorada
+No resume bien la actividad. Incluir: qué aprendió Shadow (memorias nuevas), sugerencias pendientes, runs to review, estado de repos.
+
+### Memorias con trazabilidad al heartbeat
+No se puede ver "qué aprendió Shadow en este heartbeat". Añadir `heartbeat_id` o `source_id` a memories.
+
+---
+
+## Prioridad baja
+
+### Logs del daemon en dashboard
+Los `console.error` del heartbeat van a `daemon.stderr.log` pero no son accesibles desde el dashboard. Endpoint `/api/logs` + página.
+
+### KeepAlive genera procesos zombie
+El plist con `KeepAlive: true` relanza el daemon tras stop, causando duplicados y EADDRINUSE. Cambiar a `KeepAlive: false` + `RunAtLoad: true`.
+
+---
+
+## Long-term / Arquitectura
+
+### Concepto de Proyecto
+Entidad contenedora que agrupa repos, memorias, sugerencias y observaciones. Un proyecto es permanente (ej: "Shadow", "Platform").
+
+### Concepto de Tarea/Iniciativa
+Agrupación temporal (1-2 semanas) que incluye repos, PRs, docs y tickets. Ciclo de vida acotado.
+
+### Dos tipos de heartbeat
+- **(a) Frecuente** — actividad reciente: conversaciones, interacciones.
+- **(b) Mantenimiento** — rota entre repos, no revisa todos cada vez. Escala con +40 repos.
 
 ### Semantic search (sqlite-vec)
-Búsqueda híbrida FTS5 + vector search para memorias. Requiere modelo de embeddings.
-
----
-
-## Dashboard / UI
+Búsqueda híbrida FTS5 + vector search para memorias.
 
 ### UI preparada para escala (+40 repos)
-Todas las vistas deben funcionar bien con muchos repos: paginación, filtros, agrupación, rendimiento. No solo repos page, sino observaciones, memorias, sugerencias, etc.
+Paginación real, filtros, agrupación, rendimiento en todas las vistas.
 
-### Emoji Guide desactualizada
-La página del dashboard no refleja el status bar actual. Actualizar con los emojis vigentes.
-
-### Dashboard observations page
-Renderizar observaciones LLM con contexto enriquecido (repo badges, file lists, vote count). Agrupar por kind.
-
-### Events: clarificar propósito
-La página Events no muestra nada aunque hay heartbeats que generaron eventos. Investigar si se marcan como delivered antes de poder verlos. Clarificar si Events tiene sentido como concepto separado o se solapa con heartbeats/observaciones.
+### Execute plan — verificación de resultado
+Revisar diff generado, correr tests, presentar resumen de cambios. Merge desde dashboard a trust 4+.
 
 ---
 
-## Status bar
-
-### ASCII art mascota
-Evaluar añadir un animalito/mascota en one-line ASCII art en el status bar que reaccione y se mueva, representando a Shadow visualmente.
-
----
-
-## Calidad
+## Deuda técnica
 
 ### Tests
-Zero test coverage. Mínimo: database CRUD, FTS5 search, heartbeat state machine, observation creation.
+Zero test coverage. Mínimo: database CRUD, FTS5 search, heartbeat state machine, observation dedup, suggestion lifecycle, run pipeline.
 
-### Suggest phase
-Trust necesita 15+ (level 2) para generar sugerencias. Considerar acelerar crecimiento de trust o boost manual para testing.
+### Memorias mal clasificadas en core
+Revisar criterio del prompt de analyze para layer core vs hot.
 
----
+### Emoji Guide desactualizada
+No refleja el status bar actual.
 
-## Known issues
+### Events: clarificar propósito
+Los eventos se marcan delivered inmediatamente. Investigar si la página tiene sentido o se solapa con heartbeats/observaciones.
 
-- `[object Object]` en observations page para algunos detail fields (arrays de objetos)
-- `observationsCreated` en heartbeat siempre muestra 0 — las observaciones se crean en analyze, no en observe. El counter necesita actualizarse.
-- Observaciones antiguas de git aún en DB. Purgar con: `DELETE FROM observations WHERE source_kind = 'repo'`
+### Status line path frágil
+Si cambia la versión de node, el path hardcodeado en el plist se rompe. Hacer dinámico.

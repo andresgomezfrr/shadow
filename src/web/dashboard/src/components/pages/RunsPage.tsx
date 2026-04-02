@@ -1,14 +1,18 @@
 import { useApi } from '../../hooks/useApi';
 import { useHighlight } from '../../hooks/useHighlight';
-import { fetchRuns, executeRun, createRunSession, archiveRun } from '../../api/client';
+import { fetchRuns, executeRun, createRunSession, discardRun, markRunExecutedManual, archiveRun } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
+import { FilterTabs } from '../common/FilterTabs';
 import { useState, useCallback } from 'react';
 
 const STATUS_STYLES: Record<string, string> = {
   queued: 'text-orange bg-orange/15',
   running: 'text-blue bg-blue/15',
   completed: 'text-green bg-green/15',
+  executed: 'text-purple bg-purple/15',
+  executed_manual: 'text-blue bg-blue/15',
+  discarded: 'text-text-muted bg-text-muted/10',
   failed: 'text-red bg-red/15',
 };
 
@@ -22,8 +26,24 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+const STATUS_FILTERS = [
+  { label: 'To review', value: 'completed' },
+  { label: 'All', value: '' },
+  { label: 'Queued', value: 'queued' },
+  { label: 'Running', value: 'running' },
+  { label: 'Executed', value: 'executed' },
+  { label: 'Manual', value: 'executed_manual' },
+  { label: 'Discarded', value: 'discarded' },
+  { label: 'Failed', value: 'failed' },
+];
+
 export function RunsPage() {
-  const { data, refresh } = useApi(fetchRuns, [], 15_000);
+  const [statusFilter, setStatusFilter] = useState('completed');
+  const { data, refresh } = useApi(
+    () => fetchRuns({ status: statusFilter || undefined }),
+    [statusFilter],
+    15_000,
+  );
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
   const [sessionInfo, setSessionInfo] = useState<{ runId: string; sessionId: string; command: string } | null>(null);
@@ -56,6 +76,16 @@ export function RunsPage() {
     refresh();
   }, [refresh]);
 
+  const handleDiscard = useCallback(async (id: string) => {
+    await discardRun(id);
+    refresh();
+  }, [refresh]);
+
+  const handleExecutedManual = useCallback(async (id: string) => {
+    await markRunExecutedManual(id);
+    refresh();
+  }, [refresh]);
+
   const handleArchive = useCallback(async (id: string) => {
     await archiveRun(id);
     refresh();
@@ -63,7 +93,10 @@ export function RunsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-4">Runs</h1>
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <h1 className="text-xl font-semibold">Runs</h1>
+        <FilterTabs options={STATUS_FILTERS} active={statusFilter} onChange={setStatusFilter} />
+      </div>
 
       {sessionInfo && (
         <div className="mb-4 p-4 rounded-lg bg-accent-soft border border-accent/30 text-sm space-y-2">
@@ -121,6 +154,14 @@ export function RunsPage() {
                           disabled={sessionLoading === run.id}
                           className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent-soft text-accent border border-accent/30 cursor-pointer transition-all hover:bg-accent/25 disabled:opacity-50 disabled:cursor-wait"
                         >{sessionLoading === run.id ? 'Creating session...' : 'Open session'}</button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleExecutedManual(run.id); }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue/15 text-blue border border-blue/30 cursor-pointer transition-all hover:bg-blue/25"
+                        >Executed manually</button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDiscard(run.id); }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-border text-text-dim border border-border cursor-pointer transition-all hover:bg-red/15 hover:text-red"
+                        >Discard</button>
                       </div>
                     )}
 
@@ -154,7 +195,7 @@ export function RunsPage() {
                       {run.suggestionId && (
                         <a href={`/suggestions?highlight=${run.suggestionId}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">View suggestion</a>
                       )}
-                      {(run.status === 'completed' || run.status === 'failed') && (
+                      {['executed', 'executed_manual', 'discarded', 'failed'].includes(run.status) && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleArchive(run.id); }}
                           className="text-text-muted hover:text-red bg-transparent border-none cursor-pointer text-xs"

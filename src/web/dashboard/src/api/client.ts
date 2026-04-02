@@ -72,6 +72,12 @@ export const executeRun = (id: string) =>
 export const createRunSession = (id: string) =>
   api<{ sessionId: string; command: string }>(`/api/runs/${id}/session`, { method: 'POST' });
 
+export const discardRun = (id: string) =>
+  api<{ ok: boolean }>(`/api/runs/${id}/discard`, { method: 'POST' });
+
+export const markRunExecutedManual = (id: string) =>
+  api<{ ok: boolean }>(`/api/runs/${id}/executed-manual`, { method: 'POST' });
+
 export const archiveRun = (id: string) =>
   api<{ ok: boolean }>(`/api/runs/${id}/archive`, { method: 'POST' });
 

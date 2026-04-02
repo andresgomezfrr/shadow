@@ -73,9 +73,17 @@ export function HeartbeatsPage() {
     });
   };
 
+  const [triggered, setTriggered] = useState(false);
   const handleTrigger = useCallback(async () => {
-    await triggerHeartbeat();
-    setTimeout(refresh, 3000);
+    const result = await triggerHeartbeat();
+    if (!result) {
+      // 409 or error — heartbeat already running/queued
+      refresh();
+      return;
+    }
+    setTriggered(true);
+    const poll = setInterval(refresh, 3000);
+    setTimeout(() => { clearInterval(poll); setTriggered(false); }, 30_000);
   }, [refresh]);
 
   // Today's summary
@@ -88,6 +96,9 @@ export function HeartbeatsPage() {
   const todayTokens = todayBeats.reduce((sum, hb) => sum + hb.tokensUsed, 0);
   const todayObs = todayBeats.reduce((sum, hb) => sum + hb.observationsCreated, 0);
 
+  const hasRunning = data?.some((hb) => !hb.finishedAt) ?? false;
+  const canTrigger = !triggered && !hasRunning;
+
   return (
     <div>
       <div className="flex items-center gap-4 mb-4">
@@ -96,9 +107,10 @@ export function HeartbeatsPage() {
           <span className="text-sm text-text-muted">Next in <span className="text-text font-mono">{countdown}</span></span>
           <button
             onClick={handleTrigger}
-            className="px-3 py-1.5 text-xs rounded-lg bg-accent-soft text-accent border-none cursor-pointer hover:bg-accent/25 transition-colors"
+            disabled={!canTrigger}
+            className="px-3 py-1.5 text-xs rounded-lg bg-accent-soft text-accent border-none cursor-pointer hover:bg-accent/25 transition-colors disabled:opacity-50"
           >
-            Trigger now
+            {hasRunning ? 'Running...' : triggered ? 'Triggered...' : 'Trigger now'}
           </button>
         </div>
       </div>
@@ -121,10 +133,27 @@ export function HeartbeatsPage() {
       ) : (
         <div className="flex flex-col gap-1.5">
           {data.map((hb) => {
+            const isRunning = !hb.finishedAt;
             const active = isActive(hb);
             const phases = interestingPhases(hb.phases ?? []);
             const duration = hb.durationMs != null ? `${(hb.durationMs / 1000).toFixed(1)}s` : '--';
             const isOpen = expanded.has(hb.id);
+
+            if (isRunning) {
+              return (
+                <div
+                  key={hb.id}
+                  className="bg-accent/5 border border-accent/30 rounded-lg px-4 py-3 animate-pulse"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge className="text-accent bg-accent-soft">running</Badge>
+                    <Badge className={PHASE_STYLES[hb.phase] ?? PHASE_STYLES.idle}>{hb.phase}</Badge>
+                    {hb.activity && <span className="text-xs text-text-dim">{hb.activity}</span>}
+                    <span className="text-xs text-text-muted ml-auto">{timeAgo(hb.startedAt)}</span>
+                  </div>
+                </div>
+              );
+            }
 
             if (!active && !isOpen) {
               return (

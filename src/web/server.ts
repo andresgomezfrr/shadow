@@ -213,15 +213,27 @@ async function handleApi(
       return json(res, { ok: true });
     }
 
-    const runMatch = pathname.match(/^\/api\/runs\/([^/]+)\/(execute|session)$/);
+    const runMatch = pathname.match(/^\/api\/runs\/([^/]+)\/(execute|session|discard|executed-manual)$/);
     if (runMatch) {
       const [, runId, action] = runMatch;
       const run = db.getRun(runId);
       if (!run) return json(res, { error: 'Run not found' }, 404);
+
+      if (action === 'discard') {
+        if (run.status !== 'completed') return json(res, { error: 'Run must be completed' }, 400);
+        db.updateRun(runId, { status: 'discarded' });
+        return json(res, { ok: true, status: 'discarded' });
+      }
+
+      if (action === 'executed-manual') {
+        if (run.status !== 'completed') return json(res, { error: 'Run must be completed' }, 400);
+        db.updateRun(runId, { status: 'executed_manual' });
+        return json(res, { ok: true, status: 'executed_manual' });
+      }
+
       if (run.status !== 'completed') return json(res, { error: 'Run must be completed' }, 400);
 
       if (action === 'execute') {
-        // Create a child run that executes the plan
         const childRun = db.createRun({
           repoId: run.repoId,
           repoIds: run.repoIds,
@@ -230,6 +242,7 @@ async function handleApi(
           kind: 'execution',
           prompt: `Implement the following plan. Write the actual code changes.\n\n${run.resultSummaryMd}`,
         });
+        db.updateRun(runId, { status: 'executed' });
         return json(res, { runId: childRun.id, status: 'queued' });
       }
 
@@ -240,9 +253,9 @@ async function handleApi(
           const repoPath = repo?.path ?? process.cwd();
           return json(res, { sessionId: run.sessionId, command: `cd ${repoPath} && claude --resume ${run.sessionId}` });
         }
-        // Create a new session by running claude with --print to seed it
+        // Create a new session by running claude with --print to seed it (async, doesn't block web server)
         const config = loadConfig();
-        const { spawnSync } = await import('node:child_process');
+        const { spawn: spawnChild } = await import('node:child_process');
         const { randomUUID } = await import('node:crypto');
         const sessionId: string = randomUUID();
         const prompt = `You are Shadow, helping implement a plan. Here is the context:\n\n## Plan\n${run.resultSummaryMd}\n\n## Original suggestion\n${run.prompt}\n\nReady to help implement this. What would you like to start with?`;
@@ -251,13 +264,21 @@ async function handleApi(
         if (config.claudeExtraPath) env.PATH = `${config.claudeExtraPath}:${env.PATH ?? ''}`;
         const repo = db.getRepo(run.repoId);
         const cwd = repo?.path ?? process.cwd();
-        const result = spawnSync(claudeBin, [
-          '--print', '--output-format', 'json',
-          '--system-prompt', 'You are Shadow, an engineering companion. Help the user implement the plan step by step.',
-          '--session-id', sessionId,
-          prompt,
-        ], { cwd, encoding: 'utf8', timeout: 120_000, env });
-        // Parse session_id from output (may differ from what we passed)
+
+        const result = await new Promise<{ stdout: string }>((resolve) => {
+          const child = spawnChild(claudeBin, [
+            '--print', '--output-format', 'json',
+            '--system-prompt', 'You are Shadow, an engineering companion. Help the user implement the plan step by step.',
+            '--session-id', sessionId,
+            prompt,
+          ], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
+          const chunks: Buffer[] = [];
+          child.stdout.on('data', (d: Buffer) => chunks.push(d));
+          const timer = setTimeout(() => child.kill('SIGTERM'), 120_000);
+          child.on('close', () => { clearTimeout(timer); resolve({ stdout: Buffer.concat(chunks).toString('utf8') }); });
+          child.on('error', () => { clearTimeout(timer); resolve({ stdout: '' }); });
+        });
+
         let finalSessionId = sessionId;
         try {
           const out = JSON.parse(result.stdout || '{}') as { session_id?: string };
@@ -306,8 +327,16 @@ async function handleApi(
     }
 
     if (pathname === '/api/heartbeat/trigger') {
+      // Block if a heartbeat is already running
+      const lastHb = db.getLastHeartbeat();
+      if (lastHb && !lastHb.finishedAt) {
+        return json(res, { error: 'Heartbeat already running', phase: lastHb.phase }, 409);
+      }
       const config = loadConfig();
       const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');
+      if (existsSync(triggerPath)) {
+        return json(res, { error: 'Heartbeat already queued' }, 409);
+      }
       writeFileSync(triggerPath, new Date().toISOString(), 'utf-8');
       return json(res, { triggered: true });
     }
