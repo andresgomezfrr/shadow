@@ -9,6 +9,7 @@ import type {
   System,
   UsageSummary,
   Heartbeat,
+  Job,
   EventRecord,
   Run,
   UserProfile,
@@ -58,6 +59,9 @@ export const fetchUsage = (period: 'day' | 'week' | 'month' = 'week') =>
   api<UsageSummary>(`/api/usage?period=${period}`);
 
 export const fetchHeartbeats = () => api<Heartbeat[]>('/api/heartbeats');
+
+export const fetchJobs = (type?: string) =>
+  api<Job[]>(`/api/jobs${qs({ type })}`);
 
 export const fetchEvents = () => api<EventRecord[]>('/api/events');
 

@@ -374,6 +374,29 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_feedback_target ON feedback(target_kind, created_at DESC);
     `,
   },
+  {
+    version: 10,
+    name: 'jobs_table',
+    sql: `
+      CREATE TABLE IF NOT EXISTS jobs (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        phase TEXT NOT NULL DEFAULT 'running',
+        phases_json TEXT NOT NULL DEFAULT '[]',
+        activity TEXT,
+        status TEXT NOT NULL DEFAULT 'running',
+        llm_calls INTEGER NOT NULL DEFAULT 0,
+        tokens_used INTEGER NOT NULL DEFAULT 0,
+        result_json TEXT NOT NULL DEFAULT '{}',
+        duration_ms INTEGER,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, created_at DESC);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

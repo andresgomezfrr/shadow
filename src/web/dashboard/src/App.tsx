@@ -10,7 +10,7 @@ import { ReposPage } from './components/pages/ReposPage';
 import { TeamPage } from './components/pages/TeamPage';
 import { SystemsPage } from './components/pages/SystemsPage';
 import { UsagePage } from './components/pages/UsagePage';
-import { HeartbeatsPage } from './components/pages/HeartbeatsPage';
+import { JobsPage } from './components/pages/HeartbeatsPage';
 import { RunsPage } from './components/pages/RunsPage';
 import { EventsPage } from './components/pages/EventsPage';
 import { EmojiGuidePage } from './components/pages/EmojiGuidePage';
@@ -30,7 +30,8 @@ export function App() {
         <Route path="/team" element={<TeamPage />} />
         <Route path="/systems" element={<SystemsPage />} />
         <Route path="/usage" element={<UsagePage />} />
-        <Route path="/heartbeats" element={<HeartbeatsPage />} />
+        <Route path="/heartbeats" element={<JobsPage />} />
+        <Route path="/jobs" element={<JobsPage />} />
         <Route path="/runs" element={<RunsPage />} />
         <Route path="/events" element={<EventsPage />} />
         <Route path="/emoji-guide" element={<EmojiGuidePage />} />

@@ -7,8 +7,6 @@ import type { HeartbeatRecord, UserProfileRecord } from '../storage/models.js';
 import {
   activityObserve,
   activityAnalyze,
-  activitySuggest,
-  activityConsolidate,
   activityNotify,
 } from './activities.js';
 
@@ -45,13 +43,6 @@ function isFocusModeActive(profile: UserProfileRecord): boolean {
     return new Date(profile.focusUntil) > new Date();
   }
   return true;
-}
-
-function shouldConsolidate(db: ShadowDatabase): boolean {
-  // Consolidate if there are enough warm/cool memories that might need maintenance
-  const warm = db.listMemories({ layer: 'warm', archived: false });
-  const cool = db.listMemories({ layer: 'cool', archived: false });
-  return warm.length + cool.length > 10;
 }
 
 // --- State machine ---
@@ -154,7 +145,6 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
 
   // Determine next phase after observe
   const hasObservations = observeResult.observationsCreated > 0;
-  const needsConsolidation = shouldConsolidate(ctx.db);
 
   // Smart heartbeat: skip LLM phases only if nothing to process (no observations AND no interactions)
   const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasObservations && !hasRecentInteractions && !hasRecentConversations;
@@ -196,33 +186,6 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
     result.tokensUsed += analyzeResult.tokensUsed;
     result.observationsCreated += analyzeResult.observationsCreated ?? 0;
 
-    // --- SUGGEST phase ---
-    // Suggest if notable observations AND trust >= 2 AND not in focus mode
-    if (unprocessed.length > 0 && ctx.profile.trustLevel >= 2 && !focusActive) {
-      result.phases.push('suggest');
-      ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'suggest', activity: 'generating suggestions' });
-
-      const suggestResult = await activitySuggest(ctx, unprocessed);
-      result.suggestionsCreated = suggestResult.suggestionsCreated;
-      result.llmCalls += suggestResult.llmCalls;
-      result.tokensUsed += suggestResult.tokensUsed;
-
-      ctx.db.updateHeartbeat(heartbeatRecord.id, {
-        suggestionsCreated: result.suggestionsCreated,
-      });
-    }
-  }
-
-  // --- CONSOLIDATE phase ---
-  if (needsConsolidation) {
-    result.phases.push('consolidate');
-    ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'consolidate', activity: 'consolidating memories' });
-
-    const consolidateResult = await activityConsolidate(ctx);
-    result.memoriesPromoted = consolidateResult.memoriesPromoted;
-    result.memoriesDemoted = consolidateResult.memoriesDemoted;
-    result.llmCalls += consolidateResult.llmCalls;
-    result.tokensUsed += consolidateResult.tokensUsed;
   }
 
   // --- NOTIFY phase ---

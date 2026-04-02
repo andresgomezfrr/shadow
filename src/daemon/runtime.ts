@@ -204,54 +204,108 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
     writeDaemonState(config, state);
 
+    // db is guaranteed non-null at this point (created in Step 2)
+    const _db = db!;
+
+    // --- Job scheduler helpers ---
+    function shouldRunJob(type: string, intervalMs: number): boolean {
+      const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');
+      if (type === 'heartbeat' && existsSync(triggerPath)) {
+        try { unlinkSync(triggerPath); } catch { /* */ }
+        return true;
+      }
+      const last = _db.getLastJob(type);
+      if (!last) return true;
+      if (last.status === 'running') return false;
+      return Date.now() - new Date(last.startedAt).getTime() >= intervalMs;
+    }
+
+    async function runJobType(type: string, fn: (jobId: string) => Promise<{ llmCalls: number; tokensUsed: number; phases: string[]; result: Record<string, unknown> }>): Promise<void> {
+      const now = new Date().toISOString();
+      const job = _db.createJob({ type, startedAt: now });
+      const startMs = Date.now();
+      try {
+        const out = await fn(job.id);
+        _db.updateJob(job.id, {
+          status: 'completed', phases: out.phases, llmCalls: out.llmCalls,
+          tokensUsed: out.tokensUsed, result: out.result,
+          durationMs: Date.now() - startMs, finishedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        _db.updateJob(job.id, {
+          status: 'failed', result: { error: err instanceof Error ? err.message : String(err) },
+          durationMs: Date.now() - startMs, finishedAt: new Date().toISOString(),
+        });
+        console.error(`[daemon] Job ${type} failed:`, err instanceof Error ? err.message : err);
+      }
+    }
+
     // Step 5: Main loop
     while (running) {
       let worked = false;
       const tickStart = new Date();
 
-      // --- Check for heartbeat trigger ---
-      const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');
-      if (existsSync(triggerPath)) {
-        try { unlinkSync(triggerPath); } catch { /* ignore */ }
-        nextHeartbeatAt = new Date(0).toISOString(); // force immediate
-      }
-
-      // --- Heartbeat tick ---
-      const heartbeatDue =
-        nextHeartbeatAt && new Date(nextHeartbeatAt) <= tickStart;
-
-      if (heartbeatDue) {
-        try {
-          const { runHeartbeat } = await import(
-            '../heartbeat/state-machine.js'
-          );
-          const profile = db.ensureProfile();
-          const lastHb = db.getLastHeartbeat();
-          const pendingEvents = db.listPendingEvents().length;
-          const result = await runHeartbeat({
-            config,
-            db,
-            profile,
-            lastHeartbeat: lastHb,
-            pendingEventCount: pendingEvents,
-          });
+      // --- Job: heartbeat (extract + observe) ---
+      if (shouldRunJob('heartbeat', config.heartbeatIntervalMs)) {
+        const { runHeartbeat } = await import('../heartbeat/state-machine.js');
+        await runJobType('heartbeat', async () => {
+          const profile = _db.ensureProfile();
+          const lastHb = _db.getLastHeartbeat();
+          const pendingEvts = _db.listPendingEvents().length;
+          const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: lastHb, pendingEventCount: pendingEvts });
           lastHeartbeatAt = new Date().toISOString();
-          lastHeartbeatPhase = null; // Reset — heartbeat is done, back to idle
-          worked = true;
-        } catch {
-          // heartbeat module not yet implemented or runtime error
+          lastHeartbeatPhase = null;
+          nextHeartbeatAt = new Date(Date.now() + config.heartbeatIntervalMs).toISOString();
+          return {
+            llmCalls: result.llmCalls, tokensUsed: result.tokensUsed, phases: result.phases,
+            result: { observationsCreated: result.observationsCreated },
+          };
+        });
+        worked = true;
+
+        // --- Job: suggest (runs right after heartbeat if there was activity) ---
+        const lastHbJob = _db.getLastJob('heartbeat');
+        const hbResult = (lastHbJob?.result ?? {}) as Record<string, number>;
+        const hadActivity = (hbResult.observationsCreated ?? 0) > 0;
+        const profile = _db.ensureProfile();
+        if (hadActivity && profile.trustLevel >= 2) {
+          const { activitySuggest, activityNotify } = await import('../heartbeat/activities.js');
+          await runJobType('suggest', async () => {
+            const unprocessed = _db.listObservations({ processed: false });
+            const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastHeartbeat(), pendingEventCount: _db.listPendingEvents().length };
+            const suggestResult = await activitySuggest(ctx, unprocessed);
+            await activityNotify(ctx);
+            return {
+              llmCalls: suggestResult.llmCalls, tokensUsed: suggestResult.tokensUsed,
+              phases: ['suggest', 'notify'],
+              result: { suggestionsCreated: suggestResult.suggestionsCreated },
+            };
+          });
         }
-        nextHeartbeatAt = new Date(
-          Date.now() + config.heartbeatIntervalMs,
-        ).toISOString();
       }
 
-      // --- Run processing tick ---
-      const queuedRuns = db.listRuns({ status: 'queued' });
+      // --- Job: consolidate (every 6h) ---
+      if (shouldRunJob('consolidate', 6 * 60 * 60 * 1000)) {
+        const { activityConsolidate } = await import('../heartbeat/activities.js');
+        await runJobType('consolidate', async () => {
+          const profile = _db.ensureProfile();
+          const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastHeartbeat(), pendingEventCount: _db.listPendingEvents().length };
+          const consolidateResult = await activityConsolidate(ctx);
+          return {
+            llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,
+            phases: ['consolidate'],
+            result: { memoriesPromoted: consolidateResult.memoriesPromoted, memoriesDemoted: consolidateResult.memoriesDemoted },
+          };
+        });
+        worked = true;
+      }
+
+      // --- Run processing ---
+      const queuedRuns = _db.listRuns({ status: 'queued' });
       if (queuedRuns.length > 0) {
         try {
           const { RunnerService } = await import('../runner/service.js');
-          const runner = new RunnerService(config, db);
+          const runner = new RunnerService(config, _db);
           await runner.processNextRun();
           worked = true;
         } catch (runErr) {
@@ -260,11 +314,9 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       }
 
       // --- Fast tick ---
-
-      // Deliver pending events
-      const pendingEvents = db.listPendingEvents();
+      const pendingEvents = _db.listPendingEvents();
       if (pendingEvents.length > 0) {
-        db.deliverAllEvents();
+        _db.deliverAllEvents();
         worked = true;
       }
 
@@ -285,7 +337,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       );
 
       // Update and persist daemon state
-      const pendingCount = db.listPendingEvents().length;
+      const pendingCount = _db.listPendingEvents().length;
       state.pid = process.pid;
       state.lastHeartbeatAt = lastHeartbeatAt;
       state.lastTickAt = tickStart.toISOString();

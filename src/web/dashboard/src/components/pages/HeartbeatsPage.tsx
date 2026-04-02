@@ -1,10 +1,11 @@
 import { useApi } from '../../hooks/useApi';
-import { fetchHeartbeats, fetchStatus, triggerHeartbeat } from '../../api/client';
+import { fetchJobs, fetchStatus, triggerHeartbeat } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { MetricCard } from '../common/MetricCard';
 import { EmptyState } from '../common/EmptyState';
+import { FilterTabs } from '../common/FilterTabs';
 import { useState, useEffect, useCallback } from 'react';
-import type { Heartbeat } from '../../api/types';
+import type { Job } from '../../api/types';
 
 const PHASE_STYLES: Record<string, string> = {
   wake: 'text-text-dim bg-border',
@@ -28,7 +29,7 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-function isActive(hb: Heartbeat): boolean {
+function isActive(hb: Job): boolean {
   const phases = hb.phases ?? [];
   return phases.some((p) => ['analyze', 'suggest', 'consolidate'].includes(p));
 }
@@ -58,8 +59,23 @@ function useCountdown(targetIso: string | null | undefined): string {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
-export function HeartbeatsPage() {
-  const { data, refresh } = useApi(fetchHeartbeats, [], 30_000);
+const TYPE_FILTERS = [
+  { label: 'All', value: '' },
+  { label: 'Heartbeat', value: 'heartbeat' },
+  { label: 'Suggest', value: 'suggest' },
+  { label: 'Consolidate', value: 'consolidate' },
+];
+
+const TYPE_COLORS: Record<string, string> = {
+  heartbeat: 'text-purple bg-purple/15',
+  suggest: 'text-accent bg-accent-soft',
+  consolidate: 'text-orange bg-orange/15',
+  reflect: 'text-blue bg-blue/15',
+};
+
+export function JobsPage() {
+  const [typeFilter, setTypeFilter] = useState('');
+  const { data, refresh } = useApi(() => fetchJobs(typeFilter || undefined), [typeFilter], 15_000);
   const { data: status } = useApi(fetchStatus, [], 15_000);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const countdown = useCountdown(status?.nextHeartbeatAt);
@@ -101,8 +117,11 @@ export function HeartbeatsPage() {
 
   return (
     <div>
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <h1 className="text-xl font-semibold">Jobs</h1>
+        <FilterTabs options={TYPE_FILTERS} active={typeFilter} onChange={setTypeFilter} />
+      </div>
       <div className="flex items-center gap-4 mb-4">
-        <h1 className="text-xl font-semibold">Heartbeats</h1>
         <div className="flex items-center gap-3 ml-auto">
           <span className="text-sm text-text-muted">Next in <span className="text-text font-mono">{countdown}</span></span>
           <button
@@ -178,6 +197,7 @@ export function HeartbeatsPage() {
                 }`}
               >
                 <div className="flex items-center gap-2 flex-wrap">
+                  <Badge className={TYPE_COLORS[hb.type] ?? 'text-text-dim bg-border'}>{hb.type}</Badge>
                   {phases.map((p, i) => (
                     <Badge key={i} className={PHASE_STYLES[p] ?? PHASE_STYLES.idle}>{p}</Badge>
                   ))}

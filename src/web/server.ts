@@ -129,6 +129,13 @@ async function handleApi(
       return json(res, heartbeats);
     }
 
+    if (pathname === '/api/jobs') {
+      const type = params.get('type') ?? undefined;
+      const limit = parseInt(params.get('limit') ?? '30', 10);
+      const jobs = db.listJobs({ type, limit });
+      return json(res, jobs);
+    }
+
     if (pathname === '/api/repos') {
       const repos = db.listRepos();
       return json(res, repos);

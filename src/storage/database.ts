@@ -21,6 +21,7 @@ import type {
   SuggestionRecord,
   SystemRecord,
   UserProfileRecord,
+  JobRecord,
   FeedbackRecord,
 } from './models.js';
 import { applyMigrations } from './migrations.js';
@@ -929,6 +930,61 @@ export class ShadowDatabase {
     this.database.prepare(`UPDATE runs SET ${sets.join(', ')} WHERE id = ?`).run(...values);
   }
 
+  // --- Jobs ---
+
+  createJob(input: { type: string; startedAt: string }): JobRecord {
+    const id = randomUUID();
+    this.database
+      .prepare('INSERT INTO jobs (id, type, started_at, created_at) VALUES (?, ?, ?, ?)')
+      .run(id, input.type, input.startedAt, input.startedAt);
+    return this.getJob(id)!;
+  }
+
+  getJob(id: string): JobRecord | null {
+    const row = this.database.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+    return row ? mapJob(row) : null;
+  }
+
+  updateJob(id: string, updates: Partial<Pick<JobRecord, 'phase' | 'phases' | 'activity' | 'status' | 'llmCalls' | 'tokensUsed' | 'result' | 'durationMs' | 'finishedAt'>>): void {
+    const sets: string[] = [];
+    const values: SQLValue[] = [];
+    for (const [key, value] of Object.entries(updates)) {
+      if (key === 'phases') {
+        sets.push('phases_json = ?');
+        values.push(JSON.stringify(value));
+      } else if (key === 'result') {
+        sets.push('result_json = ?');
+        values.push(JSON.stringify(value));
+      } else {
+        sets.push(`${toSnake(key)} = ?`);
+        values.push((value ?? null) as SQLValue);
+      }
+    }
+    if (sets.length === 0) return;
+    values.push(id);
+    this.database.prepare(`UPDATE jobs SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  }
+
+  listJobs(filters?: { type?: string; status?: string; limit?: number }): JobRecord[] {
+    const clauses: string[] = [];
+    const values: SQLValue[] = [];
+    if (filters?.type) { clauses.push('type = ?'); values.push(filters.type); }
+    if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const limit = filters?.limit ?? 30;
+    return this.database
+      .prepare(`SELECT * FROM jobs ${where} ORDER BY started_at DESC LIMIT ?`)
+      .all(...values, limit)
+      .map(mapJob);
+  }
+
+  getLastJob(type: string): JobRecord | null {
+    const row = this.database
+      .prepare('SELECT * FROM jobs WHERE type = ? ORDER BY started_at DESC LIMIT 1')
+      .get(type);
+    return row ? mapJob(row) : null;
+  }
+
   // --- Feedback ---
 
   createFeedback(input: { targetKind: string; targetId: string; action: string; note?: string | null }): void {
@@ -1327,6 +1383,25 @@ function mapAuditEvent(row: unknown): AuditEventRecord {
     targetKind: strOrNull(d.target_kind),
     targetId: strOrNull(d.target_id),
     detail: jsonParse(d.detail_json, {}),
+    createdAt: str(d.created_at),
+  };
+}
+
+function mapJob(row: unknown): JobRecord {
+  const d = r(row);
+  return {
+    id: str(d.id),
+    type: str(d.type),
+    phase: str(d.phase),
+    phases: jsonParse(d.phases_json, []),
+    activity: strOrNull(d.activity),
+    status: str(d.status),
+    llmCalls: num(d.llm_calls ?? 0),
+    tokensUsed: num(d.tokens_used ?? 0),
+    result: jsonParse(d.result_json, {}),
+    durationMs: d.duration_ms != null ? num(d.duration_ms) : null,
+    startedAt: str(d.started_at),
+    finishedAt: strOrNull(d.finished_at),
     createdAt: str(d.created_at),
   };
 }

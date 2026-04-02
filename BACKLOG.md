@@ -60,8 +60,8 @@ Permite cambiar layer, body, tags, kind, scope de una memoria existente. Ya no h
 ### `[done]` 🔴 Feedback loop completo → [`docs/plan-feedback-loop.md`](docs/plan-feedback-loop.md)
 Tabla `feedback` (migration v9). Razón en: resolve observación, dismiss sugerencia, discard run, archive/modify memoria. Feedback se pasa a extract + observe prompts. MCP tools aceptan `reason` param. **Pendiente: 👍/👎 buttons en dashboard cards.**
 
-### 🔴 Job system → [`docs/plan-job-system.md`](docs/plan-job-system.md)
-Reemplazar heartbeat monolítico por jobs tipados: heartbeat (15min), suggest (tras actividad), consolidate (6h), reflect (24h). Tabla `jobs`, scheduler, dashboard actualizado. **Prerequisito de reflect y L4 evaluator.**
+### `[done]` 🔴 Job system Phase 1 → [`docs/plan-job-system.md`](docs/plan-job-system.md)
+Tabla `jobs` (migration v10), scheduler en daemon, suggest separado del heartbeat, consolidate cada 6h. Dashboard Jobs con filter tabs por tipo. **Pendiente: reflect job.**
 
 ### 🔴 Trust levels redesign → [`docs/plan-trust-levels.md`](docs/plan-trust-levels.md)
 L1-2: plan completo + open session. L3: execute con branch/draft PR. L4: proactivo con LLM evaluator. L5: auto-merge selectivo por repo. **Depende de feedback loop y job system.**

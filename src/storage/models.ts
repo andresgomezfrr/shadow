@@ -227,6 +227,24 @@ export type AuditEventRecord = {
   createdAt: string;
 };
 
+// --- Jobs ---
+
+export type JobRecord = {
+  id: string;
+  type: string;
+  phase: string;
+  phases: string[];
+  activity: string | null;
+  status: string;
+  llmCalls: number;
+  tokensUsed: number;
+  result: Record<string, unknown>;
+  durationMs: number | null;
+  startedAt: string;
+  finishedAt: string | null;
+  createdAt: string;
+};
+
 // --- Feedback ---
 
 export type FeedbackRecord = {
