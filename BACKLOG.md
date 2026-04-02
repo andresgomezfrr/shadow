@@ -57,41 +57,40 @@ Permite cambiar layer, body, tags, kind, scope de una memoria existente. Ya no h
 
 ## Long-term / Arquitectura
 
-### Concepto de Proyecto
+### 🔴 Feedback loop completo → [`docs/plan-feedback-loop.md`](docs/plan-feedback-loop.md)
+Tabla `feedback` unificada. Razón en resolve observación, forget/update memoria, discard run. 👍/👎 en cards. Todo se pasa a los prompts del LLM. **Prerequisito de trust levels y reflect job.**
+
+### 🔴 Job system → [`docs/plan-job-system.md`](docs/plan-job-system.md)
+Reemplazar heartbeat monolítico por jobs tipados: heartbeat (15min), suggest (tras actividad), consolidate (6h), reflect (24h). Tabla `jobs`, scheduler, dashboard actualizado. **Prerequisito de reflect y L4 evaluator.**
+
+### 🔴 Trust levels redesign → [`docs/plan-trust-levels.md`](docs/plan-trust-levels.md)
+L1-2: plan completo + open session. L3: execute con branch/draft PR. L4: proactivo con LLM evaluator. L5: auto-merge selectivo por repo. **Depende de feedback loop y job system.**
+
+### 🟡 Reflect job (dentro de job system)
+Job diario que sintetiza feedback + memorias → SOUL dinámico. Actualiza la "personalidad aprendida" de Shadow. Complementa SOUL.md estático. Opus + effort high.
+
+### 🟡 Concepto de Proyecto
 Entidad contenedora que agrupa repos, memorias, sugerencias y observaciones. Un proyecto es permanente (ej: "Shadow", "Platform").
 
-### Concepto de Tarea/Iniciativa
+### 🟡 Concepto de Tarea/Iniciativa
 Agrupación temporal (1-2 semanas) que incluye repos, PRs, docs y tickets. Ciclo de vida acotado.
 
-### Dos tipos de heartbeat
-- **(a) Frecuente** — actividad reciente: conversaciones, interacciones.
-- **(b) Mantenimiento** — rota entre repos progresivamente, no revisa todos cada vez. Escala con +40 repos.
-
-### Semantic search (sqlite-vec)
+### 🟡 Semantic search (sqlite-vec)
 Búsqueda híbrida FTS5 + vector search para memorias.
 
-### UI preparada para escala (+40 repos)
+### 🟡 UI preparada para escala (+40 repos)
 Paginación real, filtros, agrupación, rendimiento en todas las vistas.
 
-### Execute plan — verificación de resultado
-Revisar diff generado, correr tests, presentar resumen de cambios. Merge desde dashboard a trust 4+.
+### 🟡 Execute plan — verificación de resultado
+Revisar diff generado, correr tests, presentar resumen de cambios. Draft PR / branch con diff review en dashboard.
 
-### Trust 3: session pre-loaded con archivos relevantes
-La sesión de Claude CLI debería incluir los file contents del plan, no solo el texto. Shadow lee los archivos relevantes y los inyecta en el prompt de la sesión.
-
-### Trust 4: ejecución autónoma con review
-Accept ejecuta autónomamente: branch, Claude CLI con plan, captura diff. Dashboard muestra diff para review. Approve → commit. Discard → borra branch.
-
-### Trust 5: full autonomy
-Branch + implement + test + PR. Si tests pasan → commit + PR. Si fallan → retry una vez. Morning brief muestra PRs completados.
-
-### `shadow teach` — enseñanza interactiva
+### 🟡 `shadow teach` — enseñanza interactiva
 Comando CLI que abre sesión Claude CLI con los MCP tools de Shadow activos. El usuario enseña interactivamente y Shadow guarda memorias en tiempo real.
 
-### Comunicación externa via MCP servers
+### 🟡 Comunicación externa via MCP servers
 Shadow se conecta a Slack, Linear, GitHub vía MCP servers externos. Puede: notificar en Slack, crear issues en Linear, comentar en PRs.
 
-### Multi-repo operations
+### 🟡 Multi-repo operations
 Sugerencias y runs que afectan múltiples repos simultáneamente. El schema ya soporta `repo_ids_json` pero la UI y el runner solo usan el primary repo.
 
 ---
