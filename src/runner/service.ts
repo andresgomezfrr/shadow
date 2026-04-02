@@ -8,7 +8,6 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { RunRecord } from '../storage/models.js';
 import type { ObjectivePack, RepoPack } from '../backend/types.js';
 import { selectAdapter } from '../backend/index.js';
-import { findRelevantMemories } from '../memory/retrieval.js';
 
 /**
  * Personality prompt prefixes by level (1-5).
@@ -109,70 +108,50 @@ export class RunnerService {
         }
       }
 
-      // 4. Load relevant memories
+      // 4. Build briefing — Shadow provides context, Claude does the work
       const suggestion = run.suggestionId
         ? this.db.getSuggestion(run.suggestionId)
         : null;
 
-      const topics: string[] = [];
-      if (suggestion) {
-        topics.push(suggestion.title);
-        if (suggestion.kind) topics.push(suggestion.kind);
-      }
-      topics.push(run.kind);
+      const repo = this.db.getRepo(run.repoId);
+      const personalityPrompt = getPersonalityPrompt(this.config.personalityLevel);
 
-      const relevantMemories = findRelevantMemories(
-        this.db,
-        {
-          topics,
-          repoId: run.repoId,
-        },
-        10,
-      );
-
-      // Build the full prompt with personality and context
-      const personalityLevel = this.config.personalityLevel;
-      const personalityPrompt = getPersonalityPrompt(personalityLevel);
-
-      const memoryContext = relevantMemories.length > 0
-        ? `\n\n## Relevant context from memory\n${relevantMemories.map((m) => `- **${m.title}**: ${m.bodyMd.slice(0, 200)}`).join('\n')}`
-        : '';
-
-      const repoContext = repos.length > 1
-        ? `\n\n## Repositories involved\n${repos.map((r) => `- ${r.name} (${r.path})`).join('\n')}`
-        : `\n\n## Repository\n- ${repos[0].name} (${repos[0].path})`;
-
-      // Trust-gated behavior: at trust <= 2, generate a plan; at higher trust, execute
       const currentProfile = this.db.ensureProfile();
-      // Plan-only mode: generate implementation plan, not code
-      // Execution runs (child of a plan) skip this restriction
       const planOnly = run.kind !== 'execution' && currentProfile.trustLevel <= 2;
-      const taskSection = planOnly
-        ? [
-            '\n\n## Task',
-            run.prompt,
-            '',
-            'IMPORTANT: Generate a detailed IMPLEMENTATION PLAN only. Do NOT write code directly.',
-            'Structure your response as:',
-            '## Files to modify',
-            'List each file path and what needs to change.',
-            '## Changes per file',
-            'For each file, describe the specific changes and why.',
-            '## Risks and edge cases',
-            'What could go wrong.',
-            '## Verification steps',
-            'How to test the changes.',
-            '',
-            'Format as clean Markdown.',
-          ].join('\n')
-        : `\n\n## Task\n${run.prompt}`;
 
-      const fullPrompt = [
+      const briefing = [
         personalityPrompt,
-        repoContext,
-        memoryContext,
-        taskSection,
-      ].join('');
+        '',
+        `## Suggestion: ${suggestion?.title ?? run.kind}`,
+        suggestion?.kind ? `Kind: ${suggestion.kind}` : '',
+        '',
+        suggestion?.summaryMd ?? run.prompt,
+        suggestion?.reasoningMd ? `\n## Reasoning\n${suggestion.reasoningMd}` : '',
+        '',
+        repos.length > 1
+          ? `## Repositories\n${repos.map((r) => `- ${r.name} (${r.path})`).join('\n')}`
+          : `## Repository\n- ${repos[0].name} (${repos[0].path})`,
+        repo?.testCommand ? `- Test: \`${repo.testCommand}\`` : '',
+        repo?.buildCommand ? `- Build: \`${repo.buildCommand}\`` : '',
+        repo?.lintCommand ? `- Lint: \`${repo.lintCommand}\`` : '',
+        '',
+        '## Instructions',
+        'You have access to the filesystem and Shadow MCP tools (shadow_memory_search, shadow_observations, etc.).',
+        'Use them to gather any additional context you need.',
+        '',
+        planOnly
+          ? [
+              'Generate a detailed IMPLEMENTATION PLAN. Do NOT write code directly.',
+              'Read the relevant source files, search Shadow memories for context, then structure your plan as:',
+              '## Files to modify',
+              '## Changes per file',
+              '## Risks and edge cases',
+              '## Verification steps',
+            ].join('\n')
+          : 'Implement this change. Read the relevant files, make the changes, and verify.',
+      ].filter(Boolean).join('\n');
+
+      const fullPrompt = briefing;
 
       // Prepare artifact directory
       const artifactDir = join(
@@ -189,10 +168,11 @@ export class RunnerService {
         title: suggestion?.title ?? `Run: ${run.kind}`,
         goal: run.prompt,
         prompt: fullPrompt,
-        relevantMemories,
+        relevantMemories: [],
         artifactDir,
         model: this.config.models.runner,
         effort: this.config.efforts.runner,
+        systemPrompt: null, // No override — Claude uses default behavior with MCP tools + filesystem
         timeoutMs: this.config.runnerTimeoutMs,
       };
 

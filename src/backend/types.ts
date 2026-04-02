@@ -27,6 +27,7 @@ export type ObjectivePack = {
   artifactDir?: string;
   model?: string;
   effort?: string;
+  systemPrompt?: string | null; // string = override, null = no --system-prompt, undefined = JSON-only default
   timeoutMs?: number;
 };
 

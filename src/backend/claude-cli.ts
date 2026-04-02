@@ -14,9 +14,15 @@ export class ClaudeCliAdapter implements BackendAdapter {
 
     const args = ['--print', '--output-format', 'json'];
 
-    // Override system prompt so the model acts as a pure JSON analysis engine
-    // Without this, it loads CLAUDE.md/hooks context and may reject the prompt
-    args.push('--system-prompt', 'You are a JSON-only analysis engine for the Shadow engineering companion. Output raw JSON only. Never wrap in markdown fences. Never add explanations before or after the JSON.');
+    // System prompt: string = override, null = no override (Claude uses default + MCP), undefined = JSON-only
+    if (pack.systemPrompt === null) {
+      // Don't pass --system-prompt — Claude uses default behavior with MCP tools
+    } else if (typeof pack.systemPrompt === 'string') {
+      args.push('--system-prompt', pack.systemPrompt);
+    } else {
+      // Default: JSON-only engine for heartbeat/suggest jobs
+      args.push('--system-prompt', 'You are a JSON-only analysis engine for the Shadow engineering companion. Output raw JSON only. Never wrap in markdown fences. Never add explanations before or after the JSON.');
+    }
 
     if (pack.model) {
       args.push('--model', pack.model);
