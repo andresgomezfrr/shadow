@@ -56,9 +56,9 @@ shadow/
 │   │   ├── layers.ts             # 5-layer maintenance (core/hot/warm/cool/cold)
 │   │   └── retrieval.ts          # FTS5 search, context-aware memory loading
 │   ├── heartbeat/
-│   │   ├── state-machine.ts      # wake→observe→analyze→suggest→consolidate→notify→idle
+│   │   ├── state-machine.ts      # wake→observe→cleanup→analyze→suggest→consolidate→notify→idle
 │   │   ├── activities.ts         # Phase implementations (LLM prompts, memory creation)
-│   │   └── anti-loop.ts          # Cooldowns, rate limits, backoff
+│   │   └── schemas.ts            # Zod schemas for LLM output validation
 │   ├── profile/
 │   │   ├── trust.ts              # 5 trust levels, 10+ trust delta events
 │   │   └── user-profile.ts       # Work hours, commit patterns, energy/mood detection
