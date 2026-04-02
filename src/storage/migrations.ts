@@ -359,6 +359,21 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source_type, source_id);
     `,
   },
+  {
+    version: 9,
+    name: 'feedback_table',
+    sql: `
+      CREATE TABLE IF NOT EXISTS feedback (
+        id TEXT PRIMARY KEY,
+        target_kind TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        note TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_feedback_target ON feedback(target_kind, created_at DESC);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

@@ -78,7 +78,8 @@ export function RunsPage() {
   }, [refresh]);
 
   const handleDiscard = useCallback(async (id: string) => {
-    await discardRun(id);
+    const note = window.prompt('Reason for discarding (optional):');
+    await discardRun(id, note || undefined);
     refresh();
   }, [refresh]);
 

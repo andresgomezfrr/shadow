@@ -72,8 +72,12 @@ export const executeRun = (id: string) =>
 export const createRunSession = (id: string) =>
   api<{ sessionId: string; command: string }>(`/api/runs/${id}/session`, { method: 'POST' });
 
-export const discardRun = (id: string) =>
-  api<{ ok: boolean }>(`/api/runs/${id}/discard`, { method: 'POST' });
+export const discardRun = (id: string, note?: string) =>
+  api<{ ok: boolean }>(`/api/runs/${id}/discard`, {
+    method: 'POST',
+    headers: note ? { 'Content-Type': 'application/json' } : undefined,
+    body: note ? JSON.stringify({ note }) : undefined,
+  });
 
 export const markRunExecutedManual = (id: string) =>
   api<{ ok: boolean }>(`/api/runs/${id}/executed-manual`, { method: 'POST' });
@@ -84,8 +88,12 @@ export const archiveRun = (id: string) =>
 export const acknowledgeObservation = (id: string) =>
   api<Observation>(`/api/observations/${id}/acknowledge`, { method: 'POST' });
 
-export const resolveObservation = (id: string) =>
-  api<Observation>(`/api/observations/${id}/resolve`, { method: 'POST' });
+export const resolveObservation = (id: string, note?: string) =>
+  api<Observation>(`/api/observations/${id}/resolve`, {
+    method: 'POST',
+    headers: note ? { 'Content-Type': 'application/json' } : undefined,
+    body: note ? JSON.stringify({ note }) : undefined,
+  });
 
 export const reopenObservation = (id: string) =>
   api<Observation>(`/api/observations/${id}/reopen`, { method: 'POST' });

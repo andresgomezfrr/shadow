@@ -35,7 +35,8 @@ export function ObservationsPage() {
   }, [refresh]);
 
   const handleResolve = useCallback(async (id: string) => {
-    await resolveObservation(id);
+    const note = window.prompt('Reason for resolving (optional):');
+    await resolveObservation(id, note || undefined);
     refresh();
   }, [refresh]);
 

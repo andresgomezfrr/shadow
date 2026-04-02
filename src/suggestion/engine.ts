@@ -34,6 +34,7 @@ export function acceptSuggestion(
     status: 'accepted',
     resolvedAt: now,
   });
+  db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'accept' });
 
   // Determine repo context for the run
   const primaryRepoId = suggestion.repoIds.length > 0
@@ -90,6 +91,7 @@ export function dismissSuggestion(
     feedbackNote: note ?? null,
     resolvedAt: now,
   });
+  db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'dismiss', note });
 
   // Apply base dismiss trust delta
   let totalDelta = TRUST_DISMISS;

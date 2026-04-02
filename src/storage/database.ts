@@ -21,6 +21,7 @@ import type {
   SuggestionRecord,
   SystemRecord,
   UserProfileRecord,
+  FeedbackRecord,
 } from './models.js';
 import { applyMigrations } from './migrations.js';
 
@@ -928,6 +929,28 @@ export class ShadowDatabase {
     this.database.prepare(`UPDATE runs SET ${sets.join(', ')} WHERE id = ?`).run(...values);
   }
 
+  // --- Feedback ---
+
+  createFeedback(input: { targetKind: string; targetId: string; action: string; note?: string | null }): void {
+    const id = randomUUID();
+    this.database
+      .prepare('INSERT INTO feedback (id, target_kind, target_id, action, note, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, input.targetKind, input.targetId, input.action, input.note ?? null, new Date().toISOString());
+  }
+
+  listFeedback(targetKind?: string, limit = 15): FeedbackRecord[] {
+    if (targetKind) {
+      return this.database
+        .prepare('SELECT * FROM feedback WHERE target_kind = ? ORDER BY created_at DESC LIMIT ?')
+        .all(targetKind, limit)
+        .map(mapFeedback);
+    }
+    return this.database
+      .prepare('SELECT * FROM feedback ORDER BY created_at DESC LIMIT ?')
+      .all(limit)
+      .map(mapFeedback);
+  }
+
   // --- Audit Events ---
 
   createAuditEvent(input: CreateAuditEventInput): AuditEventRecord {
@@ -1304,6 +1327,18 @@ function mapAuditEvent(row: unknown): AuditEventRecord {
     targetKind: strOrNull(d.target_kind),
     targetId: strOrNull(d.target_id),
     detail: jsonParse(d.detail_json, {}),
+    createdAt: str(d.created_at),
+  };
+}
+
+function mapFeedback(row: unknown): FeedbackRecord {
+  const d = r(row);
+  return {
+    id: str(d.id),
+    targetKind: str(d.target_kind),
+    targetId: str(d.target_id),
+    action: str(d.action),
+    note: strOrNull(d.note),
     createdAt: str(d.created_at),
   };
 }

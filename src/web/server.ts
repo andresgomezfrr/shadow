@@ -210,6 +210,9 @@ async function handleApi(
       if (!obs) return json(res, { error: 'Not found' }, 404);
       const statusMap: Record<string, string> = { acknowledge: 'acknowledged', resolve: 'resolved', reopen: 'active' };
       db.updateObservationStatus(obsId, statusMap[action]);
+      let obsNote: string | undefined;
+      try { const body = JSON.parse(await readBody(req)); obsNote = body.note; } catch { /* ok */ }
+      if (action !== 'reopen') db.createFeedback({ targetKind: 'observation', targetId: obsId, action, note: obsNote });
       return json(res, db.getObservation(obsId));
     }
 
@@ -231,7 +234,10 @@ async function handleApi(
 
       if (action === 'discard') {
         if (run.status !== 'completed') return json(res, { error: 'Run must be completed' }, 400);
+        let discardNote: string | undefined;
+        try { const body = JSON.parse(await readBody(req)); discardNote = body.note; } catch { /* ok */ }
         db.updateRun(runId, { status: 'discarded' });
+        db.createFeedback({ targetKind: 'run', targetId: runId, action: 'discard', note: discardNote });
         return json(res, { ok: true, status: 'discarded' });
       }
 

@@ -255,6 +255,10 @@ export async function activityAnalyze(
       '',
       dataSources,
       existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
+      (() => {
+        const mf = ctx.db.listFeedback('memory', 10).filter(f => f.note);
+        return mf.length > 0 ? `### Memory corrections (learn from these)\n${mf.map(f => `- ${f.action}: ${f.note}`).join('\n')}\n` : '';
+      })(),
       'Respond with JSON only.',
     ].join('\n');
 
@@ -321,6 +325,10 @@ export async function activityAnalyze(
       dataSources,
       activeObsSummary ? `### Active Observations (DO NOT recreate — resolve if no longer valid)\n${activeObsSummary}\n` : '',
       dismissFeedback ? `### User Feedback (learn from this)\n${dismissFeedback}\n` : '',
+      (() => {
+        const of = ctx.db.listFeedback('observation', 10).filter(f => f.note);
+        return of.length > 0 ? `### Observation feedback (learn what's not useful)\n${of.map(f => `- ${f.action}: ${f.note}`).join('\n')}\n` : '';
+      })(),
       'Respond with JSON only.',
     ].join('\n');
 

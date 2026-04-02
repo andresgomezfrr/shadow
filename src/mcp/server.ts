@@ -398,11 +398,12 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     },
     {
       name: 'shadow_observation_resolve',
-      description: 'Resolve an observation by ID, marking the issue as handled. Requires trust level >= 1.',
+      description: 'Resolve an observation by ID with an optional reason. Requires trust level >= 1.',
       inputSchema: {
         type: 'object',
         properties: {
           observationId: { type: 'string', description: 'Observation ID to resolve' },
+          reason: { type: 'string', description: 'Why this observation is being resolved' },
         },
         required: ['observationId'],
         additionalProperties: false,
@@ -415,6 +416,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         if (!obs) return { isError: true, message: `Observation not found: ${id}` };
         if (obs.status === 'resolved') return { isError: true, message: 'Already resolved' };
         db.updateObservationStatus(id, 'resolved');
+        db.createFeedback({ targetKind: 'observation', targetId: id, action: 'resolve', note: params.reason as string | undefined });
         return { ok: true, observationId: id, status: 'resolved' };
       },
     },
@@ -730,11 +732,12 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     },
     {
       name: 'shadow_memory_forget',
-      description: 'Archive (forget) a memory by ID. Requires trust level >= 1.',
+      description: 'Archive (forget) a memory by ID with a reason. Requires trust level >= 1.',
       inputSchema: {
         type: 'object',
         properties: {
           memoryId: { type: 'string', description: 'Memory ID to archive' },
+          reason: { type: 'string', description: 'Why this memory is being archived' },
         },
         required: ['memoryId'],
         additionalProperties: false,
@@ -748,6 +751,8 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         if (!memory) return { isError: true, message: `Memory not found: ${memoryId}` };
 
         db.updateMemory(memoryId, { archivedAt: new Date().toISOString() });
+        const reason = params.reason as string | undefined;
+        db.createFeedback({ targetKind: 'memory', targetId: memoryId, action: 'archive', note: reason });
         return { ok: true, archived: memoryId, title: memory.title };
       },
     },
@@ -763,6 +768,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
           kind: { type: 'string', description: 'New kind' },
           scope: { type: 'string', description: 'New scope' },
           tags: { type: 'array', items: { type: 'string' }, description: 'New tags' },
+          reason: { type: 'string', description: 'Why this memory is being modified' },
         },
         required: ['memoryId'],
         additionalProperties: false,
@@ -781,6 +787,8 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         if (params.tags) updates.tags = params.tags;
         if (Object.keys(updates).length === 0) return { isError: true, message: 'No updates provided' };
         db.updateMemory(id, updates as Parameters<typeof db.updateMemory>[1]);
+        const reason = params.reason as string | undefined;
+        db.createFeedback({ targetKind: 'memory', targetId: id, action: 'modify', note: reason ?? `updated: ${Object.keys(updates).join(', ')}` });
         return { ok: true, memoryId: id, updated: Object.keys(updates) };
       },
     },

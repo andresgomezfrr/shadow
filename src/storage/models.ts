@@ -227,6 +227,17 @@ export type AuditEventRecord = {
   createdAt: string;
 };
 
+// --- Feedback ---
+
+export type FeedbackRecord = {
+  id: string;
+  targetKind: string;
+  targetId: string;
+  action: string;
+  note: string | null;
+  createdAt: string;
+};
+
 // --- LLM Usage ---
 
 export type LlmUsageRecord = {
