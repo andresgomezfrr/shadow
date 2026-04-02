@@ -110,8 +110,8 @@ Convertir la página Events (actualmente vacía — eventos se marcan delivered 
 ### `[done]` Status line path frágil
 Plist ya no hardcodea node path. Scripts usan tsx binstub con fallback a npx. Hooks resuelven paths relativos al proyecto.
 
-### ASCII art mascota en status bar
-Evaluar un animalito en one-line ASCII art que reaccione representando a Shadow visualmente.
+### `[done]` ASCII art mascota en status bar
+Ghost mascot `{•‿•}` con 13 estados, 3 variantes cada uno (micro-animaciones), colores ANSI por estado (purple/cyan/yellow/green/red/dim). Reemplaza el emoji de actividad. "Shadow" removido del texto — la cara ES Shadow.
 
 ### `[done]` CLAUDE.md desactualizado
 Actualizado: 33 tools, 16 routes, Current State reescrito.

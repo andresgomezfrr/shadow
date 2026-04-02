@@ -134,7 +134,7 @@ fi
 # Get Shadow status (--json) and flatten for grep
 STATUS=$($SHADOW_CLI --json status 2>/dev/null | tr -d '\\n ')
 if [ $? -ne 0 ] || [ -z "$STATUS" ]; then
-  echo "Shadow"
+  echo "{•_•} offline"
   exit 0
 fi
 
@@ -162,21 +162,27 @@ case "$TRUST" in
   *) TNAME="observer"; TEMOJI="🔍" ;;
 esac
 
-# Determine Shadow's current activity emoji + text
-ACTIVITY_EMOJI=""
+# Ghost mascot — reacts to state with micro-variations
+V=$(( RANDOM % 3 ))
+MASCOT=""
 ACTIVITY_TEXT=""
+C0="\\033[0m"   # reset
+CP="\\033[35m"  # purple (idle)
+CC="\\033[36m"  # cyan (active)
+CY="\\033[33m"  # yellow (analyzing)
+CG="\\033[32m"  # green (positive)
+CR="\\033[31m"  # red (alert)
+CD="\\033[2m"   # dim (sleeping)
 
 # Priority 1: Focus mode
 if [ "$FOCUS" = "focus" ]; then
-  ACTIVITY_EMOJI="🎯"
+  case $V in 0) MASCOT="{•̀_•́}" ;; 1) MASCOT="{•̀‿•́}" ;; *) MASCOT="{•̀_•́}▸" ;; esac
+  MCOLOR="$CP"
   if [ -n "$FOCUS_UNTIL" ]; then
-    # Calculate remaining time
     FOCUS_TS=$(date -j -f "%Y-%m-%dT%H:%M:%S" "\${FOCUS_UNTIL%%.*}" "+%s" 2>/dev/null || date -d "$FOCUS_UNTIL" "+%s" 2>/dev/null || echo 0)
     NOW_TS=$(date +%s)
     REMAINING=$(( (FOCUS_TS - NOW_TS) / 60 ))
-    if [ "$REMAINING" -gt 60 ] 2>/dev/null; then
-      ACTIVITY_TEXT="focus \${REMAINING}m"
-    elif [ "$REMAINING" -gt 0 ] 2>/dev/null; then
+    if [ "$REMAINING" -gt 0 ] 2>/dev/null; then
       ACTIVITY_TEXT="focus \${REMAINING}m"
     else
       ACTIVITY_TEXT="focus"
@@ -188,31 +194,57 @@ if [ "$FOCUS" = "focus" ]; then
 # Priority 2: Active heartbeat phase
 elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTBEAT_PHASE" != "idle" ]; then
   case "$HEARTBEAT_PHASE" in
-    *observe*) ACTIVITY_EMOJI="👀"; ACTIVITY_TEXT="observing" ;;
-    *analyze*) ACTIVITY_EMOJI="🧠"; ACTIVITY_TEXT="analyzing" ;;
-    *suggest*) ACTIVITY_EMOJI="💡"; ACTIVITY_TEXT="thinking" ;;
-    *consolidat*) ACTIVITY_EMOJI="📦"; ACTIVITY_TEXT="consolidating" ;;
-    *notify*) ACTIVITY_EMOJI="📢"; ACTIVITY_TEXT="notifying" ;;
-    *) ACTIVITY_EMOJI="⚙️"; ACTIVITY_TEXT="working" ;;
+    *observe*)
+      case $V in 0) MASCOT="{°_°}" ;; 1) MASCOT="{°.°}" ;; *) MASCOT="{°_°}." ;; esac
+      MCOLOR="$CY"; ACTIVITY_TEXT="observing" ;;
+    *analyze*)
+      case $V in 0) MASCOT="{°_°}.." ;; 1) MASCOT="{°_°}..." ;; *) MASCOT="{°.°}.." ;; esac
+      MCOLOR="$CY"; ACTIVITY_TEXT="analyzing" ;;
+    *suggest*)
+      case $V in 0) MASCOT="{•ᴗ•}💡" ;; 1) MASCOT="{•‿•}💡" ;; *) MASCOT="{•ᴗ•}!" ;; esac
+      MCOLOR="$CG"; ACTIVITY_TEXT="thinking" ;;
+    *consolidat*)
+      case $V in 0) MASCOT="{•_•}⚙" ;; 1) MASCOT="{•‿•}⚙" ;; *) MASCOT="{•_•}~" ;; esac
+      MCOLOR="$CY"; ACTIVITY_TEXT="consolidating" ;;
+    *)
+      case $V in 0) MASCOT="{•_•}" ;; 1) MASCOT="{•‿•}" ;; *) MASCOT="{•_•}~" ;; esac
+      MCOLOR="$CY"; ACTIVITY_TEXT="working" ;;
   esac
 
-# Priority 3: Recent activity (learning from session)
+# Priority 3: Recent activity
 elif [ "$RECENT_ACTIVITY" -gt 5 ] 2>/dev/null; then
-  ACTIVITY_EMOJI="📝"
-  ACTIVITY_TEXT="learning"
+  case $V in 0) MASCOT="{°_°}" ;; 1) MASCOT="{°‿°}" ;; *) MASCOT="{°_°}~" ;; esac
+  MCOLOR="$CC"; ACTIVITY_TEXT="learning"
 
 elif [ "$RECENT_ACTIVITY" -gt 0 ] 2>/dev/null; then
-  ACTIVITY_EMOJI="👀"
-  ACTIVITY_TEXT="watching"
+  case $V in 0) MASCOT="{•‿•}" ;; 1) MASCOT="{•.•}" ;; *) MASCOT="{•_•}." ;; esac
+  MCOLOR="$CC"; ACTIVITY_TEXT="watching"
 
-# Priority 4: Idle states
+# Priority 4: Idle — mood-aware
 elif [ "$DAEMON_RUNNING" = "true" ]; then
-  ACTIVITY_EMOJI="😊"
   ACTIVITY_TEXT="ready"
+  case "$MOOD" in
+    happy|excited)
+      case $V in 0) MASCOT="{•ᴗ•}" ;; 1) MASCOT="{•ᴗ•}♪" ;; *) MASCOT="{•‿•}~" ;; esac
+      MCOLOR="$CG" ;;
+    frustrated)
+      case $V in 0) MASCOT="{>_<}" ;; 1) MASCOT="{>_<}!" ;; *) MASCOT="{>.<}" ;; esac
+      MCOLOR="$CR" ;;
+    tired)
+      case $V in 0) MASCOT="{-_-}" ;; 1) MASCOT="{-_-}." ;; *) MASCOT="{-‿-}" ;; esac
+      MCOLOR="$CD" ;;
+    concerned)
+      case $V in 0) MASCOT="{•~•}" ;; 1) MASCOT="{•~•}?" ;; *) MASCOT="{•_•}?" ;; esac
+      MCOLOR="$CY" ;;
+    *)
+      case $V in 0) MASCOT="{•‿•}" ;; 1) MASCOT="{•_•}" ;; *) MASCOT="{•‿•}♪" ;; esac
+      MCOLOR="$CP" ;;
+  esac
 
+# Daemon off
 else
-  ACTIVITY_EMOJI="😴"
-  ACTIVITY_TEXT="sleeping"
+  case $V in 0) MASCOT="{-_-}z" ;; 1) MASCOT="{-_-}zz" ;; *) MASCOT="{-‿-}zzZ" ;; esac
+  MCOLOR="$CD"; ACTIVITY_TEXT="sleeping"
 fi
 
 # Mood + energy emojis
@@ -234,25 +266,21 @@ case "$ENERGY" in
   *) ENERGY_EMOJI="🔋" ;;
 esac
 
-# Build the line: activity | mood+energy+trust | notifications | heartbeat
-LINE="$ACTIVITY_EMOJI Shadow"
-
+# Build line: mascot activity | mood+energy+trust | notifications | heartbeat
+LINE="\${MCOLOR}\${MASCOT}\${C0}"
 if [ -n "$ACTIVITY_TEXT" ]; then
   LINE="$LINE $ACTIVITY_TEXT"
 fi
-
 LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI $TEMOJI"
 
-# Add notifications
 if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
   LINE="$LINE | 💡$SUGGESTIONS"
 fi
-
 if [ "$EVENTS" -gt 0 ] 2>/dev/null; then
   LINE="$LINE | 📬$EVENTS"
 fi
 
-# Next heartbeat countdown (timestamps are UTC)
+# Heartbeat countdown
 if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
   HB_TS=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "\${NEXT_HB%%.*}" "+%s" 2>/dev/null || date -u -d "$NEXT_HB" "+%s" 2>/dev/null || echo 0)
   NOW_TS=$(date +%s)
@@ -264,8 +292,8 @@ if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
   fi
 fi
 
-echo "$LINE"
-echo "$LINE" > "$CACHE_FILE"
+echo -e "$LINE"
+echo -e "$LINE" > "$CACHE_FILE"
 `, 'utf8');
 
       // Session start hook script
