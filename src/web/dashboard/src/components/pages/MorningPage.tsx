@@ -1,7 +1,7 @@
 import { timeAgo, formatTokens } from '../../utils/format';
 import { useState, useCallback } from 'react';
 import { useApi } from '../../hooks/useApi';
-import { fetchDailySummary, acceptSuggestion, dismissSuggestion } from '../../api/client';
+import { fetchDailySummary, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
 import { TRUST_NAMES, MOOD_EMOJIS, SEVERITY_COLORS } from '../../api/types';
 import type { Suggestion } from '../../api/types';
 import { Badge } from '../common/Badge';
@@ -25,16 +25,27 @@ function formatDate(): string {
   });
 }
 
+const SNOOZE_OPTIONS = [
+  { label: '3h', hours: 3 },
+  { label: '6h', hours: 6 },
+  { label: '1d', hours: 24 },
+  { label: '3d', hours: 72 },
+  { label: '7d', hours: 168 },
+];
+
 function SuggestionReviewCard({
   suggestion,
   onAccept,
   onDismiss,
+  onSnooze,
 }: {
   suggestion: Suggestion;
   onAccept: (id: string) => void;
   onDismiss: (id: string) => void;
+  onSnooze: (id: string, hours: number) => void;
 }) {
   const [leaving, setLeaving] = useState(false);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
 
   const handleAction = (action: 'accept' | 'dismiss') => {
     setLeaving(true);
@@ -74,6 +85,27 @@ function SuggestionReviewCard({
         >
           Accept
         </button>
+        <div className="relative">
+          <button
+            onClick={() => setSnoozeOpen(!snoozeOpen)}
+            className="px-4 py-1.5 rounded-lg text-xs font-medium bg-blue/15 text-blue border border-blue/30 cursor-pointer transition-all hover:bg-blue/25"
+          >
+            Snooze
+          </button>
+          {snoozeOpen && (
+            <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 overflow-hidden">
+              {SNOOZE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.hours}
+                  onClick={() => { setLeaving(true); setTimeout(() => onSnooze(suggestion.id, opt.hours), 350); setSnoozeOpen(false); }}
+                  className="block w-full px-4 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer"
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button
           onClick={() => handleAction('dismiss')}
           className="px-4 py-1.5 rounded-lg text-xs font-medium bg-border text-text-dim border border-border cursor-pointer transition-all hover:bg-red/15 hover:text-red hover:border-red/30"
@@ -98,6 +130,12 @@ export function MorningPage() {
   const handleDismiss = useCallback(async (id: string) => {
     const note = window.prompt('Reason for dismissing (optional):');
     await dismissSuggestion(id, note || undefined);
+    setDismissed((s) => new Set(s).add(id));
+    refresh();
+  }, [refresh]);
+
+  const handleSnooze = useCallback(async (id: string, hours: number) => {
+    await snoozeSuggestion(id, hours);
     setDismissed((s) => new Set(s).add(id));
     refresh();
   }, [refresh]);
@@ -215,6 +253,7 @@ export function MorningPage() {
                 suggestion={s}
                 onAccept={handleAccept}
                 onDismiss={handleDismiss}
+                onSnooze={handleSnooze}
               />
             ))}
           </div>

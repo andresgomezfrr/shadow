@@ -943,6 +943,20 @@ suggest
     }),
   );
 
+suggest
+  .command('snooze <suggestionId>')
+  .description('snooze a suggestion')
+  .option('--hours <hours>', 'hours to snooze', '72')
+  .action((suggestionId: string, options: { hours: string }) =>
+    withDb((db) => {
+      const s = db.getSuggestion(suggestionId);
+      if (!s) return { error: `suggestion not found: ${suggestionId}` };
+      const until = new Date(Date.now() + Number(options.hours) * 3600_000).toISOString();
+      db.updateSuggestion(suggestionId, { status: 'snoozed', expiresAt: until });
+      return { ok: true, snoozed: suggestionId, until, title: s.title };
+    }),
+  );
+
 // --- profile ---
 
 const profile = program.command('profile').description('manage user profile');

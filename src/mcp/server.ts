@@ -375,6 +375,37 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
       },
     },
     {
+      name: 'shadow_suggest_snooze',
+      description: 'Snooze a suggestion for a given number of hours. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          suggestionId: { type: 'string', description: 'The suggestion ID to snooze' },
+          hours: { type: 'number', description: 'Hours to snooze (default: 72 = 3 days)' },
+        },
+        required: ['suggestionId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const suggestionId = params.suggestionId as string;
+        const hours = (params.hours as number) ?? 72;
+        const suggestion = db.getSuggestion(suggestionId);
+        if (!suggestion) {
+          return { isError: true, message: `Suggestion not found: ${suggestionId}` };
+        }
+
+        const { snoozeSuggestion } = await import('../suggestion/engine.js');
+        const until = new Date(Date.now() + hours * 3600_000).toISOString();
+        const result = snoozeSuggestion(db, suggestionId, until);
+        if (!result.ok) return { isError: true, message: 'Cannot snooze — suggestion not pending' };
+
+        return { snoozed: true, suggestionId, until };
+      },
+    },
+    {
       name: 'shadow_observation_ack',
       description: 'Acknowledge an observation by ID, marking it as seen. Requires trust level >= 1.',
       inputSchema: {

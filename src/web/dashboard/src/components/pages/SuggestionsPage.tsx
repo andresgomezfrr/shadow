@@ -2,7 +2,7 @@ import { timeAgo } from '../../utils/format';
 import { useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
-import { fetchSuggestions, fetchRepos, fetchRuns, fetchFeedbackState, acceptSuggestion, dismissSuggestion } from '../../api/client';
+import { fetchSuggestions, fetchRepos, fetchRuns, fetchFeedbackState, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { FilterTabs } from '../common/FilterTabs';
 import { Badge } from '../common/Badge';
@@ -12,6 +12,7 @@ import type { Repo } from '../../api/types';
 
 const STATUSES = [
   { label: 'Pending', value: 'pending' },
+  { label: 'Snoozed', value: 'snoozed' },
   { label: 'Accepted', value: 'accepted' },
   { label: 'Dismissed', value: 'dismissed' },
   { label: 'All', value: '' },
@@ -19,9 +20,18 @@ const STATUSES = [
 
 const STATUS_DOTS: Record<string, string> = {
   pending: 'bg-orange',
+  snoozed: 'bg-blue',
   accepted: 'bg-green',
   dismissed: 'bg-text-muted',
 };
+
+const SNOOZE_OPTIONS = [
+  { label: '3h', hours: 3 },
+  { label: '6h', hours: 6 },
+  { label: '1d', hours: 24 },
+  { label: '3d', hours: 72 },
+  { label: '7d', hours: 168 },
+];
 
 
 function repoName(repos: Repo[] | null, repoId: string | null): string | null {
@@ -88,6 +98,13 @@ export function SuggestionsPage() {
     refresh();
   }, [refresh]);
 
+  const handleSnooze = useCallback(async (id: string, hours: number) => {
+    await snoozeSuggestion(id, hours);
+    refresh();
+  }, [refresh]);
+
+  const [snoozeOpen, setSnoozeOpen] = useState<string | null>(null);
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-2 flex-wrap">
@@ -150,11 +167,43 @@ export function SuggestionsPage() {
                     >
                       Accept
                     </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => setSnoozeOpen(snoozeOpen === s.id ? null : s.id)}
+                        className="px-3 py-1 rounded-lg text-xs font-medium bg-blue/15 text-blue border border-blue/30 cursor-pointer transition-all hover:bg-blue/25"
+                      >
+                        Snooze
+                      </button>
+                      {snoozeOpen === s.id && (
+                        <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 overflow-hidden">
+                          {SNOOZE_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.hours}
+                              onClick={() => { handleSnooze(s.id, opt.hours); setSnoozeOpen(null); }}
+                              className="block w-full px-4 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer"
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={() => handleDismiss(s.id)}
                       className="px-3 py-1 rounded-lg text-xs font-medium bg-border text-text-dim border border-border cursor-pointer transition-all hover:bg-red/15 hover:text-red"
                     >
                       Dismiss
+                    </button>
+                  </div>
+                )}
+                {s.status === 'snoozed' && (
+                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border text-xs">
+                    <span className="text-blue">Snoozed — wakes {s.expiresAt ? timeAgo(s.expiresAt) : 'soon'}</span>
+                    <button
+                      onClick={() => handleSnooze(s.id, 0)}
+                      className="px-2 py-0.5 rounded text-xs text-text-dim hover:text-text cursor-pointer"
+                    >
+                      Wake now
                     </button>
                   </div>
                 )}

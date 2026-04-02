@@ -275,6 +275,13 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       // Clean stale jobs every tick (catches jobs stuck by suspend/crash)
       cleanStaleJobs();
 
+      // Reactivate snoozed suggestions whose snooze period has expired
+      try {
+        const { reactivateSnoozed } = await import('../suggestion/engine.js');
+        const reactivated = reactivateSnoozed(_db);
+        if (reactivated > 0) console.error(`[daemon] Reactivated ${reactivated} snoozed suggestions`);
+      } catch { /* ignore */ }
+
       // --- Job: heartbeat (extract + observe) ---
       if (shouldRunJob('heartbeat', config.heartbeatIntervalMs)) {
         const { runHeartbeat } = await import('../heartbeat/state-machine.js');

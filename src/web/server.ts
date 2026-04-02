@@ -218,7 +218,7 @@ async function handleApi(
 
   // --- POST routes ---
   if (req.method === 'POST') {
-    const match = pathname.match(/^\/api\/suggestions\/([^/]+)\/(accept|dismiss)$/);
+    const match = pathname.match(/^\/api\/suggestions\/([^/]+)\/(accept|dismiss|snooze)$/);
     if (match) {
       const [, id, action] = match;
       if (action === 'accept') {
@@ -227,11 +227,26 @@ async function handleApi(
         if (!result.ok) return json(res, { error: 'Cannot accept — suggestion not pending' }, 400);
         const updated = db.getSuggestion(id);
         return json(res, { ...updated, runId: result.runCreated });
-      } else {
+      } else if (action === 'dismiss') {
         const { dismissSuggestion } = await import('../suggestion/engine.js');
         let note: string | undefined;
         try { const body = JSON.parse(await readBody(req)); note = body.note; } catch { /* no body is ok */ }
         dismissSuggestion(db, id, note);
+        const updated = db.getSuggestion(id);
+        return json(res, updated);
+      } else if (action === 'snooze') {
+        let hours = 72;
+        try { const body = JSON.parse(await readBody(req)); hours = body.hours ?? 72; } catch { /* */ }
+        if (hours === 0) {
+          // Unsnooze: wake immediately
+          db.updateSuggestion(id, { status: 'pending', expiresAt: null });
+          const updated = db.getSuggestion(id);
+          return json(res, updated);
+        }
+        const { snoozeSuggestion } = await import('../suggestion/engine.js');
+        const until = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+        const result = snoozeSuggestion(db, id, until);
+        if (!result.ok) return json(res, { error: 'Cannot snooze — suggestion not pending' }, 400);
         const updated = db.getSuggestion(id);
         return json(res, updated);
       }

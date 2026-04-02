@@ -125,6 +125,13 @@ export const dismissSuggestion = (id: string, note?: string) =>
     body: note ? JSON.stringify({ note }) : undefined,
   });
 
+export const snoozeSuggestion = (id: string, hours: number) =>
+  api<Suggestion>(`/api/suggestions/${id}/snooze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hours }),
+  });
+
 export const updateProfile = (updates: Partial<UserProfile>) =>
   api<UserProfile>('/api/profile', {
     method: 'POST',

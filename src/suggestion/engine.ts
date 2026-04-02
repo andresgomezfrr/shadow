@@ -138,6 +138,8 @@ export function snoozeSuggestion(
     expiresAt: until,
   });
 
+  db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'snooze' });
+
   db.createAuditEvent({
     interface: 'suggestion-engine',
     action: 'snooze-suggestion',
@@ -147,6 +149,37 @@ export function snoozeSuggestion(
   });
 
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Reactivate snoozed
+// ---------------------------------------------------------------------------
+
+/**
+ * Reactivate snoozed suggestions whose snooze period has expired.
+ * Moves them back to 'pending' status.
+ */
+export function reactivateSnoozed(db: ShadowDatabase): number {
+  const snoozed = db.listSuggestions({ status: 'snoozed' });
+  const now = new Date().toISOString();
+  let count = 0;
+
+  for (const s of snoozed) {
+    if (s.expiresAt && s.expiresAt <= now) {
+      db.updateSuggestion(s.id, { status: 'pending', expiresAt: null });
+      count++;
+    }
+  }
+
+  if (count > 0) {
+    db.createAuditEvent({
+      interface: 'suggestion-engine',
+      action: 'reactivate-snoozed',
+      detail: { count },
+    });
+  }
+
+  return count;
 }
 
 // ---------------------------------------------------------------------------
