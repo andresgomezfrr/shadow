@@ -151,10 +151,10 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
   let db: ShadowDatabase | null = null;
   let webServer: { close: () => void } | null = null;
   let sleepReject: (() => void) | null = null;
+  let currentJobPromise: Promise<void> | null = null;
 
   const shutdown = () => {
     running = false;
-    // Interrupt any active sleep so the loop exits immediately
     if (sleepReject) sleepReject();
   };
 
@@ -207,6 +207,21 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     // db is guaranteed non-null at this point (created in Step 2)
     const _db = db!;
 
+    // --- Stale job detector: mark abandoned running jobs as failed ---
+    const staleJobs = _db.listJobs({ status: 'running' });
+    const staleThresholdMs = 30 * 60 * 1000;
+    for (const job of staleJobs) {
+      const age = Date.now() - new Date(job.startedAt).getTime();
+      if (age > staleThresholdMs) {
+        _db.updateJob(job.id, {
+          status: 'failed',
+          result: { error: 'stale — daemon restarted while job was running' },
+          finishedAt: new Date().toISOString(),
+        });
+        console.error(`[daemon] Marked stale job ${job.type}/${job.id.slice(0, 8)} as failed (age: ${Math.round(age / 60000)}m)`);
+      }
+    }
+
     // --- Job scheduler helpers ---
     function shouldRunJob(type: string, intervalMs: number): boolean {
       const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');
@@ -224,20 +239,25 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       const now = new Date().toISOString();
       const job = _db.createJob({ type, startedAt: now });
       const startMs = Date.now();
-      try {
-        const out = await fn(job.id);
-        _db.updateJob(job.id, {
-          status: 'completed', phases: out.phases, llmCalls: out.llmCalls,
-          tokensUsed: out.tokensUsed, result: out.result,
-          durationMs: Date.now() - startMs, finishedAt: new Date().toISOString(),
-        });
-      } catch (err) {
-        _db.updateJob(job.id, {
-          status: 'failed', result: { error: err instanceof Error ? err.message : String(err) },
-          durationMs: Date.now() - startMs, finishedAt: new Date().toISOString(),
-        });
-        console.error(`[daemon] Job ${type} failed:`, err instanceof Error ? err.message : err);
-      }
+      const p = (async () => {
+        try {
+          const out = await fn(job.id);
+          _db.updateJob(job.id, {
+            status: 'completed', phases: out.phases, llmCalls: out.llmCalls,
+            tokensUsed: out.tokensUsed, result: out.result,
+            durationMs: Date.now() - startMs, finishedAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          _db.updateJob(job.id, {
+            status: 'failed', result: { error: err instanceof Error ? err.message : String(err) },
+            durationMs: Date.now() - startMs, finishedAt: new Date().toISOString(),
+          });
+          console.error(`[daemon] Job ${type} failed:`, err instanceof Error ? err.message : err);
+        }
+      })();
+      currentJobPromise = p;
+      await p;
+      currentJobPromise = null;
     }
 
     // Step 5: Main loop
@@ -358,7 +378,16 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       sleepReject = null;
     }
   } finally {
-    // Step 6: Graceful cleanup
+    // Step 6: Graceful drain — wait for current job to finish (max 60s)
+    if (currentJobPromise) {
+      console.error('[daemon] Draining current job (max 60s)...');
+      await Promise.race([
+        currentJobPromise,
+        new Promise<void>(r => setTimeout(r, 60_000)),
+      ]);
+    }
+
+    // Step 7: Cleanup
     if (webServer) {
       try { webServer.close(); } catch { /* best-effort */ }
     }
