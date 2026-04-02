@@ -250,7 +250,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const { runHeartbeat } = await import('../heartbeat/state-machine.js');
         await runJobType('heartbeat', async () => {
           const profile = _db.ensureProfile();
-          const lastHb = _db.getLastHeartbeat();
+          const lastHb = _db.getLastJob('heartbeat');
           const pendingEvts = _db.listPendingEvents().length;
           const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: lastHb, pendingEventCount: pendingEvts });
           lastHeartbeatAt = new Date().toISOString();
@@ -272,7 +272,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           const { activitySuggest, activityNotify } = await import('../heartbeat/activities.js');
           await runJobType('suggest', async () => {
             const unprocessed = _db.listObservations({ processed: false });
-            const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastHeartbeat(), pendingEventCount: _db.listPendingEvents().length };
+            const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
             const suggestResult = await activitySuggest(ctx, unprocessed);
             await activityNotify(ctx);
             return {
@@ -289,7 +289,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const { activityConsolidate } = await import('../heartbeat/activities.js');
         await runJobType('consolidate', async () => {
           const profile = _db.ensureProfile();
-          const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastHeartbeat(), pendingEventCount: _db.listPendingEvents().length };
+          const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
           const consolidateResult = await activityConsolidate(ctx);
           return {
             llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,

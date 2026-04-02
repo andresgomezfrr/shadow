@@ -59,7 +59,7 @@ async function handleApi(
       const reposCount = db.listRepos().length;
       const contactsCount = db.listContacts().length;
       const systemsCount = db.listSystems().length;
-      const lastHeartbeat = db.getLastHeartbeat();
+      const lastHeartbeat = db.getLastJob('heartbeat');
       const usage = db.getUsageSummary('day');
       const activeObservations = db.listObservations({ status: 'active' }).length;
       const runsToReview = db.listRuns({ status: 'completed' }).length;
@@ -124,9 +124,10 @@ async function handleApi(
     }
 
     if (pathname === '/api/heartbeats') {
+      // Legacy alias — redirect to jobs with type=heartbeat
       const limit = parseInt(params.get('limit') ?? '30', 10);
-      const heartbeats = db.listHeartbeats(limit);
-      return json(res, heartbeats);
+      const jobs = db.listJobs({ type: 'heartbeat', limit });
+      return json(res, jobs);
     }
 
     if (pathname === '/api/jobs') {
@@ -155,7 +156,7 @@ async function handleApi(
       const usage = db.getUsageSummary('day');
       const events = db.listPendingEvents();
       const runsToReview = db.listRuns({ status: 'completed' });
-      const lastHeartbeat = db.getLastHeartbeat();
+      const lastHeartbeat = db.getLastJob('heartbeat');
       return json(res, {
         date: todayStart.toISOString().split('T')[0],
         profile,
@@ -172,7 +173,7 @@ async function handleApi(
         pendingSuggestions: suggestions.slice(0, 20),
         repos: repos.map((r) => ({ id: r.id, name: r.name, path: r.path, lastObservedAt: r.lastObservedAt })),
         tokens: { input: usage.totalInputTokens, output: usage.totalOutputTokens, calls: usage.totalCalls },
-        lastHeartbeat: lastHeartbeat ? { startedAt: lastHeartbeat.startedAt, phases: lastHeartbeat.phases, observationsCreated: lastHeartbeat.observationsCreated } : null,
+        lastHeartbeat: lastHeartbeat ? { startedAt: lastHeartbeat.startedAt, phases: lastHeartbeat.phases, observationsCreated: (lastHeartbeat.result as Record<string, number>).observationsCreated ?? 0 } : null,
       });
     }
 
@@ -371,9 +372,9 @@ async function handleApi(
 
     if (pathname === '/api/heartbeat/trigger') {
       // Block if a heartbeat is already running
-      const lastHb = db.getLastHeartbeat();
-      if (lastHb && !lastHb.finishedAt) {
-        return json(res, { error: 'Heartbeat already running', phase: lastHb.phase }, 409);
+      const lastHbJob = db.getLastJob('heartbeat');
+      if (lastHbJob && lastHbJob.status === 'running') {
+        return json(res, { error: 'Heartbeat already running', phase: lastHbJob.phase }, 409);
       }
       const config = loadConfig();
       const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');

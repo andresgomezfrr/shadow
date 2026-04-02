@@ -397,6 +397,13 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, created_at DESC);
     `,
   },
+  {
+    version: 11,
+    name: 'drop_heartbeats',
+    sql: `
+      DROP TABLE IF EXISTS heartbeats;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

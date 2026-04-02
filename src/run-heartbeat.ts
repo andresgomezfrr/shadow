@@ -5,10 +5,7 @@ import { runHeartbeat } from './heartbeat/state-machine.js';
 const config = loadConfig();
 const db = createDatabase(config);
 const profile = db.ensureProfile();
-const lastHb = db.getLastHeartbeat();
-
-const unprocessed = db.listObservations({ processed: false });
-console.error(`[debug] unprocessed: ${unprocessed.length}, interactions.jsonl exists`);
+const lastHb = db.getLastJob('heartbeat');
 
 try {
   const result = await runHeartbeat({

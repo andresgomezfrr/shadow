@@ -1,8 +1,6 @@
-import { randomUUID } from 'node:crypto';
-
 import type { ShadowConfig } from '../config/load-config.js';
 import type { ShadowDatabase } from '../storage/database.js';
-import type { HeartbeatRecord, UserProfileRecord } from '../storage/models.js';
+import type { JobRecord, UserProfileRecord } from '../storage/models.js';
 
 import {
   activityObserve,
@@ -10,25 +8,21 @@ import {
   activityNotify,
 } from './activities.js';
 
-// --- Phase types ---
+// --- Types ---
 
-export type HeartbeatPhase = 'wake' | 'observe' | 'analyze' | 'suggest' | 'consolidate' | 'notify' | 'idle';
+export type HeartbeatPhase = 'wake' | 'observe' | 'analyze' | 'notify' | 'idle';
 
 export type HeartbeatContext = {
   config: ShadowConfig;
   db: ShadowDatabase;
   profile: UserProfileRecord;
-  lastHeartbeat: HeartbeatRecord | null;
+  lastHeartbeat: JobRecord | null;
   pendingEventCount: number;
 };
 
 export type HeartbeatResult = {
-  id: string;
   phases: HeartbeatPhase[];
   observationsCreated: number;
-  suggestionsCreated: number;
-  memoriesPromoted: number;
-  memoriesDemoted: number;
   eventsQueued: number;
   durationMs: number;
   llmCalls: number;
@@ -39,9 +33,7 @@ export type HeartbeatResult = {
 
 function isFocusModeActive(profile: UserProfileRecord): boolean {
   if (profile.focusMode !== 'focus') return false;
-  if (profile.focusUntil) {
-    return new Date(profile.focusUntil) > new Date();
-  }
+  if (profile.focusUntil) return new Date(profile.focusUntil) > new Date();
   return true;
 }
 
@@ -49,29 +41,17 @@ function isFocusModeActive(profile: UserProfileRecord): boolean {
 
 export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResult> {
   const startTime = Date.now();
-  const heartbeatId = randomUUID();
 
   const result: HeartbeatResult = {
-    id: heartbeatId,
     phases: [],
     observationsCreated: 0,
-    suggestionsCreated: 0,
-    memoriesPromoted: 0,
-    memoriesDemoted: 0,
     eventsQueued: 0,
     durationMs: 0,
     llmCalls: 0,
     tokensUsed: 0,
   };
 
-  // Create the heartbeat record in DB
-  const heartbeatRecord = ctx.db.createHeartbeat({
-    phase: 'wake',
-    activity: null,
-    startedAt: new Date().toISOString(),
-  });
-
-  // Check focus mode expiry: if focus expired, clear it
+  // Check focus mode expiry
   if (ctx.profile.focusMode === 'focus' && ctx.profile.focusUntil) {
     if (new Date(ctx.profile.focusUntil) <= new Date()) {
       ctx.db.updateProfile(ctx.profile.id, { focusMode: null, focusUntil: null });
@@ -83,17 +63,13 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
 
   // --- WAKE phase ---
   result.phases.push('wake');
-  ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'wake', activity: 'waking' });
 
-  // Smart heartbeat: check if there are unprocessed observations, new observations, or recent interactions
   const unprocessedCount = ctx.db.listObservations({ processed: false }).length;
   let hasNewObservationsSinceLastBeat = unprocessedCount > 0;
   if (!hasNewObservationsSinceLastBeat && ctx.lastHeartbeat?.startedAt) {
-    const countSince = ctx.db.countObservationsSince(ctx.lastHeartbeat.startedAt);
-    hasNewObservationsSinceLastBeat = countSince > 0;
+    hasNewObservationsSinceLastBeat = ctx.db.countObservationsSince(ctx.lastHeartbeat.startedAt) > 0;
   }
 
-  // Also check for recent interactions (from Claude CLI sessions via PostToolUse hook)
   let hasRecentInteractions = false;
   try {
     const { readFileSync } = await import('node:fs');
@@ -105,114 +81,62 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
       ? new Date(ctx.lastHeartbeat.startedAt).getTime()
       : Date.now() - 60 * 60 * 1000;
     hasRecentInteractions = lines.some(line => {
-      try {
-        const entry = JSON.parse(line) as { ts: string };
-        return new Date(entry.ts).getTime() > since;
-      } catch { return false; }
+      try { return new Date((JSON.parse(line) as { ts: string }).ts).getTime() > since; }
+      catch { return false; }
     });
-  } catch { /* no interactions file */ }
+  } catch { /* no file */ }
 
-  // Also check for recent conversations
   let hasRecentConversations = false;
   try {
-    const { readFileSync: readFs } = await import('node:fs');
-    const { resolve: resolvePath } = await import('node:path');
-    const convPath = resolvePath(ctx.config.resolvedDataDir, 'conversations.jsonl');
-    const convContent = readFs(convPath, 'utf8');
-    const convLines = convContent.trim().split('\n').filter(Boolean);
-    const convSince = ctx.lastHeartbeat?.startedAt
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const convPath = resolve(ctx.config.resolvedDataDir, 'conversations.jsonl');
+    const content = readFileSync(convPath, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const since = ctx.lastHeartbeat?.startedAt
       ? new Date(ctx.lastHeartbeat.startedAt).getTime()
       : Date.now() - 60 * 60 * 1000;
-    hasRecentConversations = convLines.some(line => {
-      try {
-        const entry = JSON.parse(line) as { ts: string };
-        return new Date(entry.ts).getTime() > convSince;
-      } catch { return false; }
+    hasRecentConversations = lines.some(line => {
+      try { return new Date((JSON.parse(line) as { ts: string }).ts).getTime() > since; }
+      catch { return false; }
     });
-  } catch { /* no conversations file */ }
+  } catch { /* no file */ }
 
-  // --- OBSERVE phase (always runs after wake) ---
+  // --- OBSERVE phase ---
   result.phases.push('observe');
-  ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'observe', activity: 'observing repos' });
-
   const observeResult = await activityObserve(ctx);
   result.observationsCreated = observeResult.observationsCreated;
 
-  ctx.db.updateHeartbeat(heartbeatRecord.id, {
-    reposObserved: observeResult.reposObserved,
-    observationsCreated: observeResult.observationsCreated,
-  });
-
-  // Determine next phase after observe
   const hasObservations = observeResult.observationsCreated > 0;
-
-  // Smart heartbeat: skip LLM phases only if nothing to process (no observations AND no interactions)
   const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasObservations && !hasRecentInteractions && !hasRecentConversations;
 
   if (skipLlmPhases) {
-    // Nothing new to process — go straight to notify then idle
     result.phases.push('notify');
-    ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'notify', activity: 'checking notifications' });
     const notifyResult = await activityNotify(ctx);
     result.eventsQueued = notifyResult.eventsQueued;
-
     result.phases.push('idle');
     result.durationMs = Date.now() - startTime;
-    ctx.db.updateHeartbeat(heartbeatRecord.id, {
-      phase: 'idle',
-      phases: result.phases,
-      activity: null,
-      durationMs: result.durationMs,
-      llmCalls: result.llmCalls,
-      tokensUsed: result.tokensUsed,
-      eventsQueued: result.eventsQueued,
-      memoriesPromoted: result.memoriesPromoted,
-      memoriesDemoted: result.memoriesDemoted,
-      finishedAt: new Date().toISOString(),
-    });
     return result;
   }
 
   // --- ANALYZE phase ---
-  const hasWorkToDo = hasObservations || unprocessedCount > 0 || hasRecentInteractions || hasRecentConversations;
-  if (hasWorkToDo && !focusActive) {
+  if ((hasObservations || unprocessedCount > 0 || hasRecentInteractions || hasRecentConversations) && !focusActive) {
     result.phases.push('analyze');
-    ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'analyze', activity: 'analyzing observations' });
-
     const unprocessed = ctx.db.listObservations({ processed: false });
-    const analyzeResult = await activityAnalyze(ctx, unprocessed, heartbeatRecord.id);
-
+    const analyzeResult = await activityAnalyze(ctx, unprocessed);
     result.llmCalls += analyzeResult.llmCalls;
     result.tokensUsed += analyzeResult.tokensUsed;
     result.observationsCreated += analyzeResult.observationsCreated ?? 0;
-
   }
 
   // --- NOTIFY phase ---
   result.phases.push('notify');
-  ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'notify', activity: 'checking notifications' });
-
   const notifyResult = await activityNotify(ctx);
   result.eventsQueued = notifyResult.eventsQueued;
 
-  // --- IDLE phase ---
+  // --- IDLE ---
   result.phases.push('idle');
   result.durationMs = Date.now() - startTime;
-
-  ctx.db.updateHeartbeat(heartbeatRecord.id, {
-    phase: 'idle',
-    phases: result.phases,
-    activity: null,
-    observationsCreated: result.observationsCreated,
-    suggestionsCreated: result.suggestionsCreated,
-    durationMs: result.durationMs,
-    llmCalls: result.llmCalls,
-    tokensUsed: result.tokensUsed,
-    eventsQueued: result.eventsQueued,
-    memoriesPromoted: result.memoriesPromoted,
-    memoriesDemoted: result.memoriesDemoted,
-    finishedAt: new Date().toISOString(),
-  });
 
   return result;
 }
