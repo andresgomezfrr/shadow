@@ -313,10 +313,47 @@ export async function activityAnalyze(
     console.error('[shadow:extract] LLM failed:', e instanceof Error ? e.message : e);
   }
 
-  // ========== CALL 2: Observe (observations + auto-resolve) ==========
+  // ========== CALL 2: Observe-cleanup (MCP — resolve obsolete/duplicate observations) ==========
+  try {
+    const preCleanupObs = ctx.db.listObservations({ status: 'active', limit: 30 });
+    if (preCleanupObs.length > 3) {
+      const cleanupPrompt = [
+        'You are Shadow\'s observation cleanup phase.',
+        '',
+        'Review the active observations below. For each one, decide if it should stay active or be resolved.',
+        '',
+        'RESOLVE an observation if:',
+        '- The condition no longer applies (file was committed, issue was fixed, feature was implemented)',
+        '- It\'s a duplicate of another observation about the same file or topic — keep the most recent, resolve older ones',
+        '- It\'s an activity log, not an actionable insight ("X ediciones en Y" without a clear action)',
+        '- It was about something that happened during active development and is no longer relevant',
+        '',
+        'Use shadow_observations to see the full list, then use shadow_observation_resolve for each one you want to resolve.',
+        'Provide a reason when resolving.',
+        '',
+        'Be aggressive — it\'s better to have 5 high-quality observations than 20 noisy ones.',
+        '',
+        dataSources,
+      ].join('\n');
+
+      const cleanupResult = await adapter.execute({
+        repos: [], title: 'Observe Cleanup', goal: 'Resolve obsolete observations',
+        prompt: cleanupPrompt, relevantMemories: [], model, effort,
+        systemPrompt: null, // MCP access — Claude calls shadow_observation_resolve directly
+      });
+      llmCalls++;
+      tokensUsed += (cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0);
+      ctx.db.recordLlmUsage({ source: 'heartbeat_cleanup', sourceId: heartbeatId ?? null, model, inputTokens: cleanupResult.inputTokens ?? 0, outputTokens: cleanupResult.outputTokens ?? 0 });
+      console.error(`[shadow:cleanup] Completed. Tokens: ${(cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0)}`);
+    }
+  } catch (e) {
+    console.error('[shadow:cleanup] Failed:', e instanceof Error ? e.message : e);
+  }
+
+  // ========== CALL 3: Observe (generate new observations — JSON-only) ==========
   try {
     const activeObservations = ctx.db.listObservations({ status: 'active', limit: 20 });
-    const activeObsSummary = activeObservations.map(o => `- [${o.severity}/${o.kind}] ${o.title} (${o.votes}x)`).join('\n');
+    const activeObsSummary = activeObservations.map(o => `- [${o.severity}/${o.kind}] ${o.title} (${o.votes}x, ${o.createdAt.slice(0, 10)})`).join('\n');
     const dismissFeedback = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10)
       .filter(s => s.feedbackNote).map(s => `- "${s.title}" — dismissed: ${s.feedbackNote}`).join('\n');
 
@@ -324,14 +361,14 @@ export async function activityAnalyze(
       'Generate ACTIONABLE OBSERVATIONS about the developer\'s work.',
       '',
       'Return JSON:',
-      '{ "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure", "title": string, "detail": string, "severity": "info"|"warning"|"high", "files": string[] }],',
-      '  "resolvedObservations": [{ "title": string, "reason": string }] }',
+      '{ "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure", "title": string, "detail": string, "severity": "info"|"warning"|"high", "files": string[] }] }',
       '',
-      'Only actionable insights. Not activity logs. Include up to 5 file paths per observation.',
+      'Only actionable insights. Not activity logs. Not "X file has N edits".',
+      'Include up to 5 file paths per observation.',
       '',
       dataSources,
       soulSection,
-      activeObsSummary ? `### Active Observations (DO NOT recreate — resolve if no longer valid)\n${activeObsSummary}\n` : '',
+      activeObsSummary ? `### Active Observations (DO NOT recreate these — they already exist)\n${activeObsSummary}\n` : '',
       dismissFeedback ? `### User Feedback (learn from this)\n${dismissFeedback}\n` : '',
       (() => {
         const of = ctx.db.listFeedback('observation', 10).filter(f => f.note);
@@ -352,9 +389,8 @@ export async function activityAnalyze(
       try {
         const parsed = JSON.parse(extractJson(result.output)) as {
           observations?: Array<{ kind?: string; title?: string; detail?: string; severity?: string; files?: string[] }>;
-          resolvedObservations?: Array<{ title?: string; reason?: string }>;
         };
-        console.error(`[shadow:observe] ${parsed.observations?.length ?? 0} observations, ${parsed.resolvedObservations?.length ?? 0} resolved`);
+        console.error(`[shadow:observe] ${parsed.observations?.length ?? 0} new observations`);
 
         for (const obs of parsed.observations ?? []) {
           if (!obs.title) continue;
@@ -373,15 +409,6 @@ export async function activityAnalyze(
             title: obs.title, detail: { description: obs.detail ?? '' }, context,
           });
           observationsCreated++;
-        }
-
-        for (const ro of parsed.resolvedObservations ?? []) {
-          if (!ro.title) continue;
-          const match = activeObservations.find(o => o.title === ro.title);
-          if (match && match.status === 'active') {
-            ctx.db.updateObservationStatus(match.id, 'resolved');
-            console.error(`[shadow:observe] Auto-resolved: "${ro.title}" — ${ro.reason ?? 'no longer applies'}`);
-          }
         }
       } catch (e) {
         console.error('[shadow:observe] Parse failed:', e instanceof Error ? e.message : e);
