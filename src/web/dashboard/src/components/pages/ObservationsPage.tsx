@@ -1,5 +1,5 @@
 import { useApi } from '../../hooks/useApi';
-import { fetchObservations, acknowledgeObservation, resolveObservation, reopenObservation } from '../../api/client';
+import { fetchObservations, acknowledgeObservation, resolveObservation, reopenObservation, sendFeedback } from '../../api/client';
 import { SEVERITY_COLORS, STATUS_COLORS } from '../../api/types';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
@@ -96,6 +96,16 @@ export function ObservationsPage() {
                       className="text-xs text-orange hover:underline bg-transparent border-none cursor-pointer"
                     >reopen</button>
                   )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); sendFeedback('observation', obs.id, 'thumbs_up'); }}
+                    className="text-xs bg-transparent border-none cursor-pointer opacity-40 hover:opacity-100 transition-opacity"
+                    title="More like this"
+                  >👍</button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); sendFeedback('observation', obs.id, 'thumbs_down'); }}
+                    className="text-xs bg-transparent border-none cursor-pointer opacity-40 hover:opacity-100 transition-opacity"
+                    title="Less like this"
+                  >👎</button>
                   <span className="text-xs text-text-muted shrink-0">
                     {new Date(obs.lastSeenAt).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
                   </span>

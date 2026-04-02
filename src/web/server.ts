@@ -342,6 +342,14 @@ async function handleApi(
       return json(res, db.ensureProfile());
     }
 
+    if (pathname === '/api/feedback') {
+      const body = JSON.parse(await readBody(req));
+      const { targetKind, targetId, action, note } = body;
+      if (!targetKind || !targetId || !action) return json(res, { error: 'Missing targetKind, targetId, or action' }, 400);
+      db.createFeedback({ targetKind, targetId, action, note });
+      return json(res, { ok: true });
+    }
+
     if (pathname === '/api/heartbeat/trigger') {
       // Block if a heartbeat is already running
       const lastHb = db.getLastHeartbeat();

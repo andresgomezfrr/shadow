@@ -85,6 +85,13 @@ export const markRunExecutedManual = (id: string) =>
 export const archiveRun = (id: string) =>
   api<{ ok: boolean }>(`/api/runs/${id}/archive`, { method: 'POST' });
 
+export const sendFeedback = (targetKind: string, targetId: string, action: string, note?: string) =>
+  api<{ ok: boolean }>('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetKind, targetId, action, note }),
+  });
+
 export const acknowledgeObservation = (id: string) =>
   api<Observation>(`/api/observations/${id}/acknowledge`, { method: 'POST' });
 
