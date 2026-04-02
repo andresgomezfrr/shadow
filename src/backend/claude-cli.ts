@@ -31,6 +31,9 @@ export class ClaudeCliAdapter implements BackendAdapter {
       args.push('--effort', pack.effort);
     }
 
+    // Always allow Shadow's own MCP tools without permission prompts
+    args.push('--allowedTools', 'mcp__shadow__*');
+
     args.push(pack.prompt);
 
     const env = { ...process.env };
