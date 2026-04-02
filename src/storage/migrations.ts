@@ -351,6 +351,14 @@ export const migrations: Migration[] = [
       ALTER TABLE runs ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    version: 8,
+    name: 'memory_source_id',
+    sql: `
+      ALTER TABLE memories ADD COLUMN source_id TEXT;
+      CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source_type, source_id);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

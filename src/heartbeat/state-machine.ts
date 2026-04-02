@@ -195,7 +195,7 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
     ctx.db.updateHeartbeat(heartbeatRecord.id, { phase: 'analyze', activity: 'analyzing observations' });
 
     const unprocessed = ctx.db.listObservations({ processed: false });
-    const analyzeResult = await activityAnalyze(ctx, unprocessed);
+    const analyzeResult = await activityAnalyze(ctx, unprocessed, heartbeatRecord.id);
 
     result.llmCalls += analyzeResult.llmCalls;
     result.tokensUsed += analyzeResult.tokensUsed;

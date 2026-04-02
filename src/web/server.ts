@@ -377,7 +377,7 @@ const MIME_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-export async function startWebServer(port: number = 3700, _existingDb?: ShadowDatabase): Promise<void> {
+export async function startWebServer(port: number = 3700, _existingDb?: ShadowDatabase): Promise<{ close: () => void }> {
   const config = loadConfig();
   // Always create own DB connection — sharing with daemon causes "database is not open" errors
   const db = createDatabase(config);

@@ -172,6 +172,7 @@ function getModel(ctx: HeartbeatContext, phase: 'analyze' | 'suggest' | 'consoli
 export async function activityAnalyze(
   ctx: HeartbeatContext,
   observations: ObservationRecord[],
+  heartbeatId?: string,
 ): Promise<{ patternsDetected: number; memoriesCreated: number; llmCalls: number; tokensUsed: number; observationsCreated: number }> {
   // Load recent interactions from Claude CLI sessions
   // Use a wider window (2h) to capture enough context, not just since last heartbeat
@@ -414,6 +415,7 @@ export async function activityAnalyze(
               bodyMd: insight.bodyMd,
               tags: insight.tags ?? [],
               sourceType: 'heartbeat',
+              sourceId: heartbeatId ?? null,
               confidenceScore: insight.confidence ?? 60,
               relevanceScore: 0.6,
             });

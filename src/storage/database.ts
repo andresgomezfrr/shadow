@@ -69,6 +69,7 @@ export type CreateMemoryInput = {
   bodyMd: string;
   tags?: string[];
   sourceType: string;
+  sourceId?: string | null;
   confidenceScore?: number;
   relevanceScore?: number;
 };
@@ -395,8 +396,8 @@ export class ShadowDatabase {
     this.database
       .prepare(
         `INSERT INTO memories (id, repo_id, contact_id, system_id, layer, scope, kind, title, body_md, tags_json,
-         source_type, confidence_score, relevance_score, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         source_type, source_id, confidence_score, relevance_score, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -410,6 +411,7 @@ export class ShadowDatabase {
         input.bodyMd,
         JSON.stringify(input.tags ?? []),
         input.sourceType,
+        input.sourceId ?? null,
         input.confidenceScore ?? 70,
         input.relevanceScore ?? 0.5,
         now,
@@ -1132,6 +1134,7 @@ function mapMemory(row: unknown): MemoryRecord {
     bodyMd: str(d.body_md),
     tags: jsonParse(d.tags_json, []),
     sourceType: str(d.source_type),
+    sourceId: strOrNull(d.source_id),
     confidenceScore: num(d.confidence_score),
     relevanceScore: num(d.relevance_score),
     accessCount: num(d.access_count),

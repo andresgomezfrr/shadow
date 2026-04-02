@@ -37,8 +37,8 @@ Sidebar muestra badges numéricas en: Suggestions (pending), Observations (activ
 ### `[done]` Morning page mejorada
 Secciones: greeting, metrics (5 cards), last heartbeat phases, what Shadow learned (memorias), runs to review (links), pending suggestions (accept/dismiss with reason), observations (links), repos.
 
-### Memorias con trazabilidad al heartbeat
-No se puede ver "qué aprendió Shadow en este heartbeat". Añadir `heartbeat_id` o `source_id` a memories.
+### `[done]` Memorias con trazabilidad al heartbeat
+Migration v8: `source_id` column en memories. Analyze pasa heartbeat ID a createMemory. Se puede filtrar memorias por heartbeat.
 
 ---
 
