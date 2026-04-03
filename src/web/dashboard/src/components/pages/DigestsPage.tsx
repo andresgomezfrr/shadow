@@ -15,9 +15,9 @@ const KIND_FILTERS = [
 ];
 
 const KIND_COLORS: Record<string, string> = {
-  daily: 'text-teal bg-teal/15',
-  weekly: 'text-teal bg-teal/15',
-  brag: 'text-teal bg-teal/15',
+  daily: 'text-pink bg-pink/15',
+  weekly: 'text-pink bg-pink/15',
+  brag: 'text-pink bg-pink/15',
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -57,7 +57,7 @@ export function DigestsPage() {
               key={kind}
               onClick={() => handleTrigger(kind)}
               disabled={isRunning(kind)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-teal/15 text-teal border border-teal/30 cursor-pointer transition-all hover:bg-teal/25 disabled:opacity-50 disabled:cursor-wait"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-pink/15 text-pink border border-pink/30 cursor-pointer transition-all hover:bg-pink/25 disabled:opacity-50 disabled:cursor-wait"
             >
               {isRunning(kind) ? `Generating ${KIND_LABELS[kind]}...` : `Generate ${KIND_LABELS[kind]}`}
             </button>

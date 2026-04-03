@@ -48,9 +48,9 @@ const TYPE_COLORS: Record<string, string> = {
   suggest: 'text-green bg-green/15',
   consolidate: 'text-orange bg-orange/15',
   reflect: 'text-blue bg-blue/15',
-  'digest-daily': 'text-teal bg-teal/15',
-  'digest-weekly': 'text-teal bg-teal/15',
-  'digest-brag': 'text-teal bg-teal/15',
+  'digest-daily': 'text-pink bg-pink/15',
+  'digest-weekly': 'text-pink bg-pink/15',
+  'digest-brag': 'text-pink bg-pink/15',
 };
 
 const PAGE_SIZE = 30;
