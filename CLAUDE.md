@@ -122,9 +122,9 @@ src/web/dashboard/
 | `/morning` | Morning | Daily brief: metrics, memories learned, runs to review, suggestions, observations |
 | `/dashboard` | Dashboard | Overview metrics grid |
 | `/profile` | Profile | Edit displayName, timezone, proactivity, personality, LLM models |
-| `/memories` | Memories | Search + layer filter + expandable list |
-| `/suggestions` | Suggestions | Filter tabs (pending default), accept/dismiss with reason, scores with tooltips, repo context, deep links |
-| `/observations` | Observations | Filter by status, votes, ack/resolve/reopen, enriched context, deep links |
+| `/memories` | Memories | Search + layer filter (URL-persisted) + pagination + expandable list |
+| `/suggestions` | Suggestions | Filter tabs (status + kind, URL-persisted), pagination, accept/dismiss with reason, scores with tooltips, repo context, deep links |
+| `/observations` | Observations | Filter by status (URL-persisted), pagination, votes, ack/resolve/reopen, enriched context, deep links |
 | `/repos` | Repos | Registered repos with last observed |
 | `/team` | Team | Contacts management |
 | `/systems` | Systems | Infrastructure registry |
@@ -336,8 +336,10 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 - **Trust L2 complete** — plan + open session (rich briefing) + execute (worktree + branch). L3+ designed in docs/plan-trust-levels.md.
 - **Smart analyze** — 3 LLM calls: extract (memories + mood) + observe-cleanup (MCP resolve) + observe (new observations). Soul reflection injected.
 - **Smart suggest** — separate job, no operational suggestions, dedup, learns from feedback patterns
-- **CLI adapter** — async spawn, prompt via stdin (avoids ARG_MAX), effort levels per phase, stderr on failure
-- **Morning page** — daily brief with recent jobs, memories learned, runs to review, suggestions, observations
+- **CLI adapter** — async spawn, prompt via stdin (avoids ARG_MAX), effort levels per phase, stderr on failure, `activeChild` tracking for graceful SIGTERM
+- **Morning page** — daily brief with recent jobs (with running phase), memories learned (layer colors), runs to review, suggestions, observations
+- **Dashboard filters** — `useFilterParams` hook syncs all filters with URL search params. Server-side filtering + pagination (`offset`/`limit`) on all list endpoints. `Pagination` component on Suggestions, Observations, Memories, Runs, Jobs pages.
+- **Feedback optimization** — `getThumbsState()` dedicated query with index. Feedback state inlined in suggestions/observations API responses (single request, no separate fetch).
 
 ## Backlog
 
@@ -355,4 +357,6 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Models + effort configurable per phase** from dashboard /profile. `getModel(ctx, phase)` + `getEffort(ctx, phase)`.
 - **Rotation**: conversations.jsonl and interactions.jsonl rotated (keep last 2h) after each analyze.
 - **Dedup**: existing hot/core memories included in extract prompt. Suggestions dedup by kind+title against pending.
-- **Stale job detector** runs every daemon tick (10min threshold). Graceful drain on shutdown (60s).
+- **Stale job detector** runs every daemon tick (10min threshold). Graceful drain on shutdown (60s). On startup, `cleanOrphanedJobsOnStartup()` fails ALL running jobs/runs immediately (no age threshold).
+- **Child process cleanup** — `killActiveChild()` sends SIGTERM to spawned `claude` process on shutdown. `pkill` in daemon stop/restart kills orphaned claude processes matching `--allowedTools.*mcp__shadow`.
+- **Pagination** — DB `count*` methods for all entities. API returns `{ items, total }`. Migration v12 (feedback thumbs index) + v13 (suggestions kind, observations status, jobs type indexes).

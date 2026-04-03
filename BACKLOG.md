@@ -73,8 +73,8 @@ Agrupación temporal (1-2 semanas) con repos, PRs, docs y tickets.
 ### Semantic search (sqlite-vec)
 Búsqueda híbrida FTS5 + vector search para memorias.
 
-### UI preparada para escala (+40 repos)
-Paginación real, filtros, agrupación, rendimiento.
+### ~~UI preparada para escala (+40 repos)~~ ✅ (parcial)
+Paginación offset/limit + filtros server-side con URL persistence en Suggestions, Observations, Memories, Runs, Jobs. Falta: agrupación por repo, búsqueda global.
 
 ### ~~`shadow teach` — enseñanza interactiva~~ ✅
 **Done**: System prompt teaching mode, personalidad SOUL.md, --allowedTools, --topic flag.
