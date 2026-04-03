@@ -206,7 +206,7 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
       MCOLOR="$CY"; ACTIVITY_TEXT="analyzing" ;;
     *suggest*)
       case $V in 0) MASCOT="{•ᴗ•}💡" ;; 1) MASCOT="{•‿•}💡" ;; *) MASCOT="{•ᴗ•}!" ;; esac
-      MCOLOR="$CG"; ACTIVITY_TEXT="thinking" ;;
+      MCOLOR="$CG"; ACTIVITY_TEXT="suggesting" ;;
     *consolidat*)
       case $V in 0) MASCOT="{•_•}⚙" ;; 1) MASCOT="{•‿•}⚙" ;; *) MASCOT="{•_•}~" ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="consolidating" ;;

@@ -358,7 +358,6 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
               const pendingEvts = _db.listPendingEvents().length;
               setPhase('analyze');
               const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts });
-              setPhase(null);
               return {
                 llmCalls: result.llmCalls, tokensUsed: result.tokensUsed, phases: result.phases,
                 result: { observationsCreated: result.observationsCreated },
@@ -368,6 +367,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           ]);
         } catch (hbErr) {
           console.error('[daemon] Heartbeat failed/timeout:', hbErr instanceof Error ? hbErr.message : hbErr);
+        } finally {
           setPhase(null);
         }
         // Always update timestamps, even on failure
@@ -398,7 +398,6 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
                 const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
                 const suggestResult = await activitySuggest(ctx, unprocessed);
                 await activityNotify(ctx);
-                setPhase(null);
                 return {
                   llmCalls: suggestResult.llmCalls, tokensUsed: suggestResult.tokensUsed,
                   phases: ['suggest', 'notify'],
@@ -409,6 +408,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
             ]);
           } catch (sugErr) {
             console.error('[daemon] Suggest failed/timeout:', sugErr instanceof Error ? sugErr.message : sugErr);
+          } finally {
             setPhase(null);
           }
         }
@@ -424,7 +424,6 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
               const profile = _db.ensureProfile();
               const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
               const consolidateResult = await activityConsolidate(ctx);
-              setPhase(null);
               return {
                 llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,
                 phases: ['consolidate'],
@@ -435,6 +434,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           ]);
         } catch (conErr) {
           console.error('[daemon] Consolidate failed/timeout:', conErr instanceof Error ? conErr.message : conErr);
+        } finally {
           setPhase(null);
         }
         worked = true;
@@ -450,7 +450,6 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
               const profile = _db.ensureProfile();
               const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
               const reflectResult = await activityReflect(ctx);
-              setPhase(null);
               return {
                 llmCalls: reflectResult.llmCalls, tokensUsed: reflectResult.tokensUsed,
                 phases: ['reflect'],
@@ -461,6 +460,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           ]);
         } catch (refErr) {
           console.error('[daemon] Reflect failed/timeout:', refErr instanceof Error ? refErr.message : refErr);
+        } finally {
           setPhase(null);
         }
         worked = true;

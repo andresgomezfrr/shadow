@@ -10,7 +10,7 @@ export function EmojiGuidePage() {
         <div className="bg-bg rounded-lg px-4 py-3 font-mono text-sm mb-4 space-y-1">
           <div><span className="text-purple">{'{•‿•}'}</span> ready | 😐🔋 🔍 | ♥ 12m</div>
           <div><span className="text-cyan">{'{°_°}..'}</span> analyzing | 🎯⚡️ 💬 | 💡2 | ♥ now</div>
-          <div><span className="text-green">{'{•ᴗ•}💡'}</span> thinking | 😊⚡️ 💬 | ♥ 15m</div>
+          <div><span className="text-green">{'{•ᴗ•}💡'}</span> suggesting | 😊⚡️ 💬 | ♥ 15m</div>
         </div>
         <p className="text-sm text-text-dim">
           <span className="text-text">Ghost mascot</span> + <span className="text-text">state</span> | <span className="text-text">mood + energy + trust</span> | <span className="text-text">notifications</span> | <span className="text-text">heartbeat countdown</span>
