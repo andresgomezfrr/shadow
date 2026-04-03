@@ -216,9 +216,16 @@ export async function activityAnalyze(
     repoId: repoIds.size === 1 ? [...repoIds][0] : undefined,
   }, 10, false); // touch=false: internal heartbeat lookup, don't inflate access counts
 
+  // System context for prompts
+  const systems = ctx.db.listSystems();
+  const systemContext = systems.length > 0
+    ? `### Registered Systems\n${systems.map(s => `- ${s.name} (${s.kind})${s.description ? ': ' + s.description : ''}${s.url ? ' — ' + s.url : ''}`).join('\n')}\n`
+    : '';
+
   // Shared data sections
   const dataSources = [
     repoContextSummary ? `### Repository Status\n${repoContextSummary}\n` : '',
+    systemContext,
     interactionSummary ? `### Tool Usage\n${interactionSummary}\n` : '',
     conversationSummary ? `### Conversations\n${conversationSummary}\n` : '',
   ].filter(Boolean).join('\n');
@@ -405,7 +412,8 @@ export async function activityAnalyze(
       '- Consolidate related issues into ONE observation (e.g., all "missing validation in X" → one observation).',
       '- If a pattern applies to multiple repos, mention all affected repos in the detail.',
       '- Each observation must be: actionable, specific, and non-obvious.',
-      '- Include up to 5 file paths per observation.',
+      '- Observations can be about repos OR systems/infrastructure. For system observations, use kind "infrastructure".',
+      '- Include up to 5 file paths per observation (for repo observations).',
       '',
       'NEVER create observations about:',
       '- File edit counts or number of changes ("file.ts edited 20 times")',
