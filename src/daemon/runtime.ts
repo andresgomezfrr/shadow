@@ -311,6 +311,14 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         if (reactivated > 0) console.error(`[daemon] Reactivated ${reactivated} snoozed suggestions`);
       } catch { /* ignore */ }
 
+      // Observation lifecycle: auto-expire stale + cap per repo
+      try {
+        const expired = _db.expireObservationsBySeverity();
+        const capped = _db.capObservationsPerRepo(10);
+        if (expired > 0) console.error(`[daemon] Expired ${expired} stale observations`);
+        if (capped > 0) console.error(`[daemon] Capped ${capped} excess observations`);
+      } catch { /* ignore */ }
+
       // Live phase tracking — updates daemon state file so status line can show current phase
       const setPhase = (phase: string | null) => {
         lastHeartbeatPhase = phase;
@@ -354,6 +362,13 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         lastHeartbeatAt = new Date().toISOString();
         nextHeartbeatAt = new Date(Date.now() + config.heartbeatIntervalMs).toISOString();
         worked = true;
+
+        // Consolidate similar observations after heartbeat (async, non-blocking)
+        try {
+          const { consolidateObservations } = await import('../observation/consolidation.js');
+          const obsMerged = await consolidateObservations(_db);
+          if (obsMerged > 0) console.error(`[daemon] Consolidated ${obsMerged} similar observations`);
+        } catch { /* ignore */ }
 
         // --- Job: suggest (runs right after heartbeat if there was activity) ---
         const lastHbJob = _db.getLastJob('heartbeat');

@@ -808,6 +808,46 @@ export class ShadowDatabase {
     return (result as unknown as { changes: number }).changes;
   }
 
+  /** Auto-expire observations by severity: info=7d, warning=14d. High never auto-expires. */
+  expireObservationsBySeverity(): number {
+    const now = Date.now();
+    const infoCutoff = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const warningCutoff = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
+    let expired = 0;
+
+    const r1 = this.database
+      .prepare(`UPDATE observations SET status = 'expired' WHERE status = 'active' AND severity = 'info' AND last_seen_at < ?`)
+      .run(infoCutoff);
+    expired += (r1 as unknown as { changes: number }).changes;
+
+    const r2 = this.database
+      .prepare(`UPDATE observations SET status = 'expired' WHERE status = 'active' AND severity = 'warning' AND last_seen_at < ?`)
+      .run(warningCutoff);
+    expired += (r2 as unknown as { changes: number }).changes;
+
+    return expired;
+  }
+
+  /** Enforce max active observations per repo. Auto-resolve excess (oldest, lowest votes). */
+  capObservationsPerRepo(maxPerRepo = 10): number {
+    const repos = this.database
+      .prepare(`SELECT repo_id, COUNT(*) as cnt FROM observations WHERE status = 'active' GROUP BY repo_id HAVING cnt > ?`)
+      .all(maxPerRepo) as { repo_id: string; cnt: number }[];
+
+    let resolved = 0;
+    for (const { repo_id, cnt } of repos) {
+      const excess = cnt - maxPerRepo;
+      const toResolve = this.database
+        .prepare(`SELECT id FROM observations WHERE status = 'active' AND repo_id = ? ORDER BY votes ASC, last_seen_at ASC LIMIT ?`)
+        .all(repo_id, excess) as { id: string }[];
+      for (const { id } of toResolve) {
+        this.database.prepare(`UPDATE observations SET status = 'resolved' WHERE id = ?`).run(id);
+        resolved++;
+      }
+    }
+    return resolved;
+  }
+
   expireStaleObservations(): number {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const result = this.database
