@@ -75,8 +75,14 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     {
       name: 'shadow_check_in',
       description: 'Get Shadow\'s current personality, mood, context, and pending updates. Call this at the start of a conversation to adopt Shadow\'s persona, or when the user greets Shadow.',
-      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-      handler: async () => {
+      inputSchema: {
+        type: 'object',
+        properties: {
+          repoPath: { type: 'string', description: 'Current working directory / repo path — used to filter observations and suggestions to the relevant context' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
         const profile = db.ensureProfile();
         // Trust: each check_in increases trust
         try { applyTrustDelta(db, 'check_in'); } catch { /* ignore */ }
@@ -85,8 +91,29 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         const greeting = deriveGreeting(profile, db);
         const pendingEvents = db.listPendingEvents();
         const pendingSuggestions = db.countPendingSuggestions();
-        const recentObs = db.listObservations({ status: 'active', limit: 5 });
         const usage = db.getUsageSummary('day');
+
+        // Context-aware filtering: if repoPath provided, prioritize that repo's data
+        const repoPath = params.repoPath as string | undefined;
+        let contextRepoId: string | null = null;
+        let contextProjectIds: string[] = [];
+        if (repoPath) {
+          const repo = db.findRepoByPath(repoPath);
+          if (repo) {
+            contextRepoId = repo.id;
+            contextProjectIds = db.findProjectsForRepo(repo.id).map(p => p.id);
+          }
+        }
+
+        // Filter observations: prefer context repo, fallback to all active
+        let recentObs = db.listObservations({ status: 'active', limit: 10 });
+        if (contextRepoId) {
+          const repoObs = recentObs.filter(o => o.repoId === contextRepoId || o.repoIds.includes(contextRepoId!));
+          // Show repo-specific first, then fill with others up to 5
+          recentObs = [...repoObs, ...recentObs.filter(o => !repoObs.includes(o))].slice(0, 5);
+        } else {
+          recentObs = recentObs.slice(0, 5);
+        }
 
         return {
           personality,
@@ -115,6 +142,8 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
             severity: o.severity,
             createdAt: o.createdAt,
           })),
+          contextRepo: contextRepoId,
+          contextProjects: contextProjectIds,
           todayTokens: usage.totalInputTokens + usage.totalOutputTokens,
           todayLlmCalls: usage.totalCalls,
         };
@@ -173,13 +202,15 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     },
     {
       name: 'shadow_observations',
-      description: 'Returns recent observations. Optionally filter by repoId, status, and limit results.',
+      description: 'Returns observations with pagination. Default: active, limit 20, compact. Use detail=true for full context.',
       inputSchema: {
         type: 'object',
         properties: {
           repoId: { type: 'string', description: 'Filter by repository ID' },
           status: { type: 'string', description: 'Filter by status: active (default), acknowledged, resolved, expired, all' },
-          limit: { type: 'number', description: 'Maximum number of results (default 20)' },
+          limit: { type: 'number', description: 'Max results (default 20)' },
+          offset: { type: 'number', description: 'Offset for pagination (default 0)' },
+          detail: { type: 'boolean', description: 'Include full detail and context JSON (default false)' },
         },
         additionalProperties: false,
       },
@@ -187,22 +218,50 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         const repoId = params.repoId as string | undefined;
         const status = (params.status as string | undefined) ?? 'active';
         const limit = (params.limit as number | undefined) ?? 20;
-        return db.listObservations({ repoId, status, limit });
+        const offset = (params.offset as number | undefined) ?? 0;
+        const detail = (params.detail as boolean | undefined) ?? false;
+        const items = db.listObservations({ repoId, status, limit, offset });
+        const total = db.countObservations({ status: status !== 'all' ? status : undefined });
+        if (detail) return { items, total };
+        return {
+          items: items.map(o => ({
+            id: o.id, kind: o.kind, title: o.title, status: o.status,
+            severity: o.severity, votes: o.votes, repoIds: o.repoIds,
+            entities: o.entities, createdAt: o.createdAt,
+          })),
+          total,
+        };
       },
     },
     {
       name: 'shadow_suggestions',
-      description: 'Returns suggestions. Optionally filter by status (pending, accepted, dismissed).',
+      description: 'Returns suggestions with pagination. Default: pending, limit 20, compact (no body). Use detail=true for full response.',
       inputSchema: {
         type: 'object',
         properties: {
-          status: { type: 'string', description: 'Filter by status: pending, accepted, dismissed' },
+          status: { type: 'string', description: 'Filter by status: pending (default), accepted, dismissed, snoozed' },
+          limit: { type: 'number', description: 'Max results (default 20)' },
+          offset: { type: 'number', description: 'Offset for pagination (default 0)' },
+          detail: { type: 'boolean', description: 'Include full summaryMd and reasoningMd (default false)' },
         },
         additionalProperties: false,
       },
       handler: async (params) => {
-        const status = params.status as string | undefined;
-        return db.listSuggestions({ status });
+        const status = (params.status as string | undefined) ?? 'pending';
+        const limit = (params.limit as number | undefined) ?? 20;
+        const offset = (params.offset as number | undefined) ?? 0;
+        const detail = (params.detail as boolean | undefined) ?? false;
+        const items = db.listSuggestions({ status, limit, offset });
+        const total = db.countSuggestions({ status });
+        if (detail) return { items, total };
+        return {
+          items: items.map(s => ({
+            id: s.id, kind: s.kind, title: s.title, status: s.status,
+            impactScore: s.impactScore, confidenceScore: s.confidenceScore,
+            repoIds: s.repoIds, entities: s.entities, createdAt: s.createdAt,
+          })),
+          total,
+        };
       },
     },
     {
@@ -221,6 +280,66 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         const query = params.query as string;
         const limit = (params.limit as number | undefined) ?? 10;
         return db.searchMemories(query, { limit });
+      },
+    },
+    {
+      name: 'shadow_search',
+      description: 'Unified semantic search across memories, observations, and suggestions using hybrid search (FTS5 + embeddings).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Natural language search query' },
+          types: { type: 'array', items: { type: 'string', enum: ['memory', 'observation', 'suggestion'] }, description: 'Entity types to search (default: all three)' },
+          limit: { type: 'number', description: 'Max results per type (default 5)' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const query = params.query as string;
+        const types = (params.types as string[] | undefined) ?? ['memory', 'observation', 'suggestion'];
+        const limit = (params.limit as number | undefined) ?? 5;
+        const { hybridSearch } = await import('../memory/search.js');
+
+        const results: Array<{ type: string; id: string; title: string; kind: string; score: number; similarity?: number }> = [];
+
+        if (types.includes('memory')) {
+          const memResults = await hybridSearch({
+            db: db.rawDb, query, ftsTable: 'memories_fts', vecTable: 'memory_vectors',
+            mainTable: 'memories', limit, filters: { archived: false },
+          });
+          for (const r of memResults) {
+            const m = db.getMemory(r.id);
+            if (m) results.push({ type: 'memory', id: m.id, title: m.title, kind: m.kind, score: r.score, similarity: r.vecSimilarity });
+          }
+        }
+
+        if (types.includes('observation')) {
+          const obsResults = await hybridSearch({
+            db: db.rawDb, query, ftsTable: 'observations_fts', vecTable: 'observation_vectors',
+            mainTable: 'observations', limit,
+          }).catch(() => [] as Array<{ id: string; score: number; vecSimilarity?: number }>);
+          // observations_fts may not exist yet — fallback to vector-only
+          const { vectorSearch } = await import('../memory/search.js');
+          const finalObs = obsResults.length > 0 ? obsResults
+            : (await vectorSearch({ db: db.rawDb, text: query, vecTable: 'observation_vectors', limit }))
+                .map(r => ({ id: r.id, score: r.similarity, vecSimilarity: r.similarity }));
+          for (const r of finalObs) {
+            const o = db.getObservation(r.id);
+            if (o) results.push({ type: 'observation', id: o.id, title: o.title, kind: o.kind, score: r.score, similarity: r.vecSimilarity });
+          }
+        }
+
+        if (types.includes('suggestion')) {
+          const { vectorSearch } = await import('../memory/search.js');
+          const sugResults = await vectorSearch({ db: db.rawDb, text: query, vecTable: 'suggestion_vectors', limit });
+          for (const r of sugResults) {
+            const s = db.getSuggestion(r.id);
+            if (s) results.push({ type: 'suggestion', id: s.id, title: s.title, kind: s.kind, score: r.similarity, similarity: r.similarity });
+          }
+        }
+
+        return results.sort((a, b) => b.score - a.score).slice(0, limit * 2);
       },
     },
     {
@@ -1011,21 +1130,35 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     // -----------------------------------------------------------------------
     {
       name: 'shadow_memory_list',
-      description: 'List memories with optional filters by layer and scope.',
+      description: 'List memories with pagination. Default: limit 20, compact (no body). Use detail=true for full response.',
       inputSchema: {
         type: 'object',
         properties: {
           layer: { type: 'string', description: 'Filter by layer: core, hot, warm, cool, cold' },
           scope: { type: 'string', description: 'Filter by scope: personal, repo, team, system, cross-repo' },
+          limit: { type: 'number', description: 'Max results (default 20)' },
+          offset: { type: 'number', description: 'Offset for pagination (default 0)' },
+          detail: { type: 'boolean', description: 'Include full bodyMd (default false)' },
         },
         additionalProperties: false,
       },
       handler: async (params) => {
-        return db.listMemories({
-          layer: params.layer as string | undefined,
-          scope: params.scope as string | undefined,
-          archived: false,
-        });
+        const layer = params.layer as string | undefined;
+        const scope = params.scope as string | undefined;
+        const limit = (params.limit as number | undefined) ?? 20;
+        const offset = (params.offset as number | undefined) ?? 0;
+        const detail = (params.detail as boolean | undefined) ?? false;
+        const items = db.listMemories({ layer, scope, archived: false, limit, offset });
+        const total = db.countMemories({ layer, archived: false });
+        if (detail) return { items, total };
+        return {
+          items: items.map(m => ({
+            id: m.id, layer: m.layer, kind: m.kind, title: m.title,
+            scope: m.scope, tags: m.tags, confidenceScore: m.confidenceScore,
+            accessCount: m.accessCount, entities: m.entities, createdAt: m.createdAt,
+          })),
+          total,
+        };
       },
     },
     {
