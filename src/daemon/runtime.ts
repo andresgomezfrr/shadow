@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 
 import type { ShadowConfig } from '../config/schema.js';
+import { killActiveChild } from '../backend/claude-cli.js';
 import { createDatabase, ShadowDatabase } from '../storage/database.js';
 
 // --- Types ---
@@ -155,6 +156,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
   const shutdown = () => {
     running = false;
+    killActiveChild();
     if (sleepReject) sleepReject();
   };
 
@@ -225,8 +227,28 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       }
     }
 
-    // Clean stale jobs on startup
-    cleanStaleJobs();
+    // On startup, ALL 'running' jobs/runs are orphans (old daemon is dead) — fail them immediately
+    function cleanOrphanedJobsOnStartup(): void {
+      const runningJobs = _db.listJobs({ status: 'running' });
+      for (const job of runningJobs) {
+        _db.updateJob(job.id, {
+          status: 'failed',
+          result: { error: 'orphaned — daemon restarted' },
+          finishedAt: new Date().toISOString(),
+        });
+        console.error(`[daemon] Marked orphaned job ${job.type}/${job.id.slice(0, 8)} as failed (daemon restart)`);
+      }
+      const runningRuns = _db.listRuns({ status: 'running' });
+      for (const run of runningRuns) {
+        _db.updateRun(run.id, {
+          status: 'failed',
+          errorSummary: 'orphaned — daemon restarted',
+          finishedAt: new Date().toISOString(),
+        });
+        console.error(`[daemon] Marked orphaned run ${run.id.slice(0, 8)} as failed (daemon restart)`);
+      }
+    }
+    cleanOrphanedJobsOnStartup();
 
     // --- Job scheduler continued ---
     function shouldRunJob(type: string, intervalMs: number): boolean {
@@ -488,7 +510,10 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       ]);
     }
 
-    // Step 7: Cleanup
+    // Step 7: Kill any lingering child claude process
+    killActiveChild();
+
+    // Step 8: Cleanup
     if (webServer) {
       try { webServer.close(); } catch { /* best-effort */ }
     }

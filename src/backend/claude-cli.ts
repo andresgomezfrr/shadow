@@ -3,6 +3,16 @@ import { spawn, execFileSync } from 'node:child_process';
 import type { ShadowConfig } from '../config/load-config.js';
 import type { BackendAdapter, BackendDoctorResult, BackendExecutionResult, ObjectivePack } from './types.js';
 
+// Module-level active child tracking (one claude process at a time — sequential calls)
+let activeChild: import('node:child_process').ChildProcess | null = null;
+
+export function killActiveChild(): void {
+  if (activeChild && !activeChild.killed) {
+    activeChild.kill('SIGTERM');
+    activeChild = null;
+  }
+}
+
 export class ClaudeCliAdapter implements BackendAdapter {
   readonly kind = 'cli';
 
@@ -45,8 +55,12 @@ export class ClaudeCliAdapter implements BackendAdapter {
 
     try {
       const { stdout, stderr, exitCode } = await spawnAsync(
-        this.config.claudeBin, args, { cwd, timeout: timeoutMs, env, stdin: pack.prompt },
+        this.config.claudeBin, args, {
+          cwd, timeout: timeoutMs, env, stdin: pack.prompt,
+          onSpawn: (child) => { activeChild = child; },
+        },
       );
+      activeChild = null;
 
       const finishedAt = new Date().toISOString();
 
@@ -146,7 +160,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
 function spawnAsync(
   command: string,
   args: string[],
-  options: { cwd: string; timeout: number; env: Record<string, string | undefined>; stdin?: string },
+  options: { cwd: string; timeout: number; env: Record<string, string | undefined>; stdin?: string; onSpawn?: (child: import('node:child_process').ChildProcess) => void },
 ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
@@ -154,6 +168,8 @@ function spawnAsync(
       env: options.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+
+    options.onSpawn?.(child);
 
     // Write prompt to stdin if provided
     if (options.stdin) {
