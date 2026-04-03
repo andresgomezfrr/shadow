@@ -58,7 +58,7 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
   case "$HEARTBEAT_PHASE" in
     *observe*) ACTIVITY_EMOJI="👀"; ACTIVITY_TEXT="observing" ;;
     *analyze*) ACTIVITY_EMOJI="🧠"; ACTIVITY_TEXT="analyzing" ;;
-    *suggest*) ACTIVITY_EMOJI="💡"; ACTIVITY_TEXT="thinking" ;;
+    *suggest*) ACTIVITY_EMOJI="💡"; ACTIVITY_TEXT="suggesting" ;;
     *consolidat*) ACTIVITY_EMOJI="📦"; ACTIVITY_TEXT="consolidating" ;;
     *notify*) ACTIVITY_EMOJI="📢"; ACTIVITY_TEXT="notifying" ;;
     *) ACTIVITY_EMOJI="⚙️"; ACTIVITY_TEXT="working" ;;

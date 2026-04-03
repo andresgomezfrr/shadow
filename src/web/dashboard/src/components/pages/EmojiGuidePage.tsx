@@ -26,6 +26,7 @@ export function EmojiGuidePage() {
           ['green', '{•ᴗ•}', '{•ᴗ•}🎶', '{•‿•}🏓', 'ready (happy)', 'Idle, good mood'],
           ['cyan', '{•‿•}', '{•.•}', '{•_•}.', 'watching', 'Few recent interactions'],
           ['cyan', '{°_°}📚', '{°‿°}✏️', '{°_°}📖', 'learning', 'Many interactions, absorbing'],
+          ['cyan', '{•‿•}👁️', '{•.•}👀', '{•_•}🔎', 'observing', 'Heartbeat: scanning repos'],
           ['yellow', '{•_•}🧹', '{•‿•}♻️', '{•_•}🗑️', 'cleaning', 'Heartbeat: observation cleanup'],
           ['yellow', '{°_°}..', '{°_°}...', '{°.°}🔎', 'analyzing', 'Heartbeat: extract + observe'],
           ['green', '{•ᴗ•}💡', '{•‿•}💡', '{•ᴗ•}!', 'suggesting', 'Heartbeat: generating ideas'],

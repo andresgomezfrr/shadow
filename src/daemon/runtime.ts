@@ -220,6 +220,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           _db.updateJob(job.id, {
             status: 'failed',
             result: { error: `stale — stuck running for ${Math.round(age / 60000)}m` },
+            durationMs: age,
             finishedAt: new Date().toISOString(),
           });
           console.error(`[daemon] Marked stale job ${job.type}/${job.id.slice(0, 8)} as failed (${Math.round(age / 60000)}m)`);
@@ -231,9 +232,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     function cleanOrphanedJobsOnStartup(): void {
       const runningJobs = _db.listJobs({ status: 'running' });
       for (const job of runningJobs) {
+        const age = Date.now() - new Date(job.startedAt).getTime();
         _db.updateJob(job.id, {
           status: 'failed',
           result: { error: 'orphaned — daemon restarted' },
+          durationMs: age,
           finishedAt: new Date().toISOString(),
         });
         console.error(`[daemon] Marked orphaned job ${job.type}/${job.id.slice(0, 8)} as failed (daemon restart)`);
