@@ -1,5 +1,6 @@
 export { ShadowDatabase, createDatabase } from './database.js';
 export type {
+  CreateProjectInput,
   CreateRepoInput,
   CreateSystemInput,
   CreateContactInput,
@@ -11,6 +12,8 @@ export type {
   CreateLlmUsageInput,
 } from './database.js';
 export type {
+  EntityLink,
+  ProjectRecord,
   RepoRecord,
   SystemRecord,
   ContactRecord,

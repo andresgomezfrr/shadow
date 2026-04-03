@@ -10,6 +10,7 @@ const NAV_ITEMS: { to: string; icon: string; label: string; countKey?: keyof Cou
   { to: '/memories', icon: '🧠', label: 'Memories' },
   { to: '/observations', icon: '👀', label: 'Observations', countKey: 'activeObservations' },
   { to: '/repos', icon: '📁', label: 'Repos' },
+  { to: '/projects', icon: '📋', label: 'Projects' },
   { to: '/team', icon: '👥', label: 'Team' },
   { to: '/systems', icon: '🔧', label: 'Systems' },
   { to: '/usage', icon: '📈', label: 'Usage' },

@@ -143,6 +143,12 @@ async function handleApi(
       return json(res, contacts);
     }
 
+    if (pathname === '/api/projects') {
+      const status = params.get('status') ?? undefined;
+      const projects = db.listProjects(status ? { status } : undefined);
+      return json(res, projects);
+    }
+
     if (pathname === '/api/systems') {
       const kind = params.get('kind') ?? undefined;
       const systems = db.listSystems({ kind });

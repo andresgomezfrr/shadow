@@ -255,6 +255,21 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
       },
     },
     {
+      name: 'shadow_projects',
+      description: 'Returns tracked projects. Optionally filter by status.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', description: 'Filter by status: active (default), completed, on-hold, archived' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const status = params.status as string | undefined;
+        return db.listProjects(status ? { status } : undefined);
+      },
+    },
+    {
       name: 'shadow_systems',
       description: 'Returns tracked systems. Optionally filter by kind.',
       inputSchema: {
@@ -683,6 +698,100 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
 
         db.deleteSystem(systemId);
         return { ok: true, removed: systemId, name: system.name };
+      },
+    },
+    {
+      name: 'shadow_project_add',
+      description: 'Create a project that groups repos, systems, and contacts. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Project name (unique)' },
+          kind: { type: 'string', description: 'Type: long-term, sprint, or task' },
+          description: { type: 'string', description: 'Project description' },
+          repoIds: { type: 'array', items: { type: 'string' }, description: 'Repo IDs to link' },
+          systemIds: { type: 'array', items: { type: 'string' }, description: 'System IDs to link' },
+          contactIds: { type: 'array', items: { type: 'string' }, description: 'Contact IDs to link' },
+          startDate: { type: 'string', description: 'Start date (ISO format)' },
+          endDate: { type: 'string', description: 'End date (ISO format, for sprints/tasks)' },
+        },
+        required: ['name'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        return db.createProject({
+          name: params.name as string,
+          kind: (params.kind as string | undefined) ?? 'long-term',
+          description: (params.description as string | undefined) ?? null,
+          repoIds: (params.repoIds as string[] | undefined) ?? [],
+          systemIds: (params.systemIds as string[] | undefined) ?? [],
+          contactIds: (params.contactIds as string[] | undefined) ?? [],
+          startDate: (params.startDate as string | undefined) ?? null,
+          endDate: (params.endDate as string | undefined) ?? null,
+        });
+      },
+    },
+    {
+      name: 'shadow_project_remove',
+      description: 'Remove a project. Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          projectId: { type: 'string', description: 'Project ID to remove' },
+        },
+        required: ['projectId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const projectId = params.projectId as string;
+        const project = db.getProject(projectId);
+        if (!project) return { isError: true, message: `Project not found: ${projectId}` };
+
+        db.deleteProject(projectId);
+        return { ok: true, removed: projectId, name: project.name };
+      },
+    },
+    {
+      name: 'shadow_project_update',
+      description: 'Update a project (repos, systems, contacts, status, etc). Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          projectId: { type: 'string', description: 'Project ID to update' },
+          name: { type: 'string', description: 'New project name' },
+          description: { type: 'string', description: 'New description' },
+          kind: { type: 'string', description: 'New kind: long-term, sprint, task' },
+          status: { type: 'string', description: 'New status: active, completed, on-hold, archived' },
+          repoIds: { type: 'array', items: { type: 'string' }, description: 'Replace linked repo IDs' },
+          systemIds: { type: 'array', items: { type: 'string' }, description: 'Replace linked system IDs' },
+          contactIds: { type: 'array', items: { type: 'string' }, description: 'Replace linked contact IDs' },
+          startDate: { type: 'string', description: 'Start date (ISO)' },
+          endDate: { type: 'string', description: 'End date (ISO)' },
+          notesMd: { type: 'string', description: 'Notes in markdown' },
+        },
+        required: ['projectId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const projectId = params.projectId as string;
+        const project = db.getProject(projectId);
+        if (!project) return { isError: true, message: `Project not found: ${projectId}` };
+
+        const updates: Record<string, unknown> = {};
+        for (const key of ['name', 'description', 'kind', 'status', 'repoIds', 'systemIds', 'contactIds', 'startDate', 'endDate', 'notesMd']) {
+          if (params[key] !== undefined) updates[key] = params[key];
+        }
+
+        return db.updateProject(projectId, updates as Parameters<typeof db.updateProject>[1]);
       },
     },
     {

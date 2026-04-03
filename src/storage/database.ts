@@ -9,6 +9,7 @@ import type { ShadowConfig } from '../config/load-config.js';
 import type {
   AuditEventRecord,
   ContactRecord,
+  EntityLink,
   EventRecord,
   HeartbeatRecord,
   InteractionRecord,
@@ -16,6 +17,7 @@ import type {
   MemoryRecord,
   MemorySearchResult,
   ObservationRecord,
+  ProjectRecord,
   RepoRecord,
   RunRecord,
   SuggestionRecord,
@@ -37,6 +39,19 @@ export type CreateRepoInput = {
   testCommand?: string | null;
   lintCommand?: string | null;
   buildCommand?: string | null;
+};
+
+export type CreateProjectInput = {
+  name: string;
+  kind?: string;
+  description?: string | null;
+  status?: string;
+  repoIds?: string[];
+  systemIds?: string[];
+  contactIds?: string[];
+  startDate?: string | null;
+  endDate?: string | null;
+  notesMd?: string | null;
 };
 
 export type CreateSystemInput = {
@@ -284,6 +299,89 @@ export class ShadowDatabase {
 
   deleteSystem(id: string): void {
     this.database.prepare('DELETE FROM systems WHERE id = ?').run(id);
+  }
+
+  // --- Projects ---
+
+  createProject(input: CreateProjectInput): ProjectRecord {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.database
+      .prepare(
+        `INSERT INTO projects (id, name, kind, description, status, repo_ids_json, system_ids_json, contact_ids_json, start_date, end_date, notes_md, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        input.name,
+        input.kind ?? 'long-term',
+        input.description ?? null,
+        input.status ?? 'active',
+        JSON.stringify(input.repoIds ?? []),
+        JSON.stringify(input.systemIds ?? []),
+        JSON.stringify(input.contactIds ?? []),
+        input.startDate ?? null,
+        input.endDate ?? null,
+        input.notesMd ?? null,
+        now,
+        now,
+      );
+    return this.getProject(id)!;
+  }
+
+  getProject(id: string): ProjectRecord | null {
+    const row = this.database.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+    return row ? mapProject(row) : null;
+  }
+
+  findProjectByName(name: string): ProjectRecord | null {
+    const row = this.database.prepare('SELECT * FROM projects WHERE name = ?').get(name);
+    return row ? mapProject(row) : null;
+  }
+
+  listProjects(filters?: { status?: string }): ProjectRecord[] {
+    if (filters?.status) {
+      return this.database
+        .prepare('SELECT * FROM projects WHERE status = ? ORDER BY created_at DESC')
+        .all(filters.status)
+        .map(mapProject);
+    }
+    return this.database
+      .prepare('SELECT * FROM projects ORDER BY created_at DESC')
+      .all()
+      .map(mapProject);
+  }
+
+  updateProject(id: string, updates: Partial<Pick<ProjectRecord, 'name' | 'kind' | 'description' | 'status' | 'repoIds' | 'systemIds' | 'contactIds' | 'startDate' | 'endDate' | 'notesMd'>>): ProjectRecord {
+    const sets: string[] = [];
+    const values: SQLValue[] = [];
+    for (const [key, value] of Object.entries(updates)) {
+      const col = toSnake(key);
+      if (['repo_ids', 'system_ids', 'contact_ids'].includes(col)) {
+        sets.push(`${col}_json = ?`);
+        values.push(JSON.stringify(value ?? []));
+      } else {
+        sets.push(`${col} = ?`);
+        values.push((value ?? null) as SQLValue);
+      }
+    }
+    if (sets.length === 0) return this.getProject(id)!;
+    sets.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+    this.database.prepare(`UPDATE projects SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    return this.getProject(id)!;
+  }
+
+  deleteProject(id: string): void {
+    this.database.prepare('DELETE FROM projects WHERE id = ?').run(id);
+  }
+
+  findProjectsForRepo(repoId: string): ProjectRecord[] {
+    return this.database
+      .prepare(`SELECT p.* FROM projects p, json_each(p.repo_ids_json) j WHERE j.value = ? AND p.status != 'archived'`)
+      .all(repoId)
+      .map(mapProject);
   }
 
   // --- Contacts ---
@@ -1231,6 +1329,25 @@ function mapSystem(row: unknown): SystemRecord {
   };
 }
 
+function mapProject(row: unknown): ProjectRecord {
+  const d = r(row);
+  return {
+    id: str(d.id),
+    name: str(d.name),
+    description: strOrNull(d.description),
+    kind: str(d.kind),
+    status: str(d.status),
+    repoIds: jsonParse(d.repo_ids_json, []),
+    systemIds: jsonParse(d.system_ids_json, []),
+    contactIds: jsonParse(d.contact_ids_json, []),
+    startDate: strOrNull(d.start_date),
+    endDate: strOrNull(d.end_date),
+    notesMd: strOrNull(d.notes_md),
+    createdAt: str(d.created_at),
+    updatedAt: str(d.updated_at),
+  };
+}
+
 function mapContact(row: unknown): ContactRecord {
   const d = r(row);
   return {
@@ -1284,6 +1401,7 @@ function mapMemory(row: unknown): MemoryRecord {
     repoId: strOrNull(d.repo_id),
     contactId: strOrNull(d.contact_id),
     systemId: strOrNull(d.system_id),
+    entities: jsonParse(d.entities_json, []),
     layer: str(d.layer),
     scope: str(d.scope),
     kind: str(d.kind),
@@ -1310,6 +1428,8 @@ function mapObservation(row: unknown): ObservationRecord {
   return {
     id: str(d.id),
     repoId: str(d.repo_id),
+    repoIds: jsonParse(d.repo_ids_json, []),
+    entities: jsonParse(d.entities_json, []),
     sourceKind: str(d.source_kind ?? 'repo'),
     sourceId: strOrNull(d.source_id),
     kind: str(d.kind),
@@ -1353,6 +1473,7 @@ function mapSuggestion(row: unknown): SuggestionRecord {
     id: str(d.id),
     repoId: strOrNull(d.repo_id),
     repoIds: jsonParse(d.repo_ids_json, []),
+    entities: jsonParse(d.entities_json, []),
     sourceObservationId: strOrNull(d.source_observation_id),
     kind: str(d.kind),
     title: str(d.title),

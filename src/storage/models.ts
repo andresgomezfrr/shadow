@@ -1,3 +1,28 @@
+// --- Entity linking ---
+
+export type EntityLink = {
+  type: 'repo' | 'project' | 'system' | 'contact';
+  id: string;
+};
+
+// --- Projects ---
+
+export type ProjectRecord = {
+  id: string;
+  name: string;
+  description: string | null;
+  kind: string;
+  status: string;
+  repoIds: string[];
+  systemIds: string[];
+  contactIds: string[];
+  startDate: string | null;
+  endDate: string | null;
+  notesMd: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 // --- Repos ---
 
 export type RepoRecord = {
@@ -82,6 +107,7 @@ export type MemoryRecord = {
   repoId: string | null;
   contactId: string | null;
   systemId: string | null;
+  entities: EntityLink[];
   layer: string;
   scope: string;
   kind: string;
@@ -107,6 +133,8 @@ export type MemoryRecord = {
 export type ObservationRecord = {
   id: string;
   repoId: string;
+  repoIds: string[];
+  entities: EntityLink[];
   sourceKind: string;
   sourceId: string | null;
   kind: string;
@@ -129,6 +157,7 @@ export type SuggestionRecord = {
   id: string;
   repoId: string | null;
   repoIds: string[];
+  entities: EntityLink[];
   sourceObservationId: string | null;
   kind: string;
   title: string;

@@ -854,6 +854,67 @@ contact
     }),
   );
 
+// --- project ---
+
+const project = program.command('project').description('manage projects (groups of repos, systems, contacts)');
+
+project
+  .command('add <name>')
+  .description('create a project')
+  .option('--kind <kind>', 'type: long-term, sprint, task', 'long-term')
+  .option('--description <desc>', 'project description')
+  .option('--repos <repos>', 'comma-separated repo names to link')
+  .option('--systems <systems>', 'comma-separated system names to link')
+  .option('--start <date>', 'start date (ISO format)')
+  .option('--end <date>', 'end date (ISO format)')
+  .action((name: string, options: { kind: string; description?: string; repos?: string; systems?: string; start?: string; end?: string }) =>
+    withDb((db) => {
+      const repoIds = options.repos
+        ? options.repos.split(',').map((n) => {
+            const repo = db.findRepoByName(n.trim());
+            if (!repo) throw new Error(`Repo not found: ${n.trim()}`);
+            return repo.id;
+          })
+        : [];
+      const systemIds = options.systems
+        ? options.systems.split(',').map((n) => {
+            const sys = db.findSystemByName(n.trim());
+            if (!sys) throw new Error(`System not found: ${n.trim()}`);
+            return sys.id;
+          })
+        : [];
+      return db.createProject({
+        name,
+        kind: options.kind,
+        description: options.description ?? null,
+        repoIds,
+        systemIds,
+        startDate: options.start ?? null,
+        endDate: options.end ?? null,
+      });
+    }),
+  );
+
+project
+  .command('list')
+  .description('list projects')
+  .option('--status <status>', 'filter by status: active, completed, on-hold, archived')
+  .action((options: { status?: string }) =>
+    withDb((db) => db.listProjects(options.status ? { status: options.status } : undefined)),
+  );
+
+project
+  .command('remove <projectId>')
+  .description('remove a project')
+  .action((projectId: string) =>
+    withDb((db) => {
+      const existing = db.getProject(projectId);
+      if (!existing) return { error: `project not found: ${projectId}` };
+      db.deleteProject(projectId);
+      return { ok: true, removed: projectId, name: existing.name };
+    }),
+  );
+
 // --- system ---
 
 const system = program.command('system').description('manage known systems/infrastructure');

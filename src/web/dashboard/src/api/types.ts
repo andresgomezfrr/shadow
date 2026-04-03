@@ -141,6 +141,22 @@ export type Contact = {
   updatedAt: string;
 };
 
+export type Project = {
+  id: string;
+  name: string;
+  description: string | null;
+  kind: string;
+  status: string;
+  repoIds: string[];
+  systemIds: string[];
+  contactIds: string[];
+  startDate: string | null;
+  endDate: string | null;
+  notesMd: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type System = {
   id: string;
   name: string;

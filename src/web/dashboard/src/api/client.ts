@@ -6,6 +6,7 @@ import type {
   Observation,
   Repo,
   Contact,
+  Project,
   System,
   UsageSummary,
   Heartbeat,
@@ -51,6 +52,9 @@ export const fetchRepos = () => api<Repo[]>('/api/repos');
 
 export const fetchContacts = (team?: string) =>
   api<Contact[]>(`/api/contacts${qs({ team })}`);
+
+export const fetchProjects = (status?: string) =>
+  api<Project[]>(`/api/projects${qs({ status })}`);
 
 export const fetchSystems = (kind?: string) =>
   api<System[]>(`/api/systems${qs({ kind })}`);

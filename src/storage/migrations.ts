@@ -421,6 +421,59 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type, started_at DESC);
     `,
   },
+  {
+    version: 14,
+    name: 'projects_and_entity_linking',
+    sql: `
+      -- Projects entity
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        kind TEXT NOT NULL DEFAULT 'long-term',
+        status TEXT NOT NULL DEFAULT 'active',
+        repo_ids_json TEXT NOT NULL DEFAULT '[]',
+        system_ids_json TEXT NOT NULL DEFAULT '[]',
+        contact_ids_json TEXT NOT NULL DEFAULT '[]',
+        start_date TEXT,
+        end_date TEXT,
+        notes_md TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+
+      -- Unified entity linking: memories
+      ALTER TABLE memories ADD COLUMN entities_json TEXT NOT NULL DEFAULT '[]';
+
+      -- Unified entity linking: observations (+ multi-repo)
+      ALTER TABLE observations ADD COLUMN repo_ids_json TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE observations ADD COLUMN entities_json TEXT NOT NULL DEFAULT '[]';
+
+      -- Unified entity linking: suggestions
+      ALTER TABLE suggestions ADD COLUMN entities_json TEXT NOT NULL DEFAULT '[]';
+
+      -- Backfill: memories entities from repo_id/contact_id/system_id
+      UPDATE memories SET entities_json = json_array(json_object('type', 'repo', 'id', repo_id))
+        WHERE repo_id IS NOT NULL AND entities_json = '[]';
+      UPDATE memories SET entities_json = json_insert(entities_json, '$[#]', json_object('type', 'contact', 'id', contact_id))
+        WHERE contact_id IS NOT NULL;
+      UPDATE memories SET entities_json = json_insert(entities_json, '$[#]', json_object('type', 'system', 'id', system_id))
+        WHERE system_id IS NOT NULL;
+
+      -- Backfill: observations repo_ids_json + entities from repo_id
+      UPDATE observations SET
+        repo_ids_json = json_array(repo_id),
+        entities_json = json_array(json_object('type', 'repo', 'id', repo_id))
+        WHERE repo_id IS NOT NULL AND repo_ids_json = '[]';
+
+      -- Backfill: suggestions entities from repo_ids_json
+      UPDATE suggestions SET entities_json = (
+        SELECT COALESCE(json_group_array(json_object('type', 'repo', 'id', value)), '[]')
+        FROM json_each(suggestions.repo_ids_json)
+      ) WHERE repo_ids_json != '[]' AND entities_json = '[]';
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {
