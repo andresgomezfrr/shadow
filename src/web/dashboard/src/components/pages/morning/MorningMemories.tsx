@@ -1,0 +1,24 @@
+import { timeAgo } from '../../../utils/format';
+import { Badge } from '../../common/Badge';
+import { LAYER_COLORS } from '../../../api/types';
+import type { DailySummary } from '../../../api/types';
+
+export function MorningMemories({ memories }: { memories: DailySummary['recentMemories'] }) {
+  if (memories.length === 0) return null;
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-lg font-semibold mb-3">🧠 What Shadow learned today</h2>
+      <div className="flex flex-col gap-1.5">
+        {memories.map((m) => (
+          <div key={m.id} className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center gap-2">
+            <Badge className={LAYER_COLORS[m.layer] ?? LAYER_COLORS.cold}>{m.layer}</Badge>
+            <Badge className="text-text-dim bg-border">{m.kind}</Badge>
+            <span className="text-[13px] flex-1 truncate">{m.title}</span>
+            <span className="text-xs text-text-muted shrink-0">{timeAgo(m.createdAt)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
