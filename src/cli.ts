@@ -132,7 +132,8 @@ if [ -f "$CACHE_FILE" ]; then
 fi
 
 # Get Shadow status (--json) and flatten for grep
-STATUS=$($SHADOW_CLI --json status 2>/dev/null | tr -d '\\n ')
+RAW_STATUS=$($SHADOW_CLI --json status 2>/dev/null)
+STATUS=$(echo "$RAW_STATUS" | tr -d '\\n ')
 if [ $? -ne 0 ] || [ -z "$STATUS" ]; then
   echo "{•_•} offline"
   exit 0
@@ -151,8 +152,9 @@ RECENT_ACTIVITY=$(echo "$STATUS" | grep -o '"recentActivity":[0-9]*' | head -1 |
 TOKENS=$(echo "$STATUS" | grep -o '"todayTokens":[0-9]*' | head -1 | cut -d: -f2)
 MOOD=$(echo "$STATUS" | grep -o '"moodHint":"[^"]*"' | head -1 | cut -d'"' -f4)
 ENERGY=$(echo "$STATUS" | grep -o '"energyLevel":"[^"]*"' | head -1 | cut -d'"' -f4)
-THOUGHT=$(echo "$STATUS" | grep -o '"thought":"[^"]*"' | head -1 | cut -d'"' -f4)
-THOUGHT_EXPIRES=$(echo "$STATUS" | grep -o '"thoughtExpiresAt":"[^"]*"' | head -1 | cut -d'"' -f4)
+# Extract thought from RAW_STATUS to preserve spaces in the text
+THOUGHT=$(echo "$RAW_STATUS" | grep -o '"thought": *"[^"]*"' | head -1 | sed 's/"thought": *"//;s/"$//')
+THOUGHT_EXPIRES=$(echo "$RAW_STATUS" | grep -o '"thoughtExpiresAt": *"[^"]*"' | head -1 | sed 's/"thoughtExpiresAt": *"//;s/"$//')
 
 # Trust name + emoji
 case "$TRUST" in
