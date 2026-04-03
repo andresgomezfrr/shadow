@@ -51,6 +51,10 @@ export type SystemRecord = {
   accessMethod: string | null;
   config: Record<string, unknown>;
   healthCheck: string | null;
+  logsLocation: string | null;
+  deployMethod: string | null;
+  debugGuide: string | null;
+  relatedRepos: string[];
   lastCheckedAt: string | null;
   createdAt: string;
   updatedAt: string;

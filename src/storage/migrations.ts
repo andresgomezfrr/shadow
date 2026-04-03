@@ -545,6 +545,16 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    version: 18,
+    name: 'system_operational_fields',
+    sql: `
+      ALTER TABLE systems ADD COLUMN logs_location TEXT;
+      ALTER TABLE systems ADD COLUMN deploy_method TEXT;
+      ALTER TABLE systems ADD COLUMN debug_guide TEXT;
+      ALTER TABLE systems ADD COLUMN related_repos_json TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

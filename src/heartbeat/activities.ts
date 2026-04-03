@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import type { ShadowConfig } from '../config/load-config.js';
 import type { ShadowDatabase } from '../storage/database.js';
-import type { ObservationRecord, MemoryRecord } from '../storage/models.js';
+import type { ObservationRecord, MemoryRecord, EntityLink } from '../storage/models.js';
 import type { ObjectivePack } from '../backend/types.js';
 
 import { observeAllRepos, collectActiveRepoContexts, summarizeRepoContexts } from '../observation/watcher.js';
@@ -17,6 +17,67 @@ import { applyTrustDelta } from '../profile/trust.js';
 import type { HeartbeatContext } from './state-machine.js';
 import { ExtractResponseSchema, ObserveResponseSchema, SuggestResponseSchema } from './schemas.js';
 import { safeParseJson } from '../backend/json-repair.js';
+
+// --- Entity auto-linking ---
+
+/** Build entity links from a repo: repo → its projects → their systems */
+function autoLinkFromRepo(db: ShadowDatabase, repoId: string): EntityLink[] {
+  const entities: EntityLink[] = [{ type: 'repo', id: repoId }];
+  try {
+    const projects = db.findProjectsForRepo(repoId);
+    for (const p of projects) {
+      entities.push({ type: 'project', id: p.id });
+      for (const sysId of p.systemIds) {
+        if (!entities.some(e => e.type === 'system' && e.id === sysId)) {
+          entities.push({ type: 'system', id: sysId });
+        }
+      }
+    }
+  } catch { /* best effort */ }
+  return entities;
+}
+
+/** Detect mentions of registered systems/projects in text */
+function detectEntityMentions(db: ShadowDatabase, text: string): EntityLink[] {
+  const entities: EntityLink[] = [];
+  const lower = text.toLowerCase();
+  try {
+    for (const sys of db.listSystems()) {
+      if (sys.name.length >= 3 && lower.includes(sys.name.toLowerCase())) {
+        entities.push({ type: 'system', id: sys.id });
+      }
+    }
+    for (const proj of db.listProjects()) {
+      if (proj.name.length >= 3 && lower.includes(proj.name.toLowerCase())) {
+        entities.push({ type: 'project', id: proj.id });
+      }
+    }
+  } catch { /* best effort */ }
+  return entities;
+}
+
+/** Combine entity links from repo + name detection, deduplicated */
+function buildEntityLinks(db: ShadowDatabase, repoId: string | null, text: string): EntityLink[] {
+  const entities: EntityLink[] = [];
+  if (repoId) entities.push(...autoLinkFromRepo(db, repoId));
+  entities.push(...detectEntityMentions(db, text));
+  // Deduplicate
+  const seen = new Set<string>();
+  return entities.filter(e => {
+    const key = `${e.type}:${e.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Update entities_json on an existing memory/observation */
+function persistEntityLinks(db: ShadowDatabase, table: 'memories' | 'observations' | 'suggestions', id: string, entities: EntityLink[]): void {
+  if (entities.length === 0) return;
+  try {
+    db.rawDb.prepare(`UPDATE ${table} SET entities_json = ? WHERE id = ?`).run(JSON.stringify(entities), id);
+  } catch { /* best effort */ }
+}
 
 // --- Activity: Observe ---
 
@@ -219,7 +280,14 @@ export async function activityAnalyze(
   // System context for prompts
   const systems = ctx.db.listSystems();
   const systemContext = systems.length > 0
-    ? `### Registered Systems\n${systems.map(s => `- ${s.name} (${s.kind})${s.description ? ': ' + s.description : ''}${s.url ? ' — ' + s.url : ''}`).join('\n')}\n`
+    ? `### Registered Systems\n${systems.map(s => {
+        const parts = [`- ${s.name} (${s.kind})`];
+        if (s.description) parts.push(s.description);
+        if (s.url) parts.push(`url: ${s.url}`);
+        if (s.logsLocation) parts.push(`logs: ${s.logsLocation}`);
+        if (s.deployMethod) parts.push(`deploy: ${s.deployMethod}`);
+        return parts.join(' — ');
+      }).join('\n')}\n`
     : '';
 
   // Shared data sections
@@ -265,6 +333,10 @@ export async function activityAnalyze(
       '- dependency = relationship between repos, systems, or services',
       '- preference = user preferences about tools, workflows, or approaches',
       'Prefer: preference, workflow, convention, tech_stack. design_decision should be < 40% of your output.',
+      '',
+      'ENTITY LINKING:',
+      'When an insight is about a registered system or project, include the system/project name in the tags.',
+      'This helps Shadow link knowledge to the right entity for future retrieval.',
       '',
       'LAYER RULES:',
       '"core" requires ALL of: (a) needed if rewriting from scratch, (b) stable for 6+ months, (c) NOT derivable from code.',
@@ -337,12 +409,16 @@ export async function activityAnalyze(
               }
               break;
             case 'create': {
+              const primaryRepoId = repoIds.size === 1 ? [...repoIds][0] : null;
               const mem = ctx.db.createMemory({
-                repoId: repoIds.size === 1 ? [...repoIds][0] : null,
+                repoId: primaryRepoId,
                 layer: insight.layer, scope: insight.scope, kind: insight.kind, title: insight.title, bodyMd: insight.bodyMd,
                 tags: insight.tags, sourceType: 'heartbeat', sourceId: heartbeatId ?? null,
                 confidenceScore: insight.confidence, relevanceScore: 0.6,
               });
+              // Auto-link to projects + systems
+              const entities = buildEntityLinks(ctx.db, primaryRepoId, `${insight.title} ${insight.bodyMd}`);
+              if (entities.length > 0) persistEntityLinks(ctx.db, 'memories', mem.id, entities);
               // Store embedding for new memory
               await generateAndStoreEmbedding(ctx.db, 'memory', mem.id, { kind: mem.kind, title: mem.title, bodyMd: mem.bodyMd });
               memoriesCreated++;
@@ -481,6 +557,9 @@ export async function activityAnalyze(
             kind: obs.kind, severity: obs.severity,
             title: obs.title, detail: { description: obs.detail }, context,
           });
+          // Auto-link to projects + systems
+          const obsEntities = buildEntityLinks(ctx.db, firstRepoId, `${obs.title} ${obs.detail}`);
+          if (obsEntities.length > 0) persistEntityLinks(ctx.db, 'observations', created.id, obsEntities);
           // Store embedding for new observation
           await generateAndStoreEmbedding(ctx.db, 'observation', created.id, { kind: created.kind, title: created.title, detail: created.detail });
           observationsCreated++;
@@ -667,8 +746,9 @@ export async function activitySuggest(
             console.error(`[shadow:suggest] Boosted confidence (similar to accepted, ${(vsAccepted.similarity * 100).toFixed(0)}%): ${sug.title}`);
           }
 
+          const sugPrimaryRepo = repoIds.length === 1 ? repoIds[0] : null;
           const created = ctx.db.createSuggestion({
-            repoId: repoIds.length === 1 ? repoIds[0] : null,
+            repoId: sugPrimaryRepo,
             repoIds,
             sourceObservationId: observations[0]?.id ?? null,
             kind: sug.kind,
@@ -680,6 +760,9 @@ export async function activitySuggest(
             riskScore: sug.riskScore,
             requiredTrustLevel: ctx.profile.trustLevel,
           });
+          // Auto-link to projects + systems
+          const sugEntities = buildEntityLinks(ctx.db, sugPrimaryRepo, `${sug.title} ${sug.summaryMd}`);
+          if (sugEntities.length > 0) persistEntityLinks(ctx.db, 'suggestions', created.id, sugEntities);
           // Store embedding for new suggestion
           await generateAndStoreEmbedding(ctx.db, 'suggestion', created.id, { kind: created.kind, title: created.title, summaryMd: created.summaryMd });
           suggestionsCreated++;

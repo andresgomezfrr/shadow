@@ -109,10 +109,47 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         let recentObs = db.listObservations({ status: 'active', limit: 10 });
         if (contextRepoId) {
           const repoObs = recentObs.filter(o => o.repoId === contextRepoId || o.repoIds.includes(contextRepoId!));
-          // Show repo-specific first, then fill with others up to 5
           recentObs = [...repoObs, ...recentObs.filter(o => !repoObs.includes(o))].slice(0, 5);
         } else {
           recentObs = recentObs.slice(0, 5);
+        }
+
+        // Context knowledge: relevant memories for the current context
+        let contextKnowledge: { title: string; kind: string; snippet: string }[] = [];
+        let contextEntities: { repo?: { name: string; id: string }; projects: { name: string; id: string }[]; systems: { name: string; id: string; kind: string }[] } | undefined;
+
+        if (contextRepoId) {
+          const repo = db.findRepoByPath(repoPath!);
+          const projects = db.findProjectsForRepo(contextRepoId);
+          const systemIds = [...new Set(projects.flatMap(p => p.systemIds))];
+          const systems = systemIds.map(id => db.getSystem(id)).filter(Boolean) as { name: string; id: string; kind: string }[];
+
+          contextEntities = {
+            repo: repo ? { name: repo.name, id: repo.id } : undefined,
+            projects: projects.map(p => ({ name: p.name, id: p.id })),
+            systems: systems.map(s => ({ name: s.name, id: s.id, kind: s.kind })),
+          };
+
+          // Hybrid search for relevant memories using repo + project + system names as query
+          const searchTerms = [repo?.name, ...projects.map(p => p.name), ...systems.map(s => s.name)].filter(Boolean).join(' ');
+          if (searchTerms) {
+            try {
+              const { vectorSearch } = await import('../memory/search.js');
+              const results = await vectorSearch({ db: db.rawDb, text: searchTerms, vecTable: 'memory_vectors', limit: 5 });
+              for (const r of results) {
+                if (r.similarity < 0.25) break;
+                const mem = db.getMemory(r.id);
+                if (mem && !mem.archivedAt) {
+                  contextKnowledge.push({ title: mem.title, kind: mem.kind, snippet: mem.bodyMd.slice(0, 150) });
+                }
+              }
+            } catch { /* embedding model may not be ready yet */ }
+          }
+        } else {
+          // No repo context: show core knowledge summaries if available
+          const coreMems = db.listMemories({ layer: 'core', archived: false, limit: 3 })
+            .filter(m => m.kind === 'knowledge_summary' || m.kind === 'taught');
+          contextKnowledge = coreMems.map(m => ({ title: m.title, kind: m.kind, snippet: m.bodyMd.slice(0, 150) }));
         }
 
         return {
@@ -144,6 +181,8 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
           })),
           contextRepo: contextRepoId,
           contextProjects: contextProjectIds,
+          contextEntities,
+          contextKnowledge,
           todayTokens: usage.totalInputTokens + usage.totalOutputTokens,
           todayLlmCalls: usage.totalCalls,
         };
@@ -768,7 +807,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     },
     {
       name: 'shadow_system_add',
-      description: 'Register an infrastructure system or service. Requires trust level >= 1.',
+      description: 'Register an infrastructure system or service with operational knowledge. Requires trust level >= 1.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -778,6 +817,9 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
           description: { type: 'string', description: 'Description of the system' },
           accessMethod: { type: 'string', description: 'Access method: mcp, api, cli, manual' },
           healthCheck: { type: 'string', description: 'Health check command or URL' },
+          logsLocation: { type: 'string', description: 'Where to find logs (e.g., "CloudWatch /auth/*", "docker logs auth")' },
+          deployMethod: { type: 'string', description: 'How to deploy (e.g., "ArgoCD auto-deploy on merge to main")' },
+          debugGuide: { type: 'string', description: 'How to debug (e.g., "Start with JWT endpoint, check Redis pool")' },
         },
         required: ['name', 'kind'],
         additionalProperties: false,
@@ -793,6 +835,9 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
           description: (params.description as string | undefined) ?? null,
           accessMethod: (params.accessMethod as string | undefined) ?? null,
           healthCheck: (params.healthCheck as string | undefined) ?? null,
+          logsLocation: (params.logsLocation as string | undefined) ?? null,
+          deployMethod: (params.deployMethod as string | undefined) ?? null,
+          debugGuide: (params.debugGuide as string | undefined) ?? null,
         });
       },
     },

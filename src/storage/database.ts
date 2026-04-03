@@ -63,6 +63,9 @@ export type CreateSystemInput = {
   accessMethod?: string | null;
   config?: Record<string, unknown>;
   healthCheck?: string | null;
+  logsLocation?: string | null;
+  deployMethod?: string | null;
+  debugGuide?: string | null;
 };
 
 export type CreateContactInput = {
@@ -267,8 +270,8 @@ export class ShadowDatabase {
     const now = new Date().toISOString();
     this.database
       .prepare(
-        `INSERT INTO systems (id, name, kind, url, description, access_method, config_json, health_check, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO systems (id, name, kind, url, description, access_method, config_json, health_check, logs_location, deploy_method, debug_guide, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -279,6 +282,9 @@ export class ShadowDatabase {
         input.accessMethod ?? null,
         JSON.stringify(input.config ?? {}),
         input.healthCheck ?? null,
+        input.logsLocation ?? null,
+        input.deployMethod ?? null,
+        input.debugGuide ?? null,
         now,
         now,
       );
@@ -308,7 +314,7 @@ export class ShadowDatabase {
       .map(mapSystem);
   }
 
-  updateSystem(id: string, updates: Partial<Pick<SystemRecord, 'name' | 'kind' | 'url' | 'description' | 'accessMethod' | 'healthCheck' | 'lastCheckedAt'>>): void {
+  updateSystem(id: string, updates: Partial<Pick<SystemRecord, 'name' | 'kind' | 'url' | 'description' | 'accessMethod' | 'healthCheck' | 'logsLocation' | 'deployMethod' | 'debugGuide' | 'lastCheckedAt'>>): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
@@ -1406,6 +1412,10 @@ function mapSystem(row: unknown): SystemRecord {
     accessMethod: strOrNull(d.access_method),
     config: jsonParse(d.config_json, {}),
     healthCheck: strOrNull(d.health_check),
+    logsLocation: strOrNull(d.logs_location),
+    deployMethod: strOrNull(d.deploy_method),
+    debugGuide: strOrNull(d.debug_guide),
+    relatedRepos: jsonParse(d.related_repos_json, []),
     lastCheckedAt: strOrNull(d.last_checked_at),
     createdAt: str(d.created_at),
     updatedAt: str(d.updated_at),
