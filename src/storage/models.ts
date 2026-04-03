@@ -241,6 +241,9 @@ export type RunRecord = {
   artifactDir: string | null;
   sessionId: string | null;
   worktreePath: string | null;
+  confidence: string | null;
+  doubts: string[];
+  prUrl: string | null;
   archived: boolean;
   startedAt: string | null;
   finishedAt: string | null;

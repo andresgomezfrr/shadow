@@ -13,6 +13,16 @@ export function MorningRuns({ runs }: { runs: Run[] }) {
           <a key={r.id} href={`/runs?highlight=${r.id}`} className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center gap-2 hover:border-accent transition-colors no-underline">
             <Badge className="text-green bg-green/15">completed</Badge>
             <Badge className="text-text-dim bg-border">{r.kind}</Badge>
+            {r.confidence && (
+              <Badge className={
+                r.confidence === 'high' ? 'text-green bg-green/15' :
+                r.confidence === 'medium' ? 'text-orange bg-orange/15' :
+                'text-red bg-red/15'
+              }>{r.confidence}</Badge>
+            )}
+            {r.doubts?.length > 0 && (
+              <Badge className="text-orange bg-orange/15">⚠ {r.doubts.length} doubt{r.doubts.length > 1 ? 's' : ''}</Badge>
+            )}
             <span className="text-[13px] text-text flex-1 truncate">{r.prompt.slice(0, 80)}</span>
             <span className="text-xs text-text-muted shrink-0">{timeAgo(r.createdAt)}</span>
           </a>

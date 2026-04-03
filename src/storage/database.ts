@@ -1197,13 +1197,16 @@ export class ShadowDatabase {
     return (this.database.prepare(`SELECT COUNT(*) as total FROM runs ${where}`).get(...values) as { total: number }).total;
   }
 
-  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'archived' | 'startedAt' | 'finishedAt'>>): void {
+  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'archived' | 'startedAt' | 'finishedAt'>> & { doubts?: string[] }): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
-      sets.push(`${toSnake(key)} = ?`);
-      // SQLite doesn't accept JS booleans — convert to 0/1
-      const sqlValue = typeof value === 'boolean' ? (value ? 1 : 0) : value;
+      const colName = key === 'doubts' ? 'doubts_json' : toSnake(key);
+      sets.push(`${colName} = ?`);
+      // SQLite doesn't accept JS booleans or arrays — convert appropriately
+      const sqlValue = typeof value === 'boolean' ? (value ? 1 : 0)
+        : Array.isArray(value) ? JSON.stringify(value)
+        : value;
       values.push((sqlValue ?? null) as SQLValue);
     }
     if (sets.length === 0) return;
@@ -1698,6 +1701,9 @@ function mapRun(row: unknown): RunRecord {
     artifactDir: strOrNull(d.artifact_dir),
     sessionId: strOrNull(d.session_id),
     worktreePath: strOrNull(d.worktree_path),
+    confidence: strOrNull(d.confidence),
+    doubts: jsonParse(d.doubts_json, []),
+    prUrl: strOrNull(d.pr_url),
     archived: bool(d.archived),
     startedAt: strOrNull(d.started_at),
     finishedAt: strOrNull(d.finished_at),

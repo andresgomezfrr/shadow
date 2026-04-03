@@ -8,6 +8,7 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { RunRecord } from '../storage/models.js';
 import type { ObjectivePack, RepoPack } from '../backend/types.js';
 import { selectAdapter } from '../backend/index.js';
+import { ConfidenceEvaluationSchema, type ConfidenceEvaluation } from './schemas.js';
 
 /**
  * Personality prompt prefixes by level (1-5).
@@ -117,7 +118,8 @@ export class RunnerService {
       const personalityPrompt = getPersonalityPrompt(this.config.personalityLevel);
 
       const currentProfile = this.db.ensureProfile();
-      const planOnly = run.kind !== 'execution' && currentProfile.trustLevel <= 2;
+      // L3 also generates plan first — auto-execute is gated by confidence evaluation
+      const planOnly = run.kind !== 'execution' && currentProfile.trustLevel <= 3;
 
       const briefing = [
         personalityPrompt,
@@ -181,9 +183,45 @@ export class RunnerService {
       const adapter = selectAdapter(this.config);
       const result = await adapter.execute(pack);
 
+      // 5b. L3 confidence gate — evaluate plan before deciding to auto-execute
+      const isSuccess = result.status === 'success';
+      if (currentProfile.trustLevel >= 3 && planOnly && isSuccess && !run.parentRunId) {
+        const evaluation = await this.evaluateConfidence(result.output, pack);
+        this.db.updateRun(run.id, {
+          confidence: evaluation.confidence,
+          doubts: evaluation.doubts,
+        });
+
+        if (evaluation.confidence === 'high' && evaluation.doubts.length === 0) {
+          // Auto-execute: create child execution run (picked up by next daemon tick)
+          const childRun = this.db.createRun({
+            repoId: run.repoId,
+            repoIds: run.repoIds.length > 0 ? run.repoIds : undefined,
+            suggestionId: run.suggestionId,
+            parentRunId: run.id,
+            kind: 'execution',
+            prompt: result.summaryHint ?? result.output,
+          });
+
+          this.db.createAuditEvent({
+            interface: 'runner',
+            action: 'l3-auto-execute',
+            targetKind: 'run',
+            targetId: run.id,
+            detail: {
+              confidence: evaluation.confidence,
+              childRunId: childRun.id,
+            },
+          });
+
+          console.error(`[runner] L3 auto-execute: confidence=${evaluation.confidence}, child run ${childRun.id}`);
+        } else {
+          console.error(`[runner] L3 gate: confidence=${evaluation.confidence}, doubts=${evaluation.doubts.length} — waiting for user`);
+        }
+      }
+
       // 6. Post-process
       const finishedAt = new Date().toISOString();
-      const isSuccess = result.status === 'success';
 
       // Write summary artifact
       const summaryContent = [
@@ -294,6 +332,103 @@ export class RunnerService {
 
       const updatedRun = this.db.getRun(run.id)!;
       return { processed: true, run: updatedRun };
+    }
+  }
+
+  /**
+   * Evaluate a generated plan's confidence level and identify doubts.
+   * Uses Sonnet with effort high — this is a critical gate decision.
+   * Falls back to low confidence on any failure.
+   */
+  private async evaluateConfidence(
+    planOutput: string,
+    pack: ObjectivePack,
+  ): Promise<ConfidenceEvaluation> {
+    const FALLBACK: ConfidenceEvaluation = { confidence: 'low', doubts: ['evaluation failed — defaulting to manual review'] };
+
+    try {
+      const adapter = selectAdapter(this.config);
+
+      const evaluationPrompt = [
+        'You are evaluating an implementation plan for autonomous execution.',
+        'Your job is to decide if this plan can be safely auto-executed WITHOUT human review.',
+        '',
+        '## Plan to evaluate',
+        '',
+        planOutput,
+        '',
+        '## Goal',
+        '',
+        pack.goal,
+        '',
+        '## Evaluation criteria',
+        '',
+        'Rate confidence as HIGH only if ALL of these are true:',
+        '- The plan references specific, concrete files and changes',
+        '- The scope is well-bounded (not touching many unrelated areas)',
+        '- No changes to authentication, authorization, or security logic',
+        '- No data deletion or destructive database operations',
+        '- No infrastructure or deployment changes',
+        '- No multi-repo coordination needed',
+        '- Verification steps are clear (tests, typecheck, etc.)',
+        '',
+        'Rate confidence as MEDIUM if most criteria are met but some uncertainty exists.',
+        'Rate confidence as LOW if significant risks or unknowns are present.',
+        '',
+        'List specific doubts — concrete reasons why auto-execution might fail or cause issues.',
+        '',
+        'Respond with ONLY valid JSON, no markdown fences:',
+        '{"confidence": "high" | "medium" | "low", "doubts": ["doubt1", "doubt2"]}',
+      ].join('\n');
+
+      const evalPack: ObjectivePack = {
+        repos: pack.repos,
+        title: 'Confidence evaluation',
+        goal: 'Evaluate plan confidence',
+        prompt: evaluationPrompt,
+        relevantMemories: [],
+        model: 'sonnet',
+        effort: 'high',
+        systemPrompt: 'Respond with ONLY valid JSON. No markdown, no explanation, no code fences.',
+        timeoutMs: 60_000,
+      };
+
+      const evalResult = await adapter.execute(evalPack);
+
+      if (evalResult.status !== 'success') {
+        console.error('[runner] Confidence evaluation failed:', evalResult.output.slice(0, 200));
+        return FALLBACK;
+      }
+
+      // Record LLM usage for the evaluation call
+      if (evalResult.inputTokens !== undefined || evalResult.outputTokens !== undefined) {
+        this.db.recordLlmUsage({
+          source: 'runner-eval',
+          sourceId: pack.runId ?? null,
+          model: 'sonnet',
+          inputTokens: evalResult.inputTokens ?? 0,
+          outputTokens: evalResult.outputTokens ?? 0,
+        });
+      }
+
+      // Parse output — try to extract JSON from the response
+      const raw = evalResult.output.trim();
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error('[runner] Confidence evaluation returned non-JSON:', raw.slice(0, 200));
+        return FALLBACK;
+      }
+
+      const parsed = ConfidenceEvaluationSchema.safeParse(JSON.parse(jsonMatch[0]));
+      if (!parsed.success) {
+        console.error('[runner] Confidence evaluation schema validation failed:', parsed.error.message);
+        return FALLBACK;
+      }
+
+      return parsed.data;
+    } catch (err) {
+      console.error('[runner] Confidence evaluation error:', err instanceof Error ? err.message : err);
+      return FALLBACK;
     }
   }
 }

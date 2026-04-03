@@ -573,6 +573,21 @@ export const migrations: Migration[] = [
       ALTER TABLE systems ADD COLUMN related_repos_json TEXT NOT NULL DEFAULT '[]';
     `,
   },
+  {
+    version: 21,
+    name: 'run_confidence_doubts',
+    sql: `
+      ALTER TABLE runs ADD COLUMN confidence TEXT;
+      ALTER TABLE runs ADD COLUMN doubts_json TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
+  {
+    version: 22,
+    name: 'run_pr_url',
+    sql: `
+      ALTER TABLE runs ADD COLUMN pr_url TEXT;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

@@ -2,7 +2,7 @@ import { timeAgo } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
 import { useHighlight } from '../../hooks/useHighlight';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchRuns, executeRun, createRunSession, discardRun, markRunExecutedManual, archiveRun, retryRun } from '../../api/client';
+import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, markRunExecutedManual, archiveRun, retryRun, createDraftPr } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
@@ -51,8 +51,13 @@ export function RunsPage() {
   const total = rawData?.total ?? 0;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
+  const { data: repos } = useApi(fetchRepos, [], 60_000);
+  const githubRepoIds = new Set(
+    (repos ?? []).filter((r) => r.remoteUrl?.includes('github')).map((r) => r.id),
+  );
   const [sessionInfo, setSessionInfo] = useState<{ runId: string; sessionId: string; command: string } | null>(null);
   const [sessionLoading, setSessionLoading] = useState<string | null>(null);
+  const [prLoading, setPrLoading] = useState<string | null>(null);
 
   const toggle = (id: string) => {
     setExpanded((s) => {
@@ -100,6 +105,21 @@ export function RunsPage() {
   const handleRetry = useCallback(async (id: string) => {
     await retryRun(id);
     refresh();
+  }, [refresh]);
+
+  const handleDraftPr = useCallback(async (id: string) => {
+    setPrLoading(id);
+    try {
+      const result = await createDraftPr(id);
+      if (result?.prUrl) {
+        window.open(result.prUrl, '_blank');
+      }
+      refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to create draft PR');
+    } finally {
+      setPrLoading(null);
+    }
   }, [refresh]);
 
   return (
@@ -156,6 +176,16 @@ export function RunsPage() {
                       <Badge title="View child execution" className="text-green bg-green/15 hover:bg-green/25">↓ child</Badge>
                     </a>
                   )}
+                  {run.confidence && (
+                    <Badge title="Confidence" className={
+                      run.confidence === 'high' ? 'text-green bg-green/15' :
+                      run.confidence === 'medium' ? 'text-orange bg-orange/15' :
+                      'text-red bg-red/15'
+                    }>{run.confidence}</Badge>
+                  )}
+                  {run.doubts?.length > 0 && (
+                    <Badge title="Has doubts" className="text-orange bg-orange/15">⚠ {run.doubts.length} doubt{run.doubts.length > 1 ? 's' : ''}</Badge>
+                  )}
                   <span className="text-[13px] flex-1 min-w-0 truncate">{run.prompt}</span>
                   {duration && <span className="text-xs text-text-muted">{duration}</span>}
                   <span className="text-xs text-text-muted shrink-0">{timeAgo(run.createdAt)}</span>
@@ -164,6 +194,14 @@ export function RunsPage() {
                 {isOpen && (
                   <div className="mt-3 animate-fade-in space-y-3">
                     <div className="bg-bg rounded p-3 text-[13px] text-text whitespace-pre-wrap break-words">{run.prompt}</div>
+                    {run.doubts?.length > 0 && (
+                      <div className="bg-orange/5 border border-orange/20 rounded-lg p-3 text-sm">
+                        <div className="font-medium text-orange mb-1.5">Shadow has doubts</div>
+                        <ul className="list-disc list-inside text-text-dim space-y-0.5 text-xs">
+                          {run.doubts.map((d, i) => <li key={i}>{d}</li>)}
+                        </ul>
+                      </div>
+                    )}
                     {isPlan && (
                       <div className="flex gap-2">
                         <button
@@ -206,9 +244,23 @@ export function RunsPage() {
                     )}
 
                     {run.worktreePath && (
-                      <div className="bg-bg rounded p-3 text-xs space-y-1">
-                        <div><span className="text-accent">worktree:</span> {run.worktreePath}</div>
-                        <div><span className="text-accent">branch:</span> shadow/{run.id.slice(0, 8)}</div>
+                      <div className="bg-bg rounded p-3 text-xs space-y-2">
+                        <div className="space-y-1">
+                          <div><span className="text-accent">worktree:</span> {run.worktreePath}</div>
+                          <div><span className="text-accent">branch:</span> shadow/{run.id.slice(0, 8)}</div>
+                        </div>
+                        {run.prUrl ? (
+                          <a href={run.prUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1.5 text-accent hover:underline">
+                            PR: {run.prUrl}
+                          </a>
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDraftPr(run.id); }}
+                            disabled={prLoading === run.id || !githubRepoIds.has(run.repoId)}
+                            title={!githubRepoIds.has(run.repoId) ? 'No GitHub remote configured' : undefined}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple/15 text-purple border border-purple/30 cursor-pointer transition-all hover:bg-purple/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >{prLoading === run.id ? 'Creating PR...' : 'Create draft PR'}</button>
+                        )}
                       </div>
                     )}
 

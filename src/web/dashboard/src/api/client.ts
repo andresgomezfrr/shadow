@@ -106,6 +106,9 @@ export const archiveRun = (id: string) =>
 export const retryRun = (id: string) =>
   api<{ ok: boolean; newRunId: string }>(`/api/runs/${id}/retry`, { method: 'POST' });
 
+export const createDraftPr = (id: string) =>
+  api<{ ok: boolean; prUrl: string }>(`/api/runs/${id}/draft-pr`, { method: 'POST' });
+
 export const fetchFeedbackState = (targetKind: string) =>
   api<Record<string, string>>(`/api/feedback-state?targetKind=${targetKind}`);
 
