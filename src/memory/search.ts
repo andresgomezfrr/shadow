@@ -40,13 +40,16 @@ function searchFts5(
   if (!sanitized) return [];
 
   try {
+    const conditions = [`${ftsTable} MATCH ?`];
+    if (filters?.archived === false) conditions.push('m.archived_at IS NULL');
+    const where = `WHERE ${conditions.join(' AND ')}`;
+
     const rows = db
       .prepare(
         `SELECT m.id, bm25(${ftsTable}) as rank
          FROM ${ftsTable} f
          JOIN ${mainTable} m ON m.rowid = f.rowid
-         ${filters?.archived === false ? 'WHERE m.archived_at IS NULL' : ''}
-         AND ${ftsTable} MATCH ?
+         ${where}
          ORDER BY rank
          LIMIT ?`,
       )
