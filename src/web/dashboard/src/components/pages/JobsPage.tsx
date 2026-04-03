@@ -23,8 +23,7 @@ const PHASE_STYLES: Record<string, string> = {
 
 
 function isActive(hb: Job): boolean {
-  const phases = hb.phases ?? [];
-  return phases.some((p) => ['analyze', 'suggest', 'consolidate'].includes(p));
+  return hb.llmCalls > 0;
 }
 
 function interestingPhases(phases: string[]): string[] {
