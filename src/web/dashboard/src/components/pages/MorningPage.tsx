@@ -179,13 +179,13 @@ export function MorningPage() {
           <div className="flex flex-col gap-1.5">
             {data.recentJobs.map((job) => {
               const phases = (job.phases ?? []).filter((p: string) => !['wake', 'idle', 'notify'].includes(p));
-              const typeColors: Record<string, string> = { heartbeat: 'text-purple bg-purple/15', suggest: 'text-accent bg-accent-soft', consolidate: 'text-orange bg-orange/15' };
+              const typeColors: Record<string, string> = { heartbeat: 'text-purple bg-purple/15', suggest: 'text-green bg-green/15', consolidate: 'text-orange bg-orange/15', reflect: 'text-blue bg-blue/15' };
               const duration = job.durationMs != null ? `${(job.durationMs / 1000).toFixed(1)}s` : '';
               const isRunning = job.status === 'running' || !job.finishedAt;
               return (
                 <div key={job.id} className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center gap-2 flex-wrap text-xs">
                   <Badge className={typeColors[job.type] ?? 'text-text-dim bg-border'}>{job.type}</Badge>
-                  {isRunning ? <span className="text-accent animate-pulse">running</span> : phases.length > 0 ? phases.map((p: string, i: number) => (
+                  {isRunning ? <><span className="text-accent animate-pulse">running</span>{job.activity && <span className="text-text-dim">· {job.activity}</span>}</> : phases.length > 0 ? phases.map((p: string, i: number) => (
                     <span key={i} className="text-text-muted">{p}</span>
                   )) : <span className="text-text-muted">skip</span>}
                   {job.llmCalls > 0 && <span className="text-text-muted">· {job.llmCalls} LLM</span>}
