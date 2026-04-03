@@ -23,8 +23,10 @@
     "dashboard:build": "cd src/web/dashboard && npm run build"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.0.1",
     "commander": "^14.0.0",
     "dotenv": "^17.2.1",
+    "sqlite-vec": "^0.1.9",
     "zod": "^4.1.5"
   },
   "devDependencies": {

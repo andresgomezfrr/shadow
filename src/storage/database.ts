@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import * as sqliteVec from 'sqlite-vec';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 import { randomUUID } from 'node:crypto';
@@ -151,8 +152,32 @@ export class ShadowDatabase {
   constructor(config: ShadowConfig) {
     this.config = config;
     mkdirSync(dirname(config.resolvedDatabasePath), { recursive: true });
-    this.database = new DatabaseSync(config.resolvedDatabasePath);
+    this.database = new DatabaseSync(config.resolvedDatabasePath, { allowExtension: true });
+    sqliteVec.load(this.database);
     applyMigrations(this.database);
+  }
+
+  /** Raw DatabaseSync handle — used by search.ts for vector queries */
+  get rawDb(): DatabaseSync {
+    return this.database;
+  }
+
+  // --- Vector embeddings ---
+
+  storeEmbedding(table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors', id: string, embedding: Float32Array): void {
+    try {
+      this.database.prepare(`INSERT OR REPLACE INTO ${table}(id, embedding) VALUES (?, ?)`).run(id, embedding);
+    } catch (e) {
+      console.error(`[shadow:db] Failed to store embedding in ${table}:`, e instanceof Error ? e.message : e);
+    }
+  }
+
+  deleteEmbedding(table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors', id: string): void {
+    try {
+      this.database.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+    } catch (e) {
+      console.error(`[shadow:db] Failed to delete embedding from ${table}:`, e instanceof Error ? e.message : e);
+    }
   }
 
   close(): void {

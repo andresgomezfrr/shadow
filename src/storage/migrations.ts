@@ -474,6 +474,24 @@ export const migrations: Migration[] = [
       ) WHERE repo_ids_json != '[]' AND entities_json = '[]';
     `,
   },
+  {
+    version: 15,
+    name: 'vector_tables',
+    sql: `
+      CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors USING vec0(
+        id TEXT PRIMARY KEY,
+        embedding FLOAT[384]
+      );
+      CREATE VIRTUAL TABLE IF NOT EXISTS observation_vectors USING vec0(
+        id TEXT PRIMARY KEY,
+        embedding FLOAT[384]
+      );
+      CREATE VIRTUAL TABLE IF NOT EXISTS suggestion_vectors USING vec0(
+        id TEXT PRIMARY KEY,
+        embedding FLOAT[384]
+      );
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {
