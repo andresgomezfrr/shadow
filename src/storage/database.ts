@@ -1150,7 +1150,9 @@ export class ShadowDatabase {
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
       sets.push(`${toSnake(key)} = ?`);
-      values.push((value ?? null) as SQLValue);
+      // SQLite doesn't accept JS booleans — convert to 0/1
+      const sqlValue = typeof value === 'boolean' ? (value ? 1 : 0) : value;
+      values.push((sqlValue ?? null) as SQLValue);
     }
     if (sets.length === 0) return;
     values.push(id);

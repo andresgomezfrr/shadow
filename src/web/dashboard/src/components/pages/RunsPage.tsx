@@ -158,6 +158,7 @@ export function RunsPage() {
 
                 {isOpen && (
                   <div className="mt-3 animate-fade-in space-y-3">
+                    <div className="bg-bg rounded p-3 text-[13px] text-text whitespace-pre-wrap break-words">{run.prompt}</div>
                     {isPlan && (
                       <div className="flex gap-2">
                         <button
