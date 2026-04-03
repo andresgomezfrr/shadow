@@ -1,11 +1,13 @@
 import { timeAgo } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
 import { useHighlight } from '../../hooks/useHighlight';
+import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchRuns, executeRun, createRunSession, discardRun, markRunExecutedManual, archiveRun } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
 import { FilterTabs } from '../common/FilterTabs';
+import { Pagination } from '../common/Pagination';
 import { useState, useCallback } from 'react';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -30,14 +32,18 @@ const STATUS_FILTERS = [
   { label: 'Failed', value: 'failed' },
 ];
 
+const PAGE_SIZE = 20;
+
 export function RunsPage() {
   const hasHighlight = new URLSearchParams(window.location.search).has('highlight');
-  const [statusFilter, setStatusFilter] = useState(hasHighlight ? '' : 'completed');
-  const { data, refresh } = useApi(
-    () => fetchRuns({ status: statusFilter || undefined }),
-    [statusFilter],
+  const { params, setParam } = useFilterParams({ status: hasHighlight ? '' : 'completed', offset: '0' });
+  const { data: rawData, refresh } = useApi(
+    () => fetchRuns({ status: params.status || undefined, limit: PAGE_SIZE, offset: Number(params.offset) || 0 }),
+    [params.status, params.offset],
     15_000,
   );
+  const data = rawData?.items ?? null;
+  const total = rawData?.total ?? 0;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
   const [sessionInfo, setSessionInfo] = useState<{ runId: string; sessionId: string; command: string } | null>(null);
@@ -90,7 +96,7 @@ export function RunsPage() {
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <h1 className="text-xl font-semibold">Runs</h1>
-        <FilterTabs options={STATUS_FILTERS} active={statusFilter} onChange={setStatusFilter} />
+        <FilterTabs options={STATUS_FILTERS} active={params.status} onChange={(v) => setParam('status', v)} />
       </div>
 
       {sessionInfo && (
@@ -219,6 +225,7 @@ export function RunsPage() {
           })}
         </div>
       )}
+      <Pagination total={total} offset={Number(params.offset) || 0} limit={PAGE_SIZE} onChange={(o) => setParam('offset', String(o))} />
     </div>
   );
 }

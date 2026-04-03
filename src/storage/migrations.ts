@@ -404,6 +404,23 @@ export const migrations: Migration[] = [
       DROP TABLE IF EXISTS heartbeats;
     `,
   },
+  {
+    version: 12,
+    name: 'feedback_thumbs_index',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_feedback_thumbs
+        ON feedback(target_kind, action, created_at DESC);
+    `,
+  },
+  {
+    version: 13,
+    name: 'filter_pagination_indexes',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_suggestions_kind ON suggestions(kind);
+      CREATE INDEX IF NOT EXISTS idx_observations_status ON observations(status, last_seen_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type, started_at DESC);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

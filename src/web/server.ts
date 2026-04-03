@@ -97,32 +97,44 @@ async function handleApi(
     if (pathname === '/api/memories') {
       const q = params.get('q');
       const layer = params.get('layer') ?? undefined;
+      const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : undefined;
+      const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
       if (q) {
-        const results = db.searchMemories(q, { layer, limit: 50 });
-        return json(res, results.map((r) => ({ ...r.memory, rank: r.rank, snippet: r.snippet })));
+        const results = db.searchMemories(q, { layer, limit: limit ?? 50 });
+        const items = results.map((r) => ({ ...r.memory, rank: r.rank, snippet: r.snippet }));
+        return json(res, { items, total: items.length });
       }
-      const memories = db.listMemories({ layer, archived: false });
-      return json(res, memories);
+      const items = db.listMemories({ layer, archived: false, limit, offset });
+      const total = db.countMemories({ layer, archived: false });
+      return json(res, { items, total });
     }
 
     if (pathname === '/api/suggestions') {
       const status = params.get('status') ?? undefined;
-      let suggestions = db.listSuggestions({ status });
+      const kind = params.get('kind') ?? undefined;
+      const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : undefined;
+      const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
+      let items = db.listSuggestions({ status, kind, limit, offset });
       // Sort pending suggestions by rank score (best first)
-      if (status === 'pending' && suggestions.length > 0) {
+      if (status === 'pending' && items.length > 0) {
         const profile = db.ensureProfile();
         const { computeRankScore } = await import('../suggestion/ranking.js');
-        suggestions.sort((a, b) => computeRankScore(b, profile) - computeRankScore(a, profile));
+        items.sort((a, b) => computeRankScore(b, profile) - computeRankScore(a, profile));
       }
-      return json(res, suggestions);
+      const total = db.countSuggestions({ status, kind });
+      const fbState = db.getThumbsState('suggestion');
+      return json(res, { items, total, feedbackState: fbState });
     }
 
     if (pathname === '/api/observations') {
       const limit = parseInt(params.get('limit') ?? '20', 10);
+      const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
       const status = params.get('status') ?? 'all';
       const repoId = params.get('repoId') ?? undefined;
-      const observations = db.listObservations({ limit, status, repoId });
-      return json(res, observations);
+      const items = db.listObservations({ limit, offset, status, repoId });
+      const total = db.countObservations({ repoId, status });
+      const fbState = db.getThumbsState('observation');
+      return json(res, { items, total, feedbackState: fbState });
     }
 
     if (pathname === '/api/contacts') {
@@ -153,8 +165,10 @@ async function handleApi(
     if (pathname === '/api/jobs') {
       const type = params.get('type') ?? undefined;
       const limit = parseInt(params.get('limit') ?? '30', 10);
-      const jobs = db.listJobs({ type, limit });
-      return json(res, jobs);
+      const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
+      const items = db.listJobs({ type, limit, offset });
+      const total = db.countJobs({ type });
+      return json(res, { items, total });
     }
 
     if (pathname === '/api/repos') {
@@ -205,20 +219,17 @@ async function handleApi(
     if (pathname === '/api/runs') {
       const status = params.get('status') ?? undefined;
       const repoId = params.get('repoId') ?? undefined;
-      const runs = db.listRuns({ status, repoId });
-      return json(res, runs);
+      const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : undefined;
+      const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
+      const items = db.listRuns({ status, repoId, limit, offset });
+      const total = db.countRuns({ status });
+      return json(res, { items, total });
     }
 
     if (pathname === '/api/feedback-state') {
       const targetKind = params.get('targetKind');
       if (!targetKind) return json(res, { error: 'Missing targetKind' }, 400);
-      const all = db.listFeedback(targetKind, 200);
-      const state: Record<string, string> = {};
-      for (const f of all) {
-        if (!f.action.startsWith('thumbs_')) continue;
-        if (!state[f.targetId]) state[f.targetId] = f.action;
-      }
-      return json(res, state);
+      return json(res, db.getThumbsState(targetKind));
     }
   }
 

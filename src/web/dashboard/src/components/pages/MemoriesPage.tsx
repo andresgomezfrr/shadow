@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { fetchMemories } from '../../api/client';
+import { useFilterParams } from '../../hooks/useFilterParams';
 import { LAYER_COLORS } from '../../api/types';
 import type { Memory } from '../../api/types';
 import { FilterTabs } from '../common/FilterTabs';
+import { Pagination } from '../common/Pagination';
 import { SearchInput } from '../common/SearchInput';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
@@ -17,26 +19,39 @@ const LAYERS = [
   { label: 'Cold', value: 'cold' },
 ];
 
+const PAGE_SIZE = 30;
+
 export function MemoriesPage() {
-  const [layer, setLayer] = useState('');
-  const [query, setQuery] = useState('');
+  const { params, setParam } = useFilterParams({ layer: '', q: '', offset: '0' });
+  const [inputQ, setInputQ] = useState(params.q);
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Debounce search input → URL param
+  useEffect(() => {
+    if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setParam('q', inputQ), 300);
+    return () => { if (debounceRef.current !== null) clearTimeout(debounceRef.current); };
+  }, [inputQ, setParam]);
+
+  // Fetch data when URL params change
   useEffect(() => {
     setLoading(true);
-    if (debounceRef.current !== null) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
+    (async () => {
       const data = await fetchMemories({
-        q: query || undefined,
-        layer: layer || undefined,
+        q: params.q || undefined,
+        layer: params.layer || undefined,
+        limit: PAGE_SIZE,
+        offset: Number(params.offset) || 0,
       });
-      setMemories(data ?? []);
+      setMemories(data?.items ?? []);
+      setTotal(data?.total ?? 0);
       setLoading(false);
-    }, query ? 300 : 0);
-  }, [layer, query]);
+    })();
+  }, [params.layer, params.q, params.offset]);
 
   const toggle = (id: string) => {
     setExpanded((s) => {
@@ -51,10 +66,10 @@ export function MemoriesPage() {
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <h1 className="text-xl font-semibold">Memories</h1>
-        <FilterTabs options={LAYERS} active={layer} onChange={setLayer} />
+        <FilterTabs options={LAYERS} active={params.layer} onChange={(v) => setParam('layer', v)} />
       </div>
       <div className="mb-4">
-        <SearchInput value={query} onChange={setQuery} placeholder="Search memories..." />
+        <SearchInput value={inputQ} onChange={setInputQ} placeholder="Search memories..." />
       </div>
 
       {loading ? (
@@ -102,6 +117,7 @@ export function MemoriesPage() {
           })}
         </div>
       )}
+      <Pagination total={total} offset={Number(params.offset) || 0} limit={PAGE_SIZE} onChange={(o) => setParam('offset', String(o))} />
     </div>
   );
 }

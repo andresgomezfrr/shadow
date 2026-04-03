@@ -2,9 +2,11 @@ import { timeAgo } from '../../utils/format';
 import { useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
-import { fetchSuggestions, fetchRepos, fetchRuns, fetchFeedbackState, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
+import { useFilterParams } from '../../hooks/useFilterParams';
+import { fetchSuggestions, fetchRepos, fetchRuns, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { FilterTabs } from '../common/FilterTabs';
+import { Pagination } from '../common/Pagination';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
@@ -45,24 +47,23 @@ export function SuggestionsPage() {
   const [pulseId, setPulseId] = useState<string | null>(null);
   const scrolledRef = useRef(false);
 
-  const [status, setStatus] = useState(() => {
-    // If highlighting, show all so the item is visible regardless of status
-    return highlightId ? '' : 'pending';
-  });
-  const [kindFilter, setKindFilter] = useState('');
+  const PAGE_SIZE = 20;
+  const { params, setParam } = useFilterParams({ status: highlightId ? '' : 'pending', kind: '', offset: '0' });
   const { data: rawData, refresh } = useApi(
-    () => fetchSuggestions({ status: status || undefined }),
-    [status],
+    () => fetchSuggestions({ status: params.status || undefined, kind: params.kind || undefined, limit: PAGE_SIZE, offset: Number(params.offset) || 0 }),
+    [params.status, params.kind, params.offset],
     30_000,
   );
   const { data: repos } = useApi(fetchRepos, [], 60_000);
   const { data: runs } = useApi(fetchRuns, [], 30_000);
-  const { data: fbState } = useApi(() => fetchFeedbackState('suggestion'), [], 60_000);
+
+  const fbState = rawData?.feedbackState ?? null;
+  const data = rawData?.items ?? null;
+  const total = rawData?.total ?? 0;
 
   // Derive available kinds from data for filter tabs
-  const kinds = rawData ? [...new Set(rawData.map((s) => s.kind))].sort() : [];
+  const kinds = data ? [...new Set(data.map((s) => s.kind))].sort() : [];
   const kindOptions = [{ label: 'All', value: '' }, ...kinds.map((k) => ({ label: k, value: k }))];
-  const data = rawData && kindFilter ? rawData.filter((s) => s.kind === kindFilter) : rawData;
 
   // Handle highlight
   if (highlightId && !pulseId && data?.some((s) => s.id === highlightId)) {
@@ -109,12 +110,12 @@ export function SuggestionsPage() {
     <div>
       <div className="flex items-center gap-3 mb-2 flex-wrap">
         <h1 className="text-xl font-semibold">Suggestions</h1>
-        <FilterTabs options={STATUSES} active={status} onChange={setStatus} />
+        <FilterTabs options={STATUSES} active={params.status} onChange={(v) => setParam('status', v)} />
       </div>
       {kinds.length > 1 && (
         <div className="flex items-center gap-2 mb-4">
           <span className="text-xs text-text-muted">Kind:</span>
-          <FilterTabs options={kindOptions} active={kindFilter} onChange={setKindFilter} />
+          <FilterTabs options={kindOptions} active={params.kind} onChange={(v) => setParam('kind', v)} />
         </div>
       )}
 
@@ -224,6 +225,7 @@ export function SuggestionsPage() {
           })}
         </div>
       )}
+      <Pagination total={total} offset={Number(params.offset) || 0} limit={PAGE_SIZE} onChange={(o) => setParam('offset', String(o))} />
     </div>
   );
 }

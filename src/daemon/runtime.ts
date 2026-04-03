@@ -267,9 +267,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       return Date.now() - new Date(last.startedAt).getTime() >= intervalMs;
     }
 
+    let currentJobId: string | null = null;
+
     async function runJobType(type: string, fn: (jobId: string) => Promise<{ llmCalls: number; tokensUsed: number; phases: string[]; result: Record<string, unknown> }>): Promise<void> {
       const now = new Date().toISOString();
       const job = _db.createJob({ type, startedAt: now });
+      currentJobId = job.id;
       const startMs = Date.now();
       const p = (async () => {
         try {
@@ -290,6 +293,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       currentJobPromise = p;
       await p;
       currentJobPromise = null;
+      currentJobId = null;
     }
 
     // Step 5: Main loop
@@ -312,6 +316,9 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         lastHeartbeatPhase = phase;
         state.lastHeartbeatPhase = phase;
         writeDaemonState(config, state);
+        if (currentJobId) {
+          try { _db.updateJob(currentJobId, { activity: phase }); } catch { /* best-effort */ }
+        }
       };
 
       // --- Job: heartbeat (extract + observe) ---

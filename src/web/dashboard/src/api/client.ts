@@ -38,14 +38,14 @@ export const fetchStatus = () => api<StatusResponse>('/api/status');
 
 export const fetchDailySummary = () => api<DailySummary>('/api/daily-summary');
 
-export const fetchMemories = (params?: { q?: string; layer?: string }) =>
-  api<Memory[]>(`/api/memories${qs({ q: params?.q, layer: params?.layer })}`);
+export const fetchMemories = (params?: { q?: string; layer?: string; limit?: number; offset?: number }) =>
+  api<{ items: Memory[]; total: number }>(`/api/memories${qs({ q: params?.q, layer: params?.layer, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
-export const fetchSuggestions = (params?: { status?: string }) =>
-  api<Suggestion[]>(`/api/suggestions${qs({ status: params?.status })}`);
+export const fetchSuggestions = (params?: { status?: string; kind?: string; limit?: number; offset?: number }) =>
+  api<{ items: Suggestion[]; total: number; feedbackState: Record<string, string> }>(`/api/suggestions${qs({ status: params?.status, kind: params?.kind, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
-export const fetchObservations = (limit = 20, status?: string) =>
-  api<Observation[]>(`/api/observations${qs({ limit: String(limit), status })}`);
+export const fetchObservations = (params?: { limit?: number; offset?: number; status?: string }) =>
+  api<{ items: Observation[]; total: number; feedbackState: Record<string, string> }>(`/api/observations${qs({ limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined, status: params?.status })}`);
 
 export const fetchRepos = () => api<Repo[]>('/api/repos');
 
@@ -60,13 +60,13 @@ export const fetchUsage = (period: 'day' | 'week' | 'month' = 'week') =>
 
 export const fetchHeartbeats = () => api<Heartbeat[]>('/api/heartbeats');
 
-export const fetchJobs = (type?: string) =>
-  api<Job[]>(`/api/jobs${qs({ type })}`);
+export const fetchJobs = (params?: { type?: string; limit?: number; offset?: number }) =>
+  api<{ items: Job[]; total: number }>(`/api/jobs${qs({ type: params?.type, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
 export const fetchEvents = () => api<EventRecord[]>('/api/events');
 
-export const fetchRuns = (params?: { status?: string; repoId?: string }) =>
-  api<Run[]>(`/api/runs${qs({ status: params?.status, repoId: params?.repoId })}`);
+export const fetchRuns = (params?: { status?: string; repoId?: string; limit?: number; offset?: number }) =>
+  api<{ items: Run[]; total: number }>(`/api/runs${qs({ status: params?.status, repoId: params?.repoId, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
 // --- POST ---
 

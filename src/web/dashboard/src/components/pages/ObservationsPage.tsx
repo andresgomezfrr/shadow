@@ -1,6 +1,8 @@
 import { useApi } from '../../hooks/useApi';
-import { fetchObservations, fetchFeedbackState, acknowledgeObservation, resolveObservation, reopenObservation } from '../../api/client';
+import { useFilterParams } from '../../hooks/useFilterParams';
+import { fetchObservations, acknowledgeObservation, resolveObservation, reopenObservation } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
+import { Pagination } from '../common/Pagination';
 import { SEVERITY_COLORS, STATUS_COLORS } from '../../api/types';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
@@ -15,10 +17,14 @@ const STATUS_OPTIONS = [
   { label: 'All', value: 'all' },
 ];
 
+const PAGE_SIZE = 20;
+
 export function ObservationsPage() {
-  const [status, setStatus] = useState('active');
-  const { data, refresh } = useApi(() => fetchObservations(50, status), [status], 30_000);
-  const { data: fbState } = useApi(() => fetchFeedbackState('observation'), [], 60_000);
+  const { params, setParam } = useFilterParams({ status: 'active', offset: '0' });
+  const { data: rawData, refresh } = useApi(() => fetchObservations({ limit: PAGE_SIZE, offset: Number(params.offset) || 0, status: params.status }), [params.status, params.offset], 30_000);
+  const data = rawData?.items ?? null;
+  const total = rawData?.total ?? 0;
+  const fbState = rawData?.feedbackState ?? null;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
 
@@ -52,7 +58,7 @@ export function ObservationsPage() {
       <h1 className="text-xl font-semibold mb-4">Observations</h1>
 
       <div className="mb-4">
-        <FilterTabs options={STATUS_OPTIONS} active={status} onChange={setStatus} />
+        <FilterTabs options={STATUS_OPTIONS} active={params.status} onChange={(v) => setParam('status', v)} />
       </div>
 
       {!data ? (
@@ -151,6 +157,7 @@ export function ObservationsPage() {
           })}
         </div>
       )}
+      <Pagination total={total} offset={Number(params.offset) || 0} limit={PAGE_SIZE} onChange={(o) => setParam('offset', String(o))} />
     </div>
   );
 }

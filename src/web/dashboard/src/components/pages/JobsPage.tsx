@@ -1,10 +1,12 @@
 import { timeAgo, formatTokens, useNow, formatCountdown } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
+import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchJobs, fetchStatus, triggerHeartbeat } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { MetricCard } from '../common/MetricCard';
 import { EmptyState } from '../common/EmptyState';
 import { FilterTabs } from '../common/FilterTabs';
+import { Pagination } from '../common/Pagination';
 import { useState, useEffect, useCallback } from 'react';
 import type { Job } from '../../api/types';
 
@@ -48,9 +50,13 @@ const TYPE_COLORS: Record<string, string> = {
   reflect: 'text-blue bg-blue/15',
 };
 
+const PAGE_SIZE = 30;
+
 export function JobsPage() {
-  const [typeFilter, setTypeFilter] = useState('');
-  const { data, refresh } = useApi(() => fetchJobs(typeFilter || undefined), [typeFilter], 15_000);
+  const { params, setParam } = useFilterParams({ type: '', offset: '0' });
+  const { data: rawData, refresh } = useApi(() => fetchJobs({ type: params.type || undefined, limit: PAGE_SIZE, offset: Number(params.offset) || 0 }), [params.type, params.offset], 15_000);
+  const data = rawData?.items ?? null;
+  const total = rawData?.total ?? 0;
   const { data: status } = useApi(fetchStatus, [], 15_000);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const now = useNow();
@@ -95,7 +101,7 @@ export function JobsPage() {
     <div>
       <div className="flex items-center gap-3 mb-3 flex-wrap">
         <h1 className="text-xl font-semibold">Jobs</h1>
-        <FilterTabs options={TYPE_FILTERS} active={typeFilter} onChange={setTypeFilter} />
+        <FilterTabs options={TYPE_FILTERS} active={params.type} onChange={(v) => setParam('type', v)} />
       </div>
 
       {/* Job schedule */}
@@ -232,6 +238,7 @@ export function JobsPage() {
           })}
         </div>
       )}
+      <Pagination total={total} offset={Number(params.offset) || 0} limit={PAGE_SIZE} onChange={(o) => setParam('offset', String(o))} />
     </div>
   );
 }

@@ -427,7 +427,7 @@ export class ShadowDatabase {
     return row ? mapMemory(row) : null;
   }
 
-  listMemories(filters?: { layer?: string; scope?: string; repoId?: string; archived?: boolean }): MemoryRecord[] {
+  listMemories(filters?: { layer?: string; scope?: string; repoId?: string; archived?: boolean; limit?: number; offset?: number }): MemoryRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -450,10 +450,21 @@ export class ShadowDatabase {
     }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
     return this.database
-      .prepare(`SELECT * FROM memories ${where} ORDER BY created_at DESC`)
+      .prepare(`SELECT * FROM memories ${where} ORDER BY created_at DESC${pagination}`)
       .all(...values)
       .map(mapMemory);
+  }
+
+  countMemories(filters?: { layer?: string; archived?: boolean }): number {
+    const clauses: string[] = [];
+    const values: SQLValue[] = [];
+    if (filters?.layer) { clauses.push('layer = ?'); values.push(filters.layer); }
+    if (filters?.archived === false) { clauses.push('archived_at IS NULL'); }
+    else if (filters?.archived === true) { clauses.push('archived_at IS NOT NULL'); }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    return (this.database.prepare(`SELECT COUNT(*) as total FROM memories ${where}`).get(...values) as { total: number }).total;
   }
 
   searchMemories(query: string, options?: { layer?: string; scope?: string; repoId?: string; limit?: number }): MemorySearchResult[] {
@@ -593,7 +604,7 @@ export class ShadowDatabase {
     return row ? mapObservation(row) : null;
   }
 
-  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; limit?: number }): ObservationRecord[] {
+  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; limit?: number; offset?: number }): ObservationRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -615,11 +626,20 @@ export class ShadowDatabase {
     }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-    const limit = filters?.limit ? `LIMIT ${filters.limit}` : '';
+    const pagination = `${filters?.limit != null ? `LIMIT ${filters.limit}` : ''}${filters?.offset != null ? ` OFFSET ${filters.offset}` : ''}`;
     return this.database
-      .prepare(`SELECT * FROM observations ${where} ORDER BY votes DESC, last_seen_at DESC ${limit}`)
+      .prepare(`SELECT * FROM observations ${where} ORDER BY votes DESC, last_seen_at DESC ${pagination}`)
       .all(...values)
       .map(mapObservation);
+  }
+
+  countObservations(filters?: { repoId?: string; status?: string }): number {
+    const clauses: string[] = [];
+    const values: SQLValue[] = [];
+    if (filters?.repoId) { clauses.push('repo_id = ?'); values.push(filters.repoId); }
+    if (filters?.status && filters.status !== 'all') { clauses.push('status = ?'); values.push(filters.status); }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    return (this.database.prepare(`SELECT COUNT(*) as total FROM observations ${where}`).get(...values) as { total: number }).total;
   }
 
   countObservationsSince(since: string): number {
@@ -691,7 +711,7 @@ export class ShadowDatabase {
     return row ? mapSuggestion(row) : null;
   }
 
-  listSuggestions(filters?: { status?: string; repoId?: string }): SuggestionRecord[] {
+  listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; limit?: number; offset?: number }): SuggestionRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -699,16 +719,31 @@ export class ShadowDatabase {
       clauses.push('status = ?');
       values.push(filters.status);
     }
+    if (filters?.kind) {
+      clauses.push('kind = ?');
+      values.push(filters.kind);
+    }
     if (filters?.repoId) {
       clauses.push('repo_id = ?');
       values.push(filters.repoId);
     }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
     return this.database
-      .prepare(`SELECT * FROM suggestions ${where} ORDER BY created_at DESC`)
+      .prepare(`SELECT * FROM suggestions ${where} ORDER BY created_at DESC${pagination}`)
       .all(...values)
       .map(mapSuggestion);
+  }
+
+  countSuggestions(filters?: { status?: string; kind?: string; repoId?: string }): number {
+    const clauses: string[] = [];
+    const values: SQLValue[] = [];
+    if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
+    if (filters?.kind) { clauses.push('kind = ?'); values.push(filters.kind); }
+    if (filters?.repoId) { clauses.push('repo_id = ?'); values.push(filters.repoId); }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    return (this.database.prepare(`SELECT COUNT(*) as total FROM suggestions ${where}`).get(...values) as { total: number }).total;
   }
 
   updateSuggestion(id: string, updates: Partial<Pick<SuggestionRecord, 'status' | 'feedbackNote' | 'shownAt' | 'resolvedAt' | 'expiresAt'>>): void {
@@ -892,7 +927,7 @@ export class ShadowDatabase {
     return row ? mapRun(row) : null;
   }
 
-  listRuns(filters?: { status?: string; repoId?: string; archived?: boolean }): RunRecord[] {
+  listRuns(filters?: { status?: string; repoId?: string; archived?: boolean; limit?: number; offset?: number }): RunRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -914,10 +949,21 @@ export class ShadowDatabase {
     }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
     return this.database
-      .prepare(`SELECT * FROM runs ${where} ORDER BY created_at DESC`)
+      .prepare(`SELECT * FROM runs ${where} ORDER BY created_at DESC${pagination}`)
       .all(...values)
       .map(mapRun);
+  }
+
+  countRuns(filters?: { status?: string; archived?: boolean }): number {
+    const clauses: string[] = [];
+    const values: SQLValue[] = [];
+    if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
+    if (filters?.archived === true) { clauses.push('archived = 1'); }
+    else { clauses.push('archived = 0'); }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    return (this.database.prepare(`SELECT COUNT(*) as total FROM runs ${where}`).get(...values) as { total: number }).total;
   }
 
   updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'archived' | 'startedAt' | 'finishedAt'>>): void {
@@ -967,17 +1013,27 @@ export class ShadowDatabase {
     this.database.prepare(`UPDATE jobs SET ${sets.join(', ')} WHERE id = ?`).run(...values);
   }
 
-  listJobs(filters?: { type?: string; status?: string; limit?: number }): JobRecord[] {
+  listJobs(filters?: { type?: string; status?: string; limit?: number; offset?: number }): JobRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
     if (filters?.type) { clauses.push('type = ?'); values.push(filters.type); }
     if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     const limit = filters?.limit ?? 30;
+    const offsetClause = filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : '';
     return this.database
-      .prepare(`SELECT * FROM jobs ${where} ORDER BY started_at DESC LIMIT ?`)
+      .prepare(`SELECT * FROM jobs ${where} ORDER BY started_at DESC LIMIT ?${offsetClause}`)
       .all(...values, limit)
       .map(mapJob);
+  }
+
+  countJobs(filters?: { type?: string; status?: string }): number {
+    const clauses: string[] = [];
+    const values: SQLValue[] = [];
+    if (filters?.type) { clauses.push('type = ?'); values.push(filters.type); }
+    if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    return (this.database.prepare(`SELECT COUNT(*) as total FROM jobs ${where}`).get(...values) as { total: number }).total;
   }
 
   getLastJob(type: string): JobRecord | null {
@@ -1007,6 +1063,18 @@ export class ShadowDatabase {
       .prepare('SELECT * FROM feedback ORDER BY created_at DESC LIMIT ?')
       .all(limit)
       .map(mapFeedback);
+  }
+
+  getThumbsState(targetKind?: string): Record<string, string> {
+    const rows = targetKind
+      ? this.database.prepare(`SELECT target_id, action FROM feedback WHERE target_kind = ? AND action IN ('thumbs_up', 'thumbs_down') ORDER BY created_at DESC`).all(targetKind)
+      : this.database.prepare(`SELECT target_id, action FROM feedback WHERE action IN ('thumbs_up', 'thumbs_down') ORDER BY created_at DESC`).all();
+    const state: Record<string, string> = {};
+    for (const r of rows) {
+      const row = r as { target_id: string; action: string };
+      if (!state[row.target_id]) state[row.target_id] = row.action;
+    }
+    return state;
   }
 
   // --- Audit Events ---
