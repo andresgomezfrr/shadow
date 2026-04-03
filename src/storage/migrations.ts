@@ -547,6 +547,24 @@ export const migrations: Migration[] = [
   },
   {
     version: 18,
+    name: 'digests_table',
+    sql: `
+      CREATE TABLE IF NOT EXISTS digests (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        content_md TEXT NOT NULL,
+        model TEXT NOT NULL DEFAULT 'sonnet',
+        tokens_used INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_digests_kind ON digests(kind, period_start DESC);
+    `,
+  },
+  {
+    version: 19,
     name: 'system_operational_fields',
     sql: `
       ALTER TABLE systems ADD COLUMN logs_location TEXT;

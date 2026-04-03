@@ -10,6 +10,7 @@ import type { ShadowConfig } from '../config/load-config.js';
 import type {
   AuditEventRecord,
   ContactRecord,
+  DigestRecord,
   EntityLink,
   EventRecord,
   HeartbeatRecord,
@@ -163,6 +164,51 @@ export class ShadowDatabase {
   /** Raw DatabaseSync handle — used by search.ts for vector queries */
   get rawDb(): DatabaseSync {
     return this.database;
+  }
+
+  // --- Digests ---
+
+  createDigest(input: { kind: string; periodStart: string; periodEnd: string; contentMd: string; model: string; tokensUsed?: number }): DigestRecord {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.database
+      .prepare(
+        `INSERT INTO digests (id, kind, period_start, period_end, content_md, model, tokens_used, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, input.kind, input.periodStart, input.periodEnd, input.contentMd, input.model, input.tokensUsed ?? 0, now, now);
+    return this.getDigest(id)!;
+  }
+
+  getDigest(id: string): DigestRecord | null {
+    const row = this.database.prepare('SELECT * FROM digests WHERE id = ?').get(id);
+    return row ? mapDigest(row) : null;
+  }
+
+  listDigests(filters?: { kind?: string; limit?: number }): DigestRecord[] {
+    const clauses: string[] = [];
+    const values: SQLValue[] = [];
+    if (filters?.kind) { clauses.push('kind = ?'); values.push(filters.kind); }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const limit = filters?.limit ?? 20;
+    return this.database
+      .prepare(`SELECT * FROM digests ${where} ORDER BY period_start DESC LIMIT ?`)
+      .all(...values, limit)
+      .map(mapDigest);
+  }
+
+  getLatestDigest(kind: string): DigestRecord | null {
+    const row = this.database.prepare('SELECT * FROM digests WHERE kind = ? ORDER BY period_start DESC LIMIT 1').get(kind);
+    return row ? mapDigest(row) : null;
+  }
+
+  updateDigest(id: string, updates: { contentMd?: string; tokensUsed?: number }): void {
+    const sets: string[] = ['updated_at = ?'];
+    const values: SQLValue[] = [new Date().toISOString()];
+    if (updates.contentMd !== undefined) { sets.push('content_md = ?'); values.push(updates.contentMd); }
+    if (updates.tokensUsed !== undefined) { sets.push('tokens_used = ?'); values.push(updates.tokensUsed); }
+    values.push(id);
+    this.database.prepare(`UPDATE digests SET ${sets.join(', ')} WHERE id = ?`).run(...values);
   }
 
   // --- Vector embeddings ---
@@ -1687,6 +1733,21 @@ function mapJob(row: unknown): JobRecord {
     startedAt: str(d.started_at),
     finishedAt: strOrNull(d.finished_at),
     createdAt: str(d.created_at),
+  };
+}
+
+function mapDigest(row: unknown): DigestRecord {
+  const d = r(row);
+  return {
+    id: str(d.id),
+    kind: str(d.kind),
+    periodStart: str(d.period_start),
+    periodEnd: str(d.period_end),
+    contentMd: str(d.content_md),
+    model: str(d.model),
+    tokensUsed: num(d.tokens_used),
+    createdAt: str(d.created_at),
+    updatedAt: str(d.updated_at),
   };
 }
 

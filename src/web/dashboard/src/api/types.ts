@@ -157,6 +157,18 @@ export type Project = {
   updatedAt: string;
 };
 
+export type Digest = {
+  id: string;
+  kind: string;
+  periodStart: string;
+  periodEnd: string;
+  contentMd: string;
+  model: string;
+  tokensUsed: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type System = {
   id: string;
   name: string;

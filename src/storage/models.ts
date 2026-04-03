@@ -301,6 +301,20 @@ export type LlmUsageRecord = {
   createdAt: string;
 };
 
+// --- Digests ---
+
+export type DigestRecord = {
+  id: string;
+  kind: string;
+  periodStart: string;
+  periodEnd: string;
+  contentMd: string;
+  model: string;
+  tokensUsed: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 // --- Memory search result ---
 
 export type MemorySearchResult = {

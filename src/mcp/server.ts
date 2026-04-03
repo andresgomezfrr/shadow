@@ -1296,12 +1296,57 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         };
       },
     },
+
+    // -----------------------------------------------------------------------
+    // Digest tools
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_digest',
+      description: 'Generate a digest on demand: daily (standup), weekly (1:1), or brag (performance review). Requires trust level >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['daily', 'weekly', 'brag'], description: 'Digest type' },
+        },
+        required: ['kind'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const kind = params.kind as string;
+        const { activityDailyDigest, activityWeeklyDigest, activityBragDoc } = await import('../heartbeat/digests.js');
+        let result: { contentMd: string; tokensUsed: number };
+        if (kind === 'daily') result = await activityDailyDigest(db, config);
+        else if (kind === 'weekly') result = await activityWeeklyDigest(db, config);
+        else result = await activityBragDoc(db, config);
+        return { ok: true, kind, contentMd: result.contentMd, tokensUsed: result.tokensUsed };
+      },
+    },
+    {
+      name: 'shadow_digests',
+      description: 'List previous digests. Optionally filter by kind.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['daily', 'weekly', 'brag'], description: 'Filter by digest type' },
+          limit: { type: 'number', description: 'Max results (default 10)' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        return db.listDigests({
+          kind: params.kind as string | undefined,
+          limit: (params.limit as number | undefined) ?? 10,
+        });
+      },
+    },
   ];
 
   return tools;
 }
 
-// ---------------------------------------------------------------------------
 // JSON-RPC handler
 // ---------------------------------------------------------------------------
 

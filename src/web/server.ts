@@ -143,6 +143,13 @@ async function handleApi(
       return json(res, contacts);
     }
 
+    if (pathname === '/api/digests') {
+      const kind = params.get('kind') ?? undefined;
+      const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : 20;
+      const digests = db.listDigests({ kind, limit });
+      return json(res, digests);
+    }
+
     if (pathname === '/api/projects') {
       const status = params.get('status') ?? undefined;
       const projects = db.listProjects(status ? { status } : undefined);

@@ -14,6 +14,7 @@ import { UsagePage } from './components/pages/UsagePage';
 import { JobsPage } from './components/pages/JobsPage';
 import { RunsPage } from './components/pages/RunsPage';
 import { EventsPage } from './components/pages/EventsPage';
+import { DigestsPage } from './components/pages/DigestsPage';
 import { EmojiGuidePage } from './components/pages/EmojiGuidePage';
 
 export function App() {
@@ -34,6 +35,7 @@ export function App() {
         <Route path="/usage" element={<UsagePage />} />
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/runs" element={<RunsPage />} />
+        <Route path="/digests" element={<DigestsPage />} />
         <Route path="/events" element={<EventsPage />} />
         <Route path="/emoji-guide" element={<EmojiGuidePage />} />
       </Routes>

@@ -960,6 +960,54 @@ system
     }),
   );
 
+// --- digest ---
+
+const digest = program.command('digest').description('generate and view digests (standup, 1:1, brag doc)');
+
+digest
+  .command('daily')
+  .description('generate daily standup digest')
+  .action(() =>
+    withDb(async (db) => {
+      const config = (await import('./config/load-config.js')).loadConfig();
+      const { activityDailyDigest } = await import('./heartbeat/digests.js');
+      const result = await activityDailyDigest(db, config);
+      return result.contentMd;
+    }),
+  );
+
+digest
+  .command('weekly')
+  .description('generate weekly 1:1 digest')
+  .action(() =>
+    withDb(async (db) => {
+      const config = (await import('./config/load-config.js')).loadConfig();
+      const { activityWeeklyDigest } = await import('./heartbeat/digests.js');
+      const result = await activityWeeklyDigest(db, config);
+      return result.contentMd;
+    }),
+  );
+
+digest
+  .command('brag')
+  .description('generate/update quarterly brag doc')
+  .action(() =>
+    withDb(async (db) => {
+      const config = (await import('./config/load-config.js')).loadConfig();
+      const { activityBragDoc } = await import('./heartbeat/digests.js');
+      const result = await activityBragDoc(db, config);
+      return result.contentMd;
+    }),
+  );
+
+digest
+  .command('list')
+  .description('list previous digests')
+  .option('--kind <kind>', 'filter by kind: daily, weekly, brag')
+  .action((options: { kind?: string }) =>
+    withDb((db) => db.listDigests({ kind: options.kind })),
+  );
+
 // --- suggest ---
 
 const suggest = program.command('suggest').description('manage suggestions');
