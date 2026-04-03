@@ -61,8 +61,13 @@ export function SuggestionsPage() {
   const data = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
 
-  // Derive available kinds from data for filter tabs
-  const kinds = data ? [...new Set(data.map((s) => s.kind))].sort() : [];
+  // Derive available kinds — cache them so the filter doesn't disappear when a kind is selected
+  const kindsRef = useRef<string[]>([]);
+  const currentKinds = data ? [...new Set(data.map((s) => s.kind))].sort() : [];
+  if (!params.kind && currentKinds.length > 0) {
+    kindsRef.current = currentKinds;
+  }
+  const kinds = params.kind ? kindsRef.current : currentKinds;
   const kindOptions = [{ label: 'All', value: '' }, ...kinds.map((k) => ({ label: k, value: k }))];
 
   // Handle highlight

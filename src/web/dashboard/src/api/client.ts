@@ -93,6 +93,9 @@ export const markRunExecutedManual = (id: string) =>
 export const archiveRun = (id: string) =>
   api<{ ok: boolean }>(`/api/runs/${id}/archive`, { method: 'POST' });
 
+export const retryRun = (id: string) =>
+  api<{ ok: boolean; newRunId: string }>(`/api/runs/${id}/retry`, { method: 'POST' });
+
 export const fetchFeedbackState = (targetKind: string) =>
   api<Record<string, string>>(`/api/feedback-state?targetKind=${targetKind}`);
 

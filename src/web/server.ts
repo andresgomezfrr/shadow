@@ -298,6 +298,24 @@ async function handleApi(
       return json(res, { ok: true });
     }
 
+    const runRetryMatch = pathname.match(/^\/api\/runs\/([^/]+)\/retry$/);
+    if (runRetryMatch) {
+      const [, runId] = runRetryMatch;
+      const run = db.getRun(runId);
+      if (!run) return json(res, { error: 'Run not found' }, 404);
+      if (run.status !== 'failed') return json(res, { error: 'Only failed runs can be retried' }, 400);
+      const newRun = db.createRun({
+        repoId: run.repoId,
+        repoIds: run.repoIds,
+        suggestionId: run.suggestionId,
+        parentRunId: run.parentRunId ?? undefined,
+        kind: run.kind,
+        prompt: run.prompt,
+      });
+      db.updateRun(runId, { archived: true });
+      return json(res, { ok: true, newRunId: newRun.id });
+    }
+
     const runMatch = pathname.match(/^\/api\/runs\/([^/]+)\/(execute|session|discard|executed-manual)$/);
     if (runMatch) {
       const [, runId, action] = runMatch;

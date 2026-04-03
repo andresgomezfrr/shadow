@@ -2,7 +2,7 @@ import { timeAgo } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
 import { useHighlight } from '../../hooks/useHighlight';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchRuns, executeRun, createRunSession, discardRun, markRunExecutedManual, archiveRun } from '../../api/client';
+import { fetchRuns, executeRun, createRunSession, discardRun, markRunExecutedManual, archiveRun, retryRun } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
@@ -92,6 +92,11 @@ export function RunsPage() {
     refresh();
   }, [refresh]);
 
+  const handleRetry = useCallback(async (id: string) => {
+    await retryRun(id);
+    refresh();
+  }, [refresh]);
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
@@ -146,7 +151,7 @@ export function RunsPage() {
                       <Badge title="View child execution" className="text-green bg-green/15 hover:bg-green/25">↓ child</Badge>
                     </a>
                   )}
-                  <span className="text-[13px] flex-1 truncate">{run.prompt.slice(0, 80)}</span>
+                  <span className="text-[13px] flex-1 min-w-0 truncate">{run.prompt}</span>
                   {duration && <span className="text-xs text-text-muted">{duration}</span>}
                   <span className="text-xs text-text-muted shrink-0">{timeAgo(run.createdAt)}</span>
                 </div>
@@ -204,6 +209,12 @@ export function RunsPage() {
                     <div className="flex items-center gap-3 text-xs text-text-muted">
                       {run.suggestionId && (
                         <a href={`/suggestions?highlight=${run.suggestionId}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">View suggestion</a>
+                      )}
+                      {run.status === 'failed' && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRetry(run.id); }}
+                          className="text-orange hover:text-accent bg-transparent border-none cursor-pointer text-xs"
+                        >Retry</button>
                       )}
                       {['executed', 'executed_manual', 'discarded', 'failed'].includes(run.status) && (
                         <button
