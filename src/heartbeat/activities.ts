@@ -214,7 +214,7 @@ export async function activityAnalyze(
     filePaths: [...new Set(filePaths)].slice(0, 20),
     topics: [...new Set(topics)],
     repoId: repoIds.size === 1 ? [...repoIds][0] : undefined,
-  });
+  }, 10, false); // touch=false: internal heartbeat lookup, don't inflate access counts
 
   // Shared data sections
   const dataSources = [
@@ -519,7 +519,7 @@ export async function activitySuggest(
     filePaths,
     topics: [...new Set(topics)],
     repoId: repoIds.length === 1 ? repoIds[0] : undefined,
-  });
+  }, 10, false); // touch=false: internal suggest lookup
 
   // Build the suggestion prompt
   const observationSummaries = observations.map((obs) =>
@@ -754,7 +754,21 @@ export async function activityConsolidate(
             for (const pattern of parsed.metaPatterns) {
               if (!pattern.title || !pattern.bodyMd) continue;
 
-              ctx.db.createMemory({
+              // Semantic dedup: check if a similar meta_pattern already exists
+              const decision = await checkMemoryDuplicate(ctx.db, {
+                kind: 'meta_pattern', title: pattern.title, bodyMd: pattern.bodyMd,
+              });
+              if (decision.action === 'skip') {
+                console.error(`[shadow:consolidate] Skip duplicate meta_pattern: ${pattern.title}`);
+                continue;
+              }
+              if (decision.action === 'update') {
+                ctx.db.mergeMemoryBody(decision.existingId, pattern.bodyMd, pattern.tags);
+                console.error(`[shadow:consolidate] Updated existing meta_pattern: ${pattern.title}`);
+                continue;
+              }
+
+              const metaMem = ctx.db.createMemory({
                 layer: 'core',
                 scope: 'global',
                 kind: 'meta_pattern',
@@ -765,6 +779,24 @@ export async function activityConsolidate(
                 confidenceScore: pattern.confidence ?? 80,
                 relevanceScore: 0.8,
               });
+              await generateAndStoreEmbedding(ctx.db, 'memory', metaMem.id, { kind: 'meta_pattern', title: metaMem.title, bodyMd: metaMem.bodyMd });
+
+              // Archive hot memories that are semantically covered by this meta_pattern
+              const { vectorSearch } = await import('../memory/search.js');
+              const similar = await vectorSearch({
+                db: ctx.db.rawDb, text: pattern.title + ' ' + pattern.bodyMd,
+                vecTable: 'memory_vectors', limit: 10,
+              });
+              for (const match of similar) {
+                if (match.id === metaMem.id) continue; // Don't archive itself
+                if (match.similarity < 0.65) break; // Below threshold
+                const mem = ctx.db.getMemory(match.id);
+                if (!mem || mem.layer !== 'hot') continue; // Only archive hot sources
+                ctx.db.updateMemory(mem.id, { archivedAt: new Date().toISOString() });
+                ctx.db.deleteEmbedding('memory_vectors', mem.id);
+                ctx.db.createFeedback({ targetKind: 'memory', targetId: mem.id, action: 'consolidated', note: `merged into meta_pattern: ${pattern.title}` });
+                console.error(`[shadow:consolidate] Archived hot source: ${mem.title}`);
+              }
             }
           }
         } catch {

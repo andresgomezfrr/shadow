@@ -18,6 +18,8 @@ const WARM_PROMOTION_WINDOW_DAYS = 14;
 const LOW_CONFIDENCE_THRESHOLD = 50;
 const VERY_LOW_CONFIDENCE_THRESHOLD = 30;
 
+const CORE_CAPACITY = 30;
+const CORE_PROTECTED_KINDS = ['soul_reflection', 'taught', 'knowledge_summary'];
 const HOT_CAPACITY = 50;
 const WARM_CAPACITY = 100;
 
@@ -118,6 +120,19 @@ export function maintainMemoryLayers(db: ShadowDatabase): LayerMaintenanceResult
   }
 
   // --- Step 5: Enforce capacity limits ---
+  // Core layer: max 30 — evict lowest scoring non-protected memories to hot
+  const coreMemories = db.listMemories({ layer: 'core', archived: false });
+  if (coreMemories.length > CORE_CAPACITY) {
+    const evictable = coreMemories
+      .filter(m => !CORE_PROTECTED_KINDS.includes(m.kind))
+      .sort((a, b) => (a.relevanceScore * a.accessCount) - (b.relevanceScore * b.accessCount));
+    const toEvict = evictable.slice(0, coreMemories.length - CORE_CAPACITY);
+    for (const mem of toEvict) {
+      db.updateMemory(mem.id, { layer: 'hot', demotedTo: 'hot' });
+      demoted++;
+    }
+  }
+
   // Hot layer: max 50 — evict lowest relevanceScore to warm
   const hotAfter = db.listMemories({ layer: 'hot', archived: false });
   if (hotAfter.length > HOT_CAPACITY) {

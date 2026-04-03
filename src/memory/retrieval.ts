@@ -53,6 +53,7 @@ export function findRelevantMemories(
     repoId?: string;
   },
   limit?: number,
+  touch = true,
 ): MemoryRecord[] {
   const terms = new Set<string>();
 
@@ -87,11 +88,13 @@ export function findRelevantMemories(
 
   const memories = results.map((r) => r.memory);
 
-  // Touch all returned memories to track access
-  touchMemories(
-    db,
-    memories.map((m) => m.id),
-  );
+  // Touch memories only for user-facing searches, not internal heartbeat lookups
+  if (touch) {
+    touchMemories(
+      db,
+      memories.map((m) => m.id),
+    );
+  }
 
   return memories;
 }
