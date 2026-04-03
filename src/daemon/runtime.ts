@@ -253,6 +253,18 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     }
     cleanOrphanedJobsOnStartup();
 
+    // Backfill embeddings for entities created outside heartbeat (MCP teach, CLI, etc.)
+    (async () => {
+      try {
+        const { backfillEmbeddings } = await import('../memory/lifecycle.js');
+        const counts = await backfillEmbeddings(_db);
+        const total = counts.memories + counts.observations + counts.suggestions;
+        if (total > 0) console.error(`[daemon] Backfilled embeddings: ${counts.memories} memories, ${counts.observations} observations, ${counts.suggestions} suggestions`);
+      } catch (e) {
+        console.error('[daemon] Embedding backfill failed:', e instanceof Error ? e.message : e);
+      }
+    })();
+
     // --- Job scheduler continued ---
     function shouldRunJob(type: string, intervalMs: number): boolean {
       // Check for manual trigger files

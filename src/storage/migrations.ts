@@ -475,6 +475,59 @@ export const migrations: Migration[] = [
     `,
   },
   {
+    version: 17,
+    name: 'fts5_observations_suggestions',
+    sql: `
+      -- FTS5 for observations
+      CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts USING fts5(
+        title, detail_text,
+        content='observations', content_rowid='rowid',
+        tokenize='unicode61'
+      );
+      CREATE TRIGGER IF NOT EXISTS observations_fts_ai AFTER INSERT ON observations BEGIN
+        INSERT INTO observations_fts(rowid, title, detail_text)
+        VALUES (NEW.rowid, NEW.title, NEW.detail_json);
+      END;
+      CREATE TRIGGER IF NOT EXISTS observations_fts_ad AFTER DELETE ON observations BEGIN
+        INSERT INTO observations_fts(observations_fts, rowid, title, detail_text)
+        VALUES ('delete', OLD.rowid, OLD.title, OLD.detail_json);
+      END;
+      CREATE TRIGGER IF NOT EXISTS observations_fts_au AFTER UPDATE ON observations BEGIN
+        INSERT INTO observations_fts(observations_fts, rowid, title, detail_text)
+        VALUES ('delete', OLD.rowid, OLD.title, OLD.detail_json);
+        INSERT INTO observations_fts(rowid, title, detail_text)
+        VALUES (NEW.rowid, NEW.title, NEW.detail_json);
+      END;
+
+      -- FTS5 for suggestions
+      CREATE VIRTUAL TABLE IF NOT EXISTS suggestions_fts USING fts5(
+        title, summary_md,
+        content='suggestions', content_rowid='rowid',
+        tokenize='unicode61'
+      );
+      CREATE TRIGGER IF NOT EXISTS suggestions_fts_ai AFTER INSERT ON suggestions BEGIN
+        INSERT INTO suggestions_fts(rowid, title, summary_md)
+        VALUES (NEW.rowid, NEW.title, NEW.summary_md);
+      END;
+      CREATE TRIGGER IF NOT EXISTS suggestions_fts_ad AFTER DELETE ON suggestions BEGIN
+        INSERT INTO suggestions_fts(suggestions_fts, rowid, title, summary_md)
+        VALUES ('delete', OLD.rowid, OLD.title, OLD.summary_md);
+      END;
+      CREATE TRIGGER IF NOT EXISTS suggestions_fts_au AFTER UPDATE ON suggestions BEGIN
+        INSERT INTO suggestions_fts(suggestions_fts, rowid, title, summary_md)
+        VALUES ('delete', OLD.rowid, OLD.title, OLD.summary_md);
+        INSERT INTO suggestions_fts(rowid, title, summary_md)
+        VALUES (NEW.rowid, NEW.title, NEW.summary_md);
+      END;
+
+      -- Backfill existing data into FTS indexes
+      INSERT INTO observations_fts(rowid, title, detail_text)
+        SELECT rowid, title, detail_json FROM observations;
+      INSERT INTO suggestions_fts(rowid, title, summary_md)
+        SELECT rowid, title, summary_md FROM suggestions;
+    `,
+  },
+  {
     version: 15,
     name: 'vector_tables',
     sql: `

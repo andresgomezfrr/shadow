@@ -26,7 +26,8 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 | Runtime | Node.js 22+ (ESM) |
 | Language | TypeScript 5.9+ (strict) |
 | Storage | SQLite (node:sqlite DatabaseSync, WAL mode, busy_timeout=5000) |
-| Search | FTS5 (full-text, BM25 ranking) |
+| Search | FTS5 (full-text, BM25) + sqlite-vec (vector, cosine) — hybrid search via RRF |
+| Embeddings | @huggingface/transformers, all-MiniLM-L6-v2 (384 dims, local) |
 | CLI | Commander.js 14 |
 | Validation | Zod 4 |
 | LLM Backend | Claude CLI (`--print --output-format json`) or Agent SDK |
@@ -136,16 +137,17 @@ src/web/dashboard/
 
 ## Database Schema
 
-**14 tables** (SQLite, WAL mode, busy_timeout=5000ms for concurrency):
+**18 tables** (SQLite, WAL mode, busy_timeout=5000ms for concurrency):
 
 | Table | Purpose | Key columns |
 |-------|---------|-------------|
 | `repos` | Tracked repos | name, path (unique), default_branch, test/lint/build commands |
+| `projects` | Groups of repos+systems | kind (long-term/sprint/task), status, repo_ids_json, system_ids_json |
 | `user_profile` | Single-row profile | trust_level (1-5), trust_score (0-100), proactivity_level (1-10), personality_level (1-5), focus_mode |
-| `memories` | Layered memory | layer (core/hot/warm/cool/cold), scope, kind, FTS5 indexed |
-| `observations` | Git-derived facts | source_kind, kind (recent_commits/uncommitted_work/project_structure/active_branches) |
-| `suggestions` | LLM proposals | impact/confidence/risk scores, status, repo_ids_json (multi-repo) |
-| `heartbeats` | State machine log | phase, observations_created, suggestions_created, duration_ms |
+| `memories` | Layered memory | layer, scope, kind, entities_json, FTS5+vector indexed |
+| `observations` | LLM-derived facts | source_kind, kind, entities_json, repo_ids_json, votes, severity |
+| `suggestions` | LLM proposals | impact/confidence/risk scores, status, entities_json, repo_ids_json |
+| `jobs` | Job execution log | type, phase, status, llm_calls, tokens_used, duration_ms |
 | `interactions` | User interactions | sentiment, topics, trust_delta |
 | `event_queue` | Notifications | kind, priority (1-10), delivered flag |
 | `runs` | Task execution | status (queued/running/completed/failed), repo_ids_json |
@@ -153,15 +155,35 @@ src/web/dashboard/
 | `llm_usage` | Token tracking | source, model, input_tokens, output_tokens |
 | `systems` | Infrastructure | kind (infra/service/database/queue/monitoring), url, health_check |
 | `contacts` | Team members | role, team, email, slack_id, github_handle |
+| `feedback` | User feedback | target_kind, target_id, action, note |
 | `memories_fts` | FTS5 virtual table | title, body_md, tags — auto-synced via triggers |
+| `observations_fts` | FTS5 virtual table | title, detail — auto-synced via triggers |
+| `suggestions_fts` | FTS5 virtual table | title, summary_md — auto-synced via triggers |
+| `*_vectors` | vec0 virtual tables | 384-dim embeddings for memories, observations, suggestions |
 
-## MCP Tools (37 total)
+## Entity Linking
 
-### Read-only (17, no trust gate)
-`shadow_check_in`, `shadow_status`, `shadow_repos`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`, `shadow_daily_summary`, `shadow_feedback`, `shadow_soul`
+All knowledge entities (memories, observations, suggestions) have an `entities_json` column:
+```json
+[{"type": "repo", "id": "..."}, {"type": "project", "id": "..."}, {"type": "system", "id": "..."}]
+```
+This enables cross-entity queries: "everything Shadow knows about project X" across all three systems.
 
-### Write (19, trust >= 1)
-`shadow_repo_add`, `shadow_repo_remove`, `shadow_contact_add`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`
+## Semantic Dedup
+
+New entities go through `checkDuplicate()` before creation:
+- Generates embedding via `all-MiniLM-L6-v2` (local, ~4ms)
+- Searches vector table for similar entries (cosine similarity)
+- Decision: **skip** (>0.85), **update** existing (>0.70), or **create** new
+- Thresholds calibrated per entity type. Suggestions also check against dismissed (>0.75 = blocked).
+
+## MCP Tools (42 total)
+
+### Read-only (19, no trust gate)
+`shadow_check_in`, `shadow_status`, `shadow_repos`, `shadow_projects`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_search`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`, `shadow_daily_summary`, `shadow_feedback`, `shadow_soul`
+
+### Write (22, trust >= 1)
+`shadow_repo_add`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`
 
 ### Write (1, trust >= 2)
 `shadow_observe`
@@ -319,9 +341,9 @@ Observation kinds: `improvement`, `risk`, `opportunity`, `pattern`, `infrastruct
 
 Source: `sourceKind: 'llm'` (not `'repo'`)
 
-## Current State (as of 2026-04-02)
+## Current State (as of 2026-04-03)
 
-- **37 MCP tools** (17 read + 19 write L1 + 1 write L2) — includes feedback, soul, memory update, observation lifecycle
+- **42 MCP tools** (19 read + 22 write L1 + 1 write L2) — includes projects, unified search, paginated listings
 - **4 hooks** (SessionStart, PostToolUse, UserPromptSubmit, Stop)
 - **Ghost mascot** `{•‿•}` in status line — 13 states × 3 variants, ANSI colors by state
 - **Job system** — typed jobs: heartbeat (15min), suggest (reactive), consolidate (6h), reflect (24h). Schedule visible in dashboard.
@@ -330,8 +352,8 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 - **Daemon** — launchd, graceful shutdown, stale job detector (every tick, 10min threshold), graceful drain (60s)
 - **Dashboard** — React at localhost:3700, sidebar badges, markdown rendering, deep linking, job schedule header with countdowns
 - **Feedback loop** — unified feedback table. 👍/👎 toggle with persistence. Reason on dismiss/resolve/discard. All fed to LLM prompts.
-- **Observation lifecycle** — votes/dedup, status (active/acknowledged/resolved/expired), enriched context, auto-resolve by observe-cleanup
-- **Suggestion pipeline** — accept creates Run, plan by Claude with MCP + filesystem, execute/session/discard/executed-manual states
+- **Observation lifecycle** — semantic dedup, auto-expiration by severity (info=7d, warning=14d, high=never), cap per repo (max 10), retroactive consolidation via embeddings, votes, status (active/acknowledged/resolved/expired)
+- **Suggestion pipeline** — semantic dedup vs pending+dismissed+accepted, accept creates Run, plan by Claude with MCP + filesystem, execute/session/discard/executed-manual/retry states
 - **Runner with MCP delegation** — briefing-only prompt, Claude reads files + searches memories. `--allowedTools "mcp__shadow__*"`.
 - **Trust L2 complete** — plan + open session (rich briefing) + execute (worktree + branch). L3+ designed in docs/plan-trust-levels.md.
 - **Smart analyze** — 3 LLM calls: extract (memories + mood) + observe-cleanup (MCP resolve) + observe (new observations). Soul reflection injected.
@@ -356,7 +378,14 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Feedback** from dismiss/resolve/thumbs fed into extract + observe + suggest prompts.
 - **Models + effort configurable per phase** from dashboard /profile. `getModel(ctx, phase)` + `getEffort(ctx, phase)`.
 - **Rotation**: conversations.jsonl and interactions.jsonl rotated (keep last 2h) after each analyze.
-- **Dedup**: existing hot/core memories included in extract prompt. Suggestions dedup by kind+title against pending.
+- **Semantic dedup**: all three knowledge systems (memories, observations, suggestions) use embeddings-based dedup via `checkDuplicate()`. Thresholds: skip >= 0.85, update >= 0.70 (calibrated per type). Suggestions also check against dismissed (>= 0.75 = blocked).
+- **Hybrid search**: `shadow_search` MCP tool combines FTS5 BM25 + vector cosine via Reciprocal Rank Fusion (k=60). Searches across all three systems.
+- **Projects**: first-class entity grouping repos + systems + contacts. Long-term, sprint, or task. CLI + MCP + dashboard.
+- **Entity linking**: `entities_json` column on memories/observations/suggestions. Format: `[{type, id}]`. Enables cross-entity queries.
+- **Embeddings**: `all-MiniLM-L6-v2` via `@huggingface/transformers` + `sqlite-vec`. Lazy init, ~4ms/embedding. Backfill on daemon startup.
+- **Prompt tuning**: extract 0-2 insights (not 1-3), observe up to 3 (not 5), expanded BAD lists, core requires 6mo stability, kind rebalancing.
+- **Core capacity**: max 30, protected kinds (soul_reflection, taught, knowledge_summary). Eviction by lowest relevanceScore*accessCount.
+- **Access count honesty**: heartbeat internal lookups use `touch=false`, only MCP searches increment access counts.
 - **Stale job detector** runs every daemon tick (10min threshold). Graceful drain on shutdown (60s). On startup, `cleanOrphanedJobsOnStartup()` fails ALL running jobs/runs immediately (no age threshold).
 - **Child process cleanup** — `killActiveChild()` sends SIGTERM to spawned `claude` process on shutdown. `pkill` in daemon stop/restart kills orphaned claude processes matching `--allowedTools.*mcp__shadow`.
 - **Pagination** — DB `count*` methods for all entities. API returns `{ items, total }`. Migration v12 (feedback thumbs index) + v13 (suggestions kind, observations status, jobs type indexes).
