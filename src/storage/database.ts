@@ -672,6 +672,22 @@ export class ShadowDatabase {
       .run(now, now, id);
   }
 
+  /** Merge new content into an existing memory's body + tags. Used by semantic dedup. */
+  mergeMemoryBody(id: string, newBodyMd: string, newTags?: string[]): void {
+    const existing = this.getMemory(id);
+    if (!existing) return;
+
+    const mergedBody = `${existing.bodyMd}\n\n---\n\n${newBodyMd}`;
+    const mergedTags = newTags
+      ? [...new Set([...existing.tags, ...newTags])]
+      : existing.tags;
+    const now = new Date().toISOString();
+
+    this.database
+      .prepare('UPDATE memories SET body_md = ?, tags_json = ?, updated_at = ? WHERE id = ?')
+      .run(mergedBody, JSON.stringify(mergedTags), now, id);
+  }
+
   // --- Observations ---
 
   createObservation(input: CreateObservationInput): ObservationRecord {

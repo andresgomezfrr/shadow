@@ -9,6 +9,8 @@ import type { ObjectivePack } from '../backend/types.js';
 import { observeAllRepos, collectAllRepoContexts, summarizeRepoContexts } from '../observation/watcher.js';
 import { findRelevantMemories } from '../memory/retrieval.js';
 import { maintainMemoryLayers } from '../memory/layers.js';
+import { checkMemoryDuplicate, checkSuggestionDuplicate } from '../memory/dedup.js';
+import { generateAndStoreEmbedding } from '../memory/lifecycle.js';
 import { selectAdapter } from '../backend/index.js';
 import { applyTrustDelta } from '../profile/trust.js';
 
@@ -296,14 +298,38 @@ export async function activityAnalyze(
           if (Object.keys(pu).length > 0) ctx.db.updateProfile(ctx.profile.id, pu);
         }
         for (const insight of parsed.insights) {
-          ctx.db.createMemory({
-            repoId: repoIds.size === 1 ? [...repoIds][0] : null,
-            layer: insight.layer, scope: insight.scope, kind: insight.kind, title: insight.title, bodyMd: insight.bodyMd,
-            tags: insight.tags, sourceType: 'heartbeat', sourceId: heartbeatId ?? null,
-            confidenceScore: insight.confidence, relevanceScore: 0.6,
+          // Semantic dedup: check if similar memory exists before creating
+          const decision = await checkMemoryDuplicate(ctx.db, {
+            kind: insight.kind, title: insight.title, bodyMd: insight.bodyMd,
           });
-          memoriesCreated++;
-          if (insight.kind === 'pattern') patternsDetected++;
+
+          switch (decision.action) {
+            case 'skip':
+              console.error(`[shadow:extract] Skip duplicate (${(decision.similarity * 100).toFixed(0)}%): ${insight.title}`);
+              break;
+            case 'update':
+              console.error(`[shadow:extract] Update existing (${(decision.similarity * 100).toFixed(0)}%): ${insight.title}`);
+              ctx.db.mergeMemoryBody(decision.existingId, insight.bodyMd, insight.tags);
+              // Regenerate embedding for the updated memory
+              const updated = ctx.db.getMemory(decision.existingId);
+              if (updated) {
+                await generateAndStoreEmbedding(ctx.db, 'memory', updated.id, { kind: updated.kind, title: updated.title, bodyMd: updated.bodyMd });
+              }
+              break;
+            case 'create': {
+              const mem = ctx.db.createMemory({
+                repoId: repoIds.size === 1 ? [...repoIds][0] : null,
+                layer: insight.layer, scope: insight.scope, kind: insight.kind, title: insight.title, bodyMd: insight.bodyMd,
+                tags: insight.tags, sourceType: 'heartbeat', sourceId: heartbeatId ?? null,
+                confidenceScore: insight.confidence, relevanceScore: 0.6,
+              });
+              // Store embedding for new memory
+              await generateAndStoreEmbedding(ctx.db, 'memory', mem.id, { kind: mem.kind, title: mem.title, bodyMd: mem.bodyMd });
+              memoriesCreated++;
+              if (insight.kind === 'pattern') patternsDetected++;
+              break;
+            }
+          }
         }
       }
     }
@@ -395,6 +421,23 @@ export async function activityAnalyze(
         for (const obs of parsed.observations) {
           const firstRepoId = repoIds.size > 0 ? [...repoIds][0] : (repoContexts.length > 0 ? repoContexts[0].repoId : null);
           if (!firstRepoId) continue;
+
+          // Semantic dedup before creating observation
+          const { checkObservationDuplicate } = await import('../memory/dedup.js');
+          const decision = await checkObservationDuplicate(ctx.db, {
+            kind: obs.kind, title: obs.title, detail: { description: obs.detail },
+          });
+
+          if (decision.action === 'skip') {
+            console.error(`[shadow:observe] Skip duplicate obs (${(decision.similarity * 100).toFixed(0)}%): ${obs.title}`);
+            continue;
+          }
+          if (decision.action === 'update') {
+            console.error(`[shadow:observe] Merge into existing obs (${(decision.similarity * 100).toFixed(0)}%): ${obs.title}`);
+            // Increment votes on existing observation (dedup in DB will handle context merge)
+            continue;
+          }
+
           const repo = repoContexts.find((rc) => rc.repoId === firstRepoId);
           const context: Record<string, unknown> = {
             repoName: repo?.repoName ?? 'unknown', branch: repo?.currentBranch ?? 'unknown',
@@ -402,11 +445,13 @@ export async function activityAnalyze(
           };
           const sessionIds = [...new Set(recentConversations.map((c) => c.session).filter(Boolean))];
           if (sessionIds.length > 0) context.sessionIds = sessionIds;
-          ctx.db.createObservation({
+          const created = ctx.db.createObservation({
             repoId: firstRepoId, sourceKind: 'llm', sourceId: null,
             kind: obs.kind, severity: obs.severity,
             title: obs.title, detail: { description: obs.detail }, context,
           });
+          // Store embedding for new observation
+          await generateAndStoreEmbedding(ctx.db, 'observation', created.id, { kind: created.kind, title: created.title, detail: created.detail });
           observationsCreated++;
         }
       }
@@ -562,29 +607,35 @@ export async function activitySuggest(
           console.error(`[shadow:suggest] Filtered ${parsed.suggestions.length - qualitySuggestions.length} low-quality suggestions`);
         }
 
-        const existingPending = ctx.db.listSuggestions({ status: 'pending' });
-        const existingKeys = new Set(existingPending.map((s) => `${s.kind}:${s.title}`));
-        const existingTitles = existingPending.map(s => s.title.toLowerCase());
-
         for (const sug of qualitySuggestions) {
-          const key = `${sug.kind}:${sug.title}`;
-          if (existingKeys.has(key)) continue;
-
-          // Similarity dedup: skip if 3+ significant words overlap with an existing title
-          const words = sug.title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-          const isSimilar = existingTitles.some(existing => {
-            const matchCount = words.filter(w => existing.includes(w)).length;
-            return matchCount >= 3;
-          });
-          if (isSimilar) {
-            console.error(`[shadow:suggest] Skipped similar: "${sug.title}"`);
+          // Semantic dedup: check against pending → skip if similar
+          const vsPending = await checkSuggestionDuplicate(ctx.db, {
+            kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd,
+          }, 'pending');
+          if (vsPending.action !== 'create') {
+            console.error(`[shadow:suggest] Skip (similar to pending, ${(vsPending.similarity * 100).toFixed(0)}%): ${sug.title}`);
             continue;
           }
 
-          existingKeys.add(key);
-          existingTitles.push(sug.title.toLowerCase());
+          // Check against dismissed → skip (don't re-suggest rejected)
+          const vsDismissed = await checkSuggestionDuplicate(ctx.db, {
+            kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd,
+          }, 'dismissed');
+          if (vsDismissed.action !== 'create') {
+            console.error(`[shadow:suggest] Skip (similar to dismissed, ${(vsDismissed.similarity * 100).toFixed(0)}%): ${sug.title}`);
+            continue;
+          }
 
-          ctx.db.createSuggestion({
+          // Check against accepted → boost confidence
+          const vsAccepted = await checkSuggestionDuplicate(ctx.db, {
+            kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd,
+          }, 'accepted');
+          if (vsAccepted.action === 'update' || vsAccepted.action === 'skip') {
+            sug.confidenceScore = Math.min(100, sug.confidenceScore + 10);
+            console.error(`[shadow:suggest] Boosted confidence (similar to accepted, ${(vsAccepted.similarity * 100).toFixed(0)}%): ${sug.title}`);
+          }
+
+          const created = ctx.db.createSuggestion({
             repoId: repoIds.length === 1 ? repoIds[0] : null,
             repoIds,
             sourceObservationId: observations[0]?.id ?? null,
@@ -597,6 +648,8 @@ export async function activitySuggest(
             riskScore: sug.riskScore,
             requiredTrustLevel: ctx.profile.trustLevel,
           });
+          // Store embedding for new suggestion
+          await generateAndStoreEmbedding(ctx.db, 'suggestion', created.id, { kind: created.kind, title: created.title, summaryMd: created.summaryMd });
           suggestionsCreated++;
         }
       }
