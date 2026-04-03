@@ -69,8 +69,8 @@ export const fetchJobs = (params?: { type?: string; limit?: number; offset?: num
 
 export const fetchEvents = () => api<EventRecord[]>('/api/events');
 
-export const fetchRuns = (params?: { status?: string; repoId?: string; limit?: number; offset?: number }) =>
-  api<{ items: Run[]; total: number }>(`/api/runs${qs({ status: params?.status, repoId: params?.repoId, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+export const fetchRuns = (params?: { status?: string; repoId?: string; archived?: boolean; limit?: number; offset?: number }) =>
+  api<{ items: Run[]; total: number }>(`/api/runs${qs({ status: params?.status, repoId: params?.repoId, archived: params?.archived != null ? String(params.archived) : undefined, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
 // --- POST ---
 

@@ -30,6 +30,7 @@ const STATUS_FILTERS = [
   { label: 'Manual', value: 'executed_manual' },
   { label: 'Discarded', value: 'discarded' },
   { label: 'Failed', value: 'failed' },
+  { label: 'Archived', value: 'archived' },
 ];
 
 const PAGE_SIZE = 20;
@@ -38,7 +39,11 @@ export function RunsPage() {
   const hasHighlight = new URLSearchParams(window.location.search).has('highlight');
   const { params, setParam } = useFilterParams({ status: hasHighlight ? '' : 'completed', offset: '0' });
   const { data: rawData, refresh } = useApi(
-    () => fetchRuns({ status: params.status || undefined, limit: PAGE_SIZE, offset: Number(params.offset) || 0 }),
+    () => fetchRuns({
+      status: params.status === 'archived' ? undefined : (params.status || undefined),
+      archived: params.status === 'archived' ? true : undefined,
+      limit: PAGE_SIZE, offset: Number(params.offset) || 0,
+    }),
     [params.status, params.offset],
     15_000,
   );

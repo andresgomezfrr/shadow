@@ -225,10 +225,11 @@ async function handleApi(
     if (pathname === '/api/runs') {
       const status = params.get('status') ?? undefined;
       const repoId = params.get('repoId') ?? undefined;
+      const archived = params.get('archived') === 'true' ? true : undefined;
       const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : undefined;
       const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
-      const items = db.listRuns({ status, repoId, limit, offset });
-      const total = db.countRuns({ status });
+      const items = db.listRuns({ status, repoId, archived, limit, offset });
+      const total = db.countRuns({ status, archived });
       return json(res, { items, total });
     }
 
