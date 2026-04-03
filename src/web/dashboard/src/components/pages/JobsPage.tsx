@@ -213,7 +213,7 @@ export function JobsPage() {
                   <div className="flex gap-4 mt-2 text-xs text-text-dim">
                     {Object.entries(hb.result as Record<string, unknown>)
                       .filter(([, v]) => typeof v === 'number' && v > 0)
-                      .map(([k, v]) => <span key={k}>{v} {k.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>)}
+                      .map(([k, v]) => <span key={k}>{String(v)} {k.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>)}
                   </div>
                 )}
 

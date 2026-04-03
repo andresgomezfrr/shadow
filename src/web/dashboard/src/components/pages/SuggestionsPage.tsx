@@ -133,7 +133,7 @@ export function SuggestionsPage() {
         <div className="flex flex-col gap-3">
           {data.map((s) => {
             const repo = repoName(repos, s.repoId);
-            const linkedRun = runs?.find((r) => r.suggestionId === s.id);
+            const linkedRun = runs?.items?.find((r) => r.suggestionId === s.id);
             return (
               <div key={s.id} ref={suggestionScrollRef(s.id)} className={`bg-card border rounded-lg p-4 transition-colors hover:border-accent ${pulseId === s.id ? 'border-accent ring-2 ring-accent/30' : 'border-border'}`}>
                 <div className="flex items-start justify-between gap-3">
