@@ -140,6 +140,16 @@ export function JobsPage() {
           <span className="text-text-muted">·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.reflect?.nextAt, now)}</span>
         </div>
+        <div className="flex items-center gap-3">
+          <Badge title="Daily standup digest" tooltipBelow className={TYPE_COLORS['digest-daily']}>digest-daily</Badge>
+          <span className="text-text-muted">24h</span>
+          <span className="text-text-muted">·</span>
+          <Badge title="Weekly 1:1 digest" tooltipBelow className={TYPE_COLORS['digest-weekly']}>digest-weekly</Badge>
+          <span className="text-text-muted">7d</span>
+          <span className="text-text-muted">·</span>
+          <Badge title="Quarterly brag doc" tooltipBelow className={TYPE_COLORS['digest-brag']}>digest-brag</Badge>
+          <span className="text-text-muted">7d</span>
+        </div>
       </div>
 
       {data && data.length > 0 && (
