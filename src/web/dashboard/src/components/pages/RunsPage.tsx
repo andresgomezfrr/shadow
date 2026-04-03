@@ -214,7 +214,7 @@ export function RunsPage() {
                   <div className="flex items-center gap-2.5 flex-wrap">
                     <span className={`text-sm font-mono w-4 text-center ${iconColor}`} title={run.status}>{icon}</span>
                     <Badge className="text-text-dim bg-border">{run.kind}</Badge>
-                    {run.confidence && <ConfidenceIndicator confidence={run.confidence} compact />}
+                    {run.confidence && <ConfidenceIndicator confidence={run.confidence} doubts={run.doubts?.length} compact />}
                     {(childRun || run.status === 'executed') && (
                       <RunPipeline plan={pipeline.plan} exec={pipeline.exec} pr={pipeline.pr} />
                     )}
@@ -278,7 +278,7 @@ export function RunsPage() {
                       {run.confidence && (
                         <div className={`rounded-lg p-3 text-sm ${run.doubts?.length > 0 ? 'bg-orange/5 border border-orange/20' : 'bg-green/5 border border-green/20'}`}>
                           <div className="flex items-center gap-2 mb-1">
-                            <ConfidenceIndicator confidence={run.confidence} />
+                            <ConfidenceIndicator confidence={run.confidence} doubts={run.doubts?.length} />
                           </div>
                           {run.doubts?.length > 0 && (
                             <ul className="list-disc list-inside text-text-dim space-y-0.5 text-xs mt-2">

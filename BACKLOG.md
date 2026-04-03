@@ -51,8 +51,8 @@ Convertir la página Events en un activity feed real: jobs, observations, sugges
 
 ## Long-term — Trust Levels → [`docs/plan-trust-levels.md`](docs/plan-trust-levels.md)
 
-### L3 — auto-execute con confidence/doubts gate
-Accept → plan → auto-execute si Shadow no tiene dudas. Si tiene dudas → se comporta como L2.
+### ~~L3 — auto-execute con confidence/doubts gate~~ ✅
+Accept → plan → auto-execute si Shadow no tiene dudas. Si tiene dudas → se comporta como L2. **Done**: confidence evaluation (Sonnet high), auto child run, draft PR button, RunsPage redesign.
 
 ### L4 — proactivo con LLM evaluator
 Shadow actúa sin esperar accept. LLM evaluator filtra qué sugerencias merecen auto-ejecución.
@@ -63,6 +63,9 @@ Autonomía por repo/scope configurable. Shadow mergea donde tiene permiso.
 ---
 
 ## Long-term — Arquitectura
+
+### Runs paralelos
+Actualmente el daemon procesa un run por tick (secuencial, 8min timeout). Permitir N runs concurrentes — importante para L3 donde plan + child execution son 2 runs seguidos.
 
 ### Concepto de Proyecto
 Entidad contenedora que agrupa repos, memorias, sugerencias y observaciones.

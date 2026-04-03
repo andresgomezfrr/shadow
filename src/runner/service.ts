@@ -164,6 +164,9 @@ export class RunnerService {
       );
       mkdirSync(artifactDir, { recursive: true });
 
+      // Execution runs need filesystem write access; plan-only runs only need read + MCP
+      const allowedTools = planOnly ? undefined : ['Edit', 'Write', 'Bash'];
+
       const pack: ObjectivePack = {
         runId: run.id,
         repos,
@@ -176,6 +179,7 @@ export class RunnerService {
         model: this.config.models.runner,
         effort: this.config.efforts.runner,
         systemPrompt: null, // No override — Claude uses default behavior with MCP tools + filesystem
+        allowedTools,
         timeoutMs: this.config.runnerTimeoutMs,
       };
 
