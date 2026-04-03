@@ -546,7 +546,7 @@ export const migrations: Migration[] = [
     `,
   },
   {
-    version: 18,
+    version: 20,
     name: 'digests_table',
     sql: `
       CREATE TABLE IF NOT EXISTS digests (
@@ -564,7 +564,7 @@ export const migrations: Migration[] = [
     `,
   },
   {
-    version: 19,
+    version: 18,
     name: 'system_operational_fields',
     sql: `
       ALTER TABLE systems ADD COLUMN logs_location TEXT;
