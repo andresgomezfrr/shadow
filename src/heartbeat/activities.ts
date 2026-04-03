@@ -6,7 +6,7 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { ObservationRecord, MemoryRecord } from '../storage/models.js';
 import type { ObjectivePack } from '../backend/types.js';
 
-import { observeAllRepos, collectAllRepoContexts, summarizeRepoContexts } from '../observation/watcher.js';
+import { observeAllRepos, collectActiveRepoContexts, summarizeRepoContexts } from '../observation/watcher.js';
 import { findRelevantMemories } from '../memory/retrieval.js';
 import { maintainMemoryLayers } from '../memory/layers.js';
 import { checkMemoryDuplicate, checkSuggestionDuplicate } from '../memory/dedup.js';
@@ -189,7 +189,7 @@ export async function activityAnalyze(
   const interactionSummary = summarizeInteractions(recentInteractions);
   const recentConversations = loadRecentConversations(ctx.config, twoHoursAgo);
   const conversationSummary = summarizeConversations(recentConversations);
-  const repoContexts = collectAllRepoContexts(ctx.db);
+  const repoContexts = collectActiveRepoContexts(ctx.db);
   const repoContextSummary = summarizeRepoContexts(repoContexts);
 
   if (observations.length === 0 && recentInteractions.length === 0 && recentConversations.length === 0) {
