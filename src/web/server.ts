@@ -143,6 +143,15 @@ async function handleApi(
       return json(res, contacts);
     }
 
+    if (pathname === '/api/digest/status') {
+      const status: Record<string, string> = {};
+      for (const kind of ['daily', 'weekly', 'brag']) {
+        const job = db.getLastJob(`digest-${kind}`);
+        status[kind] = job?.status === 'running' ? 'running' : 'idle';
+      }
+      return json(res, status);
+    }
+
     if (pathname === '/api/digests') {
       const kind = params.get('kind') ?? undefined;
       const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : 20;
@@ -177,10 +186,11 @@ async function handleApi(
 
     if (pathname === '/api/jobs') {
       const type = params.get('type') ?? undefined;
+      const typePrefix = params.get('typePrefix') ?? undefined;
       const limit = parseInt(params.get('limit') ?? '30', 10);
       const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
-      const items = db.listJobs({ type, limit, offset });
-      const total = db.countJobs({ type });
+      const items = db.listJobs({ type, typePrefix, limit, offset });
+      const total = db.countJobs({ type, typePrefix });
       return json(res, { items, total });
     }
 
@@ -483,6 +493,23 @@ async function handleApi(
       }
       writeFileSync(triggerPath, new Date().toISOString(), 'utf-8');
       return json(res, { triggered: true });
+    }
+
+    const digestTriggerMatch = pathname.match(/^\/api\/digest\/(daily|weekly|brag)\/trigger$/);
+    if (digestTriggerMatch) {
+      const kind = digestTriggerMatch[1];
+      const jobType = `digest-${kind}`;
+      const lastJob = db.getLastJob(jobType);
+      if (lastJob && lastJob.status === 'running') {
+        return json(res, { error: `${kind} digest already running` }, 409);
+      }
+      const config = loadConfig();
+      const triggerPath = resolve(config.resolvedDataDir, `${jobType}-trigger`);
+      if (existsSync(triggerPath)) {
+        return json(res, { error: `${kind} digest already queued` }, 409);
+      }
+      writeFileSync(triggerPath, new Date().toISOString(), 'utf-8');
+      return json(res, { triggered: true, kind });
     }
   }
 

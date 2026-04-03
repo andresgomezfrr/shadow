@@ -57,6 +57,12 @@ export const fetchContacts = (team?: string) =>
 export const fetchDigests = (kind?: string) =>
   api<Digest[]>(`/api/digests${qs({ kind })}`);
 
+export const fetchDigestStatus = () =>
+  api<Record<string, string>>('/api/digest/status');
+
+export const triggerDigest = (kind: 'daily' | 'weekly' | 'brag') =>
+  api<{ triggered: boolean }>(`/api/digest/${kind}/trigger`, { method: 'POST' });
+
 export const fetchProjects = (status?: string) =>
   api<Project[]>(`/api/projects${qs({ status })}`);
 
@@ -68,8 +74,8 @@ export const fetchUsage = (period: 'day' | 'week' | 'month' = 'week') =>
 
 export const fetchHeartbeats = () => api<Heartbeat[]>('/api/heartbeats');
 
-export const fetchJobs = (params?: { type?: string; limit?: number; offset?: number }) =>
-  api<{ items: Job[]; total: number }>(`/api/jobs${qs({ type: params?.type, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+export const fetchJobs = (params?: { type?: string; typePrefix?: string; limit?: number; offset?: number }) =>
+  api<{ items: Job[]; total: number }>(`/api/jobs${qs({ type: params?.type, typePrefix: params?.typePrefix, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
 export const fetchEvents = () => api<EventRecord[]>('/api/events');
 

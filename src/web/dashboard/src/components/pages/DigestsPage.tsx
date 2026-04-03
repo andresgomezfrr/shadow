@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useApi } from '../../hooks/useApi';
-import { fetchDigests } from '../../api/client';
+import { fetchDigests, fetchDigestStatus, triggerDigest } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
 import { Markdown } from '../common/Markdown';
@@ -15,14 +15,21 @@ const KIND_FILTERS = [
 ];
 
 const KIND_COLORS: Record<string, string> = {
-  daily: 'text-green bg-green/15',
-  weekly: 'text-blue bg-blue/15',
-  brag: 'text-purple bg-purple/15',
+  daily: 'text-teal bg-teal/15',
+  weekly: 'text-teal bg-teal/15',
+  brag: 'text-teal bg-teal/15',
+};
+
+const KIND_LABELS: Record<string, string> = {
+  daily: 'Standup',
+  weekly: '1:1',
+  brag: 'Brag Doc',
 };
 
 export function DigestsPage() {
   const [kindFilter, setKindFilter] = useState('');
-  const { data } = useApi(() => fetchDigests(kindFilter || undefined), [kindFilter], 30_000);
+  const { data, refresh } = useApi(() => fetchDigests(kindFilter || undefined), [kindFilter], 30_000);
+  const { data: status } = useApi(fetchDigestStatus, [], 5_000);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const toggle = (id: string) => setExpanded(prev => {
@@ -31,11 +38,31 @@ export function DigestsPage() {
     return next;
   });
 
+  const handleTrigger = useCallback(async (kind: 'daily' | 'weekly' | 'brag') => {
+    await triggerDigest(kind);
+    // Poll until job starts, then refresh will pick it up
+    setTimeout(refresh, 3000);
+  }, [refresh]);
+
+  const isRunning = (kind: string) => status?.[kind] === 'running';
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <h1 className="text-xl font-semibold">Digests</h1>
         <FilterTabs options={KIND_FILTERS} active={kindFilter} onChange={setKindFilter} />
+        <div className="ml-auto flex gap-2">
+          {(['daily', 'weekly', 'brag'] as const).map((kind) => (
+            <button
+              key={kind}
+              onClick={() => handleTrigger(kind)}
+              disabled={isRunning(kind)}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-teal/15 text-teal border border-teal/30 cursor-pointer transition-all hover:bg-teal/25 disabled:opacity-50 disabled:cursor-wait"
+            >
+              {isRunning(kind) ? `Generating ${KIND_LABELS[kind]}...` : `Generate ${KIND_LABELS[kind]}`}
+            </button>
+          ))}
+        </div>
       </div>
 
       {!data ? (
@@ -44,7 +71,7 @@ export function DigestsPage() {
         <EmptyState
           icon="📝"
           title="No digests yet"
-          description="Generate one with: shadow digest daily"
+          description="Click a Generate button above or use: shadow digest daily"
         />
       ) : (
         <div className="flex flex-col gap-3">
@@ -58,7 +85,7 @@ export function DigestsPage() {
               >
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge className={KIND_COLORS[d.kind] ?? 'text-text-dim bg-text-dim/15'}>
-                    {d.kind}
+                    {KIND_LABELS[d.kind] ?? d.kind}
                   </Badge>
                   <span className="text-sm font-medium">
                     {d.kind === 'brag' ? 'Brag Doc' : d.periodStart}

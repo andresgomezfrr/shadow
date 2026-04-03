@@ -5,6 +5,7 @@ export const ModelsSchema = z.object({
   suggest: z.string().default('opus'),
   consolidate: z.string().default('sonnet'),
   runner: z.string().default('sonnet'),
+  thought: z.string().default('haiku'),
 });
 
 export const EffortsSchema = z.object({
@@ -26,11 +27,16 @@ export const ConfigSchema = z.object({
   daemonPollIntervalMs: z.coerce.number().int().positive().default(30_000),
   proactivityLevel: z.coerce.number().int().min(1).max(10).default(5),
   personalityLevel: z.coerce.number().int().min(1).max(5).default(4),
+  thoughtsEnabled: z.coerce.boolean().default(true),
+  thoughtIntervalMinMs: z.coerce.number().int().positive().default(15 * 60 * 1000),
+  thoughtIntervalMaxMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
+  thoughtDurationMs: z.coerce.number().int().positive().default(60_000),
   models: ModelsSchema.default({
     analyze: 'sonnet',
     suggest: 'opus',
     consolidate: 'sonnet',
     runner: 'sonnet',
+    thought: 'haiku',
   }),
   efforts: EffortsSchema.default({
     analyze: 'medium',

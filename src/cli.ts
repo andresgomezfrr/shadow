@@ -151,6 +151,8 @@ RECENT_ACTIVITY=$(echo "$STATUS" | grep -o '"recentActivity":[0-9]*' | head -1 |
 TOKENS=$(echo "$STATUS" | grep -o '"todayTokens":[0-9]*' | head -1 | cut -d: -f2)
 MOOD=$(echo "$STATUS" | grep -o '"moodHint":"[^"]*"' | head -1 | cut -d'"' -f4)
 ENERGY=$(echo "$STATUS" | grep -o '"energyLevel":"[^"]*"' | head -1 | cut -d'"' -f4)
+THOUGHT=$(echo "$STATUS" | grep -o '"thought":"[^"]*"' | head -1 | cut -d'"' -f4)
+THOUGHT_EXPIRES=$(echo "$STATUS" | grep -o '"thoughtExpiresAt":"[^"]*"' | head -1 | cut -d'"' -f4)
 
 # Trust name + emoji
 case "$TRUST" in
@@ -273,29 +275,45 @@ case "$ENERGY" in
   *) ENERGY_EMOJI="🔋" ;;
 esac
 
-# Build line: mascot activity | mood+energy+trust | notifications | heartbeat
-LINE="\${MCOLOR}\${MASCOT}\${C0}"
-if [ -n "$ACTIVITY_TEXT" ]; then
-  LINE="$LINE $ACTIVITY_TEXT"
-fi
-LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI $TEMOJI"
-
-if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
-  LINE="$LINE | 💡$SUGGESTIONS"
-fi
-# Events removed from status line — delivered immediately, always noise
-
-# Heartbeat countdown (heart pulses between ♥︎ and ♡ each refresh)
-if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
-  HB_TS=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "\${NEXT_HB%%.*}" "+%s" 2>/dev/null || date -u -d "$NEXT_HB" "+%s" 2>/dev/null || echo 0)
+# Check if there's an active thought (not expired)
+SHOW_THOUGHT=""
+if [ -n "$THOUGHT" ] && [ "$THOUGHT" != "null" ] && [ -n "$THOUGHT_EXPIRES" ] && [ "$THOUGHT_EXPIRES" != "null" ]; then
+  TE_TS=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "\${THOUGHT_EXPIRES%%.*}" "+%s" 2>/dev/null || date -u -d "$THOUGHT_EXPIRES" "+%s" 2>/dev/null || echo 0)
   NOW_TS=$(date +%s)
-  HB_REMAINING=$(( (HB_TS - NOW_TS) / 60 ))
-  BEAT=$(( NOW_TS / 15 % 2 ))
-  if [ "$BEAT" -eq 0 ]; then HB_ICON="♥︎"; else HB_ICON="♡"; fi
-  if [ "$HB_REMAINING" -gt 0 ] 2>/dev/null; then
-    LINE="$LINE | \$HB_ICON \${HB_REMAINING}m"
-  else
-    LINE="$LINE | \$HB_ICON now"
+  if [ "$TE_TS" -gt "$NOW_TS" ] 2>/dev/null; then
+    SHOW_THOUGHT="$THOUGHT"
+  fi
+fi
+
+# Build line: mascot + (thought OR badges)
+LINE="\${MCOLOR}\${MASCOT}\${C0}"
+if [ -n "$SHOW_THOUGHT" ]; then
+  # Thought mode: replace badges with the thought
+  LINE="$LINE \${CD}💭 \${SHOW_THOUGHT}\${C0}"
+else
+  # Normal mode: activity | mood+energy+trust | notifications | heartbeat
+  if [ -n "$ACTIVITY_TEXT" ]; then
+    LINE="$LINE $ACTIVITY_TEXT"
+  fi
+  LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI $TEMOJI"
+
+  if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
+    LINE="$LINE | 💡$SUGGESTIONS"
+  fi
+  # Events removed from status line — delivered immediately, always noise
+
+  # Heartbeat countdown (heart pulses between ♥︎ and ♡ each refresh)
+  if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
+    HB_TS=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "\${NEXT_HB%%.*}" "+%s" 2>/dev/null || date -u -d "$NEXT_HB" "+%s" 2>/dev/null || echo 0)
+    NOW_TS=$(date +%s)
+    HB_REMAINING=$(( (HB_TS - NOW_TS) / 60 ))
+    BEAT=$(( NOW_TS / 15 % 2 ))
+    if [ "$BEAT" -eq 0 ]; then HB_ICON="♥︎"; else HB_ICON="♡"; fi
+    if [ "$HB_REMAINING" -gt 0 ] 2>/dev/null; then
+      LINE="$LINE | \$HB_ICON \${HB_REMAINING}m"
+    else
+      LINE="$LINE | \$HB_ICON now"
+    fi
   fi
 fi
 
@@ -639,6 +657,8 @@ program
         recentActivity,
         moodHint: profile.moodHint ?? 'neutral',
         energyLevel: profile.energyLevel ?? 'normal',
+        thought: (daemonState.thought as string) ?? null,
+        thoughtExpiresAt: (daemonState.thoughtExpiresAt as string) ?? null,
       };
     }),
   );

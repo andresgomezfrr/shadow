@@ -267,6 +267,125 @@ export function ProfilePage() {
         </div>
       </section>
 
+      {/* Thoughts */}
+      <section className="bg-card border border-border rounded-lg p-5 mb-6">
+        <h2 className="text-base font-semibold mb-4">💭 Thoughts</h2>
+        <p className="text-sm text-text-dim mb-4">Shadow shares brief thoughts in the status line at random intervals.</p>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-sm font-medium">Enabled</label>
+              <p className="text-xs text-text-dim">Show thoughts in the status line</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <SaveIndicator show={saved === 'thoughtsEnabled'} />
+              <button
+                onClick={async () => {
+                  const current = (profile.preferences as Record<string, unknown>)?.thoughtsEnabled;
+                  const next = current === false ? true : current === true ? false : false;
+                  await updateProfile({ preferences: { thoughtsEnabled: next } });
+                  setSaved('thoughtsEnabled');
+                  setTimeout(() => setSaved(null), 2000);
+                  refresh();
+                }}
+                className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${
+                  (profile.preferences as Record<string, unknown>)?.thoughtsEnabled !== false
+                    ? 'bg-green'
+                    : 'bg-border'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                    (profile.preferences as Record<string, unknown>)?.thoughtsEnabled !== false
+                      ? 'translate-x-5'
+                      : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="text-sm text-text-muted block mb-1">
+                Model
+                <SaveIndicator show={saved === 'model_thought'} />
+              </label>
+              <select
+                defaultValue={((profile.preferences as Record<string, unknown>)?.models as Record<string, string>)?.thought ?? 'haiku'}
+                onChange={async (e) => {
+                  const currentModels = (profile.preferences as Record<string, unknown>)?.models as Record<string, string> | undefined;
+                  const newModels = { ...currentModels, thought: e.target.value };
+                  await updateProfile({ preferences: { models: newModels } });
+                  setSaved('model_thought');
+                  setTimeout(() => setSaved(null), 2000);
+                  refresh();
+                }}
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm outline-none focus:border-accent transition-colors cursor-pointer"
+              >
+                <option value="haiku">Haiku</option>
+                <option value="sonnet">Sonnet</option>
+                <option value="opus">Opus</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm text-text-muted block mb-1">
+                Frequency
+                <SaveIndicator show={saved === 'thoughtInterval'} />
+              </label>
+              <select
+                defaultValue={
+                  ((profile.preferences as Record<string, unknown>)?.thoughtIntervalMinMs as number) === 5 * 60 * 1000
+                    ? '5'
+                    : ((profile.preferences as Record<string, unknown>)?.thoughtIntervalMinMs as number) === 10 * 60 * 1000
+                      ? '10'
+                      : ((profile.preferences as Record<string, unknown>)?.thoughtIntervalMinMs as number) === 30 * 60 * 1000
+                        ? '30'
+                        : ((profile.preferences as Record<string, unknown>)?.thoughtIntervalMinMs as number) === 60 * 60 * 1000
+                          ? '60'
+                          : '15'
+                }
+                onChange={async (e) => {
+                  const mins = Number(e.target.value);
+                  const minMs = mins * 60 * 1000;
+                  const maxMs = mins * 2 * 60 * 1000;
+                  await updateProfile({ preferences: { thoughtIntervalMinMs: minMs, thoughtIntervalMaxMs: maxMs } });
+                  setSaved('thoughtInterval');
+                  setTimeout(() => setSaved(null), 2000);
+                  refresh();
+                }}
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm outline-none focus:border-accent transition-colors cursor-pointer"
+              >
+                <option value="5">Every ~5 min</option>
+                <option value="10">Every ~10 min</option>
+                <option value="15">Every ~15 min</option>
+                <option value="30">Every ~30 min</option>
+                <option value="60">Every ~1 hour</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm text-text-muted block mb-1">
+                Duration
+                <SaveIndicator show={saved === 'thoughtDuration'} />
+              </label>
+              <select
+                defaultValue={String(((profile.preferences as Record<string, unknown>)?.thoughtDurationMs as number) ?? 60000)}
+                onChange={async (e) => {
+                  await updateProfile({ preferences: { thoughtDurationMs: Number(e.target.value) } });
+                  setSaved('thoughtDuration');
+                  setTimeout(() => setSaved(null), 2000);
+                  refresh();
+                }}
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm outline-none focus:border-accent transition-colors cursor-pointer"
+              >
+                <option value="30000">30 seconds</option>
+                <option value="60000">1 minute</option>
+                <option value="120000">2 minutes</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Focus mode */}
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-4 flex items-center gap-2">

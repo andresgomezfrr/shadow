@@ -5,6 +5,7 @@ import process from 'node:process';
 import type { ShadowConfig } from '../config/schema.js';
 import { killActiveChild } from '../backend/claude-cli.js';
 import { createDatabase, ShadowDatabase } from '../storage/database.js';
+import { startThoughtLoop, stopThoughtLoop } from './thought.js';
 
 // --- Types ---
 
@@ -19,6 +20,8 @@ export type DaemonState = {
   consecutiveIdleTicks: number;
   currentSleepMs: number | null;
   pendingEventCount: number;
+  thought: string | null;
+  thoughtExpiresAt: string | null;
 };
 
 // --- Constants ---
@@ -94,6 +97,8 @@ function emptyState(): DaemonState {
     consecutiveIdleTicks: 0,
     currentSleepMs: null,
     pendingEventCount: 0,
+    thought: null,
+    thoughtExpiresAt: null,
   };
 }
 
@@ -156,6 +161,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
   const shutdown = () => {
     running = false;
+    stopThoughtLoop();
     killActiveChild();
     if (sleepReject) sleepReject();
   };
@@ -202,6 +208,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       consecutiveIdleTicks,
       currentSleepMs: null,
       pendingEventCount: 0,
+      thought: null,
+      thoughtExpiresAt: null,
     };
 
     writeDaemonState(config, state);
@@ -264,6 +272,14 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         console.error('[daemon] Embedding backfill failed:', e instanceof Error ? e.message : e);
       }
     })();
+
+    // --- Thought loop (random status line thoughts, independent of heartbeat) ---
+    startThoughtLoop({
+      config,
+      db: _db,
+      getState: () => state,
+      writeState: (s) => { Object.assign(state, s); writeDaemonState(config, state); },
+    });
 
     // --- Job scheduler continued ---
     function shouldRunJob(type: string, intervalMs: number): boolean {
@@ -463,6 +479,57 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         } finally {
           setPhase(null);
         }
+        worked = true;
+      }
+
+      // --- Job: digest-daily (every 24h or on-demand) ---
+      if (shouldRunJob('digest-daily', 24 * 60 * 60 * 1000)) {
+        const { activityDailyDigest } = await import('../heartbeat/digests.js');
+        setPhase('digest');
+        try {
+          await Promise.race([
+            runJobType('digest-daily', async () => {
+              const result = await activityDailyDigest(_db, config);
+              return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: ['digest-daily'], result: {} };
+            }),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('digest-daily timeout')), JOB_TIMEOUT_MS)),
+          ]);
+        } catch (e) { console.error('[daemon] Daily digest failed:', e instanceof Error ? e.message : e); }
+        finally { setPhase(null); }
+        worked = true;
+      }
+
+      // --- Job: digest-weekly (every 7d or on-demand) ---
+      if (shouldRunJob('digest-weekly', 7 * 24 * 60 * 60 * 1000)) {
+        const { activityWeeklyDigest } = await import('../heartbeat/digests.js');
+        setPhase('digest');
+        try {
+          await Promise.race([
+            runJobType('digest-weekly', async () => {
+              const result = await activityWeeklyDigest(_db, config);
+              return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: ['digest-weekly'], result: {} };
+            }),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('digest-weekly timeout')), JOB_TIMEOUT_MS)),
+          ]);
+        } catch (e) { console.error('[daemon] Weekly digest failed:', e instanceof Error ? e.message : e); }
+        finally { setPhase(null); }
+        worked = true;
+      }
+
+      // --- Job: digest-brag (every 7d or on-demand) ---
+      if (shouldRunJob('digest-brag', 7 * 24 * 60 * 60 * 1000)) {
+        const { activityBragDoc } = await import('../heartbeat/digests.js');
+        setPhase('digest');
+        try {
+          await Promise.race([
+            runJobType('digest-brag', async () => {
+              const result = await activityBragDoc(_db, config);
+              return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: ['digest-brag'], result: {} };
+            }),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('digest-brag timeout')), JOB_TIMEOUT_MS)),
+          ]);
+        } catch (e) { console.error('[daemon] Brag doc failed:', e instanceof Error ? e.message : e); }
+        finally { setPhase(null); }
         worked = true;
       }
 

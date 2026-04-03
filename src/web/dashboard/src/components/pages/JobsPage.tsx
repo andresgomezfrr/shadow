@@ -41,6 +41,7 @@ const TYPE_FILTERS = [
   { label: 'Suggest', value: 'suggest' },
   { label: 'Reflect', value: 'reflect' },
   { label: 'Consolidate', value: 'consolidate' },
+  { label: 'Digest', value: 'digest' },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -48,13 +49,21 @@ const TYPE_COLORS: Record<string, string> = {
   suggest: 'text-green bg-green/15',
   consolidate: 'text-orange bg-orange/15',
   reflect: 'text-blue bg-blue/15',
+  'digest-daily': 'text-teal bg-teal/15',
+  'digest-weekly': 'text-teal bg-teal/15',
+  'digest-brag': 'text-teal bg-teal/15',
 };
 
 const PAGE_SIZE = 30;
 
 export function JobsPage() {
   const { params, setParam } = useFilterParams({ type: '', offset: '0' });
-  const { data: rawData, refresh } = useApi(() => fetchJobs({ type: params.type || undefined, limit: PAGE_SIZE, offset: Number(params.offset) || 0 }), [params.type, params.offset], 15_000);
+  const isDigestFilter = params.type === 'digest';
+  const { data: rawData, refresh } = useApi(() => fetchJobs({
+    type: isDigestFilter ? undefined : (params.type || undefined),
+    typePrefix: isDigestFilter ? 'digest-' : undefined,
+    limit: PAGE_SIZE, offset: Number(params.offset) || 0,
+  }), [params.type, params.offset], 15_000);
   const data = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
   const { data: status } = useApi(fetchStatus, [], 15_000);

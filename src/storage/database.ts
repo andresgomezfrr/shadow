@@ -1246,10 +1246,11 @@ export class ShadowDatabase {
     this.database.prepare(`UPDATE jobs SET ${sets.join(', ')} WHERE id = ?`).run(...values);
   }
 
-  listJobs(filters?: { type?: string; status?: string; limit?: number; offset?: number }): JobRecord[] {
+  listJobs(filters?: { type?: string; typePrefix?: string; status?: string; limit?: number; offset?: number }): JobRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
     if (filters?.type) { clauses.push('type = ?'); values.push(filters.type); }
+    if (filters?.typePrefix) { clauses.push('type LIKE ?'); values.push(`${filters.typePrefix}%`); }
     if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     const limit = filters?.limit ?? 30;
@@ -1260,10 +1261,11 @@ export class ShadowDatabase {
       .map(mapJob);
   }
 
-  countJobs(filters?: { type?: string; status?: string }): number {
+  countJobs(filters?: { type?: string; typePrefix?: string; status?: string }): number {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
     if (filters?.type) { clauses.push('type = ?'); values.push(filters.type); }
+    if (filters?.typePrefix) { clauses.push('type LIKE ?'); values.push(`${filters.typePrefix}%`); }
     if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     return (this.database.prepare(`SELECT COUNT(*) as total FROM jobs ${where}`).get(...values) as { total: number }).total;
