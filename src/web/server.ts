@@ -90,6 +90,21 @@ async function handleApi(
             const nextAt = lastRef ? new Date(new Date(lastRef.startedAt).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
             return { intervalMs: 24 * 60 * 60 * 1000, nextAt };
           })(),
+          'digest-daily': (() => {
+            const last = db.getLastJob('digest-daily');
+            const nextAt = last ? new Date(new Date(last.startedAt).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
+            return { intervalMs: 24 * 60 * 60 * 1000, nextAt };
+          })(),
+          'digest-weekly': (() => {
+            const last = db.getLastJob('digest-weekly');
+            const nextAt = last ? new Date(new Date(last.startedAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
+            return { intervalMs: 7 * 24 * 60 * 60 * 1000, nextAt };
+          })(),
+          'digest-brag': (() => {
+            const last = db.getLastJob('digest-brag');
+            const nextAt = last ? new Date(new Date(last.startedAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
+            return { intervalMs: 7 * 24 * 60 * 60 * 1000, nextAt };
+          })(),
         },
       });
     }
