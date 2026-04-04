@@ -53,6 +53,11 @@ export const ConfigSchema = z.object({
   activityTriggerThreshold: z.coerce.number().int().positive().default(3),
   maxConcurrentRuns: z.coerce.number().int().min(1).max(8).default(2),
   maxWatchedRepos: z.coerce.number().int().min(1).max(100).default(30),
+  remoteSyncEnabled: z.coerce.boolean().default(true),
+  remoteSyncIntervalMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
+  remoteSyncBatchSize: z.coerce.number().int().min(1).max(20).default(5),
+  enrichmentEnabled: z.coerce.boolean().default(false),
+  enrichmentIntervalMs: z.coerce.number().int().positive().default(2 * 60 * 60 * 1000),
 });
 
 export type ShadowConfig = z.infer<typeof ConfigSchema> & {

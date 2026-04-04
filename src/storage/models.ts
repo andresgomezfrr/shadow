@@ -36,6 +36,7 @@ export type RepoRecord = {
   lintCommand: string | null;
   buildCommand: string | null;
   lastObservedAt: string | null;
+  lastFetchedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

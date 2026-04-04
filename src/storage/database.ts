@@ -301,7 +301,7 @@ export class ShadowDatabase {
     return (this.database.prepare('SELECT COUNT(*) as total FROM repos').get() as { total: number }).total;
   }
 
-  updateRepo(id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt'>>): void {
+  updateRepo(id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt' | 'lastFetchedAt'>>): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
@@ -1654,6 +1654,7 @@ function mapRepo(row: unknown): RepoRecord {
     lintCommand: strOrNull(d.lint_command),
     buildCommand: strOrNull(d.build_command),
     lastObservedAt: strOrNull(d.last_observed_at),
+    lastFetchedAt: strOrNull(d.last_fetched_at),
     createdAt: str(d.created_at),
     updatedAt: str(d.updated_at),
   };

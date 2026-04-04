@@ -206,22 +206,26 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
     // Step 3c: Start filesystem watcher
     const repoWatcher = new RepoWatcher(config, db);
-    let pendingActivityCount = 0;
+    let pendingActivityCount = 0; // display-only counter for dashboard
     let lastActivityAt: string | null = null;
+    const pendingGitEvents: Array<{ repoId: string; repoName: string; type: string; ts: string }> = [];
+    let pendingRemoteSyncResults: Array<{ repoId: string; repoName: string; newRemoteCommits: number; behindBranches: Array<{ branch: string; behind: number; ahead: number }>; newCommitMessages: string[] }> = [];
 
-    // Wake function — interrupts the sleep to process activity sooner
+    // Wake function — interrupts the sleep to process runs/events sooner
     let wakeLoop: (() => void) | null = null;
 
     repoWatcher.on('activity', (evt: import('../observation/repo-watcher.js').ActivityEvent) => {
-      pendingActivityCount++;
+      pendingActivityCount++; // display-only — does NOT trigger heartbeat
       lastActivityAt = new Date().toISOString();
       eventBus.emit({ type: 'activity:detected', data: { repoId: evt.repoId, repoName: evt.repoName, fileCount: evt.fileCount } });
       if (wakeLoop) wakeLoop();
     });
 
     repoWatcher.on('git-event', (evt: import('../observation/repo-watcher.js').GitEvent) => {
-      pendingActivityCount += 3; // Git events count more toward trigger threshold
+      pendingActivityCount++;
       lastActivityAt = new Date().toISOString();
+      pendingGitEvents.push({ repoId: evt.repoId, repoName: evt.repoName, type: evt.type, ts: new Date().toISOString() });
+      if (pendingGitEvents.length > 50) pendingGitEvents.splice(0, pendingGitEvents.length - 50); // cap
       eventBus.emit({ type: 'git:event', data: { repoId: evt.repoId, repoName: evt.repoName, type: evt.type } });
       if (wakeLoop) wakeLoop();
     });
@@ -432,25 +436,24 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
       // === Phase 1: Enqueue scheduled jobs ===
 
-      // Activity-driven heartbeat scheduling
+      // Time-based heartbeat scheduling (watcher events do NOT trigger heartbeats)
       const timeSinceLastHeartbeat = lastHeartbeatAt ? Date.now() - new Date(lastHeartbeatAt).getTime() : Infinity;
-      const minInterval = config.activityHeartbeatMinIntervalMs;
-      const maxInterval = consecutiveIdleTicks > 10 ? config.activityHeartbeatMaxIntervalMs * 2 : config.activityHeartbeatMaxIntervalMs;
-      const shouldHeartbeat = !_db.hasQueuedOrRunning('heartbeat') && (
-        // Time-based: always run after maxInterval (replaces fixed heartbeatIntervalMs)
-        timeSinceLastHeartbeat >= maxInterval ||
-        // Activity-driven: enough activity accumulated and min interval passed
-        (pendingActivityCount >= config.activityTriggerThreshold && timeSinceLastHeartbeat >= minInterval)
-      );
-      if (shouldHeartbeat) {
+      const heartbeatInterval = consecutiveIdleTicks > 10
+        ? config.activityHeartbeatMaxIntervalMs * 2  // deep idle: 60min
+        : config.activityHeartbeatMaxIntervalMs;      // normal: 30min
+      if (!_db.hasQueuedOrRunning('heartbeat') && timeSinceLastHeartbeat >= heartbeatInterval) {
         _db.enqueueJob('heartbeat', { priority: 10 });
-        pendingActivityCount = 0; // Reset activity counter
       }
       if (shouldEnqueue('consolidate', 6 * 60 * 60 * 1000)) {
         _db.enqueueJob('consolidate', { priority: 3 });
       }
       if (shouldEnqueue('reflect', 24 * 60 * 60 * 1000)) {
         _db.enqueueJob('reflect', { priority: 5 });
+      }
+
+      // Remote sync: periodic git ls-remote for detecting remote changes
+      if (config.remoteSyncEnabled && shouldEnqueue('remote-sync', config.remoteSyncIntervalMs)) {
+        _db.enqueueJob('remote-sync', { priority: 2 });
       }
 
       // Digests: clock-time scheduled, timezone-aware
@@ -477,7 +480,14 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
               const pendingEvts = _db.listPendingEvents().length;
               setPhase('analyze');
               const { runHeartbeat } = await import('../heartbeat/state-machine.js');
-              const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts });
+              // Drain sensor data for heartbeat context
+              const gitEvents = pendingGitEvents.splice(0);
+              const remoteSyncData = pendingRemoteSyncResults.splice(0);
+              const result = await runHeartbeat({
+                config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts,
+                pendingGitEvents: gitEvents.length > 0 ? gitEvents : undefined,
+                remoteSyncResults: remoteSyncData.length > 0 ? remoteSyncData : undefined,
+              });
               return {
                 llmCalls: result.llmCalls, tokensUsed: result.tokensUsed, phases: result.phases,
                 result: { observationsCreated: result.observationsCreated },
@@ -586,6 +596,24 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
               return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: [jobType], result: { periodStart } };
             });
           } catch (e) { console.error(`[daemon] ${jobType} failed:`, e instanceof Error ? e.message : e); }
+          finally { setPhase(null); }
+
+        } else if (jobType === 'remote-sync') {
+          setPhase('remote-sync');
+          try {
+            await executeJob(claimed, async () => {
+              const { remoteSyncRepos } = await import('../observation/remote-sync.js');
+              const results = remoteSyncRepos(_db, config.remoteSyncBatchSize);
+              const withChanges = results.filter(r => r.newRemoteCommits > 0);
+              if (withChanges.length > 0) {
+                pendingRemoteSyncResults.push(...withChanges);
+              }
+              return {
+                llmCalls: 0, tokensUsed: 0, phases: ['remote-sync'],
+                result: { reposSynced: results.length, reposWithChanges: withChanges.length },
+              };
+            });
+          } catch (e) { console.error('[daemon] Remote sync failed:', e instanceof Error ? e.message : e); }
           finally { setPhase(null); }
         }
 

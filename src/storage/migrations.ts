@@ -655,6 +655,13 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_observations_created_status ON observations(status, created_at DESC);
     `,
   },
+  {
+    version: 29,
+    name: 'repo_last_fetched',
+    sql: `
+      ALTER TABLE repos ADD COLUMN last_fetched_at TEXT;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

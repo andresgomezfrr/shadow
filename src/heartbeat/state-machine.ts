@@ -3,7 +3,6 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { JobRecord, UserProfileRecord } from '../storage/models.js';
 
 import {
-  activityObserve,
   activityAnalyze,
   activityNotify,
 } from './activities.js';
@@ -18,6 +17,11 @@ export type HeartbeatContext = {
   profile: UserProfileRecord;
   lastHeartbeat: JobRecord | null;
   pendingEventCount: number;
+  // Sensor data from daemon (optional, enriches LLM prompts)
+  pendingGitEvents?: Array<{ repoId: string; repoName: string; type: string; ts: string }>;
+  remoteSyncResults?: Array<{ repoId: string; repoName: string; newRemoteCommits: number; behindBranches: Array<{ branch: string; behind: number; ahead: number }>; newCommitMessages: string[] }>;
+  enrichmentContext?: string;
+  activeProjects?: Array<{ projectId: string; projectName: string; score: number }>;
 };
 
 export type HeartbeatResult = {
@@ -102,13 +106,8 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
     });
   } catch { /* no file */ }
 
-  // --- OBSERVE phase ---
-  result.phases.push('observe');
-  const observeResult = await activityObserve(ctx);
-  result.observationsCreated = observeResult.observationsCreated;
-
-  const hasObservations = observeResult.observationsCreated > 0;
-  const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasObservations && !hasRecentInteractions && !hasRecentConversations;
+  // --- Determine if LLM phases should run ---
+  const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasRecentInteractions && !hasRecentConversations;
 
   if (skipLlmPhases) {
     result.phases.push('notify');
@@ -120,7 +119,7 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
   }
 
   // --- CLEANUP + ANALYZE phase ---
-  if ((hasObservations || unprocessedCount > 0 || hasRecentInteractions || hasRecentConversations) && !focusActive) {
+  if ((unprocessedCount > 0 || hasRecentInteractions || hasRecentConversations) && !focusActive) {
     result.phases.push('cleanup');
     result.phases.push('analyze');
     const unprocessed = ctx.db.listObservations({ processed: false });

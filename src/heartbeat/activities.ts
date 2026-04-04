@@ -304,12 +304,32 @@ export async function activityAnalyze(
       }).join('\n')}\n`
     : '';
 
+  // Sensor data from daemon (git events, remote sync, enrichment)
+  const gitEventsSummary = ctx.pendingGitEvents?.length
+    ? `### Recent Git Events\n${ctx.pendingGitEvents.map(e => `- ${e.repoName}: ${e.type} at ${e.ts}`).join('\n')}\n`
+    : '';
+
+  const remoteSyncSummary = ctx.remoteSyncResults?.length
+    ? `### Remote Changes Detected\n${ctx.remoteSyncResults.map(r =>
+        `- ${r.repoName}: ${r.newRemoteCommits} new remote commits` +
+        (r.newCommitMessages?.length ? `\n  Recent: ${r.newCommitMessages.slice(0, 5).join(', ')}` : '') +
+        (r.behindBranches?.length ? `\n  ${r.behindBranches.map(b => `${b.branch}: ${b.behind} behind, ${b.ahead} ahead`).join('; ')}` : '')
+      ).join('\n')}\n`
+    : '';
+
+  const enrichmentSummary = ctx.enrichmentContext
+    ? `### External Context (from MCP tools)\n${ctx.enrichmentContext}\n`
+    : '';
+
   // Shared data sections
   const dataSources = [
     repoContextSummary ? `### Repository Status\n${repoContextSummary}\n` : '',
     systemContext,
     interactionSummary ? `### Tool Usage\n${interactionSummary}\n` : '',
     conversationSummary ? `### Conversations\n${conversationSummary}\n` : '',
+    gitEventsSummary,
+    remoteSyncSummary,
+    enrichmentSummary,
   ].filter(Boolean).join('\n');
 
   const adapter = selectAdapter(ctx.config);
@@ -1012,47 +1032,133 @@ export async function activityNotify(
 export async function activityReflect(
   ctx: HeartbeatContext,
 ): Promise<{ llmCalls: number; tokensUsed: number }> {
+  // Staleness check: skip if insufficient new data since last reflect
+  const lastReflect = ctx.db.getLastJob('reflect');
+  if (lastReflect?.finishedAt) {
+    const memoriesSince = ctx.db.listMemories({ archived: false }).filter(
+      m => m.kind !== 'soul_reflection' && new Date(m.createdAt) > new Date(lastReflect.finishedAt!),
+    ).length;
+    if (memoriesSince < 3) {
+      console.error('[shadow:reflect] Skipping — insufficient new data since last reflect');
+      return { llmCalls: 0, tokensUsed: 0 };
+    }
+  }
+
   const adapter = selectAdapter(ctx.config);
 
   // Load context inline — reflect has no MCP access (allowedTools: [])
   const existingSoul = ctx.db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
-  const coreHotMemories = ctx.db.listMemories({ archived: false, layers: ['core', 'hot'] })
-    .map(m => `- [${m.layer}/${m.kind}] ${m.title}`).join('\n');
+  const coreHotMemories = ctx.db.listMemories({ archived: false })
+    .filter(m => m.layer === 'core' || m.layer === 'hot')
+    .map(m => `- [${m.layer}/${m.kind}] ${m.title}: ${m.bodyMd.slice(0, 100)}`).join('\n');
   const feedback = ctx.db.listFeedback(undefined, 100)
     .filter(f => f.note)
     .map(f => `- [${f.targetKind}] ${f.action}: ${f.note}`).join('\n');
-  const activeObs = ctx.db.listObservations({ status: 'active', limit: 10 })
-    .map(o => `- [${o.kind}] ${o.title}`).join('\n');
+
+  // Group observations by project for better context
+  const activeObs = ctx.db.listObservations({ status: 'active', limit: 20 });
+  const obsGrouped = activeObs.map(o => {
+    const projectLinks = (o.entities ?? []).filter(e => e.type === 'project').map(e => e.id);
+    const projectNames = projectLinks.map(id => { try { return ctx.db.getProject(id)?.name; } catch { return null; } }).filter(Boolean);
+    return `- [${o.kind}/${o.severity}] ${o.title}${projectNames.length ? ` (${projectNames.join(', ')})` : ''}`;
+  }).join('\n');
+
   const acceptedSugs = ctx.db.listSuggestions({ status: 'accepted', limit: 30 })
     .map(s => `- ${s.title} (${s.kind})`).join('\n');
   const dismissedSugs = ctx.db.listSuggestions({ status: 'dismissed', limit: 30 })
     .filter(s => s.feedbackNote)
     .map(s => `- ${s.title} — "${s.feedbackNote}"`).join('\n');
 
+  // Load entity context (projects, systems, repos, contacts, relations)
+  const projects = ctx.db.listProjects({ status: 'active' });
+  const systems = ctx.db.listSystems();
+  const repos = ctx.db.listRepos();
+  const contacts = ctx.db.listContacts();
+  let relations: Array<{ sourceType: string; sourceId: string; relation: string; targetType: string; targetId: string }> = [];
+  try { relations = ctx.db.listRelations().slice(0, 20); } catch { /* no relations table yet */ }
+
+  const projectsSummary = projects.map(p => {
+    const pRepos = p.repoIds.map(id => repos.find(r => r.id === id)?.name).filter(Boolean);
+    const pSystems = p.systemIds.map(id => systems.find(s => s.id === id)?.name).filter(Boolean);
+    return `- **${p.name}** (${p.kind}, ${p.status}): repos=[${pRepos.join(', ')}], systems=[${pSystems.join(', ')}]`;
+  }).join('\n');
+  const systemsSummary = systems.map(s => `- ${s.name} (${s.kind})${s.description ? `: ${s.description.slice(0, 80)}` : ''}`).join('\n');
+  const contactsSummary = contacts.map(c => `- ${c.name} (${c.role ?? ''}${c.team ? `, ${c.team}` : ''})`).join('\n');
+  const relationsSummary = relations.map(r => `- ${r.sourceType}:${r.sourceId.slice(0, 8)} → ${r.relation} → ${r.targetType}:${r.targetId.slice(0, 8)}`).join('\n');
+
+  // Recent conversation topics (session summaries)
+  let conversationTopics = '';
+  try {
+    const convPath = resolve(ctx.config.resolvedDataDir, 'conversations.jsonl');
+    const content = readFileSync(convPath, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean).slice(-100);
+    const sessions = new Map<string, string[]>();
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as { session?: string; role?: string; text?: string };
+        const sid = entry.session ?? 'unknown';
+        if (entry.role === 'user' && entry.text) {
+          if (!sessions.has(sid)) sessions.set(sid, []);
+          sessions.get(sid)!.push(entry.text.slice(0, 100));
+        }
+      } catch { /* skip */ }
+    }
+    const recentSessions = [...sessions.entries()].slice(-5);
+    conversationTopics = recentSessions.map(([sid, texts]) =>
+      `- Session ${sid.slice(0, 8)}: ${texts.slice(-3).join(' | ')}`,
+    ).join('\n');
+  } catch { /* no conversations file */ }
+
   let soulMd = '';
   try { soulMd = readFileSync(resolve(ctx.config.resolvedDataDir, 'SOUL.md'), 'utf8'); } catch { /* no SOUL.md */ }
 
   const prompt = [
-    'You are Shadow, reflecting on your relationship with your developer.',
+    'You are Shadow, reflecting on your developer and their engineering work.',
+    'Your goal is to build a strategic understanding that helps you anticipate their needs and provide relevant context.',
     '',
-    existingSoul ? `## Your current soul reflection (evolve this, don't start from scratch)\n${existingSoul.bodyMd}\n` : '',
+    existingSoul ? `## Current reflection (evolve this, don\'t start from scratch)\n${existingSoul.bodyMd}\n` : '',
     soulMd ? `## Base personality (SOUL.md)\n${soulMd}\n` : '',
-    coreHotMemories ? `## Memories (core + hot)\n${coreHotMemories}\n` : '',
+    '',
+    '## Registered entities',
+    projectsSummary ? `### Projects (active)\n${projectsSummary}\n` : 'No active projects registered.',
+    systemsSummary ? `### Systems\n${systemsSummary}\n` : '',
+    `### Repos: ${repos.length} registered (most active: ${repos.slice(0, 5).map(r => r.name).join(', ')})`,
+    contactsSummary ? `### Team\n${contactsSummary}\n` : '',
+    relationsSummary ? `### Entity relationships\n${relationsSummary}\n` : '',
+    '',
+    coreHotMemories ? `## Core + hot memories\n${coreHotMemories}\n` : '',
+    conversationTopics ? `## Recent conversation topics\n${conversationTopics}\n` : '',
     feedback ? `## User feedback (learn from this)\n${feedback}\n` : '',
-    activeObs ? `## Active observations\n${activeObs}\n` : '',
+    obsGrouped ? `## Active observations\n${obsGrouped}\n` : '',
     acceptedSugs ? `## Accepted suggestions (what they value)\n${acceptedSugs}\n` : '',
     dismissedSugs ? `## Dismissed suggestions with reasons\n${dismissedSugs}\n` : '',
     `## Profile\nTrust: L${ctx.profile.trustLevel} (${ctx.profile.trustScore}), Mood: ${ctx.profile.moodHint ?? 'neutral'}, Energy: ${ctx.profile.energyLevel ?? 'normal'}`,
     '',
-    'Evolve your soul reflection. Keep what\'s still true, adjust what changed, add new understanding.',
-    'Never lose personality or context that\'s still valid.',
+    'Evolve your reflection. Structure as markdown with these exact sections:',
     '',
-    'Structure as markdown:',
-    '## Work style',
-    '## What they value in Shadow',
-    '## What to avoid',
-    '## Current focus',
+    '## Developer profile',
+    'Who they are, their role, expertise areas, communication style.',
+    '',
+    '## Active focus',
+    'Which projects/systems are they actively working on? Estimate time distribution.',
+    'Example: "70% Q2-Auth-Migration, 20% payments maintenance, 10% sprint tasks"',
+    '',
+    '## Project status',
+    'For each active project: current state, blockers, risks, recent progress. Be specific.',
+    '',
+    '## Decision patterns',
+    'What principles drive their decisions? What do they consistently accept/reject?',
+    '',
+    '## Blind spots',
+    'Compare stated priorities (active projects) against actual activity (conversations, file edits).',
+    'What topics/repos/systems have NOT appeared in recent activity that probably need attention?',
+    'The gap between stated priorities and actual activity IS the blind spot.',
+    '',
+    '## What Shadow should watch for',
+    'Proactive items: upcoming deadlines, dependencies at risk, patterns that predict problems.',
+    '',
     '## Communication preferences',
+    'How they want Shadow to communicate: tone, verbosity, when to be proactive vs silent.',
     '',
     'Output ONLY the markdown reflection, no preamble or explanation.',
   ].filter(Boolean).join('\n');
@@ -1060,12 +1166,12 @@ export async function activityReflect(
   const pack: ObjectivePack = {
     repos: [],
     title: 'Shadow Reflect',
-    goal: 'Evolve soul reflection',
+    goal: 'Evolve soul reflection — strategic advisor',
     prompt,
     relevantMemories: [],
     model: 'opus',
     effort: 'high',
-    systemPrompt: null,   // markdown output, not JSON
+    systemPrompt: null,   // markdown output
     allowedTools: [],      // all context is inline, no tools needed
   };
 
@@ -1079,7 +1185,7 @@ export async function activityReflect(
     });
 
     if (result.status === 'success' && result.output) {
-      const expectedSections = ['## Work style', '## What they value', '## What to avoid', '## Current focus', '## Communication preferences'];
+      const expectedSections = ['## Developer profile', '## Active focus', '## Project status', '## Blind spots', '## What Shadow should watch for'];
       const missing = expectedSections.filter(s => !result.output!.includes(s));
       if (missing.length > 0) {
         console.error(`[shadow:reflect] Warning: output missing sections: ${missing.join(', ')}`);
