@@ -1,16 +1,13 @@
-export function EmojiGuidePage() {
+export function GuideStatusLine() {
   return (
-    <div className="max-w-3xl">
-      <h1 className="text-2xl font-bold mb-2">Emoji &amp; Mascot Guide</h1>
-      <p className="text-text-dim mb-8">All the emojis and ghost expressions Shadow uses in the status line and dashboard.</p>
-
+    <>
       {/* Status Line Example */}
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-3">Status Line</h2>
         <div className="bg-bg rounded-lg px-4 py-3 font-mono text-sm mb-4 space-y-1">
-          <div><span className="text-purple">{'{•‿•}'}</span> ready | 😐🔋 🔍 | ♥ 12m</div>
-          <div><span className="text-cyan">{'{°_°}..'}</span> analyzing | 🎯⚡️ 💬 | 💡2 | ♥ now</div>
-          <div><span className="text-green">{'{•ᴗ•}💡'}</span> suggesting | 😊⚡️ 💬 | ♥ 15m</div>
+          <div><span className="text-purple">{'{•\u203F•}'}</span> ready | \uD83D\uDE10\uD83D\uDD0B \uD83D\uDD0D | \u2665 12m</div>
+          <div><span className="text-cyan">{'{°_°}..'}</span> analyzing | \uD83C\uDFAF\u26A1\uFE0F \uD83D\uDCAC | \uD83D\uDCA12 | \u2665 now</div>
+          <div><span className="text-green">{'{•\u1D57•}\uD83D\uDCA1'}</span> suggesting | \uD83D\uDE0A\u26A1\uFE0F \uD83D\uDCAC | \u2665 15m</div>
         </div>
         <p className="text-sm text-text-dim">
           <span className="text-text">Ghost mascot</span> + <span className="text-text">state</span> | <span className="text-text">mood + energy + trust</span> | <span className="text-text">notifications</span> | <span className="text-text">heartbeat countdown</span>
@@ -22,22 +19,22 @@ export function EmojiGuidePage() {
         <h2 className="text-base font-semibold mb-4">Ghost Mascot</h2>
         <p className="text-sm text-text-dim mb-3">Shadow&apos;s face in the status line. Changes expression based on state, with random micro-variations between refreshes. Color indicates activity type.</p>
         <GhostTable rows={[
-          ['purple', '{•‿•}', '{•_•}', '{•‿•}♪', 'ready (neutral)', 'Idle, waiting'],
-          ['green', '{•ᴗ•}', '{•ᴗ•}🎶', '{•‿•}🏓', 'ready (happy)', 'Idle, good mood'],
-          ['cyan', '{•‿•}', '{•.•}', '{•_•}.', 'watching', 'Few recent interactions'],
-          ['cyan', '{°_°}📚', '{°‿°}✏️', '{°_°}📖', 'learning', 'Many interactions, absorbing'],
-          ['cyan', '{•‿•}👁️', '{•.•}👀', '{•_•}🔎', 'observing', 'Heartbeat: scanning repos'],
-          ['yellow', '{•_•}🧹', '{•‿•}♻️', '{•_•}🗑️', 'cleaning', 'Heartbeat: observation cleanup'],
-          ['yellow', '{°_°}..', '{°_°}...', '{°.°}🔎', 'analyzing', 'Heartbeat: extract + observe'],
-          ['green', '{•ᴗ•}💡', '{•‿•}💡', '{•ᴗ•}!', 'suggesting', 'Heartbeat: generating ideas'],
-          ['yellow', '{•_•}⚙', '{•‿•}⚙', '{•_•}~', 'consolidating', 'Heartbeat: memory maintenance'],
-          ['blue', '{-_-}~', '{-‿-}~', '{-_-}💭', 'reflecting', 'Daily soul reflection'],
-          ['purple', '{•̀_•́}', '{•̀‿•́}', '{•̀_•́}▸', 'focus', 'Focus mode active'],
-          ['dim', '{-_-}z', '{-_-}zz', '{-‿-}zzZ', 'sleeping', 'Daemon off'],
-          ['dim', '{-_-}', '{-_-}.', '{-‿-}', 'tired', 'Mood: tired'],
+          ['purple', '{•\u203F•}', '{•_•}', '{•\u203F•}\u266A', 'ready (neutral)', 'Idle, waiting'],
+          ['green', '{•\u1D57•}', '{•\u1D57•}\uD83C\uDFB6', '{•\u203F•}\uD83C\uDFD3', 'ready (happy)', 'Idle, good mood'],
+          ['cyan', '{•\u203F•}', '{•.•}', '{•_•}.', 'watching', 'Few recent interactions'],
+          ['cyan', '{°_°}\uD83D\uDCDA', '{°\u203F°}\u270F\uFE0F', '{°_°}\uD83D\uDCD6', 'learning', 'Many interactions, absorbing'],
+          ['cyan', '{•\u203F•}\uD83D\uDC41\uFE0F', '{•.•}\uD83D\uDC40', '{•_•}\uD83D\uDD0E', 'observing', 'Heartbeat: scanning repos'],
+          ['yellow', '{•_•}\uD83E\uDDF9', '{•\u203F•}\u267B\uFE0F', '{•_•}\uD83D\uDDD1\uFE0F', 'cleaning', 'Heartbeat: observation cleanup'],
+          ['yellow', '{°_°}..', '{°_°}...', '{°.°}\uD83D\uDD0E', 'analyzing', 'Heartbeat: extract + observe'],
+          ['green', '{•\u1D57•}\uD83D\uDCA1', '{•\u203F•}\uD83D\uDCA1', '{•\u1D57•}!', 'suggesting', 'Heartbeat: generating ideas'],
+          ['yellow', '{•_•}\u2699', '{•\u203F•}\u2699', '{•_•}~', 'consolidating', 'Heartbeat: memory maintenance'],
+          ['blue', '{-_-}~', '{-\u203F-}~', '{-_-}\uD83D\uDCAD', 'reflecting', 'Daily soul reflection'],
+          ['purple', '{•\u0300_•\u0301}', '{•\u0300\u203F•\u0301}', '{•\u0300_•\u0301}\u25B8', 'focus', 'Focus mode active'],
+          ['dim', '{-_-}z', '{-_-}zz', '{-\u203F-}zzZ', 'sleeping', 'Daemon off'],
+          ['dim', '{-_-}', '{-_-}.', '{-\u203F-}', 'tired', 'Mood: tired'],
           ['red', '{>_<}', '{>_<}!', '{>.<}', 'frustrated', 'Mood: frustrated'],
           ['yellow', '{•~•}', '{•~•}?', '{•_•}?', 'concerned', 'Mood: concerned'],
-          ['green', '{•ᴗ•}!', '{•ᴗ•}!!', '{•ᴗ•}♪', 'excited', 'Mood: excited'],
+          ['green', '{•\u1D57•}!', '{•\u1D57•}!!', '{•\u1D57•}\u266A', 'excited', 'Mood: excited'],
         ]} />
       </section>
 
@@ -46,11 +43,11 @@ export function EmojiGuidePage() {
         <h2 className="text-base font-semibold mb-4">Trust Badge</h2>
         <p className="text-sm text-text-dim mb-3">Your trust level with Shadow. Grows with usage.</p>
         <Table rows={[
-          ['🔍', 'observer (0-15)', 'Read-only. Teach memories, view observations.'],
-          ['💬', 'advisor (15-35)', 'Generate suggestions. Accept → run plans.'],
-          ['🤝', 'assistant (35-60)', 'Execute tasks. Pre-loaded CLI sessions.'],
-          ['⚡️', 'partner (60-85)', 'Autonomous execution with review. Worktrees.'],
-          ['👾', 'shadow (85-100)', 'Full autonomy. Branch, test, PR.'],
+          ['\uD83D\uDD0D', 'observer (0-15)', 'Read-only. Teach memories, view observations.'],
+          ['\uD83D\uDCAC', 'advisor (15-35)', 'Generate suggestions. Accept \u2192 run plans.'],
+          ['\uD83E\uDD1D', 'assistant (35-60)', 'Execute tasks. Pre-loaded CLI sessions.'],
+          ['\u26A1\uFE0F', 'partner (60-85)', 'Autonomous execution with review. Worktrees.'],
+          ['\uD83D\uDC7E', 'shadow (85-100)', 'Full autonomy. Branch, test, PR.'],
         ]} />
       </section>
 
@@ -59,13 +56,13 @@ export function EmojiGuidePage() {
         <h2 className="text-base font-semibold mb-4">Mood</h2>
         <p className="text-sm text-text-dim mb-3">Auto-inferred from your conversations by the heartbeat. Also affects ghost expression.</p>
         <Table rows={[
-          ['😐', 'neutral', 'Default / unclear mood'],
-          ['😊', 'happy', 'Positive tone, celebrating wins'],
-          ['🎯', 'focused', 'Deep in implementation, concentrated'],
-          ['😴', 'tired', 'Late-night work, short messages'],
-          ['😤', 'frustrated', 'Complaining about bugs/issues'],
-          ['🤩', 'excited', 'Enthusiastic about new features/ideas'],
-          ['🤔', 'concerned', 'Discussing risks or problems'],
+          ['\uD83D\uDE10', 'neutral', 'Default / unclear mood'],
+          ['\uD83D\uDE0A', 'happy', 'Positive tone, celebrating wins'],
+          ['\uD83C\uDFAF', 'focused', 'Deep in implementation, concentrated'],
+          ['\uD83D\uDE34', 'tired', 'Late-night work, short messages'],
+          ['\uD83D\uDE24', 'frustrated', 'Complaining about bugs/issues'],
+          ['\uD83E\uDD29', 'excited', 'Enthusiastic about new features/ideas'],
+          ['\uD83E\uDD14', 'concerned', 'Discussing risks or problems'],
         ]} />
       </section>
 
@@ -74,9 +71,9 @@ export function EmojiGuidePage() {
         <h2 className="text-base font-semibold mb-4">Energy</h2>
         <p className="text-sm text-text-dim mb-3">Auto-inferred from activity patterns and time of day.</p>
         <Table rows={[
-          ['⚡️', 'high', 'Lots of activity and engagement'],
-          ['🔋', 'normal', 'Regular pace'],
-          ['🪫', 'low', 'Sparse activity or late-night work'],
+          ['\u26A1\uFE0F', 'high', 'Lots of activity and engagement'],
+          ['\uD83D\uDD0B', 'normal', 'Regular pace'],
+          ['\uD83E\uDEAB', 'low', 'Sparse activity or late-night work'],
         ]} />
       </section>
 
@@ -85,9 +82,9 @@ export function EmojiGuidePage() {
         <h2 className="text-base font-semibold mb-4">Notifications</h2>
         <p className="text-sm text-text-dim mb-3">Shown at the end of the status line when there&apos;s something pending.</p>
         <Table rows={[
-          ['💡3', 'suggestions', '3 pending suggestions to review'],
-          ['♥ 12m', 'heartbeat', 'Next heartbeat in 12 minutes'],
-          ['♥ now', 'heartbeat', 'Heartbeat running right now'],
+          ['\uD83D\uDCA13', 'suggestions', '3 pending suggestions to review'],
+          ['\u2665 12m', 'heartbeat', 'Next heartbeat in 12 minutes'],
+          ['\u2665 now', 'heartbeat', 'Heartbeat running right now'],
         ]} />
       </section>
 
@@ -96,14 +93,14 @@ export function EmojiGuidePage() {
         <h2 className="text-base font-semibold mb-4">Memory Layers</h2>
         <p className="text-sm text-text-dim mb-3">Color-coded in the dashboard memories view.</p>
         <Table rows={[
-          ['🟣', 'core', 'Permanent knowledge. Never decays.'],
-          ['🔴', 'hot', 'Active context. Decays in 14 days without access.'],
-          ['🟠', 'warm', 'Recent knowledge. Decays in 30 days.'],
-          ['🔵', 'cool', 'Archive. Decays in 90 days.'],
-          ['⚪', 'cold', 'Passive archive. Lowest search priority.'],
+          ['\uD83D\uDFE3', 'core', 'Permanent knowledge. Never decays.'],
+          ['\uD83D\uDD34', 'hot', 'Active context. Decays in 14 days without access.'],
+          ['\uD83D\uDFE0', 'warm', 'Recent knowledge. Decays in 30 days.'],
+          ['\uD83D\uDD35', 'cool', 'Archive. Decays in 90 days.'],
+          ['\u26AA', 'cold', 'Passive archive. Lowest search priority.'],
         ]} />
       </section>
-    </div>
+    </>
   );
 }
 
