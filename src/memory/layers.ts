@@ -6,6 +6,20 @@ import type { MemoryRecord } from '../storage/models.js';
 const LAYER_ORDER = ['core', 'hot', 'warm', 'cool', 'cold'] as const;
 type Layer = (typeof LAYER_ORDER)[number];
 
+// Type-aware staleness thresholds
+// Episodic memories (events) decay faster, semantic (knowledge) persists longer
+function getStaleDays(memoryType: string, layer: string): number {
+  if (memoryType === 'episodic') {
+    return { hot: 7, warm: 14, cool: 45 }[layer] ?? 14;
+  }
+  if (memoryType === 'semantic') {
+    return { hot: 30, warm: 90, cool: 180 }[layer] ?? 30;
+  }
+  // unclassified: original thresholds
+  return { hot: 14, warm: 30, cool: 90 }[layer] ?? 14;
+}
+
+// Legacy constants kept for backward compat in promotion logic
 const HOT_STALE_DAYS = 14;
 const WARM_STALE_DAYS = 30;
 const COOL_STALE_DAYS = 90;
@@ -77,17 +91,28 @@ export function maintainMemoryLayers(db: ShadowDatabase): LayerMaintenanceResult
     }
   }
 
-  // --- Step 2: Demote stale hot memories to warm ---
+  // --- Step 1b: Demote memories past valid_until to cool ---
+  for (const layer of ['core', 'hot', 'warm'] as const) {
+    const memories = db.listMemories({ layer, archived: false });
+    for (const mem of memories) {
+      if (mem.validUntil && new Date(mem.validUntil) <= new Date()) {
+        db.updateMemory(mem.id, { layer: 'cool', demotedTo: 'cool' });
+        demoted++;
+      }
+    }
+  }
+
+  // --- Step 2: Demote stale hot memories to warm (type-aware thresholds) ---
   const hotMemories = db.listMemories({ layer: 'hot', archived: false });
   for (const mem of hotMemories) {
     if (isExpired(mem)) continue; // already handled
-    if (isStale(mem, HOT_STALE_DAYS) || mem.confidenceScore < LOW_CONFIDENCE_THRESHOLD) {
+    if (isStale(mem, getStaleDays(mem.memoryType, 'hot')) || mem.confidenceScore < LOW_CONFIDENCE_THRESHOLD) {
       db.updateMemory(mem.id, { layer: 'warm', demotedTo: 'warm' });
       demoted++;
     }
   }
 
-  // --- Step 3: Process warm memories — promote or demote ---
+  // --- Step 3: Process warm memories — promote or demote (type-aware) ---
   const warmMemories = db.listMemories({ layer: 'warm', archived: false });
   for (const mem of warmMemories) {
     if (isExpired(mem)) continue;
@@ -99,13 +124,13 @@ export function maintainMemoryLayers(db: ShadowDatabase): LayerMaintenanceResult
     ) {
       db.updateMemory(mem.id, { layer: 'hot', promotedFrom: 'warm' });
       promoted++;
-    } else if (isStale(mem, WARM_STALE_DAYS)) {
+    } else if (isStale(mem, getStaleDays(mem.memoryType, 'warm'))) {
       db.updateMemory(mem.id, { layer: 'cool', demotedTo: 'cool' });
       demoted++;
     }
   }
 
-  // --- Step 4: Process cool memories — promote or demote ---
+  // --- Step 4: Process cool memories — promote or demote (type-aware) ---
   const coolMemories = db.listMemories({ layer: 'cool', archived: false });
   for (const mem of coolMemories) {
     if (isExpired(mem)) continue;
@@ -113,7 +138,7 @@ export function maintainMemoryLayers(db: ShadowDatabase): LayerMaintenanceResult
     if (accessedWithinWindow(mem, WARM_PROMOTION_ACCESS_COUNT, WARM_PROMOTION_WINDOW_DAYS)) {
       db.updateMemory(mem.id, { layer: 'warm', promotedFrom: 'cool' });
       promoted++;
-    } else if (isStale(mem, COOL_STALE_DAYS) || mem.confidenceScore < VERY_LOW_CONFIDENCE_THRESHOLD) {
+    } else if (isStale(mem, getStaleDays(mem.memoryType, 'cool')) || mem.confidenceScore < VERY_LOW_CONFIDENCE_THRESHOLD) {
       db.updateMemory(mem.id, { layer: 'cold', demotedTo: 'cold' });
       demoted++;
     }

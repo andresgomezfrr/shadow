@@ -1,7 +1,9 @@
 import { TRUST_NAMES, MOOD_EMOJIS } from '../../api/types';
 import type { StatusResponse } from '../../api/types';
+import { useSSEConnected } from '../../hooks/useEventStream';
 
 export function Topbar({ status }: { status?: StatusResponse | null }) {
+  const sseConnected = useSSEConnected();
   const profile = status?.profile;
   const trustLevel = profile?.trustLevel ?? 1;
   const trustName = TRUST_NAMES[trustLevel] ?? 'Unknown';
@@ -18,6 +20,7 @@ export function Topbar({ status }: { status?: StatusResponse | null }) {
         </span>
       </div>
       <div className="flex items-center gap-3.5 text-[13px] text-text-dim">
+        <span className={`w-2 h-2 rounded-full ${sseConnected ? 'bg-green' : 'bg-orange animate-pulse'}`} title={sseConnected ? 'Live' : 'Reconnecting...'} />
         <span className="text-[15px]" title={`Mood: ${mood}`}>{moodEmoji}</span>
         {focusActive && (
           <span className="text-[11px] px-2 py-0.5 rounded-xl bg-green/15 text-green">

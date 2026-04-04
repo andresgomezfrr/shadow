@@ -40,8 +40,8 @@ export const fetchStatus = () => api<StatusResponse>('/api/status');
 
 export const fetchDailySummary = () => api<DailySummary>('/api/daily-summary');
 
-export const fetchMemories = (params?: { q?: string; layer?: string; limit?: number; offset?: number }) =>
-  api<{ items: Memory[]; total: number }>(`/api/memories${qs({ q: params?.q, layer: params?.layer, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+export const fetchMemories = (params?: { q?: string; layer?: string; memoryType?: string; limit?: number; offset?: number }) =>
+  api<{ items: Memory[]; total: number }>(`/api/memories${qs({ q: params?.q, layer: params?.layer, memoryType: params?.memoryType, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
 export const fetchSuggestions = (params?: { status?: string; kind?: string; limit?: number; offset?: number }) =>
   api<{ items: Suggestion[]; total: number; feedbackState: Record<string, string> }>(`/api/suggestions${qs({ status: params?.status, kind: params?.kind, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
@@ -111,6 +111,15 @@ export const archiveRun = (id: string) =>
 
 export const retryRun = (id: string) =>
   api<{ ok: boolean; newRunId: string }>(`/api/runs/${id}/retry`, { method: 'POST' });
+
+export const rollbackRun = (id: string) =>
+  api<{ ok: boolean }>(`/api/runs/${id}/rollback`, { method: 'POST' });
+
+export const verifyRun = (id: string) =>
+  api<{ ok: boolean; verified: string }>(`/api/runs/${id}/verify`, { method: 'POST' });
+
+export const fetchEntityGraph = () =>
+  api<import('./types').EntityRelation[]>('/api/entity-graph');
 
 export const createDraftPr = (id: string) =>
   api<{ ok: boolean; prUrl: string }>(`/api/runs/${id}/draft-pr`, { method: 'POST' });

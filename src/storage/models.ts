@@ -126,6 +126,10 @@ export type MemoryRecord = {
   lastAccessedAt: string | null;
   promotedFrom: string | null;
   demotedTo: string | null;
+  memoryType: 'episodic' | 'semantic' | 'unclassified';
+  validFrom: string | null;
+  validUntil: string | null;
+  sourceMemoryIds: string[];
   expiresAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -244,6 +248,11 @@ export type RunRecord = {
   confidence: string | null;
   doubts: string[];
   prUrl: string | null;
+  snapshotRef: string | null;
+  resultRef: string | null;
+  diffStat: string | null;
+  verification: Record<string, { passed: boolean; output: string; durationMs: number }>;
+  verified: 'verified' | 'needs_review' | 'unverified' | null;
   archived: boolean;
   startedAt: string | null;
   finishedAt: string | null;
@@ -261,6 +270,22 @@ export type AuditEventRecord = {
   targetId: string | null;
   detail: Record<string, unknown>;
   createdAt: string;
+};
+
+// --- Entity Relations ---
+
+export type EntityRelationRecord = {
+  id: string;
+  sourceType: string;
+  sourceId: string;
+  relation: string;
+  targetType: string;
+  targetId: string;
+  confidence: number;
+  sourceOrigin: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 };
 
 // --- Jobs ---

@@ -12,6 +12,7 @@ import type {
   ContactRecord,
   DigestRecord,
   EntityLink,
+  EntityRelationRecord,
   EventRecord,
   HeartbeatRecord,
   InteractionRecord,
@@ -95,6 +96,10 @@ export type CreateMemoryInput = {
   sourceId?: string | null;
   confidenceScore?: number;
   relevanceScore?: number;
+  memoryType?: 'episodic' | 'semantic';
+  validFrom?: string | null;
+  validUntil?: string | null;
+  sourceMemoryIds?: string[];
 };
 
 export type CreateObservationInput = {
@@ -574,8 +579,8 @@ export class ShadowDatabase {
     this.database
       .prepare(
         `INSERT INTO memories (id, repo_id, contact_id, system_id, layer, scope, kind, title, body_md, tags_json,
-         source_type, source_id, confidence_score, relevance_score, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         source_type, source_id, confidence_score, relevance_score, memory_type, valid_from, valid_until, source_memory_ids_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -592,6 +597,10 @@ export class ShadowDatabase {
         input.sourceId ?? null,
         input.confidenceScore ?? 70,
         input.relevanceScore ?? 0.5,
+        input.memoryType ?? 'unclassified',
+        input.validFrom ?? null,
+        input.validUntil ?? null,
+        JSON.stringify(input.sourceMemoryIds ?? []),
         now,
         now,
       );
@@ -603,7 +612,7 @@ export class ShadowDatabase {
     return row ? mapMemory(row) : null;
   }
 
-  listMemories(filters?: { layer?: string; scope?: string; repoId?: string; archived?: boolean; limit?: number; offset?: number }): MemoryRecord[] {
+  listMemories(filters?: { layer?: string; scope?: string; repoId?: string; memoryType?: string; archived?: boolean; limit?: number; offset?: number }): MemoryRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -619,6 +628,10 @@ export class ShadowDatabase {
       clauses.push('repo_id = ?');
       values.push(filters.repoId);
     }
+    if (filters?.memoryType) {
+      clauses.push('memory_type = ?');
+      values.push(filters.memoryType);
+    }
     if (filters?.archived === false) {
       clauses.push('archived_at IS NULL');
     } else if (filters?.archived === true) {
@@ -633,10 +646,11 @@ export class ShadowDatabase {
       .map(mapMemory);
   }
 
-  countMemories(filters?: { layer?: string; archived?: boolean }): number {
+  countMemories(filters?: { layer?: string; memoryType?: string; archived?: boolean }): number {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
     if (filters?.layer) { clauses.push('layer = ?'); values.push(filters.layer); }
+    if (filters?.memoryType) { clauses.push('memory_type = ?'); values.push(filters.memoryType); }
     if (filters?.archived === false) { clauses.push('archived_at IS NULL'); }
     else if (filters?.archived === true) { clauses.push('archived_at IS NOT NULL'); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
@@ -1207,15 +1221,16 @@ export class ShadowDatabase {
     return (this.database.prepare(`SELECT COUNT(*) as total FROM runs ${where}`).get(...values) as { total: number }).total;
   }
 
-  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'archived' | 'startedAt' | 'finishedAt'>> & { doubts?: string[] }): void {
+  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'archived' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
-      const colName = key === 'doubts' ? 'doubts_json' : toSnake(key);
+      const colName = key === 'doubts' ? 'doubts_json' : key === 'verification' ? 'verification_json' : toSnake(key);
       sets.push(`${colName} = ?`);
-      // SQLite doesn't accept JS booleans or arrays — convert appropriately
+      // SQLite doesn't accept JS booleans, arrays, or objects — convert appropriately
       const sqlValue = typeof value === 'boolean' ? (value ? 1 : 0)
         : Array.isArray(value) ? JSON.stringify(value)
+        : (typeof value === 'object' && value !== null) ? JSON.stringify(value)
         : value;
       values.push((sqlValue ?? null) as SQLValue);
     }
@@ -1233,6 +1248,105 @@ export class ShadowDatabase {
     if (!run) throw new Error(`Run ${id} not found`);
     assertTransition(run.status, to as RunStatus);
     this.updateRun(id, { status: to });
+  }
+
+  // --- Entity Relations ---
+
+  createRelation(input: {
+    sourceType: string; sourceId: string; relation: string;
+    targetType: string; targetId: string;
+    confidence?: number; sourceOrigin?: string; metadata?: Record<string, unknown>;
+  }): EntityRelationRecord {
+    const now = new Date().toISOString();
+    const confidence = input.confidence ?? 0.8;
+    const sourceOrigin = input.sourceOrigin ?? 'auto';
+
+    // Upsert: if same pair exists, bump confidence and update timestamp
+    const existing = this.database.prepare(
+      'SELECT id, confidence FROM entity_relations WHERE source_type = ? AND source_id = ? AND relation = ? AND target_type = ? AND target_id = ?',
+    ).get(input.sourceType, input.sourceId, input.relation, input.targetType, input.targetId) as { id: string; confidence: number } | undefined;
+
+    if (existing) {
+      const newConfidence = Math.min(1.0, existing.confidence + 0.05);
+      this.database.prepare('UPDATE entity_relations SET confidence = ?, updated_at = ? WHERE id = ?').run(newConfidence, now, existing.id);
+      return this.getRelation(existing.id)!;
+    }
+
+    const id = randomUUID();
+    this.database.prepare(
+      'INSERT INTO entity_relations (id, source_type, source_id, relation, target_type, target_id, confidence, source_origin, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(id, input.sourceType, input.sourceId, input.relation, input.targetType, input.targetId, confidence, sourceOrigin, JSON.stringify(input.metadata ?? {}), now, now);
+    return this.getRelation(id)!;
+  }
+
+  getRelation(id: string): EntityRelationRecord | null {
+    const row = this.database.prepare('SELECT * FROM entity_relations WHERE id = ?').get(id);
+    return row ? mapRelation(row) : null;
+  }
+
+  listRelations(filters?: { sourceType?: string; sourceId?: string; targetType?: string; targetId?: string; relation?: string }): EntityRelationRecord[] {
+    const conditions: string[] = [];
+    const values: SQLValue[] = [];
+    if (filters?.sourceType) { conditions.push('source_type = ?'); values.push(filters.sourceType); }
+    if (filters?.sourceId) { conditions.push('source_id = ?'); values.push(filters.sourceId); }
+    if (filters?.targetType) { conditions.push('target_type = ?'); values.push(filters.targetType); }
+    if (filters?.targetId) { conditions.push('target_id = ?'); values.push(filters.targetId); }
+    if (filters?.relation) { conditions.push('relation = ?'); values.push(filters.relation); }
+
+    const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+    const rows = this.database.prepare(`SELECT * FROM entity_relations${where} ORDER BY created_at DESC`).all(...values);
+    return rows.map(mapRelation);
+  }
+
+  getRelatedEntities(type: string, id: string, opts?: { direction?: 'outgoing' | 'incoming' | 'both'; maxDepth?: number }): Array<{ entityType: string; entityId: string; depth: number }> {
+    const direction = opts?.direction ?? 'both';
+    const maxDepth = opts?.maxDepth ?? 2;
+
+    const results = new Map<string, { entityType: string; entityId: string; depth: number }>();
+
+    if (direction === 'outgoing' || direction === 'both') {
+      const rows = this.database.prepare(`
+        WITH RECURSIVE graph(entity_type, entity_id, depth) AS (
+          SELECT target_type, target_id, 1 FROM entity_relations WHERE source_type = ? AND source_id = ?
+          UNION ALL
+          SELECT er.target_type, er.target_id, g.depth + 1
+          FROM entity_relations er JOIN graph g ON er.source_type = g.entity_type AND er.source_id = g.entity_id
+          WHERE g.depth < ?
+        )
+        SELECT DISTINCT entity_type, entity_id, MIN(depth) as depth FROM graph GROUP BY entity_type, entity_id
+      `).all(type, id, maxDepth) as Array<{ entity_type: string; entity_id: string; depth: number }>;
+      for (const row of rows) {
+        const key = `${row.entity_type}:${row.entity_id}`;
+        if (!results.has(key)) results.set(key, { entityType: row.entity_type, entityId: row.entity_id, depth: row.depth });
+      }
+    }
+
+    if (direction === 'incoming' || direction === 'both') {
+      const rows = this.database.prepare(`
+        WITH RECURSIVE graph(entity_type, entity_id, depth) AS (
+          SELECT source_type, source_id, 1 FROM entity_relations WHERE target_type = ? AND target_id = ?
+          UNION ALL
+          SELECT er.source_type, er.source_id, g.depth + 1
+          FROM entity_relations er JOIN graph g ON er.target_type = g.entity_type AND er.target_id = g.entity_id
+          WHERE g.depth < ?
+        )
+        SELECT DISTINCT entity_type, entity_id, MIN(depth) as depth FROM graph GROUP BY entity_type, entity_id
+      `).all(type, id, maxDepth) as Array<{ entity_type: string; entity_id: string; depth: number }>;
+      for (const row of rows) {
+        const key = `${row.entity_type}:${row.entity_id}`;
+        if (!results.has(key)) results.set(key, { entityType: row.entity_type, entityId: row.entity_id, depth: row.depth });
+      }
+    }
+
+    return [...results.values()];
+  }
+
+  deleteRelation(id: string): void {
+    this.database.prepare('DELETE FROM entity_relations WHERE id = ?').run(id);
+  }
+
+  deleteRelationsFor(type: string, id: string): void {
+    this.database.prepare('DELETE FROM entity_relations WHERE (source_type = ? AND source_id = ?) OR (target_type = ? AND target_id = ?)').run(type, id, type, id);
   }
 
   // --- Jobs ---
@@ -1616,6 +1730,10 @@ function mapMemory(row: unknown): MemoryRecord {
     lastAccessedAt: strOrNull(d.last_accessed_at),
     promotedFrom: strOrNull(d.promoted_from),
     demotedTo: strOrNull(d.demoted_to),
+    memoryType: (strOrNull(d.memory_type) ?? 'unclassified') as MemoryRecord['memoryType'],
+    validFrom: strOrNull(d.valid_from),
+    validUntil: strOrNull(d.valid_until),
+    sourceMemoryIds: jsonParse(d.source_memory_ids_json, []),
     expiresAt: strOrNull(d.expires_at),
     createdAt: str(d.created_at),
     updatedAt: str(d.updated_at),
@@ -1760,10 +1878,32 @@ function mapRun(row: unknown): RunRecord {
     confidence: strOrNull(d.confidence),
     doubts: jsonParse(d.doubts_json, []),
     prUrl: strOrNull(d.pr_url),
+    snapshotRef: strOrNull(d.snapshot_ref),
+    resultRef: strOrNull(d.result_ref),
+    diffStat: strOrNull(d.diff_stat),
+    verification: jsonParse(d.verification_json, {}),
+    verified: strOrNull(d.verified) as RunRecord['verified'],
     archived: bool(d.archived),
     startedAt: strOrNull(d.started_at),
     finishedAt: strOrNull(d.finished_at),
     createdAt: str(d.created_at),
+  };
+}
+
+function mapRelation(row: unknown): EntityRelationRecord {
+  const d = r(row);
+  return {
+    id: str(d.id),
+    sourceType: str(d.source_type),
+    sourceId: str(d.source_id),
+    relation: str(d.relation),
+    targetType: str(d.target_type),
+    targetId: str(d.target_id),
+    confidence: Number(d.confidence),
+    sourceOrigin: str(d.source_origin),
+    metadata: jsonParse(d.metadata_json, {}),
+    createdAt: str(d.created_at),
+    updatedAt: str(d.updated_at),
   };
 }
 

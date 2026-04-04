@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createDatabase, type ShadowDatabase } from '../storage/database.js';
 import { loadConfig } from '../config/load-config.js';
 import { DIGEST_SCHEDULES, nextScheduledAt } from '../daemon/schedules.js';
+import type { EventBus } from './event-bus.js';
 
 function json(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, {
@@ -102,6 +103,7 @@ async function handleApi(
     if (pathname === '/api/memories') {
       const q = params.get('q');
       const layer = params.get('layer') ?? undefined;
+      const memoryType = params.get('memoryType') ?? undefined;
       const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : undefined;
       const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
       if (q) {
@@ -109,8 +111,8 @@ async function handleApi(
         const items = results.map((r) => ({ ...r.memory, rank: r.rank, snippet: r.snippet }));
         return json(res, { items, total: items.length });
       }
-      const items = db.listMemories({ layer, archived: false, limit, offset });
-      const total = db.countMemories({ layer, archived: false });
+      const items = db.listMemories({ layer, memoryType, archived: false, limit, offset });
+      const total = db.countMemories({ layer, memoryType, archived: false });
       return json(res, { items, total });
     }
 
@@ -207,6 +209,11 @@ async function handleApi(
     if (pathname === '/api/repos') {
       const repos = db.listRepos();
       return json(res, repos);
+    }
+
+    if (pathname === '/api/entity-graph') {
+      const relations = db.listRelations();
+      return json(res, relations);
     }
 
     if (pathname === '/api/daily-summary') {
@@ -326,6 +333,44 @@ async function handleApi(
       return json(res, { ok: true });
     }
 
+    const runVerifyMatch = pathname.match(/^\/api\/runs\/([^/]+)\/verify$/);
+    if (runVerifyMatch) {
+      const [, runId] = runVerifyMatch;
+      const run = db.getRun(runId);
+      if (!run) return json(res, { error: 'Run not found' }, 404);
+      if (run.kind !== 'execution') return json(res, { error: 'Only execution runs can be verified' }, 400);
+
+      const repo = db.getRepo(run.repoId);
+      if (!repo) return json(res, { error: 'Repository not found' }, 404);
+
+      const { RunnerService } = await import('../runner/service.js');
+      const { loadConfig } = await import('../config/load-config.js');
+      const config = loadConfig();
+      const runner = new RunnerService(config, db);
+      const cwd = run.worktreePath ?? repo.path;
+      const verifyResult = runner.runVerification(run.repoId, cwd);
+      const hasCommands = Object.keys(verifyResult.results).length > 0;
+      const verified = hasCommands ? (verifyResult.allPassed ? 'verified' : 'needs_review') : 'unverified';
+      db.updateRun(runId, { verification: verifyResult.results, verified });
+      return json(res, { ok: true, verified, verification: verifyResult.results });
+    }
+
+    const runRollbackMatch = pathname.match(/^\/api\/runs\/([^/]+)\/rollback$/);
+    if (runRollbackMatch) {
+      const [, runId] = runRollbackMatch;
+      const run = db.getRun(runId);
+      if (!run) return json(res, { error: 'Run not found' }, 404);
+      if (!run.snapshotRef) return json(res, { error: 'No snapshot available for this run' }, 400);
+
+      const { RunnerService } = await import('../runner/service.js');
+      const { loadConfig } = await import('../config/load-config.js');
+      const config = loadConfig();
+      const runner = new RunnerService(config, db);
+      const result = runner.rollbackRun(runId);
+      if (!result.ok) return json(res, { error: result.error }, 500);
+      return json(res, { ok: true });
+    }
+
     const runRetryMatch = pathname.match(/^\/api\/runs\/([^/]+)\/retry$/);
     if (runRetryMatch) {
       const [, runId] = runRetryMatch;
@@ -355,6 +400,29 @@ async function handleApi(
         let discardNote: string | undefined;
         try { const body = JSON.parse(await readBody(req)); discardNote = body.note; } catch { /* ok */ }
         db.createFeedback({ targetKind: 'run', targetId: runId, action: 'discard', note: discardNote });
+
+        // Auto-rollback + cleanup worktree on discard
+        if (run.snapshotRef) {
+          try {
+            const { RunnerService } = await import('../runner/service.js');
+            const { loadConfig } = await import('../config/load-config.js');
+            const config = loadConfig();
+            const runner = new RunnerService(config, db);
+            runner.rollbackRun(runId);
+          } catch { /* best-effort rollback */ }
+        }
+        if (run.worktreePath) {
+          try {
+            const repo = db.getRepo(run.repoId);
+            if (repo) {
+              const { execSync } = await import('node:child_process');
+              execSync(`git worktree remove "${run.worktreePath}" --force`, { cwd: repo.path, timeout: 10_000, stdio: 'pipe' });
+              const branchName = `shadow/${runId.slice(0, 8)}`;
+              execSync(`git branch -D "${branchName}"`, { cwd: repo.path, timeout: 5_000, stdio: 'pipe' });
+            }
+          } catch { /* best-effort cleanup */ }
+        }
+
         return json(res, { ok: true, status: 'discarded' });
       }
 
@@ -598,7 +666,7 @@ const MIME_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-export async function startWebServer(port: number = 3700, _existingDb?: ShadowDatabase): Promise<{ close: () => void }> {
+export async function startWebServer(port: number = 3700, _existingDb?: ShadowDatabase, eventBus?: EventBus): Promise<{ close: () => void }> {
   const config = loadConfig();
   // Always create own DB connection — sharing with daemon causes "database is not open" errors
   const db = createDatabase(config);
@@ -618,6 +686,21 @@ export async function startWebServer(port: number = 3700, _existingDb?: ShadowDa
   const server = createServer(async (req, res) => {
     try {
       const { pathname, params } = parseUrl(req);
+
+      // SSE event stream — must be before handleApi (doesn't end the response)
+      if (pathname === '/api/events/stream' && eventBus) {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Access-Control-Allow-Origin': '*',
+          'X-Accel-Buffering': 'no',
+        });
+        res.write(`event: connected\ndata: ${JSON.stringify({ ts: new Date().toISOString() })}\n\n`);
+        eventBus.addClient(res);
+        req.on('close', () => eventBus.removeClient(res));
+        return; // Keep connection open
+      }
 
       if (pathname.startsWith('/api/')) {
         await handleApi(req, res, pathname, params, db);

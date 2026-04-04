@@ -1342,6 +1342,80 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         });
       },
     },
+
+    // -----------------------------------------------------------------------
+    // Entity Relations
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_relation_add',
+      description: 'Add a relationship between two entities (e.g., "repo X depends_on system Y"). Requires trust >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          sourceType: { type: 'string', enum: ['repo', 'project', 'system', 'contact'], description: 'Source entity type' },
+          sourceId: { type: 'string', description: 'Source entity ID' },
+          relation: { type: 'string', enum: ['depends_on', 'uses', 'owned_by', 'related_to', 'part_of', 'deploys_to', 'consumes'], description: 'Relationship type' },
+          targetType: { type: 'string', enum: ['repo', 'project', 'system', 'contact'], description: 'Target entity type' },
+          targetId: { type: 'string', description: 'Target entity ID' },
+        },
+        required: ['sourceType', 'sourceId', 'relation', 'targetType', 'targetId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+        return db.createRelation({
+          sourceType: params.sourceType as string,
+          sourceId: params.sourceId as string,
+          relation: params.relation as string,
+          targetType: params.targetType as string,
+          targetId: params.targetId as string,
+          sourceOrigin: 'manual',
+        });
+      },
+    },
+    {
+      name: 'shadow_relation_list',
+      description: 'List entity relationships. Optionally filter by source/target type and ID.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          sourceType: { type: 'string', description: 'Filter by source entity type' },
+          sourceId: { type: 'string', description: 'Filter by source entity ID' },
+          targetType: { type: 'string', description: 'Filter by target entity type' },
+          targetId: { type: 'string', description: 'Filter by target entity ID' },
+          relation: { type: 'string', description: 'Filter by relationship type' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        return db.listRelations({
+          sourceType: params.sourceType as string | undefined,
+          sourceId: params.sourceId as string | undefined,
+          targetType: params.targetType as string | undefined,
+          targetId: params.targetId as string | undefined,
+          relation: params.relation as string | undefined,
+        });
+      },
+    },
+    {
+      name: 'shadow_relation_remove',
+      description: 'Remove an entity relationship by ID. Requires trust >= 1.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          relationId: { type: 'string', description: 'The relation ID to remove' },
+        },
+        required: ['relationId'],
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+        db.deleteRelation(params.relationId as string);
+        return { ok: true };
+      },
+    },
   ];
 
   return tools;

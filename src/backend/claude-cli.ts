@@ -3,7 +3,10 @@ import { spawn, execFileSync } from 'node:child_process';
 import type { ShadowConfig } from '../config/load-config.js';
 import type { BackendAdapter, BackendDoctorResult, BackendExecutionResult, ObjectivePack } from './types.js';
 
-// Module-level active child tracking (one claude process at a time — sequential calls)
+// Instance registry for concurrent adapter tracking
+const adapterInstances = new Set<ClaudeCliAdapter>();
+
+// Legacy singleton for backward compat (heartbeat/suggest jobs still use single adapter)
 let activeChild: import('node:child_process').ChildProcess | null = null;
 
 export function killActiveChild(): void {
@@ -13,10 +16,32 @@ export function killActiveChild(): void {
   }
 }
 
+export function killAllActiveChildren(): void {
+  killActiveChild();
+  for (const adapter of adapterInstances) {
+    adapter.kill();
+  }
+}
+
 export class ClaudeCliAdapter implements BackendAdapter {
   readonly kind = 'cli';
+  private instanceChild: import('node:child_process').ChildProcess | null = null;
 
-  constructor(private readonly config: ShadowConfig) {}
+  constructor(private readonly config: ShadowConfig) {
+    adapterInstances.add(this);
+  }
+
+  kill(): void {
+    if (this.instanceChild && !this.instanceChild.killed) {
+      this.instanceChild.kill('SIGTERM');
+      this.instanceChild = null;
+    }
+    adapterInstances.delete(this);
+  }
+
+  dispose(): void {
+    this.kill();
+  }
 
   async execute(pack: ObjectivePack): Promise<BackendExecutionResult> {
     const startedAt = new Date().toISOString();
@@ -60,10 +85,11 @@ export class ClaudeCliAdapter implements BackendAdapter {
       const { stdout, stderr, exitCode } = await spawnAsync(
         this.config.claudeBin, args, {
           cwd, timeout: timeoutMs, env, stdin: pack.prompt,
-          onSpawn: (child) => { activeChild = child; },
+          onSpawn: (child) => { activeChild = child; this.instanceChild = child; },
         },
       );
       activeChild = null;
+      this.instanceChild = null;
 
       const finishedAt = new Date().toISOString();
 

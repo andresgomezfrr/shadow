@@ -45,6 +45,13 @@ export const ConfigSchema = z.object({
     runner: 'high',
   }),
   locale: z.string().default('es'),
+  watcherEnabled: z.coerce.boolean().default(true),
+  watcherDebounceMs: z.coerce.number().int().positive().default(30_000),
+  watcherMaxWindowMs: z.coerce.number().int().positive().default(5 * 60 * 1000),
+  activityHeartbeatMinIntervalMs: z.coerce.number().int().positive().default(3 * 60 * 1000),
+  activityHeartbeatMaxIntervalMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
+  activityTriggerThreshold: z.coerce.number().int().positive().default(3),
+  maxConcurrentRuns: z.coerce.number().int().min(1).max(8).default(2),
 });
 
 export type ShadowConfig = z.infer<typeof ConfigSchema> & {

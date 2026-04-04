@@ -7,6 +7,9 @@ import { killActiveChild } from '../backend/claude-cli.js';
 import { createDatabase, ShadowDatabase } from '../storage/database.js';
 import { startThoughtLoop, stopThoughtLoop } from './thought.js';
 import { DIGEST_SCHEDULES, isScheduleReady } from './schedules.js';
+import { EventBus } from '../web/event-bus.js';
+import { RepoWatcher } from '../observation/repo-watcher.js';
+import { RunQueue } from '../runner/queue.js';
 
 // --- Types ---
 
@@ -23,6 +26,10 @@ export type DaemonState = {
   pendingEventCount: number;
   thought: string | null;
   thoughtExpiresAt: string | null;
+  lastActivityAt: string | null;
+  pendingActivityCount: number;
+  watchedRepoCount: number;
+  activeRunCount: number;
 };
 
 // --- Constants ---
@@ -100,6 +107,10 @@ function emptyState(): DaemonState {
     pendingEventCount: 0,
     thought: null,
     thoughtExpiresAt: null,
+    lastActivityAt: null,
+    pendingActivityCount: 0,
+    watchedRepoCount: 0,
+    activeRunCount: 0,
   };
 }
 
@@ -167,6 +178,10 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     if (sleepReject) sleepReject();
   };
 
+  let repoWatcherRef: RepoWatcher | null = null;
+  let eventBusRef: EventBus | null = null;
+  let runQueueRef: RunQueue | null = null;
+
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 
@@ -180,13 +195,40 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     // Step 3: Load profile (ensure it exists)
     db.ensureProfile();
 
-    // Step 3b: Start web server
+    // Step 3b: Start EventBus + web server
+    const eventBus = new EventBus();
     try {
       const { startWebServer } = await import('../web/server.js');
-      webServer = await startWebServer(3700, db);
+      webServer = await startWebServer(3700, db, eventBus);
     } catch {
       // web module not available — continue without it
     }
+
+    // Step 3c: Start filesystem watcher
+    const repoWatcher = new RepoWatcher(config, db);
+    let pendingActivityCount = 0;
+    let lastActivityAt: string | null = null;
+
+    // Wake function — interrupts the sleep to process activity sooner
+    let wakeLoop: (() => void) | null = null;
+
+    repoWatcher.on('activity', (evt: import('../observation/repo-watcher.js').ActivityEvent) => {
+      pendingActivityCount++;
+      lastActivityAt = new Date().toISOString();
+      eventBus.emit({ type: 'activity:detected', data: { repoId: evt.repoId, repoName: evt.repoName, fileCount: evt.fileCount } });
+      if (wakeLoop) wakeLoop();
+    });
+
+    repoWatcher.on('git-event', (evt: import('../observation/repo-watcher.js').GitEvent) => {
+      pendingActivityCount += 3; // Git events count more toward trigger threshold
+      lastActivityAt = new Date().toISOString();
+      eventBus.emit({ type: 'git:event', data: { repoId: evt.repoId, repoName: evt.repoName, type: evt.type } });
+      if (wakeLoop) wakeLoop();
+    });
+
+    repoWatcher.startAll();
+    repoWatcherRef = repoWatcher;
+    eventBusRef = eventBus;
 
     // Step 4: Initialize state
     const now = new Date().toISOString();
@@ -195,7 +237,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     let lastHeartbeatPhase: string | null = null;
     let lastConsolidationAt: string | null = null;
     let nextHeartbeatAt: string = new Date(
-      Date.now() + config.heartbeatIntervalMs,
+      Date.now() + config.activityHeartbeatMaxIntervalMs,
     ).toISOString();
 
     const state: DaemonState = {
@@ -211,12 +253,20 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       pendingEventCount: 0,
       thought: null,
       thoughtExpiresAt: null,
+      lastActivityAt: null,
+      pendingActivityCount: 0,
+      watchedRepoCount: repoWatcher.watchedCount,
+      activeRunCount: 0,
     };
 
     writeDaemonState(config, state);
 
     // db is guaranteed non-null at this point (created in Step 2)
     const _db = db!;
+
+    // Step 4b: Create concurrent run queue (after _db is assigned)
+    const runQueue = new RunQueue(config, _db);
+    runQueueRef = runQueue;
 
     // --- Job scheduler helpers ---
 
@@ -377,12 +427,24 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         if (currentJobId) {
           try { _db.updateJob(currentJobId, { activity: phase }); } catch { /* best-effort */ }
         }
+        eventBus.emit({ type: 'heartbeat:phase', data: { phase, jobId: currentJobId } });
       };
 
       // === Phase 1: Enqueue scheduled jobs ===
 
-      if (shouldEnqueue('heartbeat', config.heartbeatIntervalMs)) {
+      // Activity-driven heartbeat scheduling
+      const timeSinceLastHeartbeat = lastHeartbeatAt ? Date.now() - new Date(lastHeartbeatAt).getTime() : Infinity;
+      const minInterval = config.activityHeartbeatMinIntervalMs;
+      const maxInterval = consecutiveIdleTicks > 10 ? config.activityHeartbeatMaxIntervalMs * 2 : config.activityHeartbeatMaxIntervalMs;
+      const shouldHeartbeat = !_db.hasQueuedOrRunning('heartbeat') && (
+        // Time-based: always run after maxInterval (replaces fixed heartbeatIntervalMs)
+        timeSinceLastHeartbeat >= maxInterval ||
+        // Activity-driven: enough activity accumulated and min interval passed
+        (pendingActivityCount >= config.activityTriggerThreshold && timeSinceLastHeartbeat >= minInterval)
+      );
+      if (shouldHeartbeat) {
         _db.enqueueJob('heartbeat', { priority: 10 });
+        pendingActivityCount = 0; // Reset activity counter
       }
       if (shouldEnqueue('consolidate', 6 * 60 * 60 * 1000)) {
         _db.enqueueJob('consolidate', { priority: 3 });
@@ -427,7 +489,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
             setPhase(null);
           }
           lastHeartbeatAt = new Date().toISOString();
-          nextHeartbeatAt = new Date(Date.now() + config.heartbeatIntervalMs).toISOString();
+          nextHeartbeatAt = new Date(Date.now() + config.activityHeartbeatMaxIntervalMs).toISOString();
+          eventBus.emit({ type: 'heartbeat:complete', data: { jobId: claimed.id } });
 
           // Post-heartbeat: consolidate similar observations
           try {
@@ -541,25 +604,13 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         }
       }
 
-      // --- Run processing ---
-      const queuedRuns = _db.listRuns({ status: 'queued' });
-      if (queuedRuns.length > 0) {
-        try {
-          const { RunnerService } = await import('../runner/service.js');
-          const runner = new RunnerService(config, _db);
-          const runTimeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), JOB_TIMEOUT_MS));
-          const runResult = await Promise.race([
-            runner.processNextRun().then(() => 'done' as const),
-            runTimeout,
-          ]);
-          if (runResult === 'timeout') {
-            killActiveChild();
-            console.error('[daemon] Run processing timed out — killed child process');
-          }
-          worked = true;
-        } catch (runErr) {
-          console.error('[daemon] Run processing failed:', runErr instanceof Error ? runErr.message : runErr);
-        }
+      // --- Run processing (concurrent via RunQueue) ---
+      try {
+        const runQueueActive = await runQueue.tick();
+        if (runQueueActive) worked = true;
+        state.activeRunCount = runQueue.activeCount;
+      } catch (runErr) {
+        console.error('[daemon] Run queue tick failed:', runErr instanceof Error ? runErr.message : runErr);
       }
 
       // --- Fast tick ---
@@ -596,15 +647,20 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       state.consecutiveIdleTicks = consecutiveIdleTicks;
       state.currentSleepMs = sleepMs;
       state.pendingEventCount = pendingCount;
+      state.lastActivityAt = lastActivityAt;
+      state.pendingActivityCount = pendingActivityCount;
+      state.watchedRepoCount = repoWatcher.watchedCount;
 
       writeDaemonState(config, state);
 
-      // Sleep (interruptible by SIGTERM)
+      // Sleep (interruptible by SIGTERM or watcher activity)
       await new Promise<void>((resolve, reject) => {
         sleepReject = reject;
+        wakeLoop = resolve;
         setTimeout(resolve, sleepMs);
       }).catch(() => { /* interrupted by shutdown */ });
       sleepReject = null;
+      wakeLoop = null;
     }
   } finally {
     // Step 6: Graceful drain — wait for current job to finish (max 60s)
@@ -616,8 +672,13 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       ]);
     }
 
-    // Step 7: Kill any lingering child claude process
+    // Step 7: Kill any lingering child claude process + run queue
     killActiveChild();
+    if (runQueueRef) try { runQueueRef.killAll(); } catch { /* cleanup */ }
+
+    // Step 7b: Shutdown watcher + SSE
+    if (repoWatcherRef) repoWatcherRef.stopAll();
+    if (eventBusRef) eventBusRef.shutdown();
 
     // Step 8: Cleanup
     if (webServer) {

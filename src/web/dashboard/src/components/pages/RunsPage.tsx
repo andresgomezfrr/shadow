@@ -2,7 +2,7 @@ import { timeAgo } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
 import { useHighlight } from '../../hooks/useHighlight';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, markRunExecutedManual, archiveRun, retryRun, createDraftPr } from '../../api/client';
+import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, markRunExecutedManual, archiveRun, retryRun, rollbackRun, createDraftPr } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
@@ -111,6 +111,7 @@ export function RunsPage() {
   const [sessionLoading, setSessionLoading] = useState<string | null>(null);
   const [prLoading, setPrLoading] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null);
+  const [confirmRollback, setConfirmRollback] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState<Set<string>>(new Set());
 
   // Build parent→child lookup
@@ -149,6 +150,11 @@ export function RunsPage() {
   const handleExecutedManual = useCallback(async (id: string) => { await markRunExecutedManual(id); refresh(); }, [refresh]);
   const handleArchive = useCallback(async (id: string) => { await archiveRun(id); refresh(); }, [refresh]);
   const handleRetry = useCallback(async (id: string) => { await retryRun(id); refresh(); }, [refresh]);
+  const handleRollback = useCallback(async (id: string) => {
+    await rollbackRun(id);
+    setConfirmRollback(null);
+    refresh();
+  }, [refresh]);
   const handleDraftPr = useCallback(async (id: string) => {
     setPrLoading(id);
     try { const result = await createDraftPr(id); if (result?.prUrl) window.open(result.prUrl, '_blank'); refresh(); }
@@ -215,6 +221,11 @@ export function RunsPage() {
                     <span className={`text-sm font-mono w-4 text-center ${iconColor}`} title={run.status}>{icon}</span>
                     <Badge className="text-text-dim bg-border">{run.kind}</Badge>
                     {run.confidence && <ConfidenceIndicator confidence={run.confidence} doubts={run.doubts?.length} compact />}
+                    {run.verified && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${run.verified === 'verified' ? 'bg-green/20 text-green' : run.verified === 'needs_review' ? 'bg-orange/20 text-orange' : 'bg-border text-text-muted'}`}
+                        title={run.verified === 'verified' ? 'Build/lint/test passed' : run.verified === 'needs_review' ? 'Verification failed' : 'No verification commands'}
+                      >{run.verified === 'verified' ? '�� verified' : run.verified === 'needs_review' ? '⚠ needs review' : '— unverified'}</span>
+                    )}
                     {(childRun || run.status === 'executed') && (
                       <RunPipeline plan={pipeline.plan} exec={pipeline.exec} pr={pipeline.pr} />
                     )}
@@ -256,6 +267,16 @@ export function RunsPage() {
                       {run.status === 'failed' && (
                         <div className="flex items-center gap-3">
                           <button onClick={() => handleRetry(run.id)} className="px-4 py-2 rounded-lg text-xs font-semibold bg-orange text-bg border-none cursor-pointer transition-all hover:brightness-110">↻ Retry</button>
+                          {run.snapshotRef && (
+                            confirmRollback === run.id ? (
+                              <span className="flex items-center gap-2">
+                                <button onClick={() => handleRollback(run.id)} className="text-xs text-orange font-medium bg-transparent border-none cursor-pointer">Confirm restore?</button>
+                                <button onClick={() => setConfirmRollback(null)} className="text-xs text-text-muted bg-transparent border-none cursor-pointer">cancel</button>
+                              </span>
+                            ) : (
+                              <button onClick={() => setConfirmRollback(run.id)} className="text-xs text-text-muted hover:text-orange bg-transparent border-none cursor-pointer">⏪ Restore</button>
+                            )
+                          )}
                           <button onClick={() => handleArchive(run.id)} className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer">Archive</button>
                         </div>
                       )}
@@ -269,6 +290,16 @@ export function RunsPage() {
                               title={!githubRepoIds.has(activeRun.repoId) ? 'No GitHub remote configured' : undefined}
                               className="px-4 py-2 rounded-lg text-xs font-semibold bg-purple text-bg border-none cursor-pointer transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
                             >{prLoading === activeRun.id ? 'Creating PR...' : 'Create draft PR'}</button>
+                          )}
+                          {run.status === 'discarded' && run.snapshotRef && (
+                            confirmRollback === run.id ? (
+                              <span className="flex items-center gap-2">
+                                <button onClick={() => handleRollback(run.id)} className="text-xs text-orange font-medium bg-transparent border-none cursor-pointer">Confirm restore?</button>
+                                <button onClick={() => setConfirmRollback(null)} className="text-xs text-text-muted bg-transparent border-none cursor-pointer">cancel</button>
+                              </span>
+                            ) : (
+                              <button onClick={() => setConfirmRollback(run.id)} className="text-xs text-text-muted hover:text-orange bg-transparent border-none cursor-pointer">⏪ Restore</button>
+                            )
                           )}
                           <button onClick={() => handleArchive(run.id)} className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer">Archive</button>
                         </div>
@@ -329,6 +360,34 @@ export function RunsPage() {
                                   title={!githubRepoIds.has(activeRun.repoId) ? 'No GitHub remote configured' : undefined}
                                   className="text-xs text-purple hover:underline bg-transparent border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                 >{prLoading === activeRun.id ? 'Creating PR...' : 'Create draft PR'}</button>
+                              </div>
+                            )}
+                            {activeRun.diffStat && (
+                              <div>
+                                <div className="text-accent mb-1">diff stat:</div>
+                                <pre className="text-text-dim whitespace-pre-wrap text-[11px] bg-surface rounded p-2">{activeRun.diffStat}</pre>
+                              </div>
+                            )}
+                            {activeRun.snapshotRef && (
+                              <div><span className="text-accent">snapshot:</span> <code className="select-all text-[11px]">{activeRun.snapshotRef.slice(0, 10)}</code>
+                                {activeRun.resultRef && <> → <code className="select-all text-[11px]">{activeRun.resultRef.slice(0, 10)}</code></>}
+                              </div>
+                            )}
+                            {activeRun.verified && Object.keys(activeRun.verification).length > 0 && (
+                              <div>
+                                <div className="text-accent mb-1">verification:</div>
+                                <div className="space-y-1">
+                                  {Object.entries(activeRun.verification).map(([cmd, result]) => (
+                                    <div key={cmd} className="flex items-start gap-2">
+                                      <span className={result.passed ? 'text-green' : 'text-red'}>{result.passed ? '✓' : '✗'}</span>
+                                      <span className="font-medium">{cmd}</span>
+                                      <span className="text-text-muted">({result.durationMs}ms)</span>
+                                      {!result.passed && result.output && (
+                                        <pre className="text-red/80 whitespace-pre-wrap text-[10px] mt-0.5 max-h-20 overflow-y-auto">{result.output.slice(0, 500)}</pre>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             )}
                             {run.sessionId && (

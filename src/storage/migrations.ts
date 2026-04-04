@@ -597,6 +597,56 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_jobs_queue ON jobs(status, priority DESC, created_at ASC);
     `,
   },
+  {
+    version: 24,
+    name: 'run_checkpoint',
+    sql: `
+      ALTER TABLE runs ADD COLUMN snapshot_ref TEXT;
+      ALTER TABLE runs ADD COLUMN result_ref TEXT;
+      ALTER TABLE runs ADD COLUMN diff_stat TEXT;
+    `,
+  },
+  {
+    version: 25,
+    name: 'run_verification',
+    sql: `
+      ALTER TABLE runs ADD COLUMN verification_json TEXT NOT NULL DEFAULT '{}';
+      ALTER TABLE runs ADD COLUMN verified TEXT;
+    `,
+  },
+  {
+    version: 26,
+    name: 'entity_relations',
+    sql: `
+      CREATE TABLE IF NOT EXISTS entity_relations (
+        id TEXT PRIMARY KEY,
+        source_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        relation TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 0.8,
+        source_origin TEXT NOT NULL DEFAULT 'auto',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_entity_rel_source ON entity_relations(source_type, source_id);
+      CREATE INDEX IF NOT EXISTS idx_entity_rel_target ON entity_relations(target_type, target_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_rel_pair ON entity_relations(source_type, source_id, relation, target_type, target_id);
+    `,
+  },
+  {
+    version: 27,
+    name: 'memory_episodic_semantic',
+    sql: `
+      ALTER TABLE memories ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'unclassified';
+      ALTER TABLE memories ADD COLUMN valid_from TEXT;
+      ALTER TABLE memories ADD COLUMN valid_until TEXT;
+      ALTER TABLE memories ADD COLUMN source_memory_ids_json TEXT NOT NULL DEFAULT '[]';
+      CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type, layer, archived_at);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

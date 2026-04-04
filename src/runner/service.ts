@@ -38,27 +38,32 @@ export class RunnerService {
   ) {}
 
   /**
-   * Process the next queued run.
-   *
-   * 1. Find next queued run
-   * 2. Claim it (status -> 'running')
-   * 3. Build ObjectivePack with multi-repo support
-   * 4. Load relevant memories via findRelevantMemories
-   * 5. Execute via selectAdapter(config)
-   * 6. Post-process: update run status, record llm_usage, capture git diff, write artifacts
-   * 7. Apply trust delta (success: +1.5, failure: -2.0)
+   * Process the next queued run (thin wrapper for processRun).
    */
   async processNextRun(): Promise<{ processed: boolean; run: RunRecord | null }> {
-    // 1. Find next queued run
     const queuedRuns = this.db.listRuns({ status: 'queued' });
     if (queuedRuns.length === 0) {
       return { processed: false, run: null };
     }
-
     const run = queuedRuns[queuedRuns.length - 1]; // oldest first (list is DESC, so last = oldest)
+    return this.processRun(run.id);
+  }
+
+  /**
+   * Process a specific run by ID.
+   *
+   * 1. Claim it (status -> 'running')
+   * 2. Build ObjectivePack with multi-repo support
+   * 3. Execute via selectAdapter(config)
+   * 4. Post-process: update run status, record llm_usage, capture git diff, write artifacts
+   * 5. Apply trust delta (success: +1.5, failure: -2.0)
+   */
+  async processRun(runId: string): Promise<{ processed: boolean; run: RunRecord | null }> {
+    const run = this.db.getRun(runId);
+    if (!run) return { processed: false, run: null };
     const now = new Date().toISOString();
 
-    // 2. Claim it
+    // Claim it
     this.db.transitionRun(run.id, 'running');
     this.db.updateRun(run.id, { startedAt: now });
 
@@ -183,6 +188,16 @@ export class RunnerService {
         timeoutMs: this.config.runnerTimeoutMs,
       };
 
+      // 4b. Checkpoint: capture pre-execution state
+      const executionCwd = repos[0].path;
+      let snapshotRef: string | null = null;
+      if (run.kind === 'execution') {
+        try {
+          snapshotRef = execSync('git rev-parse HEAD', { cwd: executionCwd, encoding: 'utf-8', timeout: 5_000 }).trim();
+          this.db.updateRun(run.id, { snapshotRef });
+        } catch { /* non-fatal — proceed without snapshot */ }
+      }
+
       // 5. Execute via backend adapter
       const adapter = selectAdapter(this.config);
       const result = await adapter.execute(pack);
@@ -255,6 +270,28 @@ export class RunnerService {
         sessionId: result.sessionId ?? null,
         finishedAt,
       });
+
+      // 6b. Checkpoint: capture post-execution state + diff stat
+      if (run.kind === 'execution' && snapshotRef) {
+        try {
+          const resultRef = execSync('git rev-parse HEAD', { cwd: executionCwd, encoding: 'utf-8', timeout: 5_000 }).trim();
+          let diffStat: string | null = null;
+          if (resultRef !== snapshotRef) {
+            diffStat = execSync(`git diff --stat ${snapshotRef}..${resultRef}`, { cwd: executionCwd, encoding: 'utf-8', timeout: 10_000 }).trim();
+          }
+          this.db.updateRun(run.id, { resultRef, diffStat });
+        } catch { /* non-fatal */ }
+      }
+
+      // 6c. Post-execution verification (build/lint/test)
+      if (run.kind === 'execution' && isSuccess) {
+        try {
+          const { results: verificationResults, allPassed } = this.runVerification(run.repoId, executionCwd);
+          const hasCommands = Object.keys(verificationResults).length > 0;
+          const verified = hasCommands ? (allPassed ? 'verified' : 'needs_review') : 'unverified';
+          this.db.updateRun(run.id, { verification: verificationResults, verified } as Parameters<typeof this.db.updateRun>[1]);
+        } catch { /* non-fatal — verification failure shouldn't block the run */ }
+      }
 
       // Propagate to parent via multi-child aggregation
       if (run.parentRunId) {
@@ -343,6 +380,68 @@ export class RunnerService {
 
       const updatedRun = this.db.getRun(run.id)!;
       return { processed: true, run: updatedRun };
+    }
+  }
+
+  /**
+   * Run build/lint/test verification commands for a repo.
+   * Returns individual results and whether all commands passed.
+   */
+  runVerification(repoId: string, cwd: string): { results: Record<string, { passed: boolean; output: string; durationMs: number }>; allPassed: boolean } {
+    const repo = this.db.getRepo(repoId);
+    if (!repo) return { results: {}, allPassed: true };
+
+    const results: Record<string, { passed: boolean; output: string; durationMs: number }> = {};
+    let allPassed = true;
+
+    for (const [key, cmd] of [
+      ['build', repo.buildCommand],
+      ['lint', repo.lintCommand],
+      ['test', repo.testCommand],
+    ] as const) {
+      if (!cmd) continue;
+      const start = Date.now();
+      try {
+        execSync(cmd, { cwd, encoding: 'utf-8', timeout: 120_000, stdio: 'pipe' });
+        results[key] = { passed: true, output: '', durationMs: Date.now() - start };
+      } catch (err: unknown) {
+        const output = (err instanceof Error ? (err as { stderr?: string }).stderr ?? err.message : String(err)).slice(0, 2000);
+        results[key] = { passed: false, output, durationMs: Date.now() - start };
+        allPassed = false;
+      }
+    }
+
+    return { results, allPassed };
+  }
+
+  /**
+   * Rollback an execution run to its pre-execution state.
+   * Requires the run to have a snapshotRef (captured before execution).
+   */
+  rollbackRun(runId: string): { ok: boolean; error?: string } {
+    const run = this.db.getRun(runId);
+    if (!run) return { ok: false, error: 'Run not found' };
+    if (!run.snapshotRef) return { ok: false, error: 'No snapshot available for this run' };
+
+    const repo = this.db.getRepo(run.repoId);
+    if (!repo) return { ok: false, error: 'Repository not found' };
+
+    const cwd = run.worktreePath ?? repo.path;
+
+    try {
+      execSync(`git reset --hard ${run.snapshotRef}`, { cwd, timeout: 10_000, stdio: 'pipe' });
+
+      this.db.createAuditEvent({
+        interface: 'runner',
+        action: 'rollback',
+        targetKind: 'run',
+        targetId: runId,
+        detail: { snapshotRef: run.snapshotRef, resultRef: run.resultRef },
+      });
+
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
 
