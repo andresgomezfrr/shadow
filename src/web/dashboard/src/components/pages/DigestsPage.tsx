@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useApi } from '../../hooks/useApi';
 import { fetchDigests, fetchDigestStatus, triggerDigest } from '../../api/client';
+import type { DigestKindStatus } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
 import { Markdown } from '../common/Markdown';
@@ -26,6 +27,12 @@ const KIND_LABELS: Record<string, string> = {
   brag: 'Brag Doc',
 };
 
+const BUSY_STATUSES = new Set(['running', 'queued']);
+
+function statusIsBusy(st?: DigestKindStatus): boolean {
+  return !!st && BUSY_STATUSES.has(st.status);
+}
+
 export function DigestsPage() {
   const [kindFilter, setKindFilter] = useState('');
   const { data, refresh } = useApi(() => fetchDigests(kindFilter || undefined), [kindFilter], 30_000);
@@ -38,18 +45,59 @@ export function DigestsPage() {
     return next;
   });
 
-  const [triggeredKinds, setTriggeredKinds] = useState<Set<string>>(new Set());
+  // Optimistic state keyed by "kind:periodStart" or "kind:current"
+  const [triggered, setTriggered] = useState<Set<string>>(new Set());
 
-  const handleTrigger = useCallback(async (kind: 'daily' | 'weekly' | 'brag') => {
-    setTriggeredKinds(prev => new Set(prev).add(kind));
-    await triggerDigest(kind);
-    setTimeout(() => {
-      refresh();
-      setTriggeredKinds(prev => { const next = new Set(prev); next.delete(kind); return next; });
-    }, 3000);
-  }, [refresh]);
+  // Track previous status for transition detection
+  const prevStatusRef = useRef<Record<string, DigestKindStatus> | null>(null);
+  useEffect(() => {
+    if (!status) return;
+    const prev = prevStatusRef.current;
 
-  const isBusy = (kind: string) => status?.[kind] === 'running' || triggeredKinds.has(kind);
+    // Clear optimistic flags once backend tracks the job
+    setTriggered(current => {
+      let changed = false;
+      const next = new Set(current);
+      for (const key of current) {
+        const kind = key.split(':')[0];
+        if (statusIsBusy(status[kind])) { next.delete(key); changed = true; }
+      }
+      return changed ? next : current;
+    });
+
+    // Auto-refresh digest list when any job transitions from busy → idle
+    if (prev) {
+      for (const kind of ['daily', 'weekly', 'brag']) {
+        if (statusIsBusy(prev[kind]) && !statusIsBusy(status[kind])) {
+          refresh();
+          break;
+        }
+      }
+    }
+    prevStatusRef.current = status;
+  }, [status, refresh]);
+
+  const handleTrigger = useCallback(async (kind: 'daily' | 'weekly' | 'brag', periodStart?: string) => {
+    const key = `${kind}:${periodStart ?? 'current'}`;
+    setTriggered(prev => new Set(prev).add(key));
+    try {
+      await triggerDigest(kind, periodStart);
+    } catch {
+      setTriggered(prev => { const next = new Set(prev); next.delete(key); return next; });
+    }
+  }, []);
+
+  // Per-item busy: only the specific period is busy, not all items of that kind
+  const isBusy = (kind: string, periodStart?: string): boolean => {
+    const key = `${kind}:${periodStart ?? 'current'}`;
+    if (triggered.has(key)) return true;
+    const st = status?.[kind];
+    if (!st || !statusIsBusy(st)) return false;
+    // Top-level button (no periodStart): busy if ANY job of this kind is running
+    if (!periodStart) return true;
+    // Per-item: busy only if the running job matches this period
+    return st.periodStart === periodStart;
+  };
 
   return (
     <div>
@@ -82,6 +130,7 @@ export function DigestsPage() {
         <div className="flex flex-col gap-3">
           {data.map((d) => {
             const isOpen = expanded.has(d.id);
+            const itemBusy = isBusy(d.kind, d.periodStart);
             return (
               <div
                 key={d.id}
@@ -97,12 +146,12 @@ export function DigestsPage() {
                     {d.kind === 'weekly' ? ` — ${d.periodEnd}` : ''}
                   </span>
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleTrigger(d.kind as 'daily' | 'weekly' | 'brag'); }}
-                    disabled={isBusy(d.kind)}
+                    onClick={(e) => { e.stopPropagation(); handleTrigger(d.kind as 'daily' | 'weekly' | 'brag', d.periodStart); }}
+                    disabled={itemBusy}
                     className="ml-auto px-1.5 py-0.5 rounded text-xs text-text-muted hover:text-cyan hover:bg-cyan/10 transition-colors disabled:opacity-40 disabled:cursor-wait cursor-pointer"
                     title={`Regenerate ${KIND_LABELS[d.kind] ?? d.kind}`}
                   >
-                    {isBusy(d.kind) ? '⏳' : '🔄'}
+                    {itemBusy ? '⏳' : '🔄'}
                   </button>
                   <span className="text-xs text-text-muted">{timeAgo(d.updatedAt)}</span>
                 </div>

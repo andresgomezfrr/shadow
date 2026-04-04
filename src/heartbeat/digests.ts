@@ -51,9 +51,12 @@ function getRecentCommits(db: ShadowDatabase, since: string): string[] {
 export async function activityDailyDigest(
   db: ShadowDatabase,
   config: ShadowConfig,
+  targetDate?: string,
 ): Promise<{ contentMd: string; tokensUsed: number }> {
-  const today = todayStr();
-  const yesterday = daysAgoStr(1);
+  const today = targetDate ?? todayStr();
+  const yesterday = targetDate
+    ? (() => { const d = new Date(targetDate); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })()
+    : daysAgoStr(1);
 
   // Gather data
   const commits = getRecentCommits(db, yesterday);
@@ -117,9 +120,12 @@ export async function activityDailyDigest(
 export async function activityWeeklyDigest(
   db: ShadowDatabase,
   config: ShadowConfig,
+  targetWeekStart?: string,
 ): Promise<{ contentMd: string; tokensUsed: number }> {
-  const today = todayStr();
-  const weekAgo = daysAgoStr(7);
+  const weekAgo = targetWeekStart ?? daysAgoStr(7);
+  const today = targetWeekStart
+    ? (() => { const d = new Date(targetWeekStart); d.setDate(d.getDate() + 6); return d.toISOString().slice(0, 10); })()
+    : todayStr();
 
   // Gather daily digests of the week
   const dailies = db.listDigests({ kind: 'daily', limit: 7 })

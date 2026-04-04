@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDatabase, type ShadowDatabase } from '../storage/database.js';
@@ -150,10 +150,14 @@ async function handleApi(
     }
 
     if (pathname === '/api/digest/status') {
-      const status: Record<string, string> = {};
+      const status: Record<string, { status: string; periodStart?: string }> = {};
       for (const kind of ['daily', 'weekly', 'brag']) {
         const job = db.getLastJob(`digest-${kind}`);
-        status[kind] = job?.status === 'running' ? 'running' : 'idle';
+        if (job?.status === 'running' || job?.status === 'queued') {
+          status[kind] = { status: job.status, periodStart: (job.result as Record<string, string>).periodStart };
+        } else {
+          status[kind] = { status: 'idle' };
+        }
       }
       return json(res, status);
     }
@@ -548,17 +552,10 @@ async function handleApi(
     }
 
     if (pathname === '/api/heartbeat/trigger') {
-      // Block if a heartbeat is already running
-      const lastHbJob = db.getLastJob('heartbeat');
-      if (lastHbJob && lastHbJob.status === 'running') {
-        return json(res, { error: 'Heartbeat already running', phase: lastHbJob.phase }, 409);
+      if (db.hasQueuedOrRunning('heartbeat')) {
+        return json(res, { error: 'Heartbeat already queued or running' }, 409);
       }
-      const config = loadConfig();
-      const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');
-      if (existsSync(triggerPath)) {
-        return json(res, { error: 'Heartbeat already queued' }, 409);
-      }
-      writeFileSync(triggerPath, new Date().toISOString(), 'utf-8');
+      db.enqueueJob('heartbeat', { priority: 10, triggerSource: 'manual' });
       return json(res, { triggered: true });
     }
 
@@ -566,17 +563,13 @@ async function handleApi(
     if (digestTriggerMatch) {
       const kind = digestTriggerMatch[1];
       const jobType = `digest-${kind}`;
-      const lastJob = db.getLastJob(jobType);
-      if (lastJob && lastJob.status === 'running') {
-        return json(res, { error: `${kind} digest already running` }, 409);
+      if (db.hasQueuedOrRunning(jobType)) {
+        return json(res, { error: `${kind} digest already queued or running` }, 409);
       }
-      const config = loadConfig();
-      const triggerPath = resolve(config.resolvedDataDir, `${jobType}-trigger`);
-      if (existsSync(triggerPath)) {
-        return json(res, { error: `${kind} digest already queued` }, 409);
-      }
-      writeFileSync(triggerPath, new Date().toISOString(), 'utf-8');
-      return json(res, { triggered: true, kind });
+      const body = await readBody(req).then(b => b ? JSON.parse(b) : {}).catch(() => ({}));
+      const params = body.periodStart ? { periodStart: body.periodStart as string } : {};
+      db.enqueueJob(jobType, { triggerSource: 'manual', params });
+      return json(res, { triggered: true, kind, periodStart: body.periodStart ?? null });
     }
   }
 

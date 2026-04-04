@@ -1302,6 +1302,41 @@ export class ShadowDatabase {
     return row ? mapJob(row) : null;
   }
 
+  enqueueJob(type: string, opts?: { priority?: number; triggerSource?: string; params?: Record<string, unknown> }): JobRecord {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const resultJson = JSON.stringify(opts?.params ?? {});
+    this.database
+      .prepare('INSERT INTO jobs (id, type, status, priority, trigger_source, result_json, started_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, type, 'queued', opts?.priority ?? 5, opts?.triggerSource ?? 'schedule', resultJson, now, now);
+    return this.getJob(id)!;
+  }
+
+  claimNextJob(types?: string[]): JobRecord | null {
+    const params: SQLValue[] = [];
+    let where = "status = 'queued'";
+    if (types?.length) {
+      where += ` AND type IN (${types.map(() => '?').join(',')})`;
+      params.push(...types);
+    }
+    const row = this.database
+      .prepare(`SELECT id FROM jobs WHERE ${where} ORDER BY priority DESC, created_at ASC LIMIT 1`)
+      .get(...params) as { id: string } | undefined;
+    if (!row) return null;
+    const now = new Date().toISOString();
+    this.database
+      .prepare("UPDATE jobs SET status = 'running', started_at = ? WHERE id = ? AND status = 'queued'")
+      .run(now, row.id);
+    return this.getJob(row.id)!;
+  }
+
+  hasQueuedOrRunning(type: string): boolean {
+    const row = this.database
+      .prepare("SELECT 1 FROM jobs WHERE type = ? AND status IN ('queued', 'running') LIMIT 1")
+      .get(type);
+    return !!row;
+  }
+
   // --- Feedback ---
 
   createFeedback(input: { targetKind: string; targetId: string; action: string; note?: string | null }): void {
@@ -1755,6 +1790,8 @@ function mapJob(row: unknown): JobRecord {
     phases: jsonParse(d.phases_json, []),
     activity: strOrNull(d.activity),
     status: str(d.status),
+    priority: num(d.priority ?? 5),
+    triggerSource: str(d.trigger_source ?? 'schedule'),
     llmCalls: num(d.llm_calls ?? 0),
     tokensUsed: num(d.tokens_used ?? 0),
     result: jsonParse(d.result_json, {}),

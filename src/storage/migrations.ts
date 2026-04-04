@@ -588,6 +588,15 @@ export const migrations: Migration[] = [
       ALTER TABLE runs ADD COLUMN pr_url TEXT;
     `,
   },
+  {
+    version: 23,
+    name: 'job_queue',
+    sql: `
+      ALTER TABLE jobs ADD COLUMN priority INTEGER NOT NULL DEFAULT 5;
+      ALTER TABLE jobs ADD COLUMN trigger_source TEXT NOT NULL DEFAULT 'schedule';
+      CREATE INDEX IF NOT EXISTS idx_jobs_queue ON jobs(status, priority DESC, created_at ASC);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

@@ -223,6 +223,8 @@ export type Job = {
   phases: string[];
   activity: string | null;
   status: string;
+  priority: number;
+  triggerSource: string;
   llmCalls: number;
   tokensUsed: number;
   result: Record<string, unknown>;

@@ -1310,20 +1310,26 @@ daemon
 program
   .command('heartbeat')
   .description('trigger a heartbeat cycle immediately')
-  .action(async () => {
-    const triggerPath = resolve(config.resolvedDataDir, 'heartbeat-trigger');
-    writeFileSync(triggerPath, new Date().toISOString(), 'utf-8');
-    printOutput({ triggered: true, message: 'heartbeat triggered — daemon will pick it up on next tick' }, Boolean(program.opts().json));
-  });
+  .action(() => withDb((db, json) => {
+    if (db.hasQueuedOrRunning('heartbeat')) {
+      printOutput({ error: 'heartbeat already queued or running' }, json);
+      return;
+    }
+    db.enqueueJob('heartbeat', { priority: 10, triggerSource: 'manual' });
+    printOutput({ triggered: true, message: 'heartbeat enqueued — daemon will pick it up on next tick' }, json);
+  }));
 
 program
   .command('reflect')
   .description('trigger a soul reflection immediately')
-  .action(async () => {
-    const triggerPath = resolve(config.resolvedDataDir, 'reflect-trigger');
-    writeFileSync(triggerPath, new Date().toISOString(), 'utf-8');
-    printOutput({ triggered: true, message: 'reflect triggered — daemon will pick it up on next tick' }, Boolean(program.opts().json));
-  });
+  .action(() => withDb((db, json) => {
+    if (db.hasQueuedOrRunning('reflect')) {
+      printOutput({ error: 'reflect already queued or running' }, json);
+      return;
+    }
+    db.enqueueJob('reflect', { priority: 5, triggerSource: 'manual' });
+    printOutput({ triggered: true, message: 'reflect enqueued — daemon will pick it up on next tick' }, json);
+  }));
 
 // --- events ---
 

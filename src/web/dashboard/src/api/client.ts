@@ -57,11 +57,17 @@ export const fetchContacts = (team?: string) =>
 export const fetchDigests = (kind?: string) =>
   api<Digest[]>(`/api/digests${qs({ kind })}`);
 
-export const fetchDigestStatus = () =>
-  api<Record<string, string>>('/api/digest/status');
+export type DigestKindStatus = { status: string; periodStart?: string };
 
-export const triggerDigest = (kind: 'daily' | 'weekly' | 'brag') =>
-  api<{ triggered: boolean }>(`/api/digest/${kind}/trigger`, { method: 'POST' });
+export const fetchDigestStatus = () =>
+  api<Record<string, DigestKindStatus>>('/api/digest/status');
+
+export const triggerDigest = (kind: 'daily' | 'weekly' | 'brag', periodStart?: string) =>
+  api<{ triggered: boolean }>(`/api/digest/${kind}/trigger`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(periodStart ? { periodStart } : {}),
+  });
 
 export const fetchProjects = (status?: string) =>
   api<Project[]>(`/api/projects${qs({ status })}`);

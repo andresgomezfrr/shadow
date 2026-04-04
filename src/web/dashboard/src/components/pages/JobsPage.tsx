@@ -187,8 +187,12 @@ export function JobsPage() {
                 >
                   <div className="flex items-center gap-2 flex-wrap">
                     <Badge className={TYPE_COLORS[hb.type] ?? 'text-text-dim bg-border'}>{hb.type}</Badge>
+                    {hb.type.startsWith('digest-') && typeof hb.result.periodStart === 'string' && (
+                      <span className="text-xs text-text-muted">{hb.result.periodStart}</span>
+                    )}
                     <span className="text-xs text-accent">running</span>
                     {hb.activity && <span className="text-xs text-text-dim">· {hb.activity}</span>}
+                    {hb.triggerSource === 'manual' && <Badge className="text-orange bg-orange/15">manual</Badge>}
                     <span className="text-xs text-text-muted ml-auto">{timeAgo(hb.startedAt)}</span>
                   </div>
                 </div>
@@ -219,6 +223,10 @@ export function JobsPage() {
               >
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge className={TYPE_COLORS[hb.type] ?? 'text-text-dim bg-border'}>{hb.type}</Badge>
+                  {hb.type.startsWith('digest-') && typeof hb.result.periodStart === 'string' && (
+                    <span className="text-xs text-text-muted">{hb.result.periodStart}</span>
+                  )}
+                  {hb.triggerSource === 'manual' && <Badge className="text-orange bg-orange/15">manual</Badge>}
                   <span className="text-xs text-text-muted">{phases.join(' → ')}</span>
                   <span className="text-xs text-text-muted">{duration}</span>
                   {hb.llmCalls > 0 && (

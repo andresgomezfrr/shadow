@@ -291,26 +291,19 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       writeState: (s) => { Object.assign(state, s); writeDaemonState(config, state); },
     });
 
-    // --- Job scheduler continued ---
-    function shouldRunJob(type: string, intervalMs: number): boolean {
-      // Check for manual trigger files
-      const triggerPath = resolve(config.resolvedDataDir, `${type}-trigger`);
-      if (existsSync(triggerPath)) {
-        try { unlinkSync(triggerPath); } catch { /* */ }
-        return true;
-      }
+    // --- Job queue ---
+
+    function shouldEnqueue(type: string, intervalMs: number): boolean {
+      if (_db.hasQueuedOrRunning(type)) return false;
       const last = _db.getLastJob(type);
       if (!last) return true;
-      if (last.status === 'running') return false;
       return Date.now() - new Date(last.startedAt).getTime() >= intervalMs;
     }
 
     let currentJobId: string | null = null;
     const JOB_TIMEOUT_MS = 8 * 60 * 1000; // 8min (< 10min stale threshold)
 
-    async function runJobType(type: string, fn: (jobId: string) => Promise<{ llmCalls: number; tokensUsed: number; phases: string[]; result: Record<string, unknown> }>, timeoutMs = JOB_TIMEOUT_MS): Promise<void> {
-      const now = new Date().toISOString();
-      const job = _db.createJob({ type, startedAt: now });
+    async function executeJob(job: import('../storage/models.js').JobRecord, fn: (jobId: string) => Promise<{ llmCalls: number; tokensUsed: number; phases: string[]; result: Record<string, unknown> }>, timeoutMs = JOB_TIMEOUT_MS): Promise<void> {
       currentJobId = job.id;
       const startMs = Date.now();
       let cancelled = false;
@@ -330,7 +323,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
             status: 'failed', result: { error: err instanceof Error ? err.message : String(err) },
             durationMs: Date.now() - startMs, finishedAt: new Date().toISOString(),
           });
-          console.error(`[daemon] Job ${type} failed:`, err instanceof Error ? err.message : err);
+          console.error(`[daemon] Job ${job.type} failed:`, err instanceof Error ? err.message : err);
         }
       })();
       currentJobPromise = p;
@@ -346,7 +339,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           status: 'failed', result: { error: `timeout (${Math.round(timeoutMs / 60000)}min)` },
           durationMs: timeoutMs, finishedAt: new Date().toISOString(),
         });
-        console.error(`[daemon] Job ${type}/${job.id.slice(0, 8)} timed out after ${Math.round(timeoutMs / 60000)}min — killed child process`);
+        console.error(`[daemon] Job ${job.type}/${job.id.slice(0, 8)} timed out after ${Math.round(timeoutMs / 60000)}min — killed child process`);
       }
 
       currentJobPromise = null;
@@ -386,53 +379,80 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         }
       };
 
-      // --- Job: heartbeat (extract + observe) ---
-      if (shouldRunJob('heartbeat', config.heartbeatIntervalMs)) {
-        const { runHeartbeat } = await import('../heartbeat/state-machine.js');
-        // Get last heartbeat BEFORE creating the new job — otherwise getLastJob returns the new one
-        const previousHeartbeat = _db.getLastJob('heartbeat');
+      // === Phase 1: Enqueue scheduled jobs ===
 
-        setPhase('observe');
-        try {
-          await runJobType('heartbeat', async () => {
-            const profile = _db.ensureProfile();
-            const pendingEvts = _db.listPendingEvents().length;
-            setPhase('analyze');
-            const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts });
-            return {
-              llmCalls: result.llmCalls, tokensUsed: result.tokensUsed, phases: result.phases,
-              result: { observationsCreated: result.observationsCreated },
-            };
-          });
-        } catch (hbErr) {
-          console.error('[daemon] Heartbeat failed/timeout:', hbErr instanceof Error ? hbErr.message : hbErr);
-        } finally {
-          setPhase(null);
+      if (shouldEnqueue('heartbeat', config.heartbeatIntervalMs)) {
+        _db.enqueueJob('heartbeat', { priority: 10 });
+      }
+      if (shouldEnqueue('consolidate', 6 * 60 * 60 * 1000)) {
+        _db.enqueueJob('consolidate', { priority: 3 });
+      }
+      if (shouldEnqueue('reflect', 24 * 60 * 60 * 1000)) {
+        _db.enqueueJob('reflect', { priority: 5 });
+      }
+
+      // Digests: clock-time scheduled, timezone-aware
+      const userTz = _db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      for (const [jobType, schedule] of Object.entries(DIGEST_SCHEDULES)) {
+        if (!_db.hasQueuedOrRunning(jobType) && isScheduleReady(schedule, userTz, _db.getLastJob(jobType)?.startedAt)) {
+          _db.enqueueJob(jobType, { priority: 5 });
         }
-        // Always update timestamps, even on failure
-        lastHeartbeatAt = new Date().toISOString();
-        nextHeartbeatAt = new Date(Date.now() + config.heartbeatIntervalMs).toISOString();
-        worked = true;
+      }
 
-        // Consolidate similar observations after heartbeat (async, non-blocking)
-        try {
-          const { consolidateObservations } = await import('../observation/consolidation.js');
-          const obsMerged = await consolidateObservations(_db);
-          if (obsMerged > 0) console.error(`[daemon] Consolidated ${obsMerged} similar observations`);
-        } catch { /* ignore */ }
+      // === Phase 2: Claim and execute one job ===
 
-        // --- Job: suggest (runs right after heartbeat if there was activity) ---
-        const lastHbJob = _db.getLastJob('heartbeat');
-        const hbResult = (lastHbJob?.result ?? {}) as Record<string, number>;
-        const hadActivity = (hbResult.observationsCreated ?? 0) > 0;
-        const profile = _db.ensureProfile();
-        const pendingCount = _db.countPendingSuggestions();
-        if (hadActivity && profile.trustLevel >= 2 && pendingCount < 30) {
+      const claimed = _db.claimNextJob();
+      if (claimed) {
+        const jobType = claimed.type;
+
+        if (jobType === 'heartbeat') {
+          // Get last completed heartbeat for context (the claimed one is now 'running', skip it)
+          const previousHeartbeat = _db.listJobs({ type: 'heartbeat', status: 'completed', limit: 1 })[0] ?? null;
+          setPhase('observe');
+          try {
+            await executeJob(claimed, async () => {
+              const profile = _db.ensureProfile();
+              const pendingEvts = _db.listPendingEvents().length;
+              setPhase('analyze');
+              const { runHeartbeat } = await import('../heartbeat/state-machine.js');
+              const result = await runHeartbeat({ config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts });
+              return {
+                llmCalls: result.llmCalls, tokensUsed: result.tokensUsed, phases: result.phases,
+                result: { observationsCreated: result.observationsCreated },
+              };
+            });
+          } catch (hbErr) {
+            console.error('[daemon] Heartbeat failed/timeout:', hbErr instanceof Error ? hbErr.message : hbErr);
+          } finally {
+            setPhase(null);
+          }
+          lastHeartbeatAt = new Date().toISOString();
+          nextHeartbeatAt = new Date(Date.now() + config.heartbeatIntervalMs).toISOString();
+
+          // Post-heartbeat: consolidate similar observations
+          try {
+            const { consolidateObservations } = await import('../observation/consolidation.js');
+            const obsMerged = await consolidateObservations(_db);
+            if (obsMerged > 0) console.error(`[daemon] Consolidated ${obsMerged} similar observations`);
+          } catch { /* ignore */ }
+
+          // Post-heartbeat: enqueue suggest if there was activity
+          const hbJob = _db.getJob(claimed.id);
+          const hbResult = (hbJob?.result ?? {}) as Record<string, number>;
+          if ((hbResult.observationsCreated ?? 0) > 0) {
+            const profile = _db.ensureProfile();
+            if (profile.trustLevel >= 2 && _db.countPendingSuggestions() < 30) {
+              _db.enqueueJob('suggest', { priority: 8, triggerSource: 'reactive' });
+            }
+          }
+
+        } else if (jobType === 'suggest') {
           const { activitySuggest, activityNotify } = await import('../heartbeat/activities.js');
           setPhase('suggest');
           try {
-            await runJobType('suggest', async () => {
+            await executeJob(claimed, async () => {
               const unprocessed = _db.listObservations({ processed: false });
+              const profile = _db.ensureProfile();
               const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
               const suggestResult = await activitySuggest(ctx, unprocessed);
               await activityNotify(ctx);
@@ -447,82 +467,66 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           } finally {
             setPhase(null);
           }
-        }
-      }
 
-      // --- Job: consolidate (every 6h) ---
-      if (shouldRunJob('consolidate', 6 * 60 * 60 * 1000)) {
-        const { activityConsolidate } = await import('../heartbeat/activities.js');
-        setPhase('consolidate');
-        try {
-          await runJobType('consolidate', async () => {
-            const profile = _db.ensureProfile();
-            const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
-            const consolidateResult = await activityConsolidate(ctx);
-            return {
-              llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,
-              phases: ['consolidate'],
-              result: { memoriesPromoted: consolidateResult.memoriesPromoted, memoriesDemoted: consolidateResult.memoriesDemoted },
-            };
-          });
-        } catch (conErr) {
-          console.error('[daemon] Consolidate failed/timeout:', conErr instanceof Error ? conErr.message : conErr);
-        } finally {
-          setPhase(null);
-        }
-        worked = true;
-      }
+        } else if (jobType === 'consolidate') {
+          const { activityConsolidate } = await import('../heartbeat/activities.js');
+          setPhase('consolidate');
+          try {
+            await executeJob(claimed, async () => {
+              const profile = _db.ensureProfile();
+              const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
+              const consolidateResult = await activityConsolidate(ctx);
+              return {
+                llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,
+                phases: ['consolidate'],
+                result: { memoriesPromoted: consolidateResult.memoriesPromoted, memoriesDemoted: consolidateResult.memoriesDemoted },
+              };
+            });
+          } catch (conErr) {
+            console.error('[daemon] Consolidate failed/timeout:', conErr instanceof Error ? conErr.message : conErr);
+          } finally {
+            setPhase(null);
+          }
 
-      // --- Job: reflect (every 24h) ---
-      if (shouldRunJob('reflect', 24 * 60 * 60 * 1000)) {
-        const { activityReflect } = await import('../heartbeat/activities.js');
-        setPhase('reflect');
-        try {
-          await runJobType('reflect', async () => {
-            const profile = _db.ensureProfile();
-            const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
-            const reflectResult = await activityReflect(ctx);
-            return {
-              llmCalls: reflectResult.llmCalls, tokensUsed: reflectResult.tokensUsed,
-              phases: ['reflect'],
-              result: {},
-            };
-          });
-        } catch (refErr) {
-          console.error('[daemon] Reflect failed/timeout:', refErr instanceof Error ? refErr.message : refErr);
-        } finally {
-          setPhase(null);
-        }
-        worked = true;
-      }
+        } else if (jobType === 'reflect') {
+          const { activityReflect } = await import('../heartbeat/activities.js');
+          setPhase('reflect');
+          try {
+            await executeJob(claimed, async () => {
+              const profile = _db.ensureProfile();
+              const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
+              const reflectResult = await activityReflect(ctx);
+              return {
+                llmCalls: reflectResult.llmCalls, tokensUsed: reflectResult.tokensUsed,
+                phases: ['reflect'],
+                result: {},
+              };
+            });
+          } catch (refErr) {
+            console.error('[daemon] Reflect failed/timeout:', refErr instanceof Error ? refErr.message : refErr);
+          } finally {
+            setPhase(null);
+          }
 
-      // --- Digest jobs (clock-time scheduled, timezone-aware) ---
-      const userTz = _db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-      for (const [jobType, schedule] of Object.entries(DIGEST_SCHEDULES)) {
-        const triggerPath = resolve(config.resolvedDataDir, `${jobType}-trigger`);
-        const manualTrigger = existsSync(triggerPath);
-        if (manualTrigger) { try { unlinkSync(triggerPath); } catch { /* */ } }
-
-        const last = _db.getLastJob(jobType);
-        if (last?.status === 'running') continue;
-
-        if (manualTrigger || isScheduleReady(schedule, userTz, last?.startedAt)) {
+        } else if (jobType.startsWith('digest-')) {
+          const periodStart = claimed.result.periodStart as string | undefined;
           const { activityDailyDigest, activityWeeklyDigest, activityBragDoc } = await import('../heartbeat/digests.js');
           const activities: Record<string, () => Promise<{ contentMd: string; tokensUsed: number }>> = {
-            'digest-daily': () => activityDailyDigest(_db, config),
-            'digest-weekly': () => activityWeeklyDigest(_db, config),
+            'digest-daily': () => activityDailyDigest(_db, config, periodStart),
+            'digest-weekly': () => activityWeeklyDigest(_db, config, periodStart),
             'digest-brag': () => activityBragDoc(_db, config),
           };
           setPhase('digest');
           try {
-            await runJobType(jobType, async () => {
+            await executeJob(claimed, async () => {
               const result = await activities[jobType]();
-              return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: [jobType], result: {} };
+              return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: [jobType], result: { periodStart } };
             });
           } catch (e) { console.error(`[daemon] ${jobType} failed:`, e instanceof Error ? e.message : e); }
           finally { setPhase(null); }
-          worked = true;
         }
+
+        worked = true;
       }
 
       // --- Stale run detector ---
