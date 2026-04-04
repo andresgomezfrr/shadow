@@ -154,7 +154,7 @@ async function generateThought(ctx: ThoughtContext, locale: string, model: strin
   if (result.status !== 'success' || !result.output) return null;
 
   let thought = result.output.trim().replace(/^["']|["']$/g, '');
-  if (thought.length > 80) thought = thought.slice(0, 77) + '...';
+  if (thought.length > 120) thought = thought.slice(0, 117) + '...';
 
   return thought || null;
 }
