@@ -1,6 +1,6 @@
 # Shadow — Backlog
 
-Actualizado 2026-04-03. Items completados en [COMPLETED.md](COMPLETED.md).
+Actualizado 2026-04-04. Items completados en [COMPLETED.md](COMPLETED.md).
 
 ---
 
@@ -12,8 +12,8 @@ handleApi() monolítico ~330 líneas. Dividir en módulos por dominio (routes/su
 ### Extraer fases de activities.ts en módulos
 activities.ts tiene extract, suggest, consolidate, reflect, cleanup. Cada fase en su propio módulo bajo heartbeat/.
 
-### Extraer subcomponentes de RunsPage, SuggestionsPage, JobsPage
-Páginas con alto churn. Extraer cards, filters, actions en componentes reutilizables.
+### ~~Extraer subcomponentes de RunsPage, SuggestionsPage, JobsPage~~ ✅ (parcial)
+RunsPage extrajo ConfidenceIndicator, RunPipeline, ScoreBar. SuggestionsPage y ObservationsPage rediseñadas con nuevos patrones. Falta: JobsPage.
 
 ### Extraer JobListView compartido Morning + Jobs
 Duplicación de renderizado de jobs entre MorningPage y JobsPage.

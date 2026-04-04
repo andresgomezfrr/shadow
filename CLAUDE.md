@@ -341,7 +341,7 @@ Observation kinds: `improvement`, `risk`, `opportunity`, `pattern`, `infrastruct
 
 Source: `sourceKind: 'llm'` (not `'repo'`)
 
-## Current State (as of 2026-04-03)
+## Current State (as of 2026-04-04)
 
 - **42 MCP tools** (19 read + 22 write L1 + 1 write L2) — includes projects, unified search, paginated listings
 - **4 hooks** (SessionStart, PostToolUse, UserPromptSubmit, Stop)
@@ -354,14 +354,19 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 - **Feedback loop** — unified feedback table. 👍/👎 toggle with persistence. Reason on dismiss/resolve/discard. All fed to LLM prompts.
 - **Observation lifecycle** — semantic dedup, auto-expiration by severity (info=7d, warning=14d, high=never), cap per repo (max 10), retroactive consolidation via embeddings, votes, status (active/acknowledged/resolved/expired)
 - **Suggestion pipeline** — semantic dedup vs pending+dismissed+accepted, accept creates Run, plan by Claude with MCP + filesystem, execute/session/discard/executed-manual/retry states
-- **Runner with MCP delegation** — briefing-only prompt, Claude reads files + searches memories. `--allowedTools "mcp__shadow__*"`.
-- **Trust L2 complete** — plan + open session (rich briefing) + execute (worktree + branch). L3+ designed in docs/plan-trust-levels.md.
+- **Runner with MCP delegation** — briefing-only prompt, Claude reads files + searches memories. `--allowedTools "mcp__shadow__*"`. Execution runs also get `Edit,Write,Bash`.
+- **Trust L3 complete** — confidence gate (Sonnet high) + auto-execute if no doubts + draft PR button. Schema v21 (confidence, doubts_json) + v22 (pr_url). L4+ designed in docs/plan-trust-levels.md.
 - **Smart analyze** — 3 LLM calls: extract (memories + mood) + observe-cleanup (MCP resolve) + observe (new observations). Soul reflection injected.
 - **Smart suggest** — separate job, no operational suggestions, dedup, learns from feedback patterns
 - **CLI adapter** — async spawn, prompt via stdin (avoids ARG_MAX), effort levels per phase, stderr on failure, `activeChild` tracking for graceful SIGTERM
-- **Morning page** — daily brief with recent jobs (with running phase), memories learned (layer colors), runs to review, suggestions, observations
-- **Dashboard filters** — `useFilterParams` hook syncs all filters with URL search params. Server-side filtering + pagination (`offset`/`limit`) on all list endpoints. `Pagination` component on Suggestions, Observations, Memories, Runs, Jobs pages.
+- **Morning page** — daily brief with yesterday's digest, 2-column grid, recent jobs, memories learned (clickable), runs to review, suggestions, observations. "View all" links.
+- **Dashboard UX overhaul** — RunsPage: status borders + pipeline + action hierarchy + collapsible details. SuggestionsPage: expandable cards + inline dismiss + ScoreBar. ObservationsPage: severity borders + prominent actions + severity filter. DashboardPage: clickable MetricCards with href + trend arrows. MorningPage: 2-column grid + daily digest.
+- **New components** — ConfidenceIndicator (3-dot ●●●/●●○/●○○), RunPipeline (plan→exec→PR), ScoreBar (impact/confidence/risk), MorningDigest. FilterTabs: optional dotColor + activeClass. MetricCard: optional href + trend.
+- **Dashboard filters** — `useFilterParams` hook syncs all filters with URL search params. Server-side filtering + pagination (`offset`/`limit`) on all list endpoints. `Pagination` component on Suggestions, Observations, Memories, Runs, Jobs pages. Colored FilterTabs per status.
 - **Feedback optimization** — `getThumbsState()` dedicated query with index. Feedback state inlined in suggestions/observations API responses (single request, no separate fetch).
+- **Job timeout with killActiveChild** — `runJobType` has integrated timeout (8min). Kills LLM child process on timeout. `cancelled` flag prevents background promise from overwriting status. No more 50min heartbeats.
+- **Auto-sync remoteUrl** — `collectRepoContext` detects `git remote get-url origin` and updates DB on every heartbeat. Enables draft PR button without manual setup.
+- **Draft PR endpoint** — `POST /api/runs/:id/draft-pr`. Validates branch exists, pushes to remote, creates GitHub draft PR via `gh`. Saves `prUrl` to run.
 
 ## Backlog
 
@@ -373,7 +378,9 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Reflect = daily job** that evolves the soul reflection. Opus + effort high. Inline context (not MCP).
 - **Runner = MCP delegation** — briefing-only prompt, Claude reads files + uses shadow_* MCP tools himself.
 - **Prompt via stdin** — all LLM calls pass prompt via stdin pipe, not CLI args (avoids ARG_MAX).
-- **`--allowedTools "mcp__shadow__*"`** on all CLI spawns — Claude can use Shadow's own tools without permission.
+- **`--allowedTools "mcp__shadow__*"`** on all CLI spawns — Claude can use Shadow's own tools without permission. Execution runs also get `Edit,Write,Bash` for code changes.
+- **Confidence evaluation** — L3 runner evaluates plan with Sonnet (effort high) before auto-executing. JSON response: `{ confidence: 'high'|'medium'|'low', doubts: string[] }`. Safe fallback to low confidence on any failure.
+- **Job timeout** — integrated in `runJobType` with `killActiveChild()`. `cancelled` flag prevents background promise from overwriting job status. Max 8min per job. Eliminated all external `Promise.race` wrappers.
 - **Soul reflection** injected into extract/observe prompts. Runner mentions it in briefing.
 - **Feedback** from dismiss/resolve/thumbs fed into extract + observe + suggest prompts.
 - **Models + effort configurable per phase** from dashboard /profile. `getModel(ctx, phase)` + `getEffort(ctx, phase)`.
@@ -389,3 +396,5 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Stale job detector** runs every daemon tick (10min threshold). Graceful drain on shutdown (60s). On startup, `cleanOrphanedJobsOnStartup()` fails ALL running jobs/runs immediately (no age threshold).
 - **Child process cleanup** — `killActiveChild()` sends SIGTERM to spawned `claude` process on shutdown. `pkill` in daemon stop/restart kills orphaned claude processes matching `--allowedTools.*mcp__shadow`.
 - **Pagination** — DB `count*` methods for all entities. API returns `{ items, total }`. Migration v12 (feedback thumbs index) + v13 (suggestions kind, observations status, jobs type indexes).
+- **Draft PR** — endpoint validates branch exists → `git push` → `gh pr create --draft`. Schema v22 (pr_url). Button disabled without GitHub remote.
+- **Severity filter** — ObservationsPage supports server-side severity filtering (high/warning/info). DB `listObservations` + `countObservations` accept `severity` param.
