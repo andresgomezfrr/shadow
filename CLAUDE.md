@@ -400,7 +400,7 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 ### Architecture notes for new sessions
 - **Heartbeat = 3 LLM calls**: extract (memories + mood, JSON-only), observe-cleanup (MCP, resolves stale obs), observe (new observations incl. cross_project, JSON-only). Active projects + enrichment context injected.
 - **Suggest = separate job** triggered after heartbeat with activity. Opus + effort high. Project-aware prompts.
-- **Reflect = daily job** that evolves the soul reflection. Opus + effort high. Inline context (not MCP).
+- **Reflect = 2-phase daily job**: Phase 1 (Sonnet) extracts deltas since last reflect. Phase 2 (Opus) evolves soul with focused change report (not full context dump). 5 sections: Developer profile, Decision patterns, Blind spots, What to watch for, Communication preferences. Soul snapshots saved before each update.
 - **Enrich = configurable job** (default 2h). 2-phase: plan (Sonnet) → execute (Opus, `mcp__*`). Results cached in `enrichment_cache` with content hash dedup + 24h TTL.
 - **Remote sync = periodic job** (default 30min). `git ls-remote` + selective fetch. Results passed as sensor data to heartbeat.
 - **Project detection** runs before each heartbeat. `detectActiveProjects()` uses 3 signals: file paths→repos→projects (×2), conversation mentions (×1), linked observations (×0.5). Top 3 with threshold ≥ 3. Persisted in `daemon.json`.

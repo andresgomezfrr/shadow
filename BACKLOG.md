@@ -9,6 +9,13 @@ Actualizado 2026-04-04. Items completados en [COMPLETED.md](COMPLETED.md).
 - ✅ **MCP tools expansion** (42→52) — shadow_active_projects, shadow_project_detail, shadow_enrichment_query, shadow_enrichment_config, projectId/kind filters on observations/suggestions
 - ✅ **Status line** — active project indicator, ghost states for enrich (mint/teal) + sync (pink)
 - ✅ **Guide page** — modular guide with updated phases, observation kinds, MCP tools, config vars
+- ✅ **Reflect 2-phase** — Sonnet extracts deltas → Opus evolves soul. Removed Active focus + Project status sections. Soul snapshots before each update.
+- ✅ **Soul history** — GET /api/soul/history + expandable timeline in ProfilePage
+- ✅ **Enrichment settings** — toggle + interval selector in ProfilePage, stored in profile preferences
+- ✅ **Suggest cap removed** — was 30, blocked generation. Now unlimited (paginated + ranked)
+- ✅ **Jobs page legend** — remote-sync + context-enrich in schedule header with countdowns
+- ✅ **Suggestion kind colors** — refactor=purple, bug=red, improvement=blue, feature=green
+- ✅ **ProjectDetailPage UX** — ScoreBar, deep links, clickable items
 
 ---
 
