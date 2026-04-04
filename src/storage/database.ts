@@ -29,6 +29,7 @@ import type {
   FeedbackRecord,
 } from './models.js';
 import { applyMigrations } from './migrations.js';
+import { assertTransition, type RunStatus } from '../runner/state-machine.js';
 
 // --- Input types ---
 
@@ -1158,7 +1159,7 @@ export class ShadowDatabase {
     return row ? mapRun(row) : null;
   }
 
-  listRuns(filters?: { status?: string; repoId?: string; archived?: boolean; limit?: number; offset?: number }): RunRecord[] {
+  listRuns(filters?: { status?: string; repoId?: string; parentRunId?: string; archived?: boolean; limit?: number; offset?: number }): RunRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -1169,6 +1170,10 @@ export class ShadowDatabase {
     if (filters?.repoId) {
       clauses.push('repo_id = ?');
       values.push(filters.repoId);
+    }
+    if (filters?.parentRunId) {
+      clauses.push('parent_run_id = ?');
+      values.push(filters.parentRunId);
     }
     // Default: hide archived unless explicitly requested
     if (filters?.archived === true) {
@@ -1212,6 +1217,17 @@ export class ShadowDatabase {
     if (sets.length === 0) return;
     values.push(id);
     this.database.prepare(`UPDATE runs SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  }
+
+  /**
+   * Transition a run's status with validation.
+   * Throws RunTransitionError if the transition is invalid.
+   */
+  transitionRun(id: string, to: import('./models.js').RunRecord['status']): void {
+    const run = this.getRun(id);
+    if (!run) throw new Error(`Run ${id} not found`);
+    assertTransition(run.status, to as RunStatus);
+    this.updateRun(id, { status: to });
   }
 
   // --- Jobs ---

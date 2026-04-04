@@ -251,12 +251,21 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       }
       const runningRuns = _db.listRuns({ status: 'running' });
       for (const run of runningRuns) {
+        _db.transitionRun(run.id, 'failed');
         _db.updateRun(run.id, {
-          status: 'failed',
           errorSummary: 'orphaned — daemon restarted',
           finishedAt: new Date().toISOString(),
         });
         console.error(`[daemon] Marked orphaned run ${run.id.slice(0, 8)} as failed (daemon restart)`);
+      }
+      const queuedRuns = _db.listRuns({ status: 'queued' });
+      for (const run of queuedRuns) {
+        _db.transitionRun(run.id, 'failed');
+        _db.updateRun(run.id, {
+          errorSummary: 'orphaned — daemon restarted',
+          finishedAt: new Date().toISOString(),
+        });
+        console.error(`[daemon] Marked orphaned queued run ${run.id.slice(0, 8)} as failed (daemon restart)`);
       }
     }
     cleanOrphanedJobsOnStartup();
@@ -535,7 +544,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const elapsed = sr.startedAt ? Date.now() - new Date(sr.startedAt).getTime() : 0;
         if (elapsed > STALE_RUN_MS) {
           console.error(`[daemon] Marked stale run ${sr.id.slice(0, 8)} as failed (${Math.round(elapsed / 60000)}m)`);
-          _db.updateRun(sr.id, { status: 'failed', errorSummary: 'Stale: exceeded 10min timeout', finishedAt: new Date().toISOString() });
+          _db.transitionRun(sr.id, 'failed');
+          _db.updateRun(sr.id, { errorSummary: 'Stale: exceeded 10min timeout', finishedAt: new Date().toISOString() });
         }
       }
 

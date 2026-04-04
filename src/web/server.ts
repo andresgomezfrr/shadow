@@ -356,23 +356,20 @@ async function handleApi(
       if (!run) return json(res, { error: 'Run not found' }, 404);
 
       if (action === 'discard') {
-        if (run.status !== 'completed') return json(res, { error: 'Run must be completed' }, 400);
+        try { db.transitionRun(runId, 'discarded'); } catch { return json(res, { error: 'Run must be completed to discard' }, 400); }
         let discardNote: string | undefined;
         try { const body = JSON.parse(await readBody(req)); discardNote = body.note; } catch { /* ok */ }
-        db.updateRun(runId, { status: 'discarded' });
         db.createFeedback({ targetKind: 'run', targetId: runId, action: 'discard', note: discardNote });
         return json(res, { ok: true, status: 'discarded' });
       }
 
       if (action === 'executed-manual') {
-        if (run.status !== 'completed') return json(res, { error: 'Run must be completed' }, 400);
-        db.updateRun(runId, { status: 'executed_manual' });
+        try { db.transitionRun(runId, 'executed_manual'); } catch { return json(res, { error: 'Run must be completed' }, 400); }
         return json(res, { ok: true, status: 'executed_manual' });
       }
 
-      if (action === 'execute' && run.status !== 'completed') return json(res, { error: 'Run must be completed' }, 400);
-
       if (action === 'execute') {
+        try { db.transitionRun(runId, 'executed'); } catch { return json(res, { error: 'Run must be completed to execute' }, 400); }
         const childRun = db.createRun({
           repoId: run.repoId,
           repoIds: run.repoIds,
@@ -381,7 +378,6 @@ async function handleApi(
           kind: 'execution',
           prompt: `Implement the following plan. Write the actual code changes.\n\n${run.resultSummaryMd}`,
         });
-        db.updateRun(runId, { status: 'executed' });
         return json(res, { runId: childRun.id, status: 'queued' });
       }
 

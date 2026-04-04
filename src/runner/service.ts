@@ -9,6 +9,7 @@ import type { RunRecord } from '../storage/models.js';
 import type { ObjectivePack, RepoPack } from '../backend/types.js';
 import { selectAdapter } from '../backend/index.js';
 import { ConfidenceEvaluationSchema, type ConfidenceEvaluation } from './schemas.js';
+import { aggregateParentStatus } from './state-machine.js';
 
 /**
  * Personality prompt prefixes by level (1-5).
@@ -58,10 +59,8 @@ export class RunnerService {
     const now = new Date().toISOString();
 
     // 2. Claim it
-    this.db.updateRun(run.id, {
-      status: 'running',
-      startedAt: now,
-    });
+    this.db.transitionRun(run.id, 'running');
+    this.db.updateRun(run.id, { startedAt: now });
 
     try {
       // 3. Build ObjectivePack with multi-repo support
@@ -247,8 +246,8 @@ export class RunnerService {
 
       // Update run status — child execution runs go straight to 'executed' (no review needed)
       const finalStatus = isSuccess ? (run.parentRunId ? 'executed' : 'completed') : 'failed';
+      this.db.transitionRun(run.id, finalStatus);
       this.db.updateRun(run.id, {
-        status: finalStatus,
         resultSummaryMd: result.summaryHint ?? result.output,
         errorSummary: isSuccess ? null : (result.output.slice(0, 500) || 'Execution failed'),
         artifactDir,
@@ -256,12 +255,14 @@ export class RunnerService {
         finishedAt,
       });
 
-      // If this is a child execution run, update parent status accordingly
+      // Propagate to parent via multi-child aggregation
       if (run.parentRunId) {
-        this.db.updateRun(run.parentRunId, {
-          status: isSuccess ? 'executed' : 'failed',
-          finishedAt,
-        });
+        const siblings = this.db.listRuns({ parentRunId: run.parentRunId });
+        const parentStatus = aggregateParentStatus(siblings);
+        if (parentStatus !== null) {
+          this.db.transitionRun(run.parentRunId, parentStatus);
+          this.db.updateRun(run.parentRunId, { finishedAt });
+        }
       }
 
       // Record LLM usage
@@ -310,15 +311,20 @@ export class RunnerService {
       const finishedAt = new Date().toISOString();
       const errorMessage = error instanceof Error ? error.message : String(error);
 
+      this.db.transitionRun(run.id, 'failed');
       this.db.updateRun(run.id, {
-        status: 'failed',
         errorSummary: errorMessage.slice(0, 500),
         finishedAt,
       });
 
-      // If child failed, mark parent as failed too
+      // Propagate failure to parent via multi-child aggregation
       if (run.parentRunId) {
-        this.db.updateRun(run.parentRunId, { status: 'failed', finishedAt });
+        const siblings = this.db.listRuns({ parentRunId: run.parentRunId });
+        const parentStatus = aggregateParentStatus(siblings);
+        if (parentStatus !== null) {
+          this.db.transitionRun(run.parentRunId, parentStatus);
+          this.db.updateRun(run.parentRunId, { finishedAt });
+        }
       }
 
       // Apply failure trust delta
