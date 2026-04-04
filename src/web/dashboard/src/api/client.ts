@@ -8,7 +8,10 @@ import type {
   Contact,
   Digest,
   Project,
+  ProjectDetail,
   System,
+  SystemDetail,
+  EnrichmentItem,
   UsageSummary,
   Heartbeat,
   Job,
@@ -74,6 +77,15 @@ export const fetchProjects = (status?: string) =>
 
 export const fetchSystems = (kind?: string) =>
   api<System[]>(`/api/systems${qs({ kind })}`);
+
+export const fetchProjectDetail = (id: string) =>
+  api<ProjectDetail>(`/api/projects/${id}`);
+
+export const fetchSystemDetail = (id: string) =>
+  api<SystemDetail>(`/api/systems/${id}`);
+
+export const fetchEnrichment = (params?: { source?: string; limit?: number; offset?: number }) =>
+  api<{ items: EnrichmentItem[]; total: number }>(`/api/enrichment${qs({ source: params?.source, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
 export const fetchUsage = (period: 'day' | 'week' | 'month' = 'week') =>
   api<UsageSummary>(`/api/usage?period=${period}`);

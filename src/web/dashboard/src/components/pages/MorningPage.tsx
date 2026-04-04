@@ -10,6 +10,8 @@ import { MorningSuggestions } from './morning/MorningSuggestions';
 import { MorningObservations } from './morning/MorningObservations';
 import { MorningRepos } from './morning/MorningRepos';
 import { MorningDigest } from './morning/MorningDigest';
+import { MorningProjects } from './morning/MorningProjects';
+import { MorningEnrichment } from './morning/MorningEnrichment';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -82,6 +84,16 @@ export function MorningPage() {
       {/* Metrics + Jobs — full width */}
       <MorningMetrics activity={data.activity} tokens={data.tokens} />
       <MorningJobs jobs={data.recentJobs} />
+
+      {/* Active projects — scannable at a glance */}
+      {data.activeProjects && data.activeProjects.length > 0 && (
+        <MorningProjects projects={data.activeProjects} />
+      )}
+
+      {/* External context from MCP enrichment */}
+      {data.recentEnrichment && data.recentEnrichment.length > 0 && (
+        <MorningEnrichment items={data.recentEnrichment} />
+      )}
 
       {/* 2-column grid — reduce scroll */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-0">

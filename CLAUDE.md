@@ -10,12 +10,17 @@ Shadow is a local-first engineering companion that runs as a background daemon, 
 User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
                                     ├── SQLite DB (~/.shadow/shadow.db)
                                     ├── Web dashboard (React, localhost:3700)
-                                    ├── Heartbeat (every 15min)
-                                    │   ├── observe (git, programmatic)
+                                    ├── Heartbeat (every 30min)
+                                    │   ├── detect active projects
                                     │   ├── analyze (LLM, creates memories)
-                                    │   ├── suggest (LLM, creates suggestions)
-                                    │   └── consolidate (memory maintenance)
-                                    ├── interactions.jsonl (PostToolUse hook)
+                                    │   └── observe (LLM, new observations)
+                                    ├── Daemon jobs
+                                    │   ├── suggest (LLM, project-aware)
+                                    │   ├── consolidate (memory maintenance, 6h)
+                                    │   ├── reflect (soul reflection, daily)
+                                    │   ├── remote-sync (git ls-remote, 30min)
+                                    │   └── context-enrich (MCP enrichment)
+                                    ├── Hooks (conversations + tool use)
                                     └── launchd service (auto-start, auto-restart)
 ```
 
@@ -31,7 +36,7 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 | CLI | Commander.js 14 |
 | Validation | Zod 4 |
 | LLM Backend | Claude CLI (`--print --output-format json`) or Agent SDK |
-| MCP | JSON-RPC over stdio (29 tools) |
+| MCP | JSON-RPC over stdio (52 tools) |
 | Dashboard | React 19, Vite, Tailwind CSS 4, React Router 7 |
 | Daemon | launchd (macOS), KeepAlive=true |
 
@@ -47,19 +52,23 @@ shadow/
 │   │   └── load-config.ts        # SHADOW_* env var mapping
 │   ├── storage/
 │   │   ├── database.ts           # ShadowDatabase class (all CRUD + FTS5 search)
-│   │   ├── migrations.ts         # Schema v1 + v2 (12 tables, FTS5, triggers)
-│   │   ├── models.ts             # 14 record types
+│   │   ├── migrations.ts         # Schema v1-v30 (19 tables, FTS5, triggers, vec0)
+│   │   ├── models.ts             # 16 record types
 │   │   └── index.ts              # Re-exports
 │   ├── observation/
 │   │   ├── watcher.ts            # Git observation engine (4 kinds, dedup)
-│   │   └── patterns.ts           # Cross-observation pattern detection
+│   │   ├── patterns.ts           # Cross-observation pattern detection
+│   │   ├── mcp-discovery.ts      # Discover user MCP servers from settings.json
+│   │   └── remote-sync.ts        # Git ls-remote + selective fetch
 │   ├── memory/
 │   │   ├── layers.ts             # 5-layer maintenance (core/hot/warm/cool/cold)
 │   │   └── retrieval.ts          # FTS5 search, context-aware memory loading
 │   ├── heartbeat/
-│   │   ├── state-machine.ts      # wake→observe→cleanup→analyze→suggest→consolidate→notify→idle
+│   │   ├── state-machine.ts      # wake→cleanup→analyze→notify→idle
 │   │   ├── activities.ts         # Phase implementations (LLM prompts, memory creation)
-│   │   └── schemas.ts            # Zod schemas for LLM output validation
+│   │   ├── schemas.ts            # Zod schemas for LLM output validation
+│   │   ├── project-detection.ts  # Active project detection + momentum scoring
+│   │   └── enrichment.ts         # 2-phase MCP enrichment (plan + execute)
 │   ├── profile/
 │   │   ├── trust.ts              # 5 trust levels, 10+ trust delta events
 │   │   └── user-profile.ts       # Work hours, commit patterns, energy/mood detection
@@ -81,10 +90,10 @@ shadow/
 │   │   ├── queue.ts              # Proactivity-based delivery filtering
 │   │   └── types.ts              # 9 event kinds with priority mapping
 │   ├── mcp/
-│   │   ├── server.ts             # 29 MCP tools (read + trust-gated write)
+│   │   ├── server.ts             # 52 MCP tools (read + trust-gated write)
 │   │   └── stdio.ts              # JSON-RPC transport
 │   └── web/
-│       ├── server.ts             # HTTP API server (15+ endpoints)
+│       ├── server.ts             # HTTP API server (20+ endpoints)
 │       └── dashboard/            # React app (see below)
 ├── scripts/                      # Portable hook scripts for plugin
 ├── hooks/                        # Plugin hooks.json
@@ -120,45 +129,50 @@ src/web/dashboard/
 
 | Route | Page | Purpose |
 |-------|------|---------|
-| `/morning` | Morning | Daily brief: metrics, memories learned, runs to review, suggestions, observations |
+| `/morning` | Morning | Daily brief: active projects, enrichment, metrics, runs, memories, observations, suggestions |
 | `/dashboard` | Dashboard | Overview metrics grid |
 | `/profile` | Profile | Edit displayName, timezone, proactivity, personality, LLM models |
 | `/memories` | Memories | Search + layer filter (URL-persisted) + pagination + expandable list |
 | `/suggestions` | Suggestions | Filter tabs (status + kind, URL-persisted), pagination, accept/dismiss with reason, scores with tooltips, repo context, deep links |
 | `/observations` | Observations | Filter by status (URL-persisted), pagination, votes, ack/resolve/reopen, enriched context, deep links |
 | `/repos` | Repos | Registered repos with last observed |
+| `/projects` | Projects | Clickable cards with observation/suggestion counters, drill-down to detail |
+| `/projects/:id` | ProjectDetail | Header, entity chips, observations, suggestions, memories, enrichment, momentum |
 | `/team` | Team | Contacts management |
-| `/systems` | Systems | Infrastructure registry |
+| `/systems` | Systems | Clickable cards, drill-down to detail |
+| `/systems/:id` | SystemDetail | Operational info, related projects, observations, memories |
 | `/usage` | Usage | Token usage by period and model |
-| `/heartbeats` | Heartbeats | Summary metrics, running phase display, trigger button, countdown, skip/active differentiation |
+| `/jobs` | Jobs | Job history with type/status filtering, pagination |
 | `/runs` | Runs | Filter tabs (to review default), execute/session/discard/manual, worktree info, markdown results |
+| `/digests` | Digests | Generated digests by kind |
 | `/events` | Events | Pending event queue |
-| `/emoji-guide` | Emoji Guide | Reference for all status line and dashboard emojis |
+| `/guide` | Guide | Modular reference: overview, concepts, CLI, MCP tools, status line, config |
 
 ## Database Schema
 
-**18 tables** (SQLite, WAL mode, busy_timeout=5000ms for concurrency):
+**19 tables** (SQLite, WAL mode, busy_timeout=5000ms for concurrency):
 
 | Table | Purpose | Key columns |
 |-------|---------|-------------|
-| `repos` | Tracked repos | name, path (unique), default_branch, test/lint/build commands |
+| `repos` | Tracked repos | name, path (unique), default_branch, test/lint/build commands, last_fetched_at |
 | `projects` | Groups of repos+systems | kind (long-term/sprint/task), status, repo_ids_json, system_ids_json |
 | `user_profile` | Single-row profile | trust_level (1-5), trust_score (0-100), proactivity_level (1-10), personality_level (1-5), focus_mode |
-| `memories` | Layered memory | layer, scope, kind, entities_json, FTS5+vector indexed |
-| `observations` | LLM-derived facts | source_kind, kind, entities_json, repo_ids_json, votes, severity |
+| `memories` | Layered memory | layer, scope, kind, entities_json, memory_type (episodic/semantic), FTS5+vector indexed |
+| `observations` | LLM-derived facts | source_kind, kind (incl. cross_project), entities_json, repo_ids_json, votes, severity |
 | `suggestions` | LLM proposals | impact/confidence/risk scores, status, entities_json, repo_ids_json |
 | `jobs` | Job execution log | type, phase, status, llm_calls, tokens_used, duration_ms |
 | `interactions` | User interactions | sentiment, topics, trust_delta |
 | `event_queue` | Notifications | kind, priority (1-10), delivered flag |
-| `runs` | Task execution | status (queued/running/completed/failed), repo_ids_json |
+| `runs` | Task execution | status, snapshot_ref, result_ref, diff_stat, verification_json, verified |
 | `audit_events` | Append-only trail | actor, action, target_kind, target_id |
 | `llm_usage` | Token tracking | source, model, input_tokens, output_tokens |
 | `systems` | Infrastructure | kind (infra/service/database/queue/monitoring), url, health_check |
 | `contacts` | Team members | role, team, email, slack_id, github_handle |
 | `feedback` | User feedback | target_kind, target_id, action, note |
-| `memories_fts` | FTS5 virtual table | title, body_md, tags — auto-synced via triggers |
-| `observations_fts` | FTS5 virtual table | title, detail — auto-synced via triggers |
-| `suggestions_fts` | FTS5 virtual table | title, summary_md — auto-synced via triggers |
+| `entity_relations` | Entity graph | source_type, source_id, relation, target_type, target_id, confidence |
+| `enrichment_cache` | MCP enrichment data | source, entity_type, entity_id, summary, content_hash, reported, expires_at |
+| `digests` | Generated reports | kind, period_start, period_end, content_md, model |
+| `*_fts` | FTS5 virtual tables | title, body_md/detail/summary_md — auto-synced via triggers |
 | `*_vectors` | vec0 virtual tables | 384-dim embeddings for memories, observations, suggestions |
 
 ## Entity Linking
@@ -177,13 +191,13 @@ New entities go through `checkDuplicate()` before creation:
 - Decision: **skip** (>0.85), **update** existing (>0.70), or **create** new
 - Thresholds calibrated per entity type. Suggestions also check against dismissed (>0.75 = blocked).
 
-## MCP Tools (42 total)
+## MCP Tools (52 total)
 
-### Read-only (19, no trust gate)
-`shadow_check_in`, `shadow_status`, `shadow_repos`, `shadow_projects`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_search`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`, `shadow_daily_summary`, `shadow_feedback`, `shadow_soul`
+### Read-only (25, no trust gate)
+`shadow_check_in`, `shadow_status`, `shadow_repos`, `shadow_projects`, `shadow_active_projects`, `shadow_project_detail`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_search`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`, `shadow_daily_summary`, `shadow_feedback`, `shadow_soul`, `shadow_digests`, `shadow_digest`, `shadow_enrichment_config`, `shadow_enrichment_query`
 
-### Write (22, trust >= 1)
-`shadow_repo_add`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`
+### Write (26, trust >= 1)
+`shadow_repo_add`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`, `shadow_relation_add`, `shadow_relation_list`, `shadow_relation_remove`
 
 ### Write (1, trust >= 2)
 `shadow_observe`
@@ -222,15 +236,20 @@ All memory is **on-demand** — never auto-loaded into prompts. FTS5 search find
 
 ## Status Line Emojis
 
-| Emoji | State |
-|-------|-------|
-| 😴 | Daemon not running |
-| 😊 | Ready (idle) |
-| 👀 | Watching (few interactions) |
-| 📝 | Learning (many interactions) |
-| 🎯 | Focus mode |
-| 🧠 | Heartbeat: analyzing |
-| 💡 | Heartbeat: suggesting |
+| Emoji/State | Color | Meaning |
+|-------------|-------|---------|
+| `{-_-}z` | dim | Daemon not running |
+| `{•‿•}` | purple | Ready (idle) |
+| `{•‿•}` | cyan | Watching (few interactions) |
+| `{°_°}📚` | cyan | Learning (many interactions) |
+| `{•̀_•́}` | purple | Focus mode |
+| `{°_°}..` | yellow | Analyzing (heartbeat) |
+| `{•ᴗ•}💡` | green | Suggesting |
+| `{•_•}⚙` | yellow | Consolidating |
+| `{-_-}~` | blue | Reflecting (soul) |
+| `{•_•}🔗` | mint/teal | Enriching (MCP context) |
+| `{•_•}🔄` | pink | Syncing (git remote) |
+| `📋 name` | — | Active project indicator |
 
 Trust badges: 🔍 observer, 💬 advisor, 🤝 assistant, ⚡️ partner, 👾 shadow
 
@@ -343,10 +362,11 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 
 ## Current State (as of 2026-04-04)
 
-- **42 MCP tools** (19 read + 22 write L1 + 1 write L2) — includes projects, unified search, paginated listings
+- **52 MCP tools** (25 read + 26 write L1 + 1 write L2) — includes projects, project-aware queries, enrichment, unified search
 - **4 hooks** (SessionStart, PostToolUse, UserPromptSubmit, Stop)
-- **Ghost mascot** `{•‿•}` in status line — 13 states × 3 variants, ANSI colors by state
-- **Job system** — typed jobs: heartbeat (15min), suggest (reactive), consolidate (6h), reflect (24h). Schedule visible in dashboard.
+- **Ghost mascot** `{•‿•}` in status line — 15 states × 3 variants, 9 ANSI colors (incl. mint/teal, pink)
+- **Active project** in status line — `📋 project-name` shows daemon-detected active project
+- **Job system** — typed jobs: heartbeat (30min), suggest (reactive), consolidate (6h), reflect (24h), remote-sync (30min), context-enrich (2h). Schedule visible in dashboard.
 - **Observe-cleanup phase** — MCP-powered cleanup of obsolete/duplicate observations before generating new ones
 - **Reflect job** — daily soul reflection with Opus. Synthesizes feedback + memories into coherent developer understanding
 - **Daemon** — launchd, graceful shutdown, stale job detector (every tick, 10min threshold), graceful drain (60s)
@@ -356,10 +376,15 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 - **Suggestion pipeline** — semantic dedup vs pending+dismissed+accepted, accept creates Run, plan by Claude with MCP + filesystem, execute/session/discard/executed-manual/retry states
 - **Runner with MCP delegation** — briefing-only prompt, Claude reads files + searches memories. `--allowedTools "mcp__shadow__*"`. Execution runs also get `Edit,Write,Bash`.
 - **Trust L3 complete** — confidence gate (Sonnet high) + auto-execute if no doubts + draft PR button. Schema v21 (confidence, doubts_json) + v22 (pr_url). L4+ designed in docs/plan-trust-levels.md.
-- **Smart analyze** — 3 LLM calls: extract (memories + mood) + observe-cleanup (MCP resolve) + observe (new observations). Soul reflection injected.
-- **Smart suggest** — separate job, no operational suggestions, dedup, learns from feedback patterns
+- **Project-aware analyze** — detects active projects before heartbeat, injects project context (repos, systems, observations) into extract/observe/suggest prompts. Cross-project observations auto-linked via entities_json.
+- **Smart analyze** — 3 LLM calls: extract (memories + mood) + observe-cleanup (MCP resolve) + observe (new observations, incl. cross_project kind). Soul reflection injected.
+- **Smart suggest** — separate job, project-aware, no operational suggestions, dedup, learns from feedback patterns
+- **MCP Enrichment** — 2-phase: planning (Sonnet) → execution (Opus, `mcp__*` access to all user MCPs). Content hash dedup, 24h TTL. Configurable interval. Results fed into heartbeat context.
+- **Project detection** — `detectActiveProjects()` scores projects by file interactions (×2), conversation mentions (×1), linked observations (×0.5). Top 3 with threshold ≥ 3. `computeProjectMomentum()` for 7-day trend.
+- **Remote sync** — periodic `git ls-remote` detects remote changes, selective fetch. Results injected as sensor data into heartbeat.
 - **CLI adapter** — async spawn, prompt via stdin (avoids ARG_MAX), effort levels per phase, stderr on failure, `activeChild` tracking for graceful SIGTERM
-- **Morning page** — daily brief with yesterday's digest, 2-column grid, recent jobs, memories learned (clickable), runs to review, suggestions, observations. "View all" links.
+- **Morning page** — daily brief with active projects (MorningProjects), enrichment items (MorningEnrichment), yesterday's digest, 2-column grid, recent jobs, memories, runs, suggestions, observations.
+- **Project/System detail pages** — `/projects/:id` with entity chips, counts, observations, suggestions, memories, enrichment. `/systems/:id` with operational info, related projects. Clickable cards on list pages.
 - **Dashboard UX overhaul** — RunsPage: status borders + pipeline + action hierarchy + collapsible details. SuggestionsPage: expandable cards + inline dismiss + ScoreBar. ObservationsPage: severity borders + prominent actions + severity filter. DashboardPage: clickable MetricCards with href + trend arrows. MorningPage: 2-column grid + daily digest.
 - **New components** — ConfidenceIndicator (3-dot ●●●/●●○/●○○), RunPipeline (plan→exec→PR), ScoreBar (impact/confidence/risk), MorningDigest. FilterTabs: optional dotColor + activeClass. MetricCard: optional href + trend.
 - **Dashboard filters** — `useFilterParams` hook syncs all filters with URL search params. Server-side filtering + pagination (`offset`/`limit`) on all list endpoints. `Pagination` component on Suggestions, Observations, Memories, Runs, Jobs pages. Colored FilterTabs per status.
@@ -373,9 +398,12 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 All pending improvements, features, and known issues are tracked in [`BACKLOG.md`](BACKLOG.md).
 
 ### Architecture notes for new sessions
-- **Heartbeat = 3 LLM calls**: extract (memories + mood, JSON-only), observe-cleanup (MCP, resolves stale obs), observe (new observations, JSON-only)
-- **Suggest = separate job** triggered after heartbeat with activity. Opus + effort high.
+- **Heartbeat = 3 LLM calls**: extract (memories + mood, JSON-only), observe-cleanup (MCP, resolves stale obs), observe (new observations incl. cross_project, JSON-only). Active projects + enrichment context injected.
+- **Suggest = separate job** triggered after heartbeat with activity. Opus + effort high. Project-aware prompts.
 - **Reflect = daily job** that evolves the soul reflection. Opus + effort high. Inline context (not MCP).
+- **Enrich = configurable job** (default 2h). 2-phase: plan (Sonnet) → execute (Opus, `mcp__*`). Results cached in `enrichment_cache` with content hash dedup + 24h TTL.
+- **Remote sync = periodic job** (default 30min). `git ls-remote` + selective fetch. Results passed as sensor data to heartbeat.
+- **Project detection** runs before each heartbeat. `detectActiveProjects()` uses 3 signals: file paths→repos→projects (×2), conversation mentions (×1), linked observations (×0.5). Top 3 with threshold ≥ 3. Persisted in `daemon.json`.
 - **Runner = MCP delegation** — briefing-only prompt, Claude reads files + uses shadow_* MCP tools himself.
 - **Prompt via stdin** — all LLM calls pass prompt via stdin pipe, not CLI args (avoids ARG_MAX).
 - **`--allowedTools "mcp__shadow__*"`** on all CLI spawns — Claude can use Shadow's own tools without permission. Execution runs also get `Edit,Write,Bash` for code changes.
@@ -398,3 +426,8 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Pagination** — DB `count*` methods for all entities. API returns `{ items, total }`. Migration v12 (feedback thumbs index) + v13 (suggestions kind, observations status, jobs type indexes).
 - **Draft PR** — endpoint validates branch exists → `git push` → `gh pr create --draft`. Schema v22 (pr_url). Button disabled without GitHub remote.
 - **Severity filter** — ObservationsPage supports server-side severity filtering (high/warning/info). DB `listObservations` + `countObservations` accept `severity` param.
+- **MCP discovery** — `discoverMcpServerNames()` reads `~/.claude/settings.json` → mcpServers keys, excludes 'shadow'. Used by enrichment planner.
+- **Enrichment cache** — migration v30. `upsertEnrichment` deduplicates by content_hash. `expireStaleEnrichment` removes expired entries. `buildEnrichmentContext()` marks items as reported after injecting into heartbeat.
+- **Project-aware MCP tools** — `shadow_observations` and `shadow_suggestions` accept `projectId` filter (entity link match). `shadow_active_projects` returns detected active projects with momentum. `shadow_project_detail` returns rich project view with counts.
+- **Status line active project** — `shadow status --json` includes `activeProject` (top project from daemon detection). Statusline shows `📋 project-name`.
+- **Ghost mascot new states** — `enriching` (mint/teal, `\033[38;5;48m`) and `syncing` (pink, `\033[38;5;219m`) for enrich/remote-sync daemon phases.

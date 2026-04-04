@@ -161,7 +161,7 @@ export const MCP_CATEGORIES: McpCategory[] = [
   {
     name: 'Observations',
     tools: [
-      { name: 'shadow_observations', description: 'List observations with pagination. Default: active, limit 20.', trust: 0, readOnly: true },
+      { name: 'shadow_observations', description: 'List observations with pagination. Filter by repoId, projectId, kind, status. Kinds: improvement, risk, opportunity, pattern, infrastructure, cross_project.', trust: 0, readOnly: true },
       { name: 'shadow_observe', description: 'Trigger an observation cycle on repos.', trust: 2, readOnly: false },
       { name: 'shadow_observation_ack', description: 'Acknowledge an observation (mark as seen).', trust: 1, readOnly: false },
       { name: 'shadow_observation_resolve', description: 'Resolve an observation with optional reason.', trust: 1, readOnly: false },
@@ -171,7 +171,7 @@ export const MCP_CATEGORIES: McpCategory[] = [
   {
     name: 'Suggestions',
     tools: [
-      { name: 'shadow_suggestions', description: 'List suggestions with pagination. Default: pending, limit 20.', trust: 0, readOnly: true },
+      { name: 'shadow_suggestions', description: 'List suggestions with pagination. Filter by status, projectId, repoId. Default: pending, limit 20.', trust: 0, readOnly: true },
       { name: 'shadow_suggest_accept', description: 'Accept a suggestion (creates a run).', trust: 1, readOnly: false },
       { name: 'shadow_suggest_dismiss', description: 'Dismiss a suggestion with optional note.', trust: 1, readOnly: false },
       { name: 'shadow_suggest_snooze', description: 'Snooze a suggestion for a given number of hours.', trust: 1, readOnly: false },
@@ -181,7 +181,9 @@ export const MCP_CATEGORIES: McpCategory[] = [
     name: 'Repos & Projects',
     tools: [
       { name: 'shadow_repos', description: 'List tracked repositories.', trust: 0, readOnly: true },
-      { name: 'shadow_projects', description: 'List tracked projects.', trust: 0, readOnly: true },
+      { name: 'shadow_projects', description: 'List tracked projects. Filter by status.', trust: 0, readOnly: true },
+      { name: 'shadow_active_projects', description: 'Returns projects detected as actively being worked on, with activity scores and momentum.', trust: 0, readOnly: true },
+      { name: 'shadow_project_detail', description: 'Detailed project view: linked repos, systems, contacts, counts, top observations/suggestions/memories, enrichment, momentum.', trust: 0, readOnly: true },
       { name: 'shadow_repo_add', description: 'Register a new repository to watch.', trust: 1, readOnly: false },
       { name: 'shadow_repo_remove', description: 'Stop watching a repository.', trust: 1, readOnly: false },
       { name: 'shadow_project_add', description: 'Create a project (groups repos + systems + contacts).', trust: 1, readOnly: false },
@@ -206,6 +208,13 @@ export const MCP_CATEGORIES: McpCategory[] = [
       { name: 'shadow_relation_list', description: 'List entity relationships. Filter by source/target.', trust: 0, readOnly: true },
       { name: 'shadow_relation_add', description: 'Add a relationship between entities (e.g. repo depends_on system).', trust: 1, readOnly: false },
       { name: 'shadow_relation_remove', description: 'Remove an entity relationship.', trust: 1, readOnly: false },
+    ],
+  },
+  {
+    name: 'Enrichment',
+    tools: [
+      { name: 'shadow_enrichment_config', description: 'View enrichment config: available MCP servers, enabled status, interval, cache stats.', trust: 0, readOnly: true },
+      { name: 'shadow_enrichment_query', description: 'Query enrichment cache. Filter by source, entityName, unreported status.', trust: 0, readOnly: true },
     ],
   },
   {
@@ -279,6 +288,10 @@ export const CONFIG_ADVANCED: ConfigVar[] = [
   { envVar: 'SHADOW_THOUGHT_INTERVAL_MIN_MS', description: 'Min interval between thoughts', defaultVal: '900000 (15min)' },
   { envVar: 'SHADOW_THOUGHT_INTERVAL_MAX_MS', description: 'Max interval between thoughts', defaultVal: '1800000 (30min)' },
   { envVar: 'SHADOW_MAX_WATCHED_REPOS', description: 'Maximum repos Shadow can watch', defaultVal: '30' },
+  { envVar: 'SHADOW_REMOTE_SYNC_ENABLED', description: 'Enable periodic git remote sync (ls-remote)', defaultVal: 'true' },
+  { envVar: 'SHADOW_REMOTE_SYNC_INTERVAL_MS', description: 'Remote sync interval', defaultVal: '1800000 (30min)' },
+  { envVar: 'SHADOW_ENRICHMENT_ENABLED', description: 'Enable MCP-based context enrichment', defaultVal: 'false' },
+  { envVar: 'SHADOW_ENRICHMENT_INTERVAL_MS', description: 'Enrichment cycle interval', defaultVal: '7200000 (2h)' },
 ];
 
 // ── Trust Levels ───────────────────────────────────────

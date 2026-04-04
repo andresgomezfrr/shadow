@@ -32,18 +32,23 @@ export function GuideOverview() {
       {/* Architecture */}
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-3">How it Works</h2>
-        <div className="bg-bg rounded-lg px-4 py-3 font-mono text-xs text-text-dim mb-4 space-y-1 overflow-x-auto">
-          <div className="text-text">You &larr; Claude CLI (MCP tools) &rarr; Shadow daemon (:3700)</div>
-          <div className="pl-[36ch]">&boxvr;&boxh; SQLite DB (~/.shadow/shadow.db)</div>
-          <div className="pl-[36ch]">&boxvr;&boxh; Web dashboard (this page)</div>
-          <div className="pl-[36ch]">&boxvr;&boxh; Heartbeat (every 15min)</div>
-          <div className="pl-[36ch]">&boxv;  &boxvr;&boxh; observe (git, repo context)</div>
-          <div className="pl-[36ch]">&boxv;  &boxvr;&boxh; analyze (LLM, creates memories)</div>
-          <div className="pl-[36ch]">&boxv;  &boxvr;&boxh; suggest (LLM, creates suggestions)</div>
-          <div className="pl-[36ch]">&boxv;  &boxur;&boxh; consolidate (memory maintenance)</div>
-          <div className="pl-[36ch]">&boxvr;&boxh; Hooks (capture conversations + tool use)</div>
-          <div className="pl-[36ch]">&boxur;&boxh; launchd service (auto-start, auto-restart)</div>
-        </div>
+        <pre className="bg-bg rounded-lg px-4 py-3 font-mono text-xs text-text-dim mb-4 overflow-x-auto whitespace-pre leading-relaxed">
+{`You \u2190 Claude CLI (MCP tools) \u2192 Shadow daemon (:3700)
+                                    \u251C\u2500 SQLite DB (~/.shadow/shadow.db)
+                                    \u251C\u2500 Web dashboard (this page)
+                                    \u251C\u2500 Heartbeat (every 30min)
+                                    \u2502  \u251C\u2500 observe (git, repo context)
+                                    \u2502  \u251C\u2500 analyze (LLM, creates memories)
+                                    \u2502  \u2514\u2500 observe (LLM, new observations)
+                                    \u251C\u2500 Daemon jobs
+                                    \u2502  \u251C\u2500 suggest (LLM, project-aware)
+                                    \u2502  \u251C\u2500 consolidate (memory maintenance, 6h)
+                                    \u2502  \u251C\u2500 reflect (soul reflection, daily)
+                                    \u2502  \u251C\u2500 remote-sync (git ls-remote, 30min)
+                                    \u2502  \u2514\u2500 enrich (MCP context gathering)
+                                    \u251C\u2500 Hooks (capture conversations + tool use)
+                                    \u2514\u2500 launchd service (auto-start, auto-restart)`}
+        </pre>
         <p className="text-sm text-text-dim">
           The daemon runs in the background. Hooks capture your Claude CLI interactions.
           The heartbeat cycle analyzes everything periodically and builds knowledge.
@@ -103,9 +108,10 @@ const STEPS: [string, string][] = [
 
 const DATA_FLOW: [string, string][] = [
   ['\uD83D\uDCBB', 'You work in Claude CLI as usual. Hooks capture your conversations and tool usage (async, zero impact).'],
-  ['\u2764\uFE0F', 'Every 15min, the heartbeat collects repo context (git status, branches, recent commits).'],
-  ['\uD83E\uDDE0', 'LLM analyzes conversations + interactions + repo context \u2192 creates memories and observations.'],
-  ['\uD83D\uDCA1', 'Separate LLM call generates suggestions based on memories + profile + feedback patterns.'],
-  ['\u267B\uFE0F', 'Memory consolidation promotes/demotes layers. Events queue notifications based on proactivity.'],
+  ['\u2764\uFE0F', 'Every 30min, the heartbeat collects repo context, detects active projects, and gathers sensor data.'],
+  ['\uD83E\uDDE0', 'LLM analyzes conversations + interactions + repo context + project topology \u2192 creates memories and observations.'],
+  ['\uD83D\uDCA1', 'Separate suggest job generates project-aware suggestions based on observations + memories + feedback.'],
+  ['\uD83D\uDD17', 'Enrichment job queries external MCP tools (calendar, monitoring, CI) for cross-system context.'],
+  ['\u267B\uFE0F', 'Consolidation promotes/demotes memory layers. Daily reflect synthesizes developer understanding.'],
   ['\uD83D\uDC7B', 'Next time you open Claude CLI, Shadow greets you with context, personality, and pending items.'],
 ];

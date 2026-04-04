@@ -155,6 +155,7 @@ ENERGY=$(echo "$STATUS" | grep -o '"energyLevel":"[^"]*"' | head -1 | cut -d'"' 
 # Extract thought from RAW_STATUS to preserve spaces in the text
 THOUGHT=$(echo "$RAW_STATUS" | grep -o '"thought": *"[^"]*"' | head -1 | sed 's/"thought": *"//;s/"$//')
 THOUGHT_EXPIRES=$(echo "$RAW_STATUS" | grep -o '"thoughtExpiresAt": *"[^"]*"' | head -1 | sed 's/"thoughtExpiresAt": *"//;s/"$//')
+ACTIVE_PROJECT=$(echo "$STATUS" | grep -o '"activeProject":"[^"]*"' | head -1 | cut -d'"' -f4)
 
 # Trust name + emoji
 case "$TRUST" in
@@ -178,6 +179,8 @@ CG="\\033[32m"  # green (positive)
 CB="\\033[34m"  # blue (reflecting)
 CR="\\033[31m"  # red (alert)
 CD="\\033[2m"   # dim (sleeping)
+CT="\\033[38;5;48m"   # mint/teal (enriching)
+CK="\\033[38;5;219m"  # pink (syncing)
 
 # Priority 1: Focus mode
 if [ "$FOCUS" = "focus" ]; then
@@ -217,6 +220,12 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
     *reflect*)
       case $V in 0) MASCOT="{-_-}~" ;; 1) MASCOT="{-‿-}~" ;; *) MASCOT="{-_-}💭" ;; esac
       MCOLOR="$CB"; ACTIVITY_TEXT="reflecting" ;;
+    *enrich*)
+      case $V in 0) MASCOT="{•_•}🔗" ;; 1) MASCOT="{•‿•}📡" ;; *) MASCOT="{•_•}🌐" ;; esac
+      MCOLOR="$CT"; ACTIVITY_TEXT="enriching" ;;
+    *remote-sync*|*sync*)
+      case $V in 0) MASCOT="{•_•}🔄" ;; 1) MASCOT="{•‿•}⬇️" ;; *) MASCOT="{•_•}📥" ;; esac
+      MCOLOR="$CK"; ACTIVITY_TEXT="syncing" ;;
     *)
       case $V in 0) MASCOT="{•_•}" ;; 1) MASCOT="{•‿•}" ;; *) MASCOT="{•_•}~" ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="working" ;;
@@ -293,6 +302,10 @@ if [ -n "$ACTIVITY_TEXT" ]; then
   LINE="$LINE $ACTIVITY_TEXT"
 fi
 LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI $TEMOJI"
+
+if [ -n "$ACTIVE_PROJECT" ] && [ "$ACTIVE_PROJECT" != "null" ]; then
+  LINE="$LINE | 📋 $ACTIVE_PROJECT"
+fi
 
 if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
   LINE="$LINE | 💡$SUGGESTIONS"
@@ -630,6 +643,9 @@ program
         }).length;
       } catch { /* no interactions file */ }
 
+      // Active project from daemon detection
+      const activeProject = (daemonState.activeProjects as Array<{ projectName: string }> | undefined)?.[0]?.projectName ?? null;
+
       return {
         trustLevel: profile.trustLevel,
         trustScore: profile.trustScore,
@@ -660,6 +676,7 @@ program
         energyLevel: profile.energyLevel ?? 'normal',
         thought: (daemonState.thought as string) ?? null,
         thoughtExpiresAt: (daemonState.thoughtExpiresAt as string) ?? null,
+        activeProject,
       };
     }),
   );

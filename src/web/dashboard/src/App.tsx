@@ -10,6 +10,8 @@ import { ReposPage } from './components/pages/ReposPage';
 import { TeamPage } from './components/pages/TeamPage';
 import { ProjectsPage } from './components/pages/ProjectsPage';
 import { SystemsPage } from './components/pages/SystemsPage';
+import { ProjectDetailPage } from './components/pages/ProjectDetailPage';
+import { SystemDetailPage } from './components/pages/SystemDetailPage';
 import { UsagePage } from './components/pages/UsagePage';
 import { JobsPage } from './components/pages/JobsPage';
 import { RunsPage } from './components/pages/RunsPage';
@@ -30,8 +32,10 @@ export function App() {
         <Route path="/observations" element={<ObservationsPage />} />
         <Route path="/repos" element={<ReposPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/projects/:id" element={<ProjectDetailPage />} />
         <Route path="/team" element={<TeamPage />} />
         <Route path="/systems" element={<SystemsPage />} />
+        <Route path="/systems/:id" element={<SystemDetailPage />} />
         <Route path="/usage" element={<UsagePage />} />
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/runs" element={<RunsPage />} />

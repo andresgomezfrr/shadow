@@ -30,6 +30,7 @@ export type DaemonState = {
   pendingActivityCount: number;
   watchedRepoCount: number;
   activeRunCount: number;
+  activeProjects: Array<{ projectId: string; projectName: string; score: number }>;
 };
 
 // --- Constants ---
@@ -111,6 +112,7 @@ function emptyState(): DaemonState {
     pendingActivityCount: 0,
     watchedRepoCount: 0,
     activeRunCount: 0,
+    activeProjects: [],
   };
 }
 
@@ -261,6 +263,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       pendingActivityCount: 0,
       watchedRepoCount: repoWatcher.watchedCount,
       activeRunCount: 0,
+      activeProjects: [],
     };
 
     writeDaemonState(config, state);
@@ -456,6 +459,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         _db.enqueueJob('remote-sync', { priority: 2 });
       }
 
+      // Context enrichment: periodic MCP-based external data gathering
+      if (config.enrichmentEnabled && shouldEnqueue('context-enrich', config.enrichmentIntervalMs)) {
+        _db.enqueueJob('context-enrich', { priority: 4 });
+      }
+
       // Digests: clock-time scheduled, timezone-aware
       const userTz = _db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
       for (const [jobType, schedule] of Object.entries(DIGEST_SCHEDULES)) {
@@ -478,6 +486,62 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
             await executeJob(claimed, async () => {
               const profile = _db.ensureProfile();
               const pendingEvts = _db.listPendingEvents().length;
+
+              // Detect active projects from recent interactions + conversations
+              let detectedProjects: Array<{ projectId: string; projectName: string; score: number }> = [];
+              try {
+                const { detectActiveProjects } = await import('../heartbeat/project-detection.js');
+                const { readFileSync } = await import('node:fs');
+                const { resolve } = await import('node:path');
+                const sinceIso = previousHeartbeat?.startedAt
+                  ? previousHeartbeat.startedAt
+                  : new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+                const sinceMs = new Date(sinceIso).getTime();
+
+                // Load recent interactions
+                let recentInteractions: Array<{ file: string; tool: string; ts: string }> = [];
+                try {
+                  const intPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
+                  const lines = readFileSync(intPath, 'utf8').trim().split('\n').filter(Boolean);
+                  recentInteractions = lines.flatMap(line => {
+                    try {
+                      const e = JSON.parse(line) as { ts: string; tool: string; file?: string };
+                      return new Date(e.ts).getTime() > sinceMs ? [{ ts: e.ts, tool: e.tool, file: e.file ?? '' }] : [];
+                    } catch { return []; }
+                  });
+                } catch { /* no file */ }
+
+                // Load recent conversations
+                let recentConvTexts: Array<{ text: string }> = [];
+                try {
+                  const convPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
+                  const lines = readFileSync(convPath, 'utf8').trim().split('\n').filter(Boolean);
+                  recentConvTexts = lines.flatMap(line => {
+                    try {
+                      const e = JSON.parse(line) as { ts: string; text?: string };
+                      return new Date(e.ts).getTime() > sinceMs && e.text ? [{ text: e.text }] : [];
+                    } catch { return []; }
+                  });
+                } catch { /* no file */ }
+
+                detectedProjects = detectActiveProjects(_db, recentInteractions, recentConvTexts);
+                if (detectedProjects.length > 0) {
+                  console.error(`[daemon] Active projects: ${detectedProjects.map(p => `${p.projectName}(${p.score.toFixed(0)})`).join(', ')}`);
+                }
+              } catch (e) {
+                console.error('[daemon] Project detection failed:', e instanceof Error ? e.message : e);
+              }
+
+              // Persist to daemon state
+              state.activeProjects = detectedProjects;
+
+              // Build enrichment context from cached MCP data
+              let enrichmentCtx: string | undefined;
+              try {
+                const { buildEnrichmentContext } = await import('../heartbeat/enrichment.js');
+                enrichmentCtx = buildEnrichmentContext(_db);
+              } catch { /* enrichment not available */ }
+
               setPhase('analyze');
               const { runHeartbeat } = await import('../heartbeat/state-machine.js');
               // Drain sensor data for heartbeat context
@@ -487,6 +551,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
                 config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts,
                 pendingGitEvents: gitEvents.length > 0 ? gitEvents : undefined,
                 remoteSyncResults: remoteSyncData.length > 0 ? remoteSyncData : undefined,
+                enrichmentContext: enrichmentCtx,
+                activeProjects: detectedProjects.length > 0 ? detectedProjects : undefined,
               });
               return {
                 llmCalls: result.llmCalls, tokensUsed: result.tokensUsed, phases: result.phases,
@@ -614,6 +680,21 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
               };
             });
           } catch (e) { console.error('[daemon] Remote sync failed:', e instanceof Error ? e.message : e); }
+          finally { setPhase(null); }
+
+        } else if (jobType === 'context-enrich') {
+          setPhase('enrich');
+          try {
+            await executeJob(claimed, async () => {
+              const { activityEnrich } = await import('../heartbeat/enrichment.js');
+              const result = await activityEnrich(_db, config);
+              return {
+                llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
+                phases: ['enrich'],
+                result: { itemsCollected: result.itemsCollected },
+              };
+            });
+          } catch (e) { console.error('[daemon] Enrichment failed:', e instanceof Error ? e.message : e); }
           finally { setPhase(null); }
         }
 

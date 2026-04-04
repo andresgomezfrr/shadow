@@ -241,11 +241,13 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     },
     {
       name: 'shadow_observations',
-      description: 'Returns observations with pagination. Default: active, limit 20, compact. Use detail=true for full context.',
+      description: 'Returns observations with pagination. Default: active, limit 20, compact. Use detail=true for full context. Filter by projectId to see all observations linked to a project.',
       inputSchema: {
         type: 'object',
         properties: {
           repoId: { type: 'string', description: 'Filter by repository ID' },
+          projectId: { type: 'string', description: 'Filter by project ID (returns observations linked to this project via entities)' },
+          kind: { type: 'string', description: 'Filter by kind: improvement, risk, opportunity, pattern, infrastructure, cross_project' },
           status: { type: 'string', description: 'Filter by status: active (default), acknowledged, resolved, expired, all' },
           limit: { type: 'number', description: 'Max results (default 20)' },
           offset: { type: 'number', description: 'Offset for pagination (default 0)' },
@@ -255,12 +257,24 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
       },
       handler: async (params) => {
         const repoId = params.repoId as string | undefined;
+        const projectId = params.projectId as string | undefined;
+        const kind = params.kind as string | undefined;
         const status = (params.status as string | undefined) ?? 'active';
         const limit = (params.limit as number | undefined) ?? 20;
         const offset = (params.offset as number | undefined) ?? 0;
         const detail = (params.detail as boolean | undefined) ?? false;
-        const items = db.listObservations({ repoId, status, limit, offset });
-        const total = db.countObservations({ status: status !== 'all' ? status : undefined });
+        let items = db.listObservations({ repoId, status, limit: projectId || kind ? 100 : limit, offset: projectId || kind ? 0 : offset });
+        // Post-filter by projectId (entity link) and kind
+        if (projectId) {
+          items = items.filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === projectId));
+        }
+        if (kind) {
+          items = items.filter(o => o.kind === kind);
+        }
+        const total = projectId || kind ? items.length : db.countObservations({ status: status !== 'all' ? status : undefined });
+        if (projectId || kind) {
+          items = items.slice(offset, offset + limit);
+        }
         if (detail) return { items, total };
         return {
           items: items.map(o => ({
@@ -274,11 +288,13 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     },
     {
       name: 'shadow_suggestions',
-      description: 'Returns suggestions with pagination. Default: pending, limit 20, compact (no body). Use detail=true for full response.',
+      description: 'Returns suggestions with pagination. Default: pending, limit 20, compact (no body). Use detail=true for full response. Filter by projectId to see suggestions linked to a project.',
       inputSchema: {
         type: 'object',
         properties: {
           status: { type: 'string', description: 'Filter by status: pending (default), accepted, dismissed, snoozed' },
+          projectId: { type: 'string', description: 'Filter by project ID (returns suggestions linked to this project via entities)' },
+          repoId: { type: 'string', description: 'Filter by repository ID' },
           limit: { type: 'number', description: 'Max results (default 20)' },
           offset: { type: 'number', description: 'Offset for pagination (default 0)' },
           detail: { type: 'boolean', description: 'Include full summaryMd and reasoningMd (default false)' },
@@ -287,11 +303,22 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
       },
       handler: async (params) => {
         const status = (params.status as string | undefined) ?? 'pending';
+        const projectId = params.projectId as string | undefined;
+        const repoId = params.repoId as string | undefined;
         const limit = (params.limit as number | undefined) ?? 20;
         const offset = (params.offset as number | undefined) ?? 0;
         const detail = (params.detail as boolean | undefined) ?? false;
-        const items = db.listSuggestions({ status, limit, offset });
-        const total = db.countSuggestions({ status });
+        let items = db.listSuggestions({ status, limit: projectId || repoId ? 100 : limit, offset: projectId || repoId ? 0 : offset });
+        if (projectId) {
+          items = items.filter(s => (s.entities ?? []).some(e => e.type === 'project' && e.id === projectId));
+        }
+        if (repoId) {
+          items = items.filter(s => s.repoIds.includes(repoId));
+        }
+        const total = projectId || repoId ? items.length : db.countSuggestions({ status });
+        if (projectId || repoId) {
+          items = items.slice(offset, offset + limit);
+        }
         if (detail) return { items, total };
         return {
           items: items.map(s => ({
@@ -1414,6 +1441,198 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         if (!gate.ok) return gate.error;
         db.deleteRelation(params.relationId as string);
         return { ok: true };
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // Enrichment
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_enrichment_config',
+      description: 'View enrichment configuration: available MCP servers, enabled status, interval, and recent cache entries.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          includeCache: { type: 'boolean', description: 'Include recent cache entries (default false)' },
+          limit: { type: 'number', description: 'Max cache entries to return (default 10)' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const { discoverMcpServerNames } = await import('../observation/mcp-discovery.js');
+        const servers = discoverMcpServerNames();
+        const includeCache = (params.includeCache as boolean | undefined) ?? false;
+        const limit = (params.limit as number | undefined) ?? 10;
+
+        const result: Record<string, unknown> = {
+          enabled: config.enrichmentEnabled,
+          intervalMs: config.enrichmentIntervalMs,
+          intervalHuman: `${Math.round(config.enrichmentIntervalMs / 60000)}min`,
+          availableMcpServers: servers,
+          serverCount: servers.length,
+        };
+
+        if (includeCache) {
+          const items = db.listEnrichment({ limit });
+          result.recentCache = items.map(i => ({
+            id: i.id,
+            source: i.source,
+            entityName: i.entityName,
+            summary: i.summary,
+            reported: i.reported,
+            createdAt: i.createdAt,
+          }));
+          result.totalCached = db.countEnrichment();
+          result.unreported = db.countEnrichment({ reported: false });
+        }
+
+        return result;
+      },
+    },
+    {
+      name: 'shadow_enrichment_query',
+      description: 'Query enrichment cache entries. Returns external context gathered from MCP tools.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', description: 'Filter by MCP server name' },
+          entityName: { type: 'string', description: 'Filter by entity name (case-insensitive substring match)' },
+          unreportedOnly: { type: 'boolean', description: 'Only return new/unreported items (default false)' },
+          limit: { type: 'number', description: 'Max results (default 20)' },
+          offset: { type: 'number', description: 'Offset for pagination (default 0)' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        const source = params.source as string | undefined;
+        const entityName = params.entityName as string | undefined;
+        const unreportedOnly = (params.unreportedOnly as boolean | undefined) ?? false;
+        const limit = (params.limit as number | undefined) ?? 20;
+        const offset = (params.offset as number | undefined) ?? 0;
+        try {
+          let items = db.listEnrichment({ source, reported: unreportedOnly ? false : undefined, limit: entityName ? 100 : limit, offset: entityName ? 0 : offset });
+          if (entityName) {
+            const lower = entityName.toLowerCase();
+            items = items.filter(i => i.entityName?.toLowerCase().includes(lower));
+            const total = items.length;
+            items = items.slice(offset, offset + limit);
+            return { items: items.map(i => ({ id: i.id, source: i.source, entityType: i.entityType, entityName: i.entityName, summary: i.summary, detail: i.detail, reported: i.reported, createdAt: i.createdAt })), total };
+          }
+          const total = db.countEnrichment({ source, reported: unreportedOnly ? false : undefined });
+          return { items: items.map(i => ({ id: i.id, source: i.source, entityType: i.entityType, entityName: i.entityName, summary: i.summary, detail: i.detail, reported: i.reported, createdAt: i.createdAt })), total };
+        } catch {
+          return { items: [], total: 0 };
+        }
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // Project intelligence
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_active_projects',
+      description: 'Returns projects detected as actively being worked on, based on recent interactions and conversations. Includes activity scores and momentum.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      handler: async () => {
+        const { readFileSync } = await import('node:fs');
+        const { resolve } = await import('node:path');
+        const { detectActiveProjects, computeProjectMomentum } = await import('../heartbeat/project-detection.js');
+
+        // Load recent interactions (last 2h)
+        const sinceMs = Date.now() - 2 * 60 * 60 * 1000;
+        let interactions: Array<{ file: string; tool: string; ts: string }> = [];
+        try {
+          const intPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
+          const lines = readFileSync(intPath, 'utf8').trim().split('\n').filter(Boolean);
+          interactions = lines.flatMap(line => {
+            try {
+              const e = JSON.parse(line) as { ts: string; tool: string; file?: string };
+              return new Date(e.ts).getTime() > sinceMs ? [{ ts: e.ts, tool: e.tool, file: e.file ?? '' }] : [];
+            } catch { return []; }
+          });
+        } catch { /* no file */ }
+
+        // Load recent conversations
+        let conversations: Array<{ text: string }> = [];
+        try {
+          const convPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
+          const lines = readFileSync(convPath, 'utf8').trim().split('\n').filter(Boolean);
+          conversations = lines.flatMap(line => {
+            try {
+              const e = JSON.parse(line) as { ts: string; text?: string };
+              return new Date(e.ts).getTime() > sinceMs && e.text ? [{ text: e.text }] : [];
+            } catch { return []; }
+          });
+        } catch { /* no file */ }
+
+        const active = detectActiveProjects(db, interactions, conversations);
+        return active.map(ap => ({
+          ...ap,
+          momentum: computeProjectMomentum(db, ap.projectId, 7),
+        }));
+      },
+    },
+    {
+      name: 'shadow_project_detail',
+      description: 'Returns detailed view of a project including linked repos, systems, contacts, and counts of observations, suggestions, and memories related to it.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          projectId: { type: 'string', description: 'Project ID' },
+          name: { type: 'string', description: 'Project name (alternative to projectId)' },
+        },
+        additionalProperties: false,
+      },
+      handler: async (params) => {
+        let project = params.projectId ? db.getProject(params.projectId as string) : null;
+        if (!project && params.name) {
+          project = db.findProjectByName(params.name as string);
+        }
+        if (!project) return { error: 'Project not found' };
+
+        const repos = project.repoIds.map(id => db.getRepo(id)).filter(Boolean).map(r => ({ id: r!.id, name: r!.name, path: r!.path }));
+        const systems = project.systemIds.map(id => db.getSystem(id)).filter(Boolean).map(s => ({ id: s!.id, name: s!.name, kind: s!.kind }));
+        const contacts = project.contactIds.map(id => db.getContact(id)).filter(Boolean).map(c => ({ id: c!.id, name: c!.name, role: c!.role }));
+
+        const observations = db.listObservations({ status: 'active', limit: 50 })
+          .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === project!.id));
+        const suggestions = db.listSuggestions({ status: 'pending' })
+          .filter(s => (s.entities ?? []).some(e => e.type === 'project' && e.id === project!.id));
+        const memories = db.listMemories({ archived: false })
+          .filter(m => (m.entities ?? []).some(e => e.type === 'project' && e.id === project!.id));
+
+        let enrichment: unknown[] = [];
+        try {
+          enrichment = db.listEnrichment({ limit: 10 })
+            .filter(e => e.entityType === 'project' && e.entityId === project!.id)
+            .map(e => ({ source: e.source, summary: e.summary, createdAt: e.createdAt }));
+        } catch { /* enrichment_cache may not exist yet */ }
+
+        // Compute momentum
+        let momentum = 0;
+        try {
+          const { computeProjectMomentum } = await import('../heartbeat/project-detection.js');
+          momentum = computeProjectMomentum(db, project.id, 7);
+        } catch { /* */ }
+
+        return {
+          ...project,
+          repos, systems, contacts,
+          momentum,
+          counts: {
+            observations: observations.length,
+            suggestions: suggestions.length,
+            memories: memories.length,
+          },
+          topObservations: observations.slice(0, 5).map(o => ({ id: o.id, kind: o.kind, severity: o.severity, title: o.title })),
+          topSuggestions: suggestions.slice(0, 5).map(s => ({ id: s.id, kind: s.kind, title: s.title, impactScore: s.impactScore })),
+          recentMemories: memories.slice(0, 5).map(m => ({ id: m.id, kind: m.kind, layer: m.layer, title: m.title })),
+          enrichment,
+        };
       },
     },
   ];

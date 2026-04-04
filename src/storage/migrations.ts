@@ -662,6 +662,30 @@ export const migrations: Migration[] = [
       ALTER TABLE repos ADD COLUMN last_fetched_at TEXT;
     `,
   },
+  {
+    version: 30,
+    name: 'enrichment_cache',
+    sql: `
+      CREATE TABLE IF NOT EXISTS enrichment_cache (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        entity_type TEXT,
+        entity_id TEXT,
+        entity_name TEXT,
+        summary TEXT NOT NULL,
+        detail_json TEXT NOT NULL DEFAULT '{}',
+        content_hash TEXT NOT NULL,
+        reported INTEGER NOT NULL DEFAULT 0,
+        stale INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        expires_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_enrichment_source ON enrichment_cache(source);
+      CREATE INDEX IF NOT EXISTS idx_enrichment_reported ON enrichment_cache(reported);
+      CREATE INDEX IF NOT EXISTS idx_enrichment_hash ON enrichment_cache(content_hash);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

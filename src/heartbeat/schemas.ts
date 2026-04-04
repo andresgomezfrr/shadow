@@ -18,11 +18,12 @@ export const ExtractResponseSchema = z.object({
 
 export const ObserveResponseSchema = z.object({
   observations: z.array(z.object({
-    kind: z.enum(['improvement', 'risk', 'opportunity', 'pattern', 'infrastructure']).default('pattern'),
+    kind: z.enum(['improvement', 'risk', 'opportunity', 'pattern', 'infrastructure', 'cross_project']).default('pattern'),
     title: z.string(),
     detail: z.string().default(''),
     severity: z.enum(['info', 'warning', 'high']).default('info'),
     files: z.array(z.string()).default([]),
+    projectNames: z.array(z.string()).default([]),
   })).default([]),
 });
 

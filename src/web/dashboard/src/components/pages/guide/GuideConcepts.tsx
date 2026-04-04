@@ -208,9 +208,12 @@ export function GuideConcepts() {
 const HEARTBEAT_PHASES: [string, string, string][] = [
   ['\uD83D\uDC40', 'Observe', 'Collect repo context (git status, branches, recent commits)'],
   ['\uD83E\uDDF9', 'Cleanup', 'Resolve stale/duplicate observations via MCP'],
-  ['\uD83E\uDDE0', 'Analyze', 'LLM extracts memories + mood from conversations and interactions'],
-  ['\uD83D\uDC41\uFE0F', 'Observe (new)', 'LLM generates new observations from repo + conversation context'],
-  ['\u267B\uFE0F', 'Consolidate', 'Promote/demote memory layers, archive cold memories'],
+  ['\uD83E\uDDE0', 'Analyze', 'LLM extracts memories + mood, detects active projects, generates observations'],
+  ['\uD83D\uDCA1', 'Suggest', 'Project-aware suggestion generation (separate job, triggered by activity)'],
+  ['\u267B\uFE0F', 'Consolidate', 'Promote/demote memory layers, synthesize meta-patterns (every 6h)'],
+  ['\uD83E\uDD14', 'Reflect', 'Strategic soul reflection with developer understanding (daily, Opus)'],
+  ['\uD83D\uDD17', 'Enrich', 'Gather external context via user MCP tools (configurable interval)'],
+  ['\uD83D\uDD04', 'Remote sync', 'Check remote git changes via ls-remote (every 30min)'],
   ['\uD83D\uDD14', 'Notify', 'Queue events based on proactivity level'],
 ];
 
@@ -220,6 +223,7 @@ const OBSERVATION_KINDS: [string, string][] = [
   ['\uD83C\uDF1F', 'opportunity'],
   ['\uD83D\uDD04', 'pattern'],
   ['\uD83D\uDD27', 'infrastructure'],
+  ['\uD83C\uDF10', 'cross_project'],
 ];
 
 const DIGEST_KINDS: [string, string, string][] = [

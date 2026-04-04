@@ -297,6 +297,45 @@ export type DailySummary = {
   repos: { id: string; name: string; path: string; lastObservedAt: string | null }[];
   tokens: { input: number; output: number; calls: number };
   recentJobs: Job[];
+  activeProjects?: ActiveProjectSummary[];
+  recentEnrichment?: EnrichmentItem[];
+};
+
+export type ActiveProjectSummary = {
+  id: string;
+  name: string;
+  kind: string;
+  repoCount: number;
+  systemCount: number;
+  observationCount: number;
+  suggestionCount: number;
+  topObservation: string | null;
+};
+
+export type EnrichmentItem = {
+  id: string;
+  source: string;
+  entityName: string | null;
+  summary: string;
+  createdAt: string;
+};
+
+export type ProjectDetail = Project & {
+  repos: { id: string; name: string; path: string; lastObservedAt: string | null }[];
+  systems: { id: string; name: string; kind: string }[];
+  contacts: { id: string; name: string; role: string | null; team: string | null }[];
+  observations: { id: string; kind: string; severity: string; title: string; votes: number; createdAt: string }[];
+  suggestions: { id: string; kind: string; title: string; impactScore: number; confidenceScore: number }[];
+  memories: { id: string; kind: string; layer: string; title: string; createdAt: string }[];
+  enrichment: EnrichmentItem[];
+  counts: { observations: number; suggestions: number; memories: number };
+};
+
+export type SystemDetail = System & {
+  observations: { id: string; kind: string; severity: string; title: string; createdAt: string }[];
+  memories: { id: string; kind: string; title: string; createdAt: string }[];
+  projects: { id: string; name: string; kind: string }[];
+  counts: { observations: number; memories: number; projects: number };
 };
 
 export const TRUST_NAMES: Record<number, string> = {

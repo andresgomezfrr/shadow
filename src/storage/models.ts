@@ -346,6 +346,24 @@ export type DigestRecord = {
   updatedAt: string;
 };
 
+// --- Enrichment Cache ---
+
+export type EnrichmentCacheRecord = {
+  id: string;
+  source: string;
+  entityType: string | null;
+  entityId: string | null;
+  entityName: string | null;
+  summary: string;
+  detail: Record<string, unknown>;
+  contentHash: string;
+  reported: boolean;
+  stale: boolean;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string | null;
+};
+
 // --- Memory search result ---
 
 export type MemorySearchResult = {

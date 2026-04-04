@@ -321,10 +321,25 @@ export async function activityAnalyze(
     ? `### External Context (from MCP tools)\n${ctx.enrichmentContext}\n`
     : '';
 
+  // Active project context (from daemon-level detection or fallback)
+  const activeProjects = ctx.activeProjects ?? [];
+  const projectContext = activeProjects.length > 0
+    ? `### Active Projects\n${activeProjects.map(ap => {
+        const project = ctx.db.getProject(ap.projectId);
+        if (!project) return '';
+        const projRepos = project.repoIds.map(id => ctx.db.getRepo(id)?.name).filter(Boolean);
+        const projSystems = project.systemIds.map(id => ctx.db.getSystem(id)?.name).filter(Boolean);
+        const projObs = ctx.db.listObservations({ status: 'active', limit: 5 })
+          .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
+        return `- **${project.name}** (${project.kind}, score=${ap.score.toFixed(0)}): repos=[${projRepos.join(', ')}], systems=[${projSystems.join(', ')}]\n  Active observations: ${projObs.map(o => o.title).join('; ') || 'none'}`;
+      }).filter(Boolean).join('\n')}\n`
+    : '';
+
   // Shared data sections
   const dataSources = [
     repoContextSummary ? `### Repository Status\n${repoContextSummary}\n` : '',
     systemContext,
+    projectContext,
     interactionSummary ? `### Tool Usage\n${interactionSummary}\n` : '',
     conversationSummary ? `### Conversations\n${conversationSummary}\n` : '',
     gitEventsSummary,
@@ -370,6 +385,7 @@ export async function activityAnalyze(
       'ENTITY LINKING:',
       'When an insight is about a registered system or project, include the system/project name in the tags.',
       'This helps Shadow link knowledge to the right entity for future retrieval.',
+      activeProjects.length > 0 ? `\nPrioritize insights related to active projects: ${activeProjects.map(ap => ap.projectName).join(', ')}.` : '',
       '',
       'LAYER RULES:',
       '"core" requires ALL of: (a) needed if rewriting from scratch, (b) stable for 6+ months, (c) NOT derivable from code.',
@@ -514,7 +530,8 @@ export async function activityAnalyze(
       'Generate ACTIONABLE OBSERVATIONS about the developer\'s work.',
       '',
       'Return JSON:',
-      '{ "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure", "title": string, "detail": string, "severity": "info"|"warning"|"high", "files": string[] }] }',
+      '{ "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure"|"cross_project", "title": string, "detail": string, "severity": "info"|"warning"|"high", "files": string[], "projectNames": string[] }] }',
+      activeProjects.length > 0 ? `\nActive projects: ${activeProjects.map(ap => ap.projectName).join(', ')}. Prioritize observations about these. Use kind "cross_project" for observations spanning multiple projects.` : '',
       '',
       'Rules:',
       '- Return up to 3 observations. ZERO is valid — return empty array if nothing actionable.',
@@ -590,8 +607,18 @@ export async function activityAnalyze(
             kind: obs.kind, severity: obs.severity,
             title: obs.title, detail: { description: obs.detail }, context,
           });
-          // Auto-link to projects + systems
+          // Auto-link to projects + systems (repo-based + name detection)
           const obsEntities = buildEntityLinks(ctx.db, firstRepoId, `${obs.title} ${obs.detail}`, entityCache);
+          // Resolve explicit projectNames from LLM response
+          if (obs.projectNames.length > 0) {
+            const allProjects = ctx.db.listProjects();
+            for (const pName of obs.projectNames) {
+              const match = allProjects.find(p => p.name.toLowerCase() === pName.toLowerCase());
+              if (match && !obsEntities.some(e => e.type === 'project' && e.id === match.id)) {
+                obsEntities.push({ type: 'project', id: match.id });
+              }
+            }
+          }
           if (obsEntities.length > 0) persistEntityLinks(ctx.db, 'observations', created.id, obsEntities);
           // Store embedding for new observation
           await generateAndStoreEmbedding(ctx.db, 'observation', created.id, { kind: created.kind, title: created.title, detail: created.detail });
@@ -676,6 +703,17 @@ export async function activitySuggest(
   const existingPending = ctx.db.listSuggestions({ status: 'pending' });
   const pendingTitles = existingPending.map(s => `- ${s.title}`).join('\n');
 
+  // Active project context for project-aware suggestions
+  const suggestActiveProjects = ctx.activeProjects ?? [];
+  const suggestProjectContext = suggestActiveProjects.length > 0
+    ? suggestActiveProjects.map(ap => {
+        const project = ctx.db.getProject(ap.projectId);
+        if (!project) return '';
+        const projRepos = project.repoIds.map(id => ctx.db.getRepo(id)?.name).filter(Boolean);
+        return `- **${project.name}** (${project.kind}): repos=[${projRepos.join(', ')}]`;
+      }).filter(Boolean).join('\n')
+    : '';
+
   const prompt = [
     'Based on the following observations and context, propose actionable TECHNICAL suggestions.',
     '',
@@ -700,6 +738,7 @@ export async function activitySuggest(
     '## Recent Observations',
     observationSummaries,
     '',
+    suggestProjectContext ? `## Active Projects (prioritize suggestions for these)\n${suggestProjectContext}\n` : '',
     relevantMemories.length > 0 ? `## Relevant Memories\n${memorySummaries}\n` : '',
     pendingTitles ? `## Already Pending (DO NOT duplicate)\n${pendingTitles}\n` : '',
     dismissFeedback ? `## Dismissed by User (learn from this feedback)\n${dismissFeedback}\n` : '',

@@ -28,6 +28,7 @@ import type {
   UserProfileRecord,
   JobRecord,
   FeedbackRecord,
+  EnrichmentCacheRecord,
 } from './models.js';
 import { applyMigrations } from './migrations.js';
 import { assertTransition, type RunStatus } from '../runner/state-machine.js';
@@ -1602,6 +1603,66 @@ export class ShadowDatabase {
 
     return { totalInputTokens, totalOutputTokens, totalCalls, byModel };
   }
+
+  // --- Enrichment Cache ---
+
+  upsertEnrichment(input: { source: string; entityType?: string; entityId?: string; entityName?: string; summary: string; detail?: Record<string, unknown>; contentHash: string; expiresAt?: string }): EnrichmentCacheRecord {
+    const existing = this.database.prepare('SELECT id FROM enrichment_cache WHERE content_hash = ?').get(input.contentHash) as { id: string } | undefined;
+    if (existing) {
+      this.database.prepare('UPDATE enrichment_cache SET summary = ?, detail_json = ?, stale = 0, updated_at = ? WHERE id = ?').run(
+        input.summary, JSON.stringify(input.detail ?? {}), new Date().toISOString(), existing.id,
+      );
+      return this.getEnrichment(existing.id)!;
+    }
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.database.prepare(
+      `INSERT INTO enrichment_cache (id, source, entity_type, entity_id, entity_name, summary, detail_json, content_hash, reported, stale, created_at, updated_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
+    ).run(id, input.source, input.entityType ?? null, input.entityId ?? null, input.entityName ?? null, input.summary, JSON.stringify(input.detail ?? {}), input.contentHash, now, now, input.expiresAt ?? null);
+    return this.getEnrichment(id)!;
+  }
+
+  getEnrichment(id: string): EnrichmentCacheRecord | null {
+    const row = this.database.prepare('SELECT * FROM enrichment_cache WHERE id = ?').get(id);
+    return row ? mapEnrichment(row) : null;
+  }
+
+  listNewEnrichment(limit = 20): EnrichmentCacheRecord[] {
+    return this.database.prepare('SELECT * FROM enrichment_cache WHERE reported = 0 AND stale = 0 ORDER BY created_at DESC LIMIT ?').all(limit).map(mapEnrichment);
+  }
+
+  listEnrichment(filters?: { source?: string; reported?: boolean; limit?: number; offset?: number }): EnrichmentCacheRecord[] {
+    const clauses: string[] = ['stale = 0'];
+    const values: SQLValue[] = [];
+    if (filters?.source) { clauses.push('source = ?'); values.push(filters.source); }
+    if (filters?.reported !== undefined) { clauses.push('reported = ?'); values.push(filters.reported ? 1 : 0); }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const limit = filters?.limit ?? 50;
+    const offset = filters?.offset ?? 0;
+    values.push(limit, offset);
+    return this.database.prepare(`SELECT * FROM enrichment_cache ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...values).map(mapEnrichment);
+  }
+
+  countEnrichment(filters?: { source?: string; reported?: boolean }): number {
+    const clauses: string[] = ['stale = 0'];
+    const values: SQLValue[] = [];
+    if (filters?.source) { clauses.push('source = ?'); values.push(filters.source); }
+    if (filters?.reported !== undefined) { clauses.push('reported = ?'); values.push(filters.reported ? 1 : 0); }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const row = this.database.prepare(`SELECT COUNT(*) as cnt FROM enrichment_cache ${where}`).get(...values) as { cnt: number };
+    return Number(row.cnt);
+  }
+
+  markEnrichmentReported(id: string): void {
+    this.database.prepare('UPDATE enrichment_cache SET reported = 1, updated_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+  }
+
+  expireStaleEnrichment(): number {
+    const now = new Date().toISOString();
+    const result = this.database.prepare('UPDATE enrichment_cache SET stale = 1, updated_at = ? WHERE stale = 0 AND expires_at IS NOT NULL AND expires_at < ?').run(now, now);
+    return Number(result.changes);
+  }
 }
 
 // --- Factory ---
@@ -2017,6 +2078,25 @@ function mapLlmUsage(row: unknown): LlmUsageRecord {
     inputTokens: num(d.input_tokens),
     outputTokens: num(d.output_tokens),
     createdAt: str(d.created_at),
+  };
+}
+
+function mapEnrichment(row: unknown): EnrichmentCacheRecord {
+  const d = r(row);
+  return {
+    id: str(d.id),
+    source: str(d.source),
+    entityType: strOrNull(d.entity_type),
+    entityId: strOrNull(d.entity_id),
+    entityName: strOrNull(d.entity_name),
+    summary: str(d.summary),
+    detail: jsonParse(d.detail_json, {}),
+    contentHash: str(d.content_hash),
+    reported: bool(d.reported),
+    stale: bool(d.stale),
+    createdAt: str(d.created_at),
+    updatedAt: str(d.updated_at),
+    expiresAt: strOrNull(d.expires_at),
   };
 }
 

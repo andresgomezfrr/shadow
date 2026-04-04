@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { fetchSystems } from '../../api/client';
 import { Badge } from '../common/Badge';
@@ -17,7 +18,11 @@ export function SystemsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {data.map((s) => (
-            <div key={s.id} className="bg-card border border-border rounded-lg p-4 transition-colors hover:border-accent">
+            <Link
+              key={s.id}
+              to={`/systems/${s.id}`}
+              className="bg-card border border-border rounded-lg p-4 transition-colors hover:border-accent block"
+            >
               <div className="flex items-center gap-2 mb-2">
                 <span className="font-medium text-sm">{s.name}</span>
                 <Badge className="text-purple bg-purple/15">{s.kind}</Badge>
@@ -28,7 +33,7 @@ export function SystemsPage() {
               {s.url && (
                 <div className="text-xs text-blue truncate">{s.url}</div>
               )}
-            </div>
+            </Link>
           ))}
         </div>
       )}

@@ -4,13 +4,14 @@ export function GuideStatusLine() {
       {/* Status Line Example */}
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-3">Status Line</h2>
-        <div className="bg-bg rounded-lg px-4 py-3 font-mono text-sm mb-4 space-y-1">
-          <div><span className="text-purple">{'{•\u203F•}'}</span> ready | \uD83D\uDE10\uD83D\uDD0B \uD83D\uDD0D | \u2665 12m</div>
-          <div><span className="text-cyan">{'{°_°}..'}</span> analyzing | \uD83C\uDFAF\u26A1\uFE0F \uD83D\uDCAC | \uD83D\uDCA12 | \u2665 now</div>
-          <div><span className="text-green">{'{•\u1D57•}\uD83D\uDCA1'}</span> suggesting | \uD83D\uDE0A\u26A1\uFE0F \uD83D\uDCAC | \u2665 15m</div>
-        </div>
+        <pre className="bg-bg rounded-lg px-4 py-3 font-mono text-sm mb-4 whitespace-pre leading-loose">
+{`{•\u203F•} ready | \uD83D\uDE10\uD83D\uDD0B \uD83D\uDD0D | \uD83D\uDCCB shadow | \uD83D\uDCA13 | \u2665 12m
+{°_°}.. analyzing | \uD83C\uDFAF\u26A1 \uD83D\uDCAC | \uD83D\uDCCB my-project | \u2665 now
+{•_•}\uD83D\uDD17 enriching | \uD83D\uDE10\uD83D\uDD0B \u26A1 | \u2665 28m
+{•_•}\uD83D\uDD04 syncing | \uD83D\uDE0A\u26A1 \u26A1 | \u2665 15m`}
+        </pre>
         <p className="text-sm text-text-dim">
-          <span className="text-text">Ghost mascot</span> + <span className="text-text">state</span> | <span className="text-text">mood + energy + trust</span> | <span className="text-text">notifications</span> | <span className="text-text">heartbeat countdown</span>
+          <span className="text-text">Ghost mascot</span> + <span className="text-text">state</span> | <span className="text-text">mood + energy + trust</span> | <span className="text-text">active project</span> | <span className="text-text">notifications</span> | <span className="text-text">heartbeat countdown</span>
         </p>
       </section>
 
@@ -29,6 +30,8 @@ export function GuideStatusLine() {
           ['green', '{•\u1D57•}\uD83D\uDCA1', '{•\u203F•}\uD83D\uDCA1', '{•\u1D57•}!', 'suggesting', 'Heartbeat: generating ideas'],
           ['yellow', '{•_•}\u2699', '{•\u203F•}\u2699', '{•_•}~', 'consolidating', 'Heartbeat: memory maintenance'],
           ['blue', '{-_-}~', '{-\u203F-}~', '{-_-}\uD83D\uDCAD', 'reflecting', 'Daily soul reflection'],
+          ['teal', '{•_•}\uD83D\uDD17', '{•\u203F•}\uD83D\uDCE1', '{•_•}\uD83C\uDF10', 'enriching', 'MCP context enrichment'],
+          ['pink', '{•_•}\uD83D\uDD04', '{•\u203F•}\u2B07\uFE0F', '{•_•}\uD83D\uDCE5', 'syncing', 'Git remote sync'],
           ['purple', '{•\u0300_•\u0301}', '{•\u0300\u203F•\u0301}', '{•\u0300_•\u0301}\u25B8', 'focus', 'Focus mode active'],
           ['dim', '{-_-}z', '{-_-}zz', '{-\u203F-}zzZ', 'sleeping', 'Daemon off'],
           ['dim', '{-_-}', '{-_-}.', '{-\u203F-}', 'tired', 'Mood: tired'],
@@ -137,6 +140,8 @@ const COLOR_CLASSES: Record<string, string> = {
   blue: 'text-blue',
   red: 'text-red',
   dim: 'text-text-muted',
+  teal: 'text-cyan',
+  pink: 'text-pink-400',
 };
 
 function GhostTable({ rows }: { rows: [string, string, string, string, string, string][] }) {
@@ -159,7 +164,7 @@ function GhostTable({ rows }: { rows: [string, string, string, string, string, s
             return (
               <tr key={i} className="border-t border-border hover:bg-card-hover transition-colors">
                 <td className="px-4 py-2.5">
-                  <span className={`inline-block w-3 h-3 rounded-full ${color === 'purple' ? 'bg-purple' : color === 'cyan' ? 'bg-cyan' : color === 'yellow' ? 'bg-orange' : color === 'green' ? 'bg-green' : color === 'blue' ? 'bg-blue' : color === 'red' ? 'bg-red' : 'bg-text-muted'}`} />
+                  <span className={`inline-block w-3 h-3 rounded-full ${color === 'purple' ? 'bg-purple' : color === 'cyan' ? 'bg-cyan' : color === 'yellow' ? 'bg-orange' : color === 'green' ? 'bg-green' : color === 'blue' ? 'bg-blue' : color === 'red' ? 'bg-red' : color === 'teal' ? 'bg-cyan' : color === 'pink' ? 'bg-pink-400' : 'bg-text-muted'}`} />
                 </td>
                 <td className={`px-4 py-2.5 font-mono ${cls}`}>{v1}</td>
                 <td className={`px-4 py-2.5 font-mono ${cls}`}>{v2}</td>

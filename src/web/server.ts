@@ -183,6 +183,88 @@ async function handleApi(
       return json(res, systems);
     }
 
+    // Project detail: /api/projects/:id
+    const projectDetailMatch = pathname.match(/^\/api\/projects\/([^/]+)$/);
+    if (projectDetailMatch && req.method === 'GET') {
+      const project = db.getProject(projectDetailMatch[1]);
+      if (!project) return json(res, { error: 'Project not found' }, 404);
+
+      const repos = project.repoIds.map(id => db.getRepo(id)).filter(Boolean);
+      const systems = project.systemIds.map(id => db.getSystem(id)).filter(Boolean);
+      const contacts = project.contactIds.map(id => db.getContact(id)).filter(Boolean);
+
+      const observations = db.listObservations({ status: 'active', limit: 50 })
+        .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
+      const suggestions = db.listSuggestions({ status: 'pending' })
+        .filter(s => (s.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
+      const memories = db.listMemories({ archived: false })
+        .filter(m => (m.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
+
+      let enrichment: unknown[] = [];
+      try {
+        enrichment = db.listEnrichment({ limit: 10 })
+          .filter(e => e.entityType === 'project' && e.entityId === project.id);
+      } catch { /* enrichment_cache may not exist yet */ }
+
+      return json(res, {
+        ...project,
+        repos: repos.map(r => ({ id: r!.id, name: r!.name, path: r!.path, lastObservedAt: r!.lastObservedAt })),
+        systems: systems.map(s => ({ id: s!.id, name: s!.name, kind: s!.kind })),
+        contacts: contacts.map(c => ({ id: c!.id, name: c!.name, role: c!.role, team: c!.team })),
+        observations: observations.slice(0, 10).map(o => ({ id: o.id, kind: o.kind, severity: o.severity, title: o.title, votes: o.votes, createdAt: o.createdAt })),
+        suggestions: suggestions.slice(0, 10).map(s => ({ id: s.id, kind: s.kind, title: s.title, impactScore: s.impactScore, confidenceScore: s.confidenceScore })),
+        memories: memories.slice(0, 10).map(m => ({ id: m.id, kind: m.kind, layer: m.layer, title: m.title, createdAt: m.createdAt })),
+        enrichment,
+        counts: {
+          observations: observations.length,
+          suggestions: suggestions.length,
+          memories: memories.length,
+        },
+      });
+    }
+
+    // System detail: /api/systems/:id
+    const systemDetailMatch = pathname.match(/^\/api\/systems\/([^/]+)$/);
+    if (systemDetailMatch && req.method === 'GET') {
+      const system = db.getSystem(systemDetailMatch[1]);
+      if (!system) return json(res, { error: 'System not found' }, 404);
+
+      const observations = db.listObservations({ status: 'active', limit: 50 })
+        .filter(o => (o.entities ?? []).some(e => e.type === 'system' && e.id === system.id));
+      const memories = db.listMemories({ archived: false })
+        .filter(m => (m.entities ?? []).some(e => e.type === 'system' && e.id === system.id));
+
+      // Find projects that include this system
+      const projects = db.listProjects({ status: 'active' })
+        .filter(p => p.systemIds.includes(system.id));
+
+      return json(res, {
+        ...system,
+        observations: observations.slice(0, 10).map(o => ({ id: o.id, kind: o.kind, severity: o.severity, title: o.title, createdAt: o.createdAt })),
+        memories: memories.slice(0, 10).map(m => ({ id: m.id, kind: m.kind, title: m.title, createdAt: m.createdAt })),
+        projects: projects.map(p => ({ id: p.id, name: p.name, kind: p.kind })),
+        counts: {
+          observations: observations.length,
+          memories: memories.length,
+          projects: projects.length,
+        },
+      });
+    }
+
+    // Enrichment cache: /api/enrichment
+    if (pathname === '/api/enrichment') {
+      const source = params.get('source') ?? undefined;
+      const limit = parseInt(params.get('limit') ?? '20', 10);
+      const offset = parseInt(params.get('offset') ?? '0', 10);
+      try {
+        const items = db.listEnrichment({ source, limit, offset });
+        const total = db.countEnrichment({ source });
+        return json(res, { items, total });
+      } catch {
+        return json(res, { items: [], total: 0 });
+      }
+    }
+
     if (pathname === '/api/usage') {
       const period = (params.get('period') ?? 'week') as 'day' | 'week' | 'month';
       const usage = db.getUsageSummary(period);
@@ -229,6 +311,28 @@ async function handleApi(
       const events = db.listPendingEvents();
       const runsToReview = db.listRuns({ status: 'completed', limit: 5 });
       const recentJobs = db.listJobs({ limit: 5 });
+      // Active projects with observation/suggestion counts
+      const activeProjects = db.listProjects({ status: 'active' }).map(p => {
+        const projObs = db.listObservations({ status: 'active', limit: 50 })
+          .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === p.id));
+        const projSugs = suggestions
+          .filter(s => (s.entities ?? []).some(e => e.type === 'project' && e.id === p.id));
+        return {
+          id: p.id, name: p.name, kind: p.kind,
+          repoCount: p.repoIds.length, systemCount: p.systemIds.length,
+          observationCount: projObs.length, suggestionCount: projSugs.length,
+          topObservation: projObs[0]?.title ?? null,
+        };
+      });
+
+      // Recent enrichment
+      let recentEnrichment: unknown[] = [];
+      try {
+        recentEnrichment = db.listNewEnrichment(5).map(e => ({
+          id: e.id, source: e.source, entityName: e.entityName, summary: e.summary, createdAt: e.createdAt,
+        }));
+      } catch { /* enrichment_cache may not exist yet */ }
+
       return json(res, {
         date: todayStart.toISOString().split('T')[0],
         profile,
@@ -246,6 +350,8 @@ async function handleApi(
         repos: repos.map((r) => ({ id: r.id, name: r.name, path: r.path, lastObservedAt: r.lastObservedAt })),
         tokens: { input: usage.totalInputTokens, output: usage.totalOutputTokens, calls: usage.totalCalls },
         recentJobs,
+        activeProjects,
+        recentEnrichment,
       });
     }
 
