@@ -20,6 +20,16 @@ import { safeParseJson } from '../backend/json-repair.js';
 
 // --- Entity auto-linking ---
 
+/** Cache of system/project names, loaded once per heartbeat phase to avoid repeated full-table scans */
+type EntityNameCache = { systems: { id: string; name: string }[]; projects: { id: string; name: string }[] };
+
+function loadEntityNameCache(db: ShadowDatabase): EntityNameCache {
+  return {
+    systems: db.listSystems().map(s => ({ id: s.id, name: s.name })),
+    projects: db.listProjects().map(p => ({ id: p.id, name: p.name })),
+  };
+}
+
 /** Build entity links from a repo: repo → its projects → their systems */
 function autoLinkFromRepo(db: ShadowDatabase, repoId: string): EntityLink[] {
   const entities: EntityLink[] = [{ type: 'repo', id: repoId }];
@@ -38,16 +48,17 @@ function autoLinkFromRepo(db: ShadowDatabase, repoId: string): EntityLink[] {
 }
 
 /** Detect mentions of registered systems/projects in text */
-function detectEntityMentions(db: ShadowDatabase, text: string): EntityLink[] {
+function detectEntityMentions(db: ShadowDatabase, text: string, cache?: EntityNameCache): EntityLink[] {
   const entities: EntityLink[] = [];
   const lower = text.toLowerCase();
   try {
-    for (const sys of db.listSystems()) {
+    const c = cache ?? loadEntityNameCache(db);
+    for (const sys of c.systems) {
       if (sys.name.length >= 3 && lower.includes(sys.name.toLowerCase())) {
         entities.push({ type: 'system', id: sys.id });
       }
     }
-    for (const proj of db.listProjects()) {
+    for (const proj of c.projects) {
       if (proj.name.length >= 3 && lower.includes(proj.name.toLowerCase())) {
         entities.push({ type: 'project', id: proj.id });
       }
@@ -57,10 +68,10 @@ function detectEntityMentions(db: ShadowDatabase, text: string): EntityLink[] {
 }
 
 /** Combine entity links from repo + name detection, deduplicated */
-function buildEntityLinks(db: ShadowDatabase, repoId: string | null, text: string): EntityLink[] {
+function buildEntityLinks(db: ShadowDatabase, repoId: string | null, text: string, cache?: EntityNameCache): EntityLink[] {
   const entities: EntityLink[] = [];
   if (repoId) entities.push(...autoLinkFromRepo(db, repoId));
-  entities.push(...detectEntityMentions(db, text));
+  entities.push(...detectEntityMentions(db, text, cache));
   // Deduplicate
   const seen = new Set<string>();
   return entities.filter(e => {
@@ -253,6 +264,9 @@ export async function activityAnalyze(
   const repoContexts = collectActiveRepoContexts(ctx.db);
   const repoContextSummary = summarizeRepoContexts(repoContexts);
 
+  // Cache entity names once for this entire analyze phase (avoids 6-12 full table scans)
+  const entityCache = loadEntityNameCache(ctx.db);
+
   if (observations.length === 0 && recentInteractions.length === 0 && recentConversations.length === 0) {
     return { patternsDetected: 0, memoriesCreated: 0, llmCalls: 0, tokensUsed: 0, observationsCreated: 0 };
   }
@@ -315,8 +329,7 @@ export async function activityAnalyze(
 
   // ========== CALL 1: Extract (memories + mood) ==========
   try {
-    const existingMemories = ctx.db.listMemories({ archived: false })
-      .filter(m => m.layer === 'core' || m.layer === 'hot')
+    const existingMemories = ctx.db.listMemories({ archived: false, layers: ['core', 'hot'] })
       .map(m => `- [${m.layer}] ${m.title}`)
       .join('\n');
 
@@ -417,7 +430,7 @@ export async function activityAnalyze(
                 confidenceScore: insight.confidence, relevanceScore: 0.6,
               });
               // Auto-link to projects + systems
-              const entities = buildEntityLinks(ctx.db, primaryRepoId, `${insight.title} ${insight.bodyMd}`);
+              const entities = buildEntityLinks(ctx.db, primaryRepoId, `${insight.title} ${insight.bodyMd}`, entityCache);
               if (entities.length > 0) persistEntityLinks(ctx.db, 'memories', mem.id, entities);
               // Store embedding for new memory
               await generateAndStoreEmbedding(ctx.db, 'memory', mem.id, { kind: mem.kind, title: mem.title, bodyMd: mem.bodyMd });
@@ -558,7 +571,7 @@ export async function activityAnalyze(
             title: obs.title, detail: { description: obs.detail }, context,
           });
           // Auto-link to projects + systems
-          const obsEntities = buildEntityLinks(ctx.db, firstRepoId, `${obs.title} ${obs.detail}`);
+          const obsEntities = buildEntityLinks(ctx.db, firstRepoId, `${obs.title} ${obs.detail}`, entityCache);
           if (obsEntities.length > 0) persistEntityLinks(ctx.db, 'observations', created.id, obsEntities);
           // Store embedding for new observation
           await generateAndStoreEmbedding(ctx.db, 'observation', created.id, { kind: created.kind, title: created.title, detail: created.detail });
@@ -590,6 +603,9 @@ export async function activitySuggest(
   if (observations.length === 0) {
     return { suggestionsCreated: 0, llmCalls: 0, tokensUsed: 0 };
   }
+
+  // Cache entity names once for this suggest phase
+  const entityCache = loadEntityNameCache(ctx.db);
 
   // Gather context
   const repoIds = [...new Set(observations.map((o) => o.repoId))];
@@ -761,7 +777,7 @@ export async function activitySuggest(
             requiredTrustLevel: ctx.profile.trustLevel,
           });
           // Auto-link to projects + systems
-          const sugEntities = buildEntityLinks(ctx.db, sugPrimaryRepo, `${sug.title} ${sug.summaryMd}`);
+          const sugEntities = buildEntityLinks(ctx.db, sugPrimaryRepo, `${sug.title} ${sug.summaryMd}`, entityCache);
           if (sugEntities.length > 0) persistEntityLinks(ctx.db, 'suggestions', created.id, sugEntities);
           // Store embedding for new suggestion
           await generateAndStoreEmbedding(ctx.db, 'suggestion', created.id, { kind: created.kind, title: created.title, summaryMd: created.summaryMd });
@@ -998,11 +1014,9 @@ export async function activityReflect(
 ): Promise<{ llmCalls: number; tokensUsed: number }> {
   const adapter = selectAdapter(ctx.config);
 
-  // Load all context inline — reflect has no MCP access (allowedTools: [])
-  const allMemories = ctx.db.listMemories({ archived: false });
-  const existingSoul = allMemories.find(m => m.kind === 'soul_reflection');
-  const coreHotMemories = allMemories
-    .filter(m => m.layer === 'core' || m.layer === 'hot')
+  // Load context inline — reflect has no MCP access (allowedTools: [])
+  const existingSoul = ctx.db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
+  const coreHotMemories = ctx.db.listMemories({ archived: false, layers: ['core', 'hot'] })
     .map(m => `- [${m.layer}/${m.kind}] ${m.title}`).join('\n');
   const feedback = ctx.db.listFeedback(undefined, 100)
     .filter(f => f.note)

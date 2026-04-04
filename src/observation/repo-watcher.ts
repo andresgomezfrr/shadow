@@ -48,13 +48,18 @@ export class RepoWatcher extends EventEmitter {
     if (!this.config.watcherEnabled) return;
 
     const repos = this.db.listRepos();
-    for (const repo of repos) {
+    // Sort by most recently observed first — prioritize active repos within FD budget
+    const sorted = [...repos].sort((a, b) =>
+      (b.lastObservedAt ?? '').localeCompare(a.lastObservedAt ?? ''));
+    const toWatch = sorted.slice(0, this.config.maxWatchedRepos);
+    for (const repo of toWatch) {
       this.watchRepo(repo.id, repo.name, repo.path);
     }
   }
 
   watchRepo(repoId: string, repoName: string, repoPath: string): void {
     if (this.watchers.has(repoId)) return;
+    if (this.watchers.size >= this.config.maxWatchedRepos) return;
 
     // Cache current HEAD
     try {
@@ -69,12 +74,36 @@ export class RepoWatcher extends EventEmitter {
       });
 
       watcher.on('error', (err) => {
+        if ((err as NodeJS.ErrnoException).code === 'EMFILE') {
+          console.error(`[watcher] FD limit hit — unwatching ${repoName}. Consider raising maxWatchedRepos or OS limits.`);
+          this.unwatchRepo(repoId);
+          return;
+        }
         this.emit('error', { repoId, error: err });
       });
 
       this.watchers.set(repoId, watcher);
     } catch (err) {
-      console.error(`[watcher] Failed to watch ${repoName}:`, err instanceof Error ? err.message : err);
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EMFILE') {
+        console.error(`[watcher] FD limit hit — cannot watch ${repoName}.`);
+      } else {
+        console.error(`[watcher] Failed to watch ${repoName}:`, err instanceof Error ? err.message : err);
+      }
+    }
+  }
+
+  /** Rotate watchers: drop least-recently-active, add most-recently-active unwatched repos. */
+  rotateWatchers(): void {
+    if (!this.config.watcherEnabled) return;
+    if (this.watchers.size >= this.config.maxWatchedRepos) return;
+
+    const repos = this.db.listRepos();
+    const unwatched = repos.filter(r => !this.watchers.has(r.id));
+    const sorted = [...unwatched].sort((a, b) =>
+      (b.lastObservedAt ?? '').localeCompare(a.lastObservedAt ?? ''));
+    for (const repo of sorted.slice(0, this.config.maxWatchedRepos - this.watchers.size)) {
+      this.watchRepo(repo.id, repo.name, repo.path);
     }
   }
 

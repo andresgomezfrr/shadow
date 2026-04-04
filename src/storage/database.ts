@@ -297,6 +297,10 @@ export class ShadowDatabase {
       .map(mapRepo);
   }
 
+  countRepos(): number {
+    return (this.database.prepare('SELECT COUNT(*) as total FROM repos').get() as { total: number }).total;
+  }
+
   updateRepo(id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt'>>): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
@@ -348,6 +352,15 @@ export class ShadowDatabase {
     return row ? mapSystem(row) : null;
   }
 
+  getSystemsByIds(ids: string[]): SystemRecord[] {
+    if (ids.length === 0) return [];
+    const ph = ids.map(() => '?').join(',');
+    return this.database
+      .prepare(`SELECT * FROM systems WHERE id IN (${ph})`)
+      .all(...ids)
+      .map(mapSystem);
+  }
+
   findSystemByName(name: string): SystemRecord | null {
     const row = this.database.prepare('SELECT * FROM systems WHERE name = ?').get(name);
     return row ? mapSystem(row) : null;
@@ -364,6 +377,10 @@ export class ShadowDatabase {
       .prepare('SELECT * FROM systems ORDER BY created_at DESC')
       .all()
       .map(mapSystem);
+  }
+
+  countSystems(): number {
+    return (this.database.prepare('SELECT COUNT(*) as total FROM systems').get() as { total: number }).total;
   }
 
   updateSystem(id: string, updates: Partial<Pick<SystemRecord, 'name' | 'kind' | 'url' | 'description' | 'accessMethod' | 'healthCheck' | 'logsLocation' | 'deployMethod' | 'debugGuide' | 'lastCheckedAt'>>): void {
@@ -516,6 +533,10 @@ export class ShadowDatabase {
       .map(mapContact);
   }
 
+  countContacts(): number {
+    return (this.database.prepare('SELECT COUNT(*) as total FROM contacts').get() as { total: number }).total;
+  }
+
   updateContact(id: string, updates: Partial<Pick<ContactRecord, 'name' | 'role' | 'team' | 'email' | 'slackId' | 'githubHandle' | 'notesMd' | 'preferredChannel' | 'lastMentionedAt'>>): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
@@ -612,13 +633,18 @@ export class ShadowDatabase {
     return row ? mapMemory(row) : null;
   }
 
-  listMemories(filters?: { layer?: string; scope?: string; repoId?: string; memoryType?: string; archived?: boolean; limit?: number; offset?: number }): MemoryRecord[] {
+  listMemories(filters?: { layer?: string; layers?: string[]; scope?: string; repoId?: string; memoryType?: string; archived?: boolean; createdSince?: string; limit?: number; offset?: number }): MemoryRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
     if (filters?.layer) {
       clauses.push('layer = ?');
       values.push(filters.layer);
+    }
+    if (filters?.layers?.length) {
+      const ph = filters.layers.map(() => '?').join(',');
+      clauses.push(`layer IN (${ph})`);
+      values.push(...filters.layers);
     }
     if (filters?.scope) {
       clauses.push('scope = ?');
@@ -637,6 +663,10 @@ export class ShadowDatabase {
     } else if (filters?.archived === true) {
       clauses.push('archived_at IS NOT NULL');
     }
+    if (filters?.createdSince) {
+      clauses.push('created_at > ?');
+      values.push(filters.createdSince);
+    }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
@@ -646,13 +676,14 @@ export class ShadowDatabase {
       .map(mapMemory);
   }
 
-  countMemories(filters?: { layer?: string; memoryType?: string; archived?: boolean }): number {
+  countMemories(filters?: { layer?: string; memoryType?: string; archived?: boolean; createdSince?: string }): number {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
     if (filters?.layer) { clauses.push('layer = ?'); values.push(filters.layer); }
     if (filters?.memoryType) { clauses.push('memory_type = ?'); values.push(filters.memoryType); }
     if (filters?.archived === false) { clauses.push('archived_at IS NULL'); }
     else if (filters?.archived === true) { clauses.push('archived_at IS NOT NULL'); }
+    if (filters?.createdSince) { clauses.push('created_at > ?'); values.push(filters.createdSince); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     return (this.database.prepare(`SELECT COUNT(*) as total FROM memories ${where}`).get(...values) as { total: number }).total;
   }
@@ -682,19 +713,23 @@ export class ShadowDatabase {
 
     if (ftsRows.length === 0) return [];
 
-    // Step 2: Get full memory records and apply filters
+    // Step 2: Batch-fetch all matching memory records
+    const rowids = ftsRows.map(f => f.rowid);
+    const ph = rowids.map(() => '?').join(',');
+    const allRows = this.database
+      .prepare(`SELECT *, rowid as _rowid FROM memories WHERE rowid IN (${ph})`)
+      .all(...rowids);
+    const rowMap = new Map(allRows.map(r => [(r as Record<string, unknown>)._rowid as number, r]));
+
+    // Iterate in FTS rank order, apply filters
     const results: MemorySearchResult[] = [];
     for (const ftsRow of ftsRows) {
       if (results.length >= limit) break;
-
-      const row = this.database
-        .prepare('SELECT * FROM memories WHERE rowid = ?')
-        .get(ftsRow.rowid);
+      const row = rowMap.get(ftsRow.rowid);
       if (!row) continue;
 
       const memory = mapMemory(row);
 
-      // Apply filters
       if (memory.archivedAt !== null) continue;
       if (options?.layer && memory.layer !== options.layer) continue;
       if (options?.scope && memory.scope !== options.scope) continue;
@@ -912,9 +947,11 @@ export class ShadowDatabase {
       const toResolve = this.database
         .prepare(`SELECT id FROM observations WHERE status = 'active' AND repo_id = ? ORDER BY votes ASC, last_seen_at ASC LIMIT ?`)
         .all(repo_id, excess) as { id: string }[];
-      for (const { id } of toResolve) {
-        this.database.prepare(`UPDATE observations SET status = 'resolved' WHERE id = ?`).run(id);
-        resolved++;
+      if (toResolve.length > 0) {
+        const ids = toResolve.map(r => r.id);
+        const ph = ids.map(() => '?').join(',');
+        this.database.prepare(`UPDATE observations SET status = 'resolved' WHERE id IN (${ph})`).run(...ids);
+        resolved += ids.length;
       }
     }
     return resolved;

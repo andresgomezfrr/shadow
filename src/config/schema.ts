@@ -52,6 +52,7 @@ export const ConfigSchema = z.object({
   activityHeartbeatMaxIntervalMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
   activityTriggerThreshold: z.coerce.number().int().positive().default(3),
   maxConcurrentRuns: z.coerce.number().int().min(1).max(8).default(2),
+  maxWatchedRepos: z.coerce.number().int().min(1).max(100).default(30),
 });
 
 export type ShadowConfig = z.infer<typeof ConfigSchema> & {

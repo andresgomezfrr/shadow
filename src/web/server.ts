@@ -56,15 +56,15 @@ async function handleApi(
         }
       } catch { /* ignore */ }
       const profile = db.ensureProfile();
-      const memoriesCount = db.listMemories().length;
+      const memoriesCount = db.countMemories({ archived: false });
       const pendingSuggestions = db.countPendingSuggestions();
-      const reposCount = db.listRepos().length;
-      const contactsCount = db.listContacts().length;
-      const systemsCount = db.listSystems().length;
+      const reposCount = db.countRepos();
+      const contactsCount = db.countContacts();
+      const systemsCount = db.countSystems();
       const lastHeartbeat = db.getLastJob('heartbeat');
       const usage = db.getUsageSummary('day');
-      const activeObservations = db.listObservations({ status: 'active' }).length;
-      const runsToReview = db.listRuns({ status: 'completed' }).length;
+      const activeObservations = db.countObservations({ status: 'active' });
+      const runsToReview = db.countRuns({ status: 'completed' });
       return json(res, {
         profile,
         counts: {
@@ -222,29 +222,27 @@ async function handleApi(
       const sinceIso = todayStart.toISOString();
       const profile = db.ensureProfile();
       const repos = db.listRepos();
-      const observations = db.listObservations({ status: 'active', limit: 100 });
-      const todayObs = observations.filter((o) => o.createdAt > sinceIso);
-      const memories = db.listMemories({ archived: false });
-      const todayMemories = memories.filter((m) => m.createdAt > sinceIso);
-      const suggestions = db.listSuggestions({ status: 'pending' });
+      const todayObs = db.listObservations({ status: 'active', limit: 10 });
+      const todayMemories = db.listMemories({ archived: false, createdSince: sinceIso, limit: 50 });
+      const suggestions = db.listSuggestions({ status: 'pending', limit: 20 });
       const usage = db.getUsageSummary('day');
       const events = db.listPendingEvents();
-      const runsToReview = db.listRuns({ status: 'completed' });
+      const runsToReview = db.listRuns({ status: 'completed', limit: 5 });
       const recentJobs = db.listJobs({ limit: 5 });
       return json(res, {
         date: todayStart.toISOString().split('T')[0],
         profile,
         activity: {
-          observationsToday: todayObs.length,
-          memoriesCreatedToday: todayMemories.length,
-          pendingSuggestions: suggestions.length,
-          runsToReview: runsToReview.length,
+          observationsToday: db.countObservations({ status: 'active' }),
+          memoriesCreatedToday: db.countMemories({ archived: false, createdSince: sinceIso }),
+          pendingSuggestions: db.countPendingSuggestions(),
+          runsToReview: db.countRuns({ status: 'completed' }),
           pendingEvents: events.length,
         },
-        topObservations: todayObs.slice(0, 10),
+        topObservations: todayObs,
         recentMemories: todayMemories.slice(0, 5).map((m) => ({ id: m.id, title: m.title, kind: m.kind, layer: m.layer, createdAt: m.createdAt })),
-        runsToReview: runsToReview.slice(0, 5),
-        pendingSuggestions: suggestions.slice(0, 20),
+        runsToReview,
+        pendingSuggestions: suggestions,
         repos: repos.map((r) => ({ id: r.id, name: r.name, path: r.path, lastObservedAt: r.lastObservedAt })),
         tokens: { input: usage.totalInputTokens, output: usage.totalOutputTokens, calls: usage.totalCalls },
         recentJobs,

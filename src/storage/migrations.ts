@@ -647,6 +647,14 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type, layer, archived_at);
     `,
   },
+  {
+    version: 28,
+    name: 'scalability_indexes',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_observations_created_status ON observations(status, created_at DESC);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

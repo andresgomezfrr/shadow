@@ -651,6 +651,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       state.pendingActivityCount = pendingActivityCount;
       state.watchedRepoCount = repoWatcher.watchedCount;
 
+      // Periodically rotate watchers to pick up newly-active repos (~every 60 idle ticks ≈ 30min)
+      if (consecutiveIdleTicks > 0 && consecutiveIdleTicks % 60 === 0) {
+        repoWatcher.rotateWatchers();
+        state.watchedRepoCount = repoWatcher.watchedCount;
+      }
+
       writeDaemonState(config, state);
 
       // Sleep (interruptible by SIGTERM or watcher activity)

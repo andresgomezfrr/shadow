@@ -122,7 +122,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
           const repo = db.findRepoByPath(repoPath!);
           const projects = db.findProjectsForRepo(contextRepoId);
           const systemIds = [...new Set(projects.flatMap(p => p.systemIds))];
-          const systems = systemIds.map(id => db.getSystem(id)).filter(Boolean) as { name: string; id: string; kind: string }[];
+          const systems = db.getSystemsByIds(systemIds);
 
           contextEntities = {
             repo: repo ? { name: repo.name, id: repo.id } : undefined,

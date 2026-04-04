@@ -42,6 +42,7 @@ export function loadConfig(): ShadowConfig {
     models: Object.keys(modelsInput).length > 0 ? modelsInput : undefined,
     efforts: Object.keys(effortsInput).length > 0 ? effortsInput : undefined,
     locale: process.env.SHADOW_LOCALE,
+    maxWatchedRepos: process.env.SHADOW_MAX_WATCHED_REPOS,
   });
 
   const resolvedDataDir = resolveDataDir(parsed.dataDir);
