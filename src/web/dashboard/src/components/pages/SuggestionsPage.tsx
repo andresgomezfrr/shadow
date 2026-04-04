@@ -10,22 +10,28 @@ import { Pagination } from '../common/Pagination';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
+import { ScoreBar } from '../common/ScoreBar';
 import type { Repo } from '../../api/types';
 
+// --- Status visual config ---
+
+const STATUS_BORDER: Record<string, string> = {
+  pending: 'border-l-orange',
+  snoozed: 'border-l-blue',
+  accepted: 'border-l-green',
+  dismissed: 'border-l-text-muted',
+  expired: 'border-l-text-muted',
+};
+
 const STATUSES = [
-  { label: 'Pending', value: 'pending' },
-  { label: 'Snoozed', value: 'snoozed' },
-  { label: 'Accepted', value: 'accepted' },
-  { label: 'Dismissed', value: 'dismissed' },
+  { label: 'Pending', value: 'pending', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
+  { label: 'Snoozed', value: 'snoozed', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
+  { label: 'Accepted', value: 'accepted', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
+  { label: 'Dismissed', value: 'dismissed', dotColor: 'bg-text-muted', activeClass: 'bg-text-muted/15 text-text-muted' },
   { label: 'All', value: '' },
 ];
 
-const STATUS_DOTS: Record<string, string> = {
-  pending: 'bg-orange',
-  snoozed: 'bg-blue',
-  accepted: 'bg-green',
-  dismissed: 'bg-text-muted',
-};
+const TERMINAL_STATUSES = new Set(['dismissed', 'expired']);
 
 const SNOOZE_OPTIONS = [
   { label: '3h', hours: 3 },
@@ -35,6 +41,7 @@ const SNOOZE_OPTIONS = [
   { label: '7d', hours: 168 },
 ];
 
+const DISMISS_REASONS = ['Not relevant', 'Already done', 'Too risky', 'Not now'];
 
 function repoName(repos: Repo[] | null, repoId: string | null): string | null {
   if (!repoId || !repos) return null;
@@ -61,12 +68,10 @@ export function SuggestionsPage() {
   const data = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
 
-  // Derive available kinds — cache them so the filter doesn't disappear when a kind is selected
+  // Derive available kinds
   const kindsRef = useRef<string[]>([]);
   const currentKinds = data ? [...new Set(data.map((s) => s.kind))].sort() : [];
-  if (!params.kind && currentKinds.length > 0) {
-    kindsRef.current = currentKinds;
-  }
+  if (!params.kind && currentKinds.length > 0) kindsRef.current = currentKinds;
   const kinds = params.kind ? kindsRef.current : currentKinds;
   const kindOptions = [{ label: 'All', value: '' }, ...kinds.map((k) => ({ label: k, value: k }))];
 
@@ -87,7 +92,16 @@ export function SuggestionsPage() {
     }
   };
 
+  // State
   const [runCreated, setRunCreated] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [snoozeOpen, setSnoozeOpen] = useState<string | null>(null);
+  const [dismissOpen, setDismissOpen] = useState<string | null>(null);
+  const [dismissNote, setDismissNote] = useState('');
+
+  const toggle = (id: string) => {
+    setExpanded((s) => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  };
 
   const handleAccept = useCallback(async (id: string) => {
     const result = await acceptSuggestion(id);
@@ -98,18 +112,19 @@ export function SuggestionsPage() {
     refresh();
   }, [refresh]);
 
-  const handleDismiss = useCallback(async (id: string) => {
-    const note = window.prompt('Reason for dismissing (optional):');
-    await dismissSuggestion(id, note || undefined);
+  const handleDismiss = useCallback(async (id: string, reason?: string, note?: string) => {
+    const fullNote = [reason, note].filter(Boolean).join(': ');
+    await dismissSuggestion(id, fullNote || undefined);
+    setDismissOpen(null);
+    setDismissNote('');
     refresh();
   }, [refresh]);
 
   const handleSnooze = useCallback(async (id: string, hours: number) => {
     await snoozeSuggestion(id, hours);
+    setSnoozeOpen(null);
     refresh();
   }, [refresh]);
-
-  const [snoozeOpen, setSnoozeOpen] = useState<string | null>(null);
 
   return (
     <div>
@@ -133,96 +148,133 @@ export function SuggestionsPage() {
       {!data ? (
         <div className="text-text-dim">Loading...</div>
       ) : data.length === 0 ? (
-        <EmptyState icon="💡" title="No suggestions" description="Shadow has no suggestions in this category" />
+        <EmptyState
+          icon={params.status === 'pending' ? '✓' : '💡'}
+          title={params.status === 'pending' ? 'All caught up' : 'No suggestions'}
+          description={params.status === 'pending' ? 'No pending suggestions to review' : 'Shadow has no suggestions in this category'}
+        />
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           {data.map((s) => {
             const repo = repoName(repos, s.repoId);
             const linkedRun = runs?.items?.find((r) => r.suggestionId === s.id);
+            const isOpen = expanded.has(s.id);
+            const isTerminal = TERMINAL_STATUSES.has(s.status);
+            const borderColor = STATUS_BORDER[s.status] ?? 'border-l-border';
+
             return (
-              <div key={s.id} ref={suggestionScrollRef(s.id)} className={`bg-card border rounded-lg p-4 transition-colors hover:border-accent ${pulseId === s.id ? 'border-accent ring-2 ring-accent/30' : 'border-border'}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOTS[s.status] ?? STATUS_DOTS.pending}`} />
-                      <span className="font-medium text-sm">{s.title}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-text-muted mb-2 flex-wrap">
-                      <span>{s.kind}</span>
-                      {repo && <><span>·</span><span>{repo}</span></>}
-                      <span>·</span>
-                      <span>{timeAgo(s.createdAt)}</span>
-                      {s.sourceObservationId && (
-                        <><span>·</span><a href={`/observations?highlight=${s.sourceObservationId}`} className="text-accent hover:underline">from observation</a></>
-                      )}
-                    </div>
-                    <Markdown>{s.summaryMd}</Markdown>
-                  </div>
-                  <div className="flex gap-1.5 shrink-0 flex-wrap justify-end items-center">
-                    <Badge title="Impact: how much value this change would bring (1=low, 5=high)" className="text-green bg-green/15">↑{s.impactScore}</Badge>
-                    <Badge title="Confidence: how sure Shadow is about this suggestion (0-100%)" className="text-blue bg-blue/15">{Math.round(s.confidenceScore)}%</Badge>
-                    {s.riskScore > 1 && <Badge title="Risk: potential for breaking things (1=safe, 5=dangerous)" className="text-orange bg-orange/15">⚠ {s.riskScore}</Badge>}
-                    <ThumbsFeedback targetKind="suggestion" targetId={s.id} initial={thumbsFromAction(fbState?.[s.id])} />
-                  </div>
+              <div
+                key={s.id}
+                ref={suggestionScrollRef(s.id)}
+                onClick={() => toggle(s.id)}
+                className={`bg-card border border-l-[3px] ${borderColor} rounded-lg px-4 py-3 cursor-pointer transition-colors hover:border-accent/50 ${isTerminal ? 'opacity-60' : ''} ${pulseId === s.id ? 'border-accent ring-2 ring-accent/30' : 'border-border'}`}
+              >
+                {/* Collapsed row */}
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="font-medium text-sm flex-1 min-w-0 truncate">{s.title}</span>
+                  <Badge className="text-text-dim bg-border">{s.kind}</Badge>
+                  {repo && <Badge className="text-text-dim bg-border">{repo}</Badge>}
+                  <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} compact />
+                  <ThumbsFeedback targetKind="suggestion" targetId={s.id} initial={thumbsFromAction(fbState?.[s.id])} />
+                  <span className="text-xs text-text-muted shrink-0">{timeAgo(s.createdAt)}</span>
                 </div>
-                {s.status === 'pending' && (
-                  <div className="flex gap-2 mt-3 pt-3 border-t border-border">
-                    <button
-                      onClick={() => handleAccept(s.id)}
-                      className="px-3 py-1 rounded-lg text-xs font-medium bg-green/15 text-green border border-green/30 cursor-pointer transition-all hover:bg-green/25"
-                    >
-                      Accept
-                    </button>
-                    <div className="relative">
-                      <button
-                        onClick={() => setSnoozeOpen(snoozeOpen === s.id ? null : s.id)}
-                        className="px-3 py-1 rounded-lg text-xs font-medium bg-blue/15 text-blue border border-blue/30 cursor-pointer transition-all hover:bg-blue/25"
-                      >
-                        Snooze
-                      </button>
-                      {snoozeOpen === s.id && (
-                        <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 overflow-hidden">
-                          {SNOOZE_OPTIONS.map((opt) => (
-                            <button
-                              key={opt.hours}
-                              onClick={() => { handleSnooze(s.id, opt.hours); setSnoozeOpen(null); }}
-                              className="block w-full px-4 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer"
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
+
+                {/* Expanded content */}
+                {isOpen && (
+                  <div className="mt-3 animate-fade-in space-y-3" onClick={(e) => e.stopPropagation()}>
+
+                    {/* Actions */}
+                    {s.status === 'pending' && (
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => handleAccept(s.id)}
+                          className="px-4 py-2 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer transition-all hover:brightness-110"
+                        >✓ Accept</button>
+                        <div className="relative">
+                          <button
+                            onClick={() => setSnoozeOpen(snoozeOpen === s.id ? null : s.id)}
+                            className="text-xs text-blue hover:underline bg-transparent border-none cursor-pointer"
+                          >Snooze</button>
+                          {snoozeOpen === s.id && (
+                            <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 overflow-hidden">
+                              {SNOOZE_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.hours}
+                                  onClick={() => handleSnooze(s.id, opt.hours)}
+                                  className="block w-full px-4 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer border-none bg-transparent"
+                                >{opt.label}</button>
+                              ))}
+                            </div>
+                          )}
                         </div>
+                        <span className="text-text-muted">·</span>
+                        <div className="relative">
+                          <button
+                            onClick={() => setDismissOpen(dismissOpen === s.id ? null : s.id)}
+                            className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer"
+                          >Dismiss</button>
+                          {dismissOpen === s.id && (
+                            <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 p-2 space-y-1 min-w-48">
+                              {DISMISS_REASONS.map((reason) => (
+                                <button
+                                  key={reason}
+                                  onClick={() => handleDismiss(s.id, reason)}
+                                  className="block w-full px-3 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer rounded border-none bg-transparent"
+                                >{reason}</button>
+                              ))}
+                              <div className="pt-1 border-t border-border mt-1">
+                                <input
+                                  type="text"
+                                  placeholder="Other reason..."
+                                  value={dismissNote}
+                                  onChange={(e) => setDismissNote(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter' && dismissNote) handleDismiss(s.id, undefined, dismissNote); }}
+                                  className="w-full px-2 py-1 text-xs bg-bg border border-border rounded outline-none focus:border-accent"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {s.status === 'snoozed' && (
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-blue">Snoozed — wakes {s.expiresAt ? timeAgo(s.expiresAt) : 'soon'}</span>
+                        <button onClick={() => handleSnooze(s.id, 0)} className="text-text-dim hover:text-text bg-transparent border-none cursor-pointer text-xs">Wake now</button>
+                      </div>
+                    )}
+
+                    {s.status === 'accepted' && linkedRun && (
+                      <div className="flex items-center gap-3 text-xs">
+                        <a href={`/runs?highlight=${linkedRun.id}`} className="text-accent hover:underline">View run</a>
+                        {s.resolvedAt && <span className="text-text-muted">Accepted {timeAgo(s.resolvedAt)}</span>}
+                      </div>
+                    )}
+
+                    {s.status === 'dismissed' && s.feedbackNote && (
+                      <div className="text-xs text-text-dim italic">"{s.feedbackNote}"</div>
+                    )}
+
+                    {/* Scores detail */}
+                    <div className="flex items-center gap-4 text-xs">
+                      <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} />
+                      {s.sourceObservationId && (
+                        <a href={`/observations?highlight=${s.sourceObservationId}`} className="text-accent hover:underline">from observation</a>
                       )}
                     </div>
-                    <button
-                      onClick={() => handleDismiss(s.id)}
-                      className="px-3 py-1 rounded-lg text-xs font-medium bg-border text-text-dim border border-border cursor-pointer transition-all hover:bg-red/15 hover:text-red"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                )}
-                {s.status === 'snoozed' && (
-                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border text-xs">
-                    <span className="text-blue">Snoozed — wakes {s.expiresAt ? timeAgo(s.expiresAt) : 'soon'}</span>
-                    <button
-                      onClick={() => handleSnooze(s.id, 0)}
-                      className="px-2 py-0.5 rounded text-xs text-text-dim hover:text-text cursor-pointer"
-                    >
-                      Wake now
-                    </button>
-                  </div>
-                )}
-                {s.status === 'accepted' && (
-                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border text-xs">
-                    {linkedRun && <a href={`/runs?highlight=${linkedRun.id}`} className="text-accent hover:underline">View run</a>}
-                    {s.resolvedAt && <span className="text-text-muted">Accepted {timeAgo(s.resolvedAt)}</span>}
-                  </div>
-                )}
-                {s.status === 'dismissed' && (
-                  <div className="text-xs text-text-muted mt-2 space-y-1">
-                    {s.resolvedAt && <div>Dismissed {timeAgo(s.resolvedAt)}</div>}
-                    {s.feedbackNote && <div className="text-text-dim italic">"{s.feedbackNote}"</div>}
+
+                    {/* Summary markdown */}
+                    <div className="bg-bg rounded-lg p-3 max-h-64 overflow-y-auto">
+                      <Markdown>{s.summaryMd}</Markdown>
+                    </div>
+
+                    {s.reasoningMd && (
+                      <div className="bg-bg rounded-lg p-3 max-h-48 overflow-y-auto text-text-dim">
+                        <div className="text-xs text-text-muted mb-1">Reasoning</div>
+                        <Markdown>{s.reasoningMd}</Markdown>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

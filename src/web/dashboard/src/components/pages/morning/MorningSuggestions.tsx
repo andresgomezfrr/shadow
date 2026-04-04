@@ -3,6 +3,7 @@ import { timeAgo } from '../../../utils/format';
 import { Badge } from '../../common/Badge';
 import { Markdown } from '../../common/Markdown';
 import { EmptyState } from '../../common/EmptyState';
+import { ScoreBar } from '../../common/ScoreBar';
 import type { Suggestion } from '../../../api/types';
 
 const SNOOZE_OPTIONS = [
@@ -36,62 +37,41 @@ function SuggestionReviewCard({
   };
 
   return (
-    <div className={`bg-card border border-border rounded-lg p-5 transition-all ${leaving ? 'animate-slide-out' : ''}`}>
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-[15px]">{suggestion.title}</div>
-          <div className="flex items-center gap-2 text-xs text-text-muted mt-0.5 flex-wrap">
-            <span>{suggestion.kind}</span>
-            <span>·</span>
-            <span>{timeAgo(suggestion.createdAt)}</span>
-            {suggestion.sourceObservationId && (
-              <><span>·</span><a href={`/observations?highlight=${suggestion.sourceObservationId}`} className="text-accent hover:underline">from observation</a></>
-            )}
-          </div>
-        </div>
-        <div className="flex gap-1.5 shrink-0">
-          <Badge title="Impact: how much value (1=low, 5=high)" className="text-green bg-green/15">↑{suggestion.impactScore}</Badge>
-          <Badge title="Confidence (0-100%)" className="text-blue bg-blue/15">{Math.round(suggestion.confidenceScore)}%</Badge>
-          {suggestion.riskScore > 1 && (
-            <Badge title="Risk: breaking potential (1=safe, 5=dangerous)" className="text-orange bg-orange/15">⚠ {suggestion.riskScore}</Badge>
-          )}
-        </div>
+    <div className={`bg-card border border-l-[3px] border-l-orange border-border rounded-lg p-4 transition-all ${leaving ? 'animate-slide-out' : ''}`}>
+      <div className="flex items-center gap-2.5 mb-2">
+        <span className="font-medium text-[15px] flex-1 min-w-0">{suggestion.title}</span>
+        <Badge className="text-text-dim bg-border">{suggestion.kind}</Badge>
+        <ScoreBar impact={suggestion.impactScore} confidence={suggestion.confidenceScore} risk={suggestion.riskScore} compact />
+        <span className="text-xs text-text-muted shrink-0">{timeAgo(suggestion.createdAt)}</span>
       </div>
-      <div className="mb-4"><Markdown>{suggestion.summaryMd}</Markdown></div>
-      <div className="flex gap-2">
+      <div className="mb-3"><Markdown>{suggestion.summaryMd}</Markdown></div>
+      <div className="flex items-center gap-3">
         <button
           onClick={() => handleAction('accept')}
-          className="px-4 py-1.5 rounded-lg text-xs font-medium bg-green/15 text-green border border-green/30 cursor-pointer transition-all hover:bg-green/25"
-        >
-          Accept
-        </button>
+          className="px-4 py-2 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer transition-all hover:brightness-110"
+        >✓ Accept</button>
         <div className="relative">
           <button
             onClick={() => setSnoozeOpen(!snoozeOpen)}
-            className="px-4 py-1.5 rounded-lg text-xs font-medium bg-blue/15 text-blue border border-blue/30 cursor-pointer transition-all hover:bg-blue/25"
-          >
-            Snooze
-          </button>
+            className="text-xs text-blue hover:underline bg-transparent border-none cursor-pointer"
+          >Snooze</button>
           {snoozeOpen && (
             <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 overflow-hidden">
               {SNOOZE_OPTIONS.map((opt) => (
                 <button
                   key={opt.hours}
                   onClick={() => { setLeaving(true); setTimeout(() => onSnooze(suggestion.id, opt.hours), 350); setSnoozeOpen(false); }}
-                  className="block w-full px-4 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer"
-                >
-                  {opt.label}
-                </button>
+                  className="block w-full px-4 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer border-none bg-transparent"
+                >{opt.label}</button>
               ))}
             </div>
           )}
         </div>
+        <span className="text-text-muted">·</span>
         <button
           onClick={() => handleAction('dismiss')}
-          className="px-4 py-1.5 rounded-lg text-xs font-medium bg-border text-text-dim border border-border cursor-pointer transition-all hover:bg-red/15 hover:text-red hover:border-red/30"
-        >
-          Dismiss
-        </button>
+          className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer"
+        >Dismiss</button>
       </div>
     </div>
   );
@@ -112,26 +92,14 @@ export function MorningSuggestions({
     <section className="mb-8">
       <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
         💡 Pending suggestions
-        {suggestions.length > 0 && (
-          <Badge>{suggestions.length}</Badge>
-        )}
+        {suggestions.length > 0 && <Badge>{suggestions.length}</Badge>}
       </h2>
       {suggestions.length === 0 ? (
-        <EmptyState
-          icon="✅"
-          title="All caught up"
-          description="No pending suggestions to review"
-        />
+        <EmptyState icon="✓" title="All caught up" description="No pending suggestions to review" />
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           {suggestions.map((s) => (
-            <SuggestionReviewCard
-              key={s.id}
-              suggestion={s}
-              onAccept={onAccept}
-              onDismiss={onDismiss}
-              onSnooze={onSnooze}
-            />
+            <SuggestionReviewCard key={s.id} suggestion={s} onAccept={onAccept} onDismiss={onDismiss} onSnooze={onSnooze} />
           ))}
         </div>
       )}

@@ -21,17 +21,17 @@ export function DashboardPage() {
       <h1 className="text-xl font-semibold mb-6">Dashboard</h1>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-        <MetricCard label="Trust Level" value={`Lv.${profile.trustLevel} ${trustName}`} accent>
+        <MetricCard label="Trust Level" value={`Lv.${profile.trustLevel} ${trustName}`} accent href="/profile">
           <ProgressBar value={profile.trustLevel} max={5} />
         </MetricCard>
 
-        <MetricCard label="Trust Score" value={profile.trustScore.toFixed(1)} />
+        <MetricCard label="Trust Score" value={profile.trustScore.toFixed(1)} href="/profile" />
 
-        <MetricCard label="Personality" value={`Level ${profile.personalityLevel}`}>
+        <MetricCard label="Personality" value={`Level ${profile.personalityLevel}`} href="/profile">
           <ProgressBar value={profile.personalityLevel} max={5} />
         </MetricCard>
 
-        <MetricCard label="Proactivity" value={`${profile.proactivityLevel}/10`}>
+        <MetricCard label="Proactivity" value={`${profile.proactivityLevel}/10`} href="/profile">
           <ProgressBar value={profile.proactivityLevel} max={10} />
         </MetricCard>
 
@@ -40,27 +40,29 @@ export function DashboardPage() {
         <MetricCard
           label="Focus Mode"
           value={profile.focusMode === 'focus' ? '🎯 Active' : 'Inactive'}
+          href="/profile"
         />
 
-        <MetricCard label="Repos" value={counts.repos} />
-        <MetricCard label="Memories" value={counts.memories} />
-        <MetricCard label="Pending suggestions" value={counts.pendingSuggestions} accent />
-        <MetricCard label="Contacts" value={counts.contacts} />
-        <MetricCard label="Systems" value={counts.systems} />
+        <MetricCard label="Repos" value={counts.repos} href="/repos" />
+        <MetricCard label="Memories" value={counts.memories} href="/memories" />
+        <MetricCard label="Pending suggestions" value={counts.pendingSuggestions} accent href="/suggestions?status=pending" />
+        <MetricCard label="Contacts" value={counts.contacts} href="/team" />
+        <MetricCard label="Systems" value={counts.systems} href="/systems" />
 
         <MetricCard
           label="Tokens today"
           value={formatTokens(usage.totalInputTokens + usage.totalOutputTokens)}
+          href="/usage"
         >
           <div className="text-xs text-text-muted mt-1">
             {formatTokens(usage.totalInputTokens)} in / {formatTokens(usage.totalOutputTokens)} out
           </div>
         </MetricCard>
 
-        <MetricCard label="LLM calls" value={usage.totalCalls} />
+        <MetricCard label="LLM calls" value={usage.totalCalls} href="/usage" />
 
         {lastHeartbeat && (
-          <MetricCard label="Last heartbeat" value={lastHeartbeat.phase}>
+          <MetricCard label="Last heartbeat" value={lastHeartbeat.phase} href="/heartbeats">
             <div className="text-xs text-text-muted mt-1">
               {lastHeartbeat.observationsCreated} obs &middot; {lastHeartbeat.suggestionsCreated} sug
             </div>

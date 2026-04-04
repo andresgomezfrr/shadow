@@ -796,7 +796,7 @@ export class ShadowDatabase {
     return row ? mapObservation(row) : null;
   }
 
-  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; limit?: number; offset?: number }): ObservationRecord[] {
+  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; severity?: string; limit?: number; offset?: number }): ObservationRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -816,6 +816,10 @@ export class ShadowDatabase {
       clauses.push('status = ?');
       values.push(filters.status);
     }
+    if (filters?.severity) {
+      clauses.push('severity = ?');
+      values.push(filters.severity);
+    }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     const pagination = `${filters?.limit != null ? `LIMIT ${filters.limit}` : ''}${filters?.offset != null ? ` OFFSET ${filters.offset}` : ''}`;
@@ -825,11 +829,12 @@ export class ShadowDatabase {
       .map(mapObservation);
   }
 
-  countObservations(filters?: { repoId?: string; status?: string }): number {
+  countObservations(filters?: { repoId?: string; status?: string; severity?: string }): number {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
     if (filters?.repoId) { clauses.push('repo_id = ?'); values.push(filters.repoId); }
     if (filters?.status && filters.status !== 'all') { clauses.push('status = ?'); values.push(filters.status); }
+    if (filters?.severity) { clauses.push('severity = ?'); values.push(filters.severity); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     return (this.database.prepare(`SELECT COUNT(*) as total FROM observations ${where}`).get(...values) as { total: number }).total;
   }

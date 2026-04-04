@@ -4,6 +4,7 @@ import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDatabase, type ShadowDatabase } from '../storage/database.js';
 import { loadConfig } from '../config/load-config.js';
+import { DIGEST_SCHEDULES, nextScheduledAt } from '../daemon/schedules.js';
 
 function json(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, {
@@ -90,21 +91,10 @@ async function handleApi(
             const nextAt = lastRef ? new Date(new Date(lastRef.startedAt).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
             return { intervalMs: 24 * 60 * 60 * 1000, nextAt };
           })(),
-          'digest-daily': (() => {
-            const last = db.getLastJob('digest-daily');
-            const nextAt = last ? new Date(new Date(last.startedAt).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
-            return { intervalMs: 24 * 60 * 60 * 1000, nextAt };
-          })(),
-          'digest-weekly': (() => {
-            const last = db.getLastJob('digest-weekly');
-            const nextAt = last ? new Date(new Date(last.startedAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
-            return { intervalMs: 7 * 24 * 60 * 60 * 1000, nextAt };
-          })(),
-          'digest-brag': (() => {
-            const last = db.getLastJob('digest-brag');
-            const nextAt = last ? new Date(new Date(last.startedAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
-            return { intervalMs: 7 * 24 * 60 * 60 * 1000, nextAt };
-          })(),
+          ...Object.fromEntries(Object.entries(DIGEST_SCHEDULES).map(([type, sched]) => {
+            const tz = db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+            return [type, { schedule: sched.label, nextAt: nextScheduledAt(sched, tz) }];
+          })),
         },
       });
     }
@@ -146,8 +136,9 @@ async function handleApi(
       const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
       const status = params.get('status') ?? 'all';
       const repoId = params.get('repoId') ?? undefined;
-      const items = db.listObservations({ limit, offset, status, repoId });
-      const total = db.countObservations({ repoId, status });
+      const severity = params.get('severity') ?? undefined;
+      const items = db.listObservations({ limit, offset, status, repoId, severity });
+      const total = db.countObservations({ repoId, status, severity });
       const fbState = db.getThumbsState('observation');
       return json(res, { items, total, feedbackState: fbState });
     }

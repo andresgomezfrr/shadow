@@ -998,19 +998,20 @@ export async function activityReflect(
 ): Promise<{ llmCalls: number; tokensUsed: number }> {
   const adapter = selectAdapter(ctx.config);
 
-  // Load all context that Claude can't get via MCP (daemon spawns don't have MCP access)
-  const existingSoul = ctx.db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
-  const coreHotMemories = ctx.db.listMemories({ archived: false })
+  // Load all context inline — reflect has no MCP access (allowedTools: [])
+  const allMemories = ctx.db.listMemories({ archived: false });
+  const existingSoul = allMemories.find(m => m.kind === 'soul_reflection');
+  const coreHotMemories = allMemories
     .filter(m => m.layer === 'core' || m.layer === 'hot')
     .map(m => `- [${m.layer}/${m.kind}] ${m.title}`).join('\n');
-  const feedback = ctx.db.listFeedback(undefined, 50)
+  const feedback = ctx.db.listFeedback(undefined, 100)
     .filter(f => f.note)
     .map(f => `- [${f.targetKind}] ${f.action}: ${f.note}`).join('\n');
   const activeObs = ctx.db.listObservations({ status: 'active', limit: 10 })
     .map(o => `- [${o.kind}] ${o.title}`).join('\n');
-  const acceptedSugs = ctx.db.listSuggestions({ status: 'accepted' }).slice(0, 10)
+  const acceptedSugs = ctx.db.listSuggestions({ status: 'accepted', limit: 30 })
     .map(s => `- ${s.title} (${s.kind})`).join('\n');
-  const dismissedSugs = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10)
+  const dismissedSugs = ctx.db.listSuggestions({ status: 'dismissed', limit: 30 })
     .filter(s => s.feedbackNote)
     .map(s => `- ${s.title} — "${s.feedbackNote}"`).join('\n');
 
@@ -1050,6 +1051,8 @@ export async function activityReflect(
     relevantMemories: [],
     model: 'opus',
     effort: 'high',
+    systemPrompt: null,   // markdown output, not JSON
+    allowedTools: [],      // all context is inline, no tools needed
   };
 
   let tokensUsed = 0;
@@ -1062,6 +1065,11 @@ export async function activityReflect(
     });
 
     if (result.status === 'success' && result.output) {
+      const expectedSections = ['## Work style', '## What they value', '## What to avoid', '## Current focus', '## Communication preferences'];
+      const missing = expectedSections.filter(s => !result.output!.includes(s));
+      if (missing.length > 0) {
+        console.error(`[shadow:reflect] Warning: output missing sections: ${missing.join(', ')}`);
+      }
       // Save soul reflection
       if (existingSoul) {
         ctx.db.updateMemory(existingSoul.id, { bodyMd: result.output });

@@ -28,7 +28,7 @@ export type ObjectivePack = {
   model?: string;
   effort?: string;
   systemPrompt?: string | null; // string = override, null = no --system-prompt, undefined = JSON-only default
-  allowedTools?: string[];       // extra tools to allow (e.g. Edit, Write, Bash for execution runs)
+  allowedTools?: string[];       // extra tools beyond mcp__shadow__*. undefined = default MCP, [] = no tools at all
   timeoutMs?: number;
 };
 

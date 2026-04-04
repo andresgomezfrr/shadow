@@ -41,9 +41,11 @@ export class ClaudeCliAdapter implements BackendAdapter {
       args.push('--effort', pack.effort);
     }
 
-    // Allow Shadow's own MCP tools + any extra tools (e.g. Edit, Write, Bash for execution runs)
-    const tools = ['mcp__shadow__*', ...(pack.allowedTools ?? [])];
-    args.push('--allowedTools', tools.join(','));
+    // Tool access: undefined = default MCP tools, [] = no tools, [...] = MCP + extras
+    if (!pack.allowedTools || pack.allowedTools.length > 0) {
+      const tools = ['mcp__shadow__*', ...(pack.allowedTools ?? [])];
+      args.push('--allowedTools', tools.join(','));
+    }
 
     // Prompt via stdin — avoids ARG_MAX limit with large prompts (conversations, memories, etc.)
 

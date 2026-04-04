@@ -6,6 +6,7 @@ import type { ShadowConfig } from '../config/schema.js';
 import { killActiveChild } from '../backend/claude-cli.js';
 import { createDatabase, ShadowDatabase } from '../storage/database.js';
 import { startThoughtLoop, stopThoughtLoop } from './thought.js';
+import { DIGEST_SCHEDULES, isScheduleReady } from './schedules.js';
 
 // --- Types ---
 
@@ -495,46 +496,33 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         worked = true;
       }
 
-      // --- Job: digest-daily (every 24h or on-demand) ---
-      if (shouldRunJob('digest-daily', 24 * 60 * 60 * 1000)) {
-        const { activityDailyDigest } = await import('../heartbeat/digests.js');
-        setPhase('digest');
-        try {
-          await runJobType('digest-daily', async () => {
-            const result = await activityDailyDigest(_db, config);
-            return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: ['digest-daily'], result: {} };
-          });
-        } catch (e) { console.error('[daemon] Daily digest failed:', e instanceof Error ? e.message : e); }
-        finally { setPhase(null); }
-        worked = true;
-      }
+      // --- Digest jobs (clock-time scheduled, timezone-aware) ---
+      const userTz = _db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      for (const [jobType, schedule] of Object.entries(DIGEST_SCHEDULES)) {
+        const triggerPath = resolve(config.resolvedDataDir, `${jobType}-trigger`);
+        const manualTrigger = existsSync(triggerPath);
+        if (manualTrigger) { try { unlinkSync(triggerPath); } catch { /* */ } }
 
-      // --- Job: digest-weekly (every 7d or on-demand) ---
-      if (shouldRunJob('digest-weekly', 7 * 24 * 60 * 60 * 1000)) {
-        const { activityWeeklyDigest } = await import('../heartbeat/digests.js');
-        setPhase('digest');
-        try {
-          await runJobType('digest-weekly', async () => {
-            const result = await activityWeeklyDigest(_db, config);
-            return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: ['digest-weekly'], result: {} };
-          });
-        } catch (e) { console.error('[daemon] Weekly digest failed:', e instanceof Error ? e.message : e); }
-        finally { setPhase(null); }
-        worked = true;
-      }
+        const last = _db.getLastJob(jobType);
+        if (last?.status === 'running') continue;
 
-      // --- Job: digest-brag (every 7d or on-demand) ---
-      if (shouldRunJob('digest-brag', 7 * 24 * 60 * 60 * 1000)) {
-        const { activityBragDoc } = await import('../heartbeat/digests.js');
-        setPhase('digest');
-        try {
-          await runJobType('digest-brag', async () => {
-            const result = await activityBragDoc(_db, config);
-            return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: ['digest-brag'], result: {} };
-          });
-        } catch (e) { console.error('[daemon] Brag doc failed:', e instanceof Error ? e.message : e); }
-        finally { setPhase(null); }
-        worked = true;
+        if (manualTrigger || isScheduleReady(schedule, userTz, last?.startedAt)) {
+          const { activityDailyDigest, activityWeeklyDigest, activityBragDoc } = await import('../heartbeat/digests.js');
+          const activities: Record<string, () => Promise<{ contentMd: string; tokensUsed: number }>> = {
+            'digest-daily': () => activityDailyDigest(_db, config),
+            'digest-weekly': () => activityWeeklyDigest(_db, config),
+            'digest-brag': () => activityBragDoc(_db, config),
+          };
+          setPhase('digest');
+          try {
+            await runJobType(jobType, async () => {
+              const result = await activities[jobType]();
+              return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: [jobType], result: {} };
+            });
+          } catch (e) { console.error(`[daemon] ${jobType} failed:`, e instanceof Error ? e.message : e); }
+          finally { setPhase(null); }
+          worked = true;
+        }
       }
 
       // --- Stale run detector ---

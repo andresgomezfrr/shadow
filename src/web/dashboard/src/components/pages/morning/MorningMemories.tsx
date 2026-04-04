@@ -8,7 +8,10 @@ export function MorningMemories({ memories }: { memories: DailySummary['recentMe
 
   return (
     <section className="mb-8">
-      <h2 className="text-lg font-semibold mb-3">🧠 What Shadow learned today</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold">🧠 What Shadow learned today</h2>
+        <a href="/memories" className="text-xs text-accent hover:underline">View all</a>
+      </div>
       <div className="flex flex-col gap-1.5">
         {memories.map((m) => (
           <div key={m.id} className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center gap-2">

@@ -38,13 +38,18 @@ export function DigestsPage() {
     return next;
   });
 
+  const [triggeredKinds, setTriggeredKinds] = useState<Set<string>>(new Set());
+
   const handleTrigger = useCallback(async (kind: 'daily' | 'weekly' | 'brag') => {
+    setTriggeredKinds(prev => new Set(prev).add(kind));
     await triggerDigest(kind);
-    // Poll until job starts, then refresh will pick it up
-    setTimeout(refresh, 3000);
+    setTimeout(() => {
+      refresh();
+      setTriggeredKinds(prev => { const next = new Set(prev); next.delete(kind); return next; });
+    }, 3000);
   }, [refresh]);
 
-  const isRunning = (kind: string) => status?.[kind] === 'running';
+  const isBusy = (kind: string) => status?.[kind] === 'running' || triggeredKinds.has(kind);
 
   return (
     <div>
@@ -56,10 +61,10 @@ export function DigestsPage() {
             <button
               key={kind}
               onClick={() => handleTrigger(kind)}
-              disabled={isRunning(kind)}
+              disabled={isBusy(kind)}
               className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan/15 text-cyan border border-cyan/30 cursor-pointer transition-all hover:bg-cyan/25 disabled:opacity-50 disabled:cursor-wait"
             >
-              {isRunning(kind) ? `Generating ${KIND_LABELS[kind]}...` : `Generate ${KIND_LABELS[kind]}`}
+              {isBusy(kind) ? `Generating ${KIND_LABELS[kind]}...` : `Generate ${KIND_LABELS[kind]}`}
             </button>
           ))}
         </div>
@@ -91,7 +96,15 @@ export function DigestsPage() {
                     {d.kind === 'brag' ? 'Brag Doc' : d.periodStart}
                     {d.kind === 'weekly' ? ` — ${d.periodEnd}` : ''}
                   </span>
-                  <span className="text-xs text-text-muted ml-auto">{timeAgo(d.updatedAt)}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleTrigger(d.kind as 'daily' | 'weekly' | 'brag'); }}
+                    disabled={isBusy(d.kind)}
+                    className="ml-auto px-1.5 py-0.5 rounded text-xs text-text-muted hover:text-cyan hover:bg-cyan/10 transition-colors disabled:opacity-40 disabled:cursor-wait cursor-pointer"
+                    title={`Regenerate ${KIND_LABELS[d.kind] ?? d.kind}`}
+                  >
+                    {isBusy(d.kind) ? '⏳' : '🔄'}
+                  </button>
+                  <span className="text-xs text-text-muted">{timeAgo(d.updatedAt)}</span>
                 </div>
 
                 {isOpen && (

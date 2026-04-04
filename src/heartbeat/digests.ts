@@ -93,6 +93,7 @@ export async function activityDailyDigest(
   const result = await adapter.execute({
     repos: [], title: 'Daily Digest', goal: 'Generate standup summary',
     prompt, relevantMemories: [], model: 'sonnet',
+    systemPrompt: null, allowedTools: [],
   });
 
   const tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
@@ -158,6 +159,7 @@ export async function activityWeeklyDigest(
   const result = await adapter.execute({
     repos: [], title: 'Weekly Digest', goal: 'Generate 1:1 summary',
     prompt, relevantMemories: [], model: 'opus',
+    systemPrompt: null, allowedTools: [],
   });
 
   const tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
@@ -228,6 +230,7 @@ export async function activityBragDoc(
   const result = await adapter.execute({
     repos: [], title: 'Brag Doc', goal: 'Update quarterly brag doc',
     prompt, relevantMemories: [], model: 'opus',
+    systemPrompt: null, allowedTools: [],
   });
 
   const tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useApi } from '../../hooks/useApi';
-import { fetchDailySummary, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
+import { fetchDailySummary, fetchDigests, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
 import { TRUST_NAMES, MOOD_EMOJIS } from '../../api/types';
 import { MorningMetrics } from './morning/MorningMetrics';
 import { MorningJobs } from './morning/MorningJobs';
@@ -9,6 +9,7 @@ import { MorningRuns } from './morning/MorningRuns';
 import { MorningSuggestions } from './morning/MorningSuggestions';
 import { MorningObservations } from './morning/MorningObservations';
 import { MorningRepos } from './morning/MorningRepos';
+import { MorningDigest } from './morning/MorningDigest';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -28,6 +29,9 @@ function formatDate(): string {
 
 export function MorningPage() {
   const { data, refresh } = useApi(fetchDailySummary, [], 60_000);
+  const { data: digests } = useApi(() => fetchDigests('daily'), [], 60_000);
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().split('T')[0];
+  const latestDigest = digests?.find((d) => d.periodStart === yesterday) ?? null;
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const handleAccept = useCallback(async (id: string) => {
@@ -60,9 +64,9 @@ export function MorningPage() {
   const pendingSuggestions = data.pendingSuggestions.filter((s) => !dismissed.has(s.id));
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       {/* Greeting */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-semibold">
           {getGreeting()}, {profile.displayName ?? 'dev'} {moodEmoji}
         </h1>
@@ -72,18 +76,32 @@ export function MorningPage() {
         </p>
       </div>
 
+      {/* Yesterday's digest — context before today's data */}
+      <MorningDigest digest={latestDigest} />
+
+      {/* Metrics + Jobs — full width */}
       <MorningMetrics activity={data.activity} tokens={data.tokens} />
       <MorningJobs jobs={data.recentJobs} />
-      <MorningMemories memories={data.recentMemories} />
-      <MorningRuns runs={data.runsToReview} />
+
+      {/* 2-column grid — reduce scroll */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-0">
+        <div>
+          <MorningRuns runs={data.runsToReview} />
+          <MorningMemories memories={data.recentMemories} />
+        </div>
+        <div>
+          <MorningObservations observations={data.topObservations} />
+          <MorningRepos repos={data.repos} />
+        </div>
+      </div>
+
+      {/* Suggestions — full width (needs space for action buttons) */}
       <MorningSuggestions
         suggestions={pendingSuggestions}
         onAccept={handleAccept}
         onDismiss={handleDismiss}
         onSnooze={handleSnooze}
       />
-      <MorningObservations observations={data.topObservations} />
-      <MorningRepos repos={data.repos} />
     </div>
   );
 }

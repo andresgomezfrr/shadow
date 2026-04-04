@@ -142,15 +142,15 @@ export function JobsPage() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Badge title="Daily standup digest" tooltipBelow className={TYPE_COLORS['digest-daily']}>digest-daily</Badge>
-          <span className="text-text-muted">24h ·</span>
+          <span className="text-text-muted">{(schedule?.['digest-daily'] as Record<string, unknown>)?.schedule as string ?? '23:30'} ·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.['digest-daily']?.nextAt, now)}</span>
           <span className="text-text-muted">│</span>
           <Badge title="Weekly 1:1 digest" tooltipBelow className={TYPE_COLORS['digest-weekly']}>digest-weekly</Badge>
-          <span className="text-text-muted">7d ·</span>
+          <span className="text-text-muted">{(schedule?.['digest-weekly'] as Record<string, unknown>)?.schedule as string ?? 'Sun 23:30'} ·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.['digest-weekly']?.nextAt, now)}</span>
           <span className="text-text-muted">│</span>
           <Badge title="Quarterly brag doc" tooltipBelow className={TYPE_COLORS['digest-brag']}>digest-brag</Badge>
-          <span className="text-text-muted">7d ·</span>
+          <span className="text-text-muted">{(schedule?.['digest-brag'] as Record<string, unknown>)?.schedule as string ?? 'Mon 08:00'} ·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.['digest-brag']?.nextAt, now)}</span>
         </div>
       </div>
