@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { fetchMemories } from '../../api/client';
 import { useFilterParams } from '../../hooks/useFilterParams';
+import { useHighlight } from '../../hooks/useHighlight';
 import { LAYER_COLORS } from '../../api/types';
 import type { Memory } from '../../api/types';
 import { FilterTabs } from '../common/FilterTabs';
@@ -28,6 +29,7 @@ export function MemoriesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce search input → URL param
@@ -84,8 +86,9 @@ export function MemoriesPage() {
             return (
               <div
                 key={m.id}
+                ref={scrollRef(m.id)}
                 onClick={() => toggle(m.id)}
-                className="bg-card border border-border rounded-lg px-4 py-3 cursor-pointer transition-colors hover:border-accent"
+                className={`bg-card border border-border rounded-lg px-4 py-3 cursor-pointer transition-colors hover:border-accent ${pulseId === m.id ? 'border-accent ring-2 ring-accent/30' : ''}`}
               >
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge className={layerClass}>{m.layer}</Badge>
