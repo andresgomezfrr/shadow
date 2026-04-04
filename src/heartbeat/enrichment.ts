@@ -94,16 +94,23 @@ export async function activityEnrich(
     'Respond with JSON only.',
   ].join('\n');
 
+  // Resolve configurable models
+  const profile = db.ensureProfile();
+  const prefs = profile.preferences as Record<string, unknown> | undefined;
+  const prefModels = prefs?.models as Record<string, string> | undefined;
+  const planModel = prefModels?.enrichPlan ?? config.models.enrichPlan;
+  const execModel = prefModels?.enrichExecute ?? config.models.enrichExecute;
+
   let plan: EnrichmentPlan = { queries: [] };
 
   try {
     const planResult = await adapter.execute({
       repos: [], title: 'Enrichment Plan', goal: 'Plan external data queries',
-      prompt: planPrompt, relevantMemories: [], model: 'sonnet', effort: 'low',
+      prompt: planPrompt, relevantMemories: [], model: planModel, effort: 'low',
     });
     llmCalls++;
     tokensUsed += (planResult.inputTokens ?? 0) + (planResult.outputTokens ?? 0);
-    db.recordLlmUsage({ source: 'enrichment_plan', sourceId: null, model: 'sonnet', inputTokens: planResult.inputTokens ?? 0, outputTokens: planResult.outputTokens ?? 0 });
+    db.recordLlmUsage({ source: 'enrichment_plan', sourceId: null, model: planModel, inputTokens: planResult.inputTokens ?? 0, outputTokens: planResult.outputTokens ?? 0 });
 
     if (planResult.status === 'success' && planResult.output) {
       try {
@@ -148,13 +155,13 @@ export async function activityEnrich(
   try {
     const execResult = await adapter.execute({
       repos: [], title: 'Enrichment Execute', goal: 'Gather external context via MCP',
-      prompt: execPrompt, relevantMemories: [], model: 'opus', effort: 'medium',
+      prompt: execPrompt, relevantMemories: [], model: execModel, effort: 'medium',
       systemPrompt: null, // MCP access
       allowedTools: ['mcp__*'], // Access ALL user MCP servers
     });
     llmCalls++;
     tokensUsed += (execResult.inputTokens ?? 0) + (execResult.outputTokens ?? 0);
-    db.recordLlmUsage({ source: 'enrichment_execute', sourceId: null, model: 'opus', inputTokens: execResult.inputTokens ?? 0, outputTokens: execResult.outputTokens ?? 0 });
+    db.recordLlmUsage({ source: 'enrichment_execute', sourceId: null, model: execModel, inputTokens: execResult.inputTokens ?? 0, outputTokens: execResult.outputTokens ?? 0 });
 
     if (execResult.status === 'success' && execResult.output) {
       try {

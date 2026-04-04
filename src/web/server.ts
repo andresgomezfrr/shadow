@@ -297,6 +297,13 @@ async function handleApi(
       });
     }
 
+    if (pathname === '/api/config') {
+      const cfg = loadConfig();
+      // Expose runtime config without sensitive paths
+      const { resolvedDataDir, resolvedDatabasePath, resolvedArtifactsDir, claudeBin, claudeExtraPath, ...safe } = cfg;
+      return json(res, { config: safe });
+    }
+
     if (pathname === '/api/usage') {
       const period = (params.get('period') ?? 'week') as 'day' | 'week' | 'month';
       const usage = db.getUsageSummary(period);

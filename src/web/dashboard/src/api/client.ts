@@ -87,6 +87,9 @@ export const fetchSystemDetail = (id: string) =>
 export const fetchSoulHistory = () =>
   api<{ current: { id: string; bodyMd: string; updatedAt: string } | null; snapshots: { id: string; title: string; bodyMd: string; createdAt: string; archivedAt: string }[] }>('/api/soul/history');
 
+export const fetchConfig = () =>
+  api<{ config: Record<string, unknown> }>('/api/config');
+
 export const fetchEnrichment = (params?: { source?: string; limit?: number; offset?: number }) =>
   api<{ items: EnrichmentItem[]; total: number }>(`/api/enrichment${qs({ source: params?.source, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 

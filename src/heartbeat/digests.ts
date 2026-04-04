@@ -92,15 +92,20 @@ export async function activityDailyDigest(
     'Respond with markdown only. No JSON wrapping.',
   ].filter(Boolean).join('\n');
 
+  const profile = db.ensureProfile();
+  const prefs = profile.preferences as Record<string, unknown> | undefined;
+  const prefModels = prefs?.models as Record<string, string> | undefined;
+  const model = prefModels?.digestDaily ?? config.models.digestDaily;
+
   const adapter = selectAdapter(config);
   const result = await adapter.execute({
     repos: [], title: 'Daily Digest', goal: 'Generate standup summary',
-    prompt, relevantMemories: [], model: 'sonnet',
+    prompt, relevantMemories: [], model,
     systemPrompt: null, allowedTools: [],
   });
 
   const tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
-  db.recordLlmUsage({ source: 'digest_daily', sourceId: null, model: 'sonnet', inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+  db.recordLlmUsage({ source: 'digest_daily', sourceId: null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
   const contentMd = result.output ?? '*(No digest generated)*';
 
@@ -109,7 +114,7 @@ export async function activityDailyDigest(
   if (existing.length > 0 && existing[0].periodStart === today) {
     db.updateDigest(existing[0].id, { contentMd, tokensUsed });
   } else {
-    db.createDigest({ kind: 'daily', periodStart: today, periodEnd: today, contentMd, model: 'sonnet', tokensUsed });
+    db.createDigest({ kind: 'daily', periodStart: today, periodEnd: today, contentMd, model, tokensUsed });
   }
 
   return { contentMd, tokensUsed };
@@ -161,15 +166,20 @@ export async function activityWeeklyDigest(
     'Respond with markdown only.',
   ].filter(Boolean).join('\n');
 
+  const profile = db.ensureProfile();
+  const prefs = profile.preferences as Record<string, unknown> | undefined;
+  const prefModels = prefs?.models as Record<string, string> | undefined;
+  const model = prefModels?.digestWeekly ?? config.models.digestWeekly;
+
   const adapter = selectAdapter(config);
   const result = await adapter.execute({
     repos: [], title: 'Weekly Digest', goal: 'Generate 1:1 summary',
-    prompt, relevantMemories: [], model: 'opus',
+    prompt, relevantMemories: [], model,
     systemPrompt: null, allowedTools: [],
   });
 
   const tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
-  db.recordLlmUsage({ source: 'digest_weekly', sourceId: null, model: 'opus', inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+  db.recordLlmUsage({ source: 'digest_weekly', sourceId: null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
   const contentMd = result.output ?? '*(No digest generated)*';
 
@@ -177,7 +187,7 @@ export async function activityWeeklyDigest(
   if (existing.length > 0 && existing[0].periodStart >= weekAgo) {
     db.updateDigest(existing[0].id, { contentMd, tokensUsed });
   } else {
-    db.createDigest({ kind: 'weekly', periodStart: weekAgo, periodEnd: today, contentMd, model: 'opus', tokensUsed });
+    db.createDigest({ kind: 'weekly', periodStart: weekAgo, periodEnd: today, contentMd, model, tokensUsed });
   }
 
   return { contentMd, tokensUsed };
@@ -232,15 +242,20 @@ export async function activityBragDoc(
     'Respond with the FULL updated brag doc in markdown. No JSON wrapping.',
   ].filter(Boolean).join('\n');
 
+  const profile = db.ensureProfile();
+  const prefs = profile.preferences as Record<string, unknown> | undefined;
+  const prefModels = prefs?.models as Record<string, string> | undefined;
+  const model = prefModels?.digestBrag ?? config.models.digestBrag;
+
   const adapter = selectAdapter(config);
   const result = await adapter.execute({
     repos: [], title: 'Brag Doc', goal: 'Update quarterly brag doc',
-    prompt, relevantMemories: [], model: 'opus',
+    prompt, relevantMemories: [], model,
     systemPrompt: null, allowedTools: [],
   });
 
   const tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
-  db.recordLlmUsage({ source: 'digest_brag', sourceId: null, model: 'opus', inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+  db.recordLlmUsage({ source: 'digest_brag', sourceId: null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
   const contentMd = result.output ?? existingContent;
 
@@ -248,7 +263,7 @@ export async function activityBragDoc(
   if (existing) {
     db.updateDigest(existing.id, { contentMd, tokensUsed });
   } else {
-    db.createDigest({ kind: 'brag', periodStart: `${year}-01-01`, periodEnd: today, contentMd, model: 'opus', tokensUsed });
+    db.createDigest({ kind: 'brag', periodStart: `${year}-01-01`, periodEnd: today, contentMd, model, tokensUsed });
   }
 
   return { contentMd, tokensUsed };

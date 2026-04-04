@@ -6,6 +6,11 @@ export const ModelsSchema = z.object({
   consolidate: z.string().default('sonnet'),
   runner: z.string().default('sonnet'),
   thought: z.string().default('haiku'),
+  enrichPlan: z.string().default('sonnet'),
+  enrichExecute: z.string().default('opus'),
+  digestDaily: z.string().default('sonnet'),
+  digestWeekly: z.string().default('opus'),
+  digestBrag: z.string().default('opus'),
 });
 
 export const EffortsSchema = z.object({
@@ -37,6 +42,11 @@ export const ConfigSchema = z.object({
     consolidate: 'sonnet',
     runner: 'sonnet',
     thought: 'haiku',
+    enrichPlan: 'sonnet',
+    enrichExecute: 'opus',
+    digestDaily: 'sonnet',
+    digestWeekly: 'opus',
+    digestBrag: 'opus',
   }),
   efforts: EffortsSchema.default({
     analyze: 'medium',
