@@ -32,10 +32,13 @@ export function isScheduleReady(schedule: ClockSchedule, tz: string, lastStarted
   // Must be past scheduled time
   if (u.getHours() * 60 + u.getMinutes() < schedule.hour * 60 + schedule.minute) return false;
 
-  // Already ran today?
+  // Already ran at/after scheduled time today?
   if (lastStartedAt) {
     const lastU = new Date(new Date(lastStartedAt).toLocaleString('en-US', { timeZone: tz }));
-    if (dateKey(u) === dateKey(lastU)) return false;
+    if (dateKey(u) === dateKey(lastU)) {
+      const lastMin = lastU.getHours() * 60 + lastU.getMinutes();
+      if (lastMin >= schedule.hour * 60 + schedule.minute) return false;
+    }
   }
 
   return true;
