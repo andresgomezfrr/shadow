@@ -2,12 +2,20 @@ import { useParams, Link } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { fetchProjectDetail } from '../../api/client';
 import { Badge } from '../common/Badge';
+import { ScoreBar } from '../common/ScoreBar';
 import { SEVERITY_COLORS, LAYER_COLORS } from '../../api/types';
 
 const KIND_COLORS: Record<string, string> = {
   'long-term': 'text-blue bg-blue/15',
   sprint: 'text-orange bg-orange/15',
   task: 'text-green bg-green/15',
+};
+
+const SUG_KIND_COLORS: Record<string, string> = {
+  refactor: 'text-purple bg-purple/15',
+  bug: 'text-red bg-red/15',
+  improvement: 'text-blue bg-blue/15',
+  feature: 'text-green bg-green/15',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -95,14 +103,14 @@ export function ProjectDetailPage() {
           ) : (
             <div className="space-y-2">
               {data.observations.map((o) => (
-                <div key={o.id} className="bg-card border border-border rounded p-3">
+                <Link key={o.id} to={`/observations?highlight=${o.id}`} className="bg-card border border-border rounded p-3 block hover:border-accent/50 transition-colors no-underline">
                   <div className="flex items-center gap-2">
                     <Badge className={SEVERITY_COLORS[o.severity] ?? ''}>{o.severity}</Badge>
                     <Badge className="text-text-dim bg-text-dim/10">{o.kind}</Badge>
                     {o.votes > 1 && <span className="text-xs text-text-dim">{o.votes}x</span>}
                   </div>
-                  <div className="text-sm mt-1">{o.title}</div>
-                </div>
+                  <div className="text-sm mt-1 text-text">{o.title}</div>
+                </Link>
               ))}
               {data.counts.observations > data.observations.length && (
                 <Link to={`/observations`} className="text-xs text-accent hover:underline">View all &rarr;</Link>
@@ -119,13 +127,13 @@ export function ProjectDetailPage() {
           ) : (
             <div className="space-y-2">
               {data.suggestions.map((s) => (
-                <div key={s.id} className="bg-card border border-border rounded p-3">
+                <Link key={s.id} to={`/suggestions?highlight=${s.id}`} className="bg-card border border-border rounded p-3 block hover:border-accent/50 transition-colors no-underline">
                   <div className="flex items-center gap-2">
-                    <Badge className="text-orange bg-orange/10">{s.kind}</Badge>
-                    <span className="text-xs text-text-dim">impact:{s.impactScore} conf:{s.confidenceScore}%</span>
+                    <Badge className={SUG_KIND_COLORS[s.kind] ?? 'text-text-dim bg-text-dim/10'}>{s.kind}</Badge>
+                    <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} compact />
                   </div>
-                  <div className="text-sm mt-1">{s.title}</div>
-                </div>
+                  <div className="text-sm mt-1 text-text">{s.title}</div>
+                </Link>
               ))}
               {data.counts.suggestions > data.suggestions.length && (
                 <Link to={`/suggestions`} className="text-xs text-accent hover:underline">View all &rarr;</Link>
@@ -143,12 +151,12 @@ export function ProjectDetailPage() {
         ) : (
           <div className="space-y-2">
             {data.memories.map((m) => (
-              <div key={m.id} className="bg-card border border-border rounded p-3 flex items-center gap-2">
+              <Link key={m.id} to={`/memories?highlight=${m.id}`} className="bg-card border border-border rounded p-3 flex items-center gap-2 hover:border-accent/50 transition-colors no-underline">
                 <Badge className={LAYER_COLORS[m.layer] ?? ''}>{m.layer}</Badge>
                 <Badge className="text-text-dim bg-text-dim/10">{m.kind}</Badge>
-                <span className="text-sm">{m.title}</span>
+                <span className="text-sm text-text">{m.title}</span>
                 <span className="text-xs text-text-dim ml-auto">{new Date(m.createdAt).toLocaleDateString()}</span>
-              </div>
+              </Link>
             ))}
             {data.counts.memories > data.memories.length && (
               <Link to={`/memories`} className="text-xs text-accent hover:underline">View all &rarr;</Link>

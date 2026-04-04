@@ -325,7 +325,7 @@ export type ProjectDetail = Project & {
   systems: { id: string; name: string; kind: string }[];
   contacts: { id: string; name: string; role: string | null; team: string | null }[];
   observations: { id: string; kind: string; severity: string; title: string; votes: number; createdAt: string }[];
-  suggestions: { id: string; kind: string; title: string; impactScore: number; confidenceScore: number }[];
+  suggestions: { id: string; kind: string; title: string; impactScore: number; confidenceScore: number; riskScore: number }[];
   memories: { id: string; kind: string; layer: string; title: string; createdAt: string }[];
   enrichment: EnrichmentItem[];
   counts: { observations: number; suggestions: number; memories: number };

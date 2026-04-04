@@ -460,7 +460,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       }
 
       // Context enrichment: periodic MCP-based external data gathering
-      if (config.enrichmentEnabled && shouldEnqueue('context-enrich', config.enrichmentIntervalMs)) {
+      // Profile preferences override config defaults
+      const profilePrefs = _db.ensureProfile().preferences as Record<string, unknown> | undefined;
+      const enrichEnabled = (profilePrefs?.enrichmentEnabled as boolean | undefined) ?? config.enrichmentEnabled;
+      const enrichIntervalMin = profilePrefs?.enrichmentIntervalMin as number | undefined;
+      const enrichIntervalMs = enrichIntervalMin ? enrichIntervalMin * 60 * 1000 : config.enrichmentIntervalMs;
+      if (enrichEnabled && shouldEnqueue('context-enrich', enrichIntervalMs)) {
         _db.enqueueJob('context-enrich', { priority: 4 });
       }
 
@@ -580,7 +585,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           const hbResult = (hbJob?.result ?? {}) as Record<string, number>;
           if ((hbResult.observationsCreated ?? 0) > 0) {
             const profile = _db.ensureProfile();
-            if (profile.trustLevel >= 2 && _db.countPendingSuggestions() < 30) {
+            if (profile.trustLevel >= 2) {
               _db.enqueueJob('suggest', { priority: 8, triggerSource: 'reactive' });
             }
           }
@@ -637,8 +642,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
               const reflectResult = await activityReflect(ctx);
               return {
                 llmCalls: reflectResult.llmCalls, tokensUsed: reflectResult.tokensUsed,
-                phases: ['reflect'],
-                result: {},
+                phases: reflectResult.skipped ? ['reflect', 'skip'] : ['reflect-delta', 'reflect-evolve'],
+                result: { skipped: reflectResult.skipped, ...(reflectResult.reason ? { reason: reflectResult.reason } : {}) },
               };
             });
           } catch (refErr) {

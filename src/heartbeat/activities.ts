@@ -1066,130 +1066,125 @@ export async function activityNotify(
   return { eventsQueued };
 }
 
-// --- Activity: Reflect ---
+// --- Activity: Reflect (2-phase) ---
 
 export async function activityReflect(
   ctx: HeartbeatContext,
-): Promise<{ llmCalls: number; tokensUsed: number }> {
-  // Staleness check: skip if insufficient new data since last reflect
+): Promise<{ llmCalls: number; tokensUsed: number; skipped: boolean; reason?: string }> {
   const lastReflect = ctx.db.getLastJob('reflect');
-  if (lastReflect?.finishedAt) {
-    const memoriesSince = ctx.db.listMemories({ archived: false }).filter(
-      m => m.kind !== 'soul_reflection' && new Date(m.createdAt) > new Date(lastReflect.finishedAt!),
-    ).length;
-    if (memoriesSince < 3) {
-      console.error('[shadow:reflect] Skipping — insufficient new data since last reflect');
-      return { llmCalls: 0, tokensUsed: 0 };
-    }
-  }
+  const sinceIso = lastReflect?.finishedAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const adapter = selectAdapter(ctx.config);
-
-  // Load context inline — reflect has no MCP access (allowedTools: [])
   const existingSoul = ctx.db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
-  const coreHotMemories = ctx.db.listMemories({ archived: false })
-    .filter(m => m.layer === 'core' || m.layer === 'hot')
-    .map(m => `- [${m.layer}/${m.kind}] ${m.title}: ${m.bodyMd.slice(0, 100)}`).join('\n');
-  const feedback = ctx.db.listFeedback(undefined, 100)
-    .filter(f => f.note)
-    .map(f => `- [${f.targetKind}] ${f.action}: ${f.note}`).join('\n');
 
-  // Group observations by project for better context
-  const activeObs = ctx.db.listObservations({ status: 'active', limit: 20 });
-  const obsGrouped = activeObs.map(o => {
-    const projectLinks = (o.entities ?? []).filter(e => e.type === 'project').map(e => e.id);
-    const projectNames = projectLinks.map(id => { try { return ctx.db.getProject(id)?.name; } catch { return null; } }).filter(Boolean);
-    return `- [${o.kind}/${o.severity}] ${o.title}${projectNames.length ? ` (${projectNames.join(', ')})` : ''}`;
-  }).join('\n');
+  // ========== PHASE 1: Extract deltas (Sonnet, cheap) ==========
 
-  const acceptedSugs = ctx.db.listSuggestions({ status: 'accepted', limit: 30 })
-    .map(s => `- ${s.title} (${s.kind})`).join('\n');
-  const dismissedSugs = ctx.db.listSuggestions({ status: 'dismissed', limit: 30 })
-    .filter(s => s.feedbackNote)
-    .map(s => `- ${s.title} — "${s.feedbackNote}"`).join('\n');
+  // Gather only NEW data since last reflect
+  const newMemories = ctx.db.listMemories({ archived: false })
+    .filter(m => m.kind !== 'soul_reflection' && m.kind !== 'soul_snapshot' && m.createdAt > sinceIso)
+    .map(m => `- [${m.layer}/${m.kind}] ${m.title}: ${m.bodyMd.slice(0, 80)}`);
 
-  // Load entity context (projects, systems, repos, contacts, relations)
-  const projects = ctx.db.listProjects({ status: 'active' });
-  const systems = ctx.db.listSystems();
-  const repos = ctx.db.listRepos();
-  const contacts = ctx.db.listContacts();
-  let relations: Array<{ sourceType: string; sourceId: string; relation: string; targetType: string; targetId: string }> = [];
-  try { relations = ctx.db.listRelations().slice(0, 20); } catch { /* no relations table yet */ }
+  const newFeedback = ctx.db.listFeedback(undefined, 50)
+    .filter(f => f.note && f.createdAt > sinceIso)
+    .map(f => `- [${f.targetKind}] ${f.action}: ${f.note}`);
 
-  const projectsSummary = projects.map(p => {
-    const pRepos = p.repoIds.map(id => repos.find(r => r.id === id)?.name).filter(Boolean);
-    const pSystems = p.systemIds.map(id => systems.find(s => s.id === id)?.name).filter(Boolean);
-    return `- **${p.name}** (${p.kind}, ${p.status}): repos=[${pRepos.join(', ')}], systems=[${pSystems.join(', ')}]`;
-  }).join('\n');
-  const systemsSummary = systems.map(s => `- ${s.name} (${s.kind})${s.description ? `: ${s.description.slice(0, 80)}` : ''}`).join('\n');
-  const contactsSummary = contacts.map(c => `- ${c.name} (${c.role ?? ''}${c.team ? `, ${c.team}` : ''})`).join('\n');
-  const relationsSummary = relations.map(r => `- ${r.sourceType}:${r.sourceId.slice(0, 8)} → ${r.relation} → ${r.targetType}:${r.targetId.slice(0, 8)}`).join('\n');
+  const newObservations = ctx.db.listObservations({ status: 'active', limit: 20 })
+    .filter(o => o.createdAt > sinceIso)
+    .map(o => `- [${o.kind}/${o.severity}] ${o.title}`);
 
-  // Recent conversation topics (session summaries)
-  let conversationTopics = '';
+  const resolvedObs = ctx.db.listObservations({ status: 'resolved', limit: 10 })
+    .filter(o => o.createdAt > sinceIso)
+    .map(o => `- [resolved] ${o.title}`);
+
+  const recentSugs = ctx.db.listSuggestions({ status: 'accepted' }).slice(0, 5)
+    .filter(s => s.createdAt > sinceIso)
+    .map(s => `- [accepted] ${s.title}`);
+  const dismissedSugs = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10)
+    .filter(s => s.feedbackNote && s.createdAt > sinceIso)
+    .map(s => `- [dismissed] ${s.title}: "${s.feedbackNote}"`);
+
+  const totalDeltas = newMemories.length + newFeedback.length + newObservations.length + resolvedObs.length + recentSugs.length + dismissedSugs.length;
+
+  if (totalDeltas === 0) {
+    console.error('[shadow:reflect] Skipping — no changes since last reflect');
+    return { llmCalls: 0, tokensUsed: 0, skipped: true, reason: 'no changes since last reflect' };
+  }
+
+  console.error(`[shadow:reflect] Phase 1: ${totalDeltas} deltas (${newMemories.length} memories, ${newFeedback.length} feedback, ${newObservations.length} observations)`);
+
+  const deltaPrompt = [
+    'Summarize what changed in this developer\'s work since the last reflection.',
+    'Be concise — max 300 words. Focus on: new knowledge learned, feedback patterns, risks emerged/resolved, decisions made.',
+    '',
+    newMemories.length > 0 ? `## New memories learned\n${newMemories.join('\n')}\n` : '',
+    newFeedback.length > 0 ? `## New feedback\n${newFeedback.join('\n')}\n` : '',
+    newObservations.length > 0 ? `## New observations\n${newObservations.join('\n')}\n` : '',
+    resolvedObs.length > 0 ? `## Resolved observations\n${resolvedObs.join('\n')}\n` : '',
+    recentSugs.length > 0 ? `## Accepted suggestions\n${recentSugs.join('\n')}\n` : '',
+    dismissedSugs.length > 0 ? `## Dismissed suggestions\n${dismissedSugs.join('\n')}\n` : '',
+    '',
+    'Output a concise change report. No preamble.',
+  ].filter(Boolean).join('\n');
+
+  let llmCalls = 0;
+  let tokensUsed = 0;
+  let changeReport = '';
+
   try {
-    const convPath = resolve(ctx.config.resolvedDataDir, 'conversations.jsonl');
-    const content = readFileSync(convPath, 'utf8');
-    const lines = content.trim().split('\n').filter(Boolean).slice(-100);
-    const sessions = new Map<string, string[]>();
-    for (const line of lines) {
-      try {
-        const entry = JSON.parse(line) as { session?: string; role?: string; text?: string };
-        const sid = entry.session ?? 'unknown';
-        if (entry.role === 'user' && entry.text) {
-          if (!sessions.has(sid)) sessions.set(sid, []);
-          sessions.get(sid)!.push(entry.text.slice(0, 100));
-        }
-      } catch { /* skip */ }
+    const deltaResult = await adapter.execute({
+      repos: [], title: 'Reflect Delta', goal: 'Summarize changes since last reflect',
+      prompt: deltaPrompt, relevantMemories: [], model: 'sonnet', effort: 'low',
+    });
+    llmCalls++;
+    tokensUsed += (deltaResult.inputTokens ?? 0) + (deltaResult.outputTokens ?? 0);
+    ctx.db.recordLlmUsage({ source: 'reflect_delta', sourceId: null, model: 'sonnet', inputTokens: deltaResult.inputTokens ?? 0, outputTokens: deltaResult.outputTokens ?? 0 });
+
+    if (deltaResult.status === 'success' && deltaResult.output) {
+      changeReport = deltaResult.output;
+      console.error(`[shadow:reflect] Phase 1 complete: ${changeReport.length} chars change report`);
+    } else {
+      console.error('[shadow:reflect] Phase 1 failed — proceeding with raw deltas');
+      changeReport = [newMemories.join('\n'), newFeedback.join('\n'), newObservations.join('\n')].filter(Boolean).join('\n');
     }
-    const recentSessions = [...sessions.entries()].slice(-5);
-    conversationTopics = recentSessions.map(([sid, texts]) =>
-      `- Session ${sid.slice(0, 8)}: ${texts.slice(-3).join(' | ')}`,
-    ).join('\n');
-  } catch { /* no conversations file */ }
+  } catch (e) {
+    console.error('[shadow:reflect] Phase 1 error:', e instanceof Error ? e.message : e);
+    changeReport = [newMemories.join('\n'), newFeedback.join('\n'), newObservations.join('\n')].filter(Boolean).join('\n');
+  }
+
+  // ========== PHASE 2: Evolve soul (Opus) ==========
+
+  // Minimal entity context (names only, not full dumps)
+  const projects = ctx.db.listProjects({ status: 'active' });
+  const repos = ctx.db.listRepos();
+  const entityContext = [
+    projects.length > 0 ? `Projects: ${projects.map(p => p.name).join(', ')}` : '',
+    `Repos: ${repos.length} (${repos.slice(0, 5).map(r => r.name).join(', ')})`,
+    `Trust: L${ctx.profile.trustLevel} (${ctx.profile.trustScore})`,
+  ].filter(Boolean).join(' | ');
 
   let soulMd = '';
   try { soulMd = readFileSync(resolve(ctx.config.resolvedDataDir, 'SOUL.md'), 'utf8'); } catch { /* no SOUL.md */ }
 
-  const prompt = [
-    'You are Shadow, reflecting on your developer and their engineering work.',
-    'Your goal is to build a strategic understanding that helps you anticipate their needs and provide relevant context.',
+  const evolvePrompt = [
+    'You are Shadow, evolving your understanding of the developer.',
+    'Below is your current reflection and a change report of what happened since you last reflected.',
+    'Evolve the reflection — update sections that need it, keep stable sections as-is.',
     '',
-    existingSoul ? `## Current reflection (evolve this, don\'t start from scratch)\n${existingSoul.bodyMd}\n` : '',
+    existingSoul ? `## Current reflection\n${existingSoul.bodyMd}\n` : '',
     soulMd ? `## Base personality (SOUL.md)\n${soulMd}\n` : '',
     '',
-    '## Registered entities',
-    projectsSummary ? `### Projects (active)\n${projectsSummary}\n` : 'No active projects registered.',
-    systemsSummary ? `### Systems\n${systemsSummary}\n` : '',
-    `### Repos: ${repos.length} registered (most active: ${repos.slice(0, 5).map(r => r.name).join(', ')})`,
-    contactsSummary ? `### Team\n${contactsSummary}\n` : '',
-    relationsSummary ? `### Entity relationships\n${relationsSummary}\n` : '',
+    `## Context\n${entityContext}\n`,
+    `## Change report (since last reflect)\n${changeReport}\n`,
     '',
-    coreHotMemories ? `## Core + hot memories\n${coreHotMemories}\n` : '',
-    conversationTopics ? `## Recent conversation topics\n${conversationTopics}\n` : '',
-    feedback ? `## User feedback (learn from this)\n${feedback}\n` : '',
-    obsGrouped ? `## Active observations\n${obsGrouped}\n` : '',
-    acceptedSugs ? `## Accepted suggestions (what they value)\n${acceptedSugs}\n` : '',
-    dismissedSugs ? `## Dismissed suggestions with reasons\n${dismissedSugs}\n` : '',
-    `## Profile\nTrust: L${ctx.profile.trustLevel} (${ctx.profile.trustScore}), Mood: ${ctx.profile.moodHint ?? 'neutral'}, Energy: ${ctx.profile.energyLevel ?? 'normal'}`,
-    '',
-    'Evolve your reflection. Structure as markdown with these exact sections:',
+    'Structure as markdown with these exact sections:',
     '',
     '## Developer profile',
     'Who they are, their role, expertise areas, communication style.',
-    '',
-    '## Active focus',
-    'Which projects/systems are they actively working on? Estimate time distribution.',
-    'Example: "70% Q2-Auth-Migration, 20% payments maintenance, 10% sprint tasks"',
-    '',
-    '## Project status',
-    'For each active project: current state, blockers, risks, recent progress. Be specific.',
     '',
     '## Decision patterns',
     'What principles drive their decisions? What do they consistently accept/reject?',
     '',
     '## Blind spots',
-    'Compare stated priorities (active projects) against actual activity (conversations, file edits).',
     'What topics/repos/systems have NOT appeared in recent activity that probably need attention?',
     'The gap between stated priorities and actual activity IS the blind spot.',
     '',
@@ -1202,35 +1197,33 @@ export async function activityReflect(
     'Output ONLY the markdown reflection, no preamble or explanation.',
   ].filter(Boolean).join('\n');
 
-  const pack: ObjectivePack = {
-    repos: [],
-    title: 'Shadow Reflect',
-    goal: 'Evolve soul reflection — strategic advisor',
-    prompt,
-    relevantMemories: [],
-    model: 'opus',
-    effort: 'high',
-    systemPrompt: null,   // markdown output
-    allowedTools: [],      // all context is inline, no tools needed
-  };
-
-  let tokensUsed = 0;
   try {
-    const result = await adapter.execute(pack);
-    tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
-    ctx.db.recordLlmUsage({
-      source: 'reflect', sourceId: null, model: 'opus',
-      inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0,
+    const result = await adapter.execute({
+      repos: [], title: 'Shadow Reflect', goal: 'Evolve soul reflection',
+      prompt: evolvePrompt, relevantMemories: [], model: 'opus', effort: 'high',
+      systemPrompt: null, allowedTools: [],
     });
+    llmCalls++;
+    tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    ctx.db.recordLlmUsage({ source: 'reflect_evolve', sourceId: null, model: 'opus', inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
     if (result.status === 'success' && result.output) {
-      const expectedSections = ['## Developer profile', '## Active focus', '## Project status', '## Blind spots', '## What Shadow should watch for'];
+      const expectedSections = ['## Developer profile', '## Decision patterns', '## Blind spots', '## What Shadow should watch for'];
       const missing = expectedSections.filter(s => !result.output!.includes(s));
       if (missing.length > 0) {
         console.error(`[shadow:reflect] Warning: output missing sections: ${missing.join(', ')}`);
       }
-      // Save soul reflection
+
+      // Save snapshot of previous soul before updating
       if (existingSoul) {
+        const snapshotDate = new Date().toISOString().split('T')[0];
+        const snapshot = ctx.db.createMemory({
+          layer: 'core', scope: 'personal', kind: 'soul_snapshot',
+          title: `Soul reflection snapshot — ${snapshotDate}`,
+          bodyMd: existingSoul.bodyMd,
+          sourceType: 'reflect', confidenceScore: 95, relevanceScore: 0.3,
+        });
+        ctx.db.updateMemory(snapshot.id, { archivedAt: new Date().toISOString() });
         ctx.db.updateMemory(existingSoul.id, { bodyMd: result.output });
       } else {
         ctx.db.createMemory({
@@ -1239,11 +1232,12 @@ export async function activityReflect(
           sourceType: 'reflect', confidenceScore: 95, relevanceScore: 1.0,
         });
       }
-      console.error(`[shadow:reflect] Soul reflection saved. Tokens: ${tokensUsed}`);
+      console.error(`[shadow:reflect] Soul reflection saved (2-phase). Tokens: ${tokensUsed}`);
+      return { llmCalls, tokensUsed, skipped: false };
     }
   } catch (e) {
-    console.error('[shadow:reflect] Failed:', e instanceof Error ? e.message : e);
+    console.error('[shadow:reflect] Phase 2 failed:', e instanceof Error ? e.message : e);
   }
 
-  return { llmCalls: 1, tokensUsed };
+  return { llmCalls, tokensUsed, skipped: false };
 }

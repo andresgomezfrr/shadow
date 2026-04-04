@@ -13,7 +13,14 @@ import { EmptyState } from '../common/EmptyState';
 import { ScoreBar } from '../common/ScoreBar';
 import type { Repo } from '../../api/types';
 
-// --- Status visual config ---
+// --- Visual config ---
+
+const SUG_KIND_COLORS: Record<string, string> = {
+  refactor: 'text-purple bg-purple/15',
+  bug: 'text-red bg-red/15',
+  improvement: 'text-blue bg-blue/15',
+  feature: 'text-green bg-green/15',
+};
 
 const STATUS_BORDER: Record<string, string> = {
   pending: 'border-l-orange',
@@ -172,7 +179,7 @@ export function SuggestionsPage() {
                 {/* Collapsed row */}
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <span className="font-medium text-sm flex-1 min-w-0 truncate">{s.title}</span>
-                  <Badge className="text-text-dim bg-border">{s.kind}</Badge>
+                  <Badge className={SUG_KIND_COLORS[s.kind] ?? 'text-text-dim bg-border'}>{s.kind}</Badge>
                   {repo && <Badge className="text-text-dim bg-border">{repo}</Badge>}
                   <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} compact />
                   <ThumbsFeedback targetKind="suggestion" targetId={s.id} initial={thumbsFromAction(fbState?.[s.id])} />

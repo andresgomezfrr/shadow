@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApi } from '../../hooks/useApi';
-import { fetchStatus, updateProfile, setFocusMode } from '../../api/client';
+import { fetchStatus, updateProfile, setFocusMode, fetchSoulHistory } from '../../api/client';
 import { TRUST_NAMES } from '../../api/types';
 import type { UserProfile } from '../../api/types';
 import { ProgressBar } from '../common/ProgressBar';
@@ -430,6 +430,68 @@ export function ProfilePage() {
         <p className="text-xs text-text-muted mt-3">In focus mode, Shadow only responds to direct questions.</p>
       </section>
 
+      {/* Enrichment toggle */}
+      <section className="bg-card border border-border rounded-lg p-5 mb-6">
+        <h2 className="text-base font-semibold mb-4">🔗 MCP Enrichment</h2>
+        <p className="text-sm text-text-dim mb-4">Shadow periodically queries your MCP tools (calendar, monitoring, CI) to gather external context for richer observations.</p>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-sm font-medium">Enabled</label>
+              <p className="text-xs text-text-dim">Query external MCP tools periodically</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <SaveIndicator show={saved === 'enrichmentEnabled'} />
+              <button
+                onClick={async () => {
+                  const current = (profile.preferences as Record<string, unknown>)?.enrichmentEnabled;
+                  const next = !current;
+                  await updateProfile({ preferences: { enrichmentEnabled: next } } as unknown as Partial<UserProfile>);
+                  setSaved('enrichmentEnabled');
+                  setTimeout(() => setSaved(null), 2000);
+                  refresh();
+                }}
+                className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${
+                  (profile.preferences as Record<string, unknown>)?.enrichmentEnabled
+                    ? 'bg-green'
+                    : 'bg-border'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                    (profile.preferences as Record<string, unknown>)?.enrichmentEnabled
+                      ? 'translate-x-5'
+                      : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium block mb-1">
+              Interval
+              <SaveIndicator show={saved === 'enrichmentIntervalMin'} />
+            </label>
+            <select
+              defaultValue={String((profile.preferences as Record<string, unknown>)?.enrichmentIntervalMin ?? 120)}
+              onChange={async (e) => {
+                await updateProfile({ preferences: { enrichmentIntervalMin: Number(e.target.value) } } as unknown as Partial<UserProfile>);
+                setSaved('enrichmentIntervalMin');
+                setTimeout(() => setSaved(null), 2000);
+                refresh();
+              }}
+              className="bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm outline-none focus:border-accent transition-colors cursor-pointer"
+            >
+              <option value="30">Every 30 min</option>
+              <option value="60">Every 1h</option>
+              <option value="120">Every 2h (default)</option>
+              <option value="360">Every 6h</option>
+              <option value="720">Every 12h</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
       {/* Mood */}
       <section className="bg-card border border-border rounded-lg p-5">
         <h2 className="text-base font-semibold mb-4">Status</h2>
@@ -470,6 +532,56 @@ export function ProfilePage() {
           </div>
         </div>
       </section>
+
+      {/* Soul Reflection */}
+      <SoulSection />
     </div>
+  );
+}
+
+function SoulSection() {
+  const { data } = useApi(fetchSoulHistory, [], 120_000);
+  const [expandedSnapshot, setExpandedSnapshot] = useState<string | null>(null);
+
+  if (!data || !data.current) return null;
+
+  return (
+    <section className="bg-card border border-border rounded-lg p-5 mb-6">
+      <h2 className="text-base font-semibold mb-1">Shadow&apos;s Soul Reflection</h2>
+      <p className="text-xs text-text-dim mb-4">
+        How Shadow understands you. Evolves daily via 2-phase reflect (Sonnet delta + Opus evolve).
+        Updated: {new Date(data.current.updatedAt).toLocaleString()}
+      </p>
+
+      {/* Current soul */}
+      <div className="bg-bg rounded-lg px-4 py-3 text-sm text-text-dim prose prose-sm prose-invert max-w-none mb-4 whitespace-pre-wrap">
+        {data.current.bodyMd}
+      </div>
+
+      {/* Snapshot history */}
+      {data.snapshots.length > 0 && (
+        <div>
+          <h3 className="text-sm font-medium mb-2 text-text-dim">Evolution history ({data.snapshots.length})</h3>
+          <div className="space-y-1">
+            {data.snapshots.map((snap) => (
+              <div key={snap.id}>
+                <button
+                  onClick={() => setExpandedSnapshot(expandedSnapshot === snap.id ? null : snap.id)}
+                  className="w-full flex items-center justify-between px-3 py-2 bg-bg rounded text-xs text-text-dim hover:text-text transition-colors cursor-pointer border-none bg-transparent text-left"
+                >
+                  <span>{snap.title}</span>
+                  <span className="text-text-muted">{expandedSnapshot === snap.id ? '\u25B4' : '\u25BE'}</span>
+                </button>
+                {expandedSnapshot === snap.id && (
+                  <div className="bg-bg rounded-lg px-4 py-3 text-xs text-text-muted mt-1 mb-2 whitespace-pre-wrap animate-fade-in">
+                    {snap.bodyMd}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

@@ -80,7 +80,7 @@ async function handleApi(
         lastHeartbeat,
         nextHeartbeatAt,
         jobSchedule: {
-          heartbeat: { intervalMs: 15 * 60 * 1000, nextAt: nextHeartbeatAt },
+          heartbeat: { intervalMs: 30 * 60 * 1000, nextAt: nextHeartbeatAt },
           suggest: { trigger: 'after heartbeat with activity' },
           consolidate: (() => {
             const lastCon = db.getLastJob('consolidate');
@@ -91,6 +91,20 @@ async function handleApi(
             const lastRef = db.getLastJob('reflect');
             const nextAt = lastRef ? new Date(new Date(lastRef.startedAt).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
             return { intervalMs: 24 * 60 * 60 * 1000, nextAt };
+          })(),
+          'remote-sync': (() => {
+            const lastSync = db.getLastJob('remote-sync');
+            const nextAt = lastSync ? new Date(new Date(lastSync.startedAt).getTime() + 30 * 60 * 1000).toISOString() : null;
+            return { intervalMs: 30 * 60 * 1000, nextAt };
+          })(),
+          'context-enrich': (() => {
+            const prefs = profile.preferences as Record<string, unknown> | undefined;
+            const enabled = (prefs?.enrichmentEnabled as boolean | undefined) ?? false;
+            const intMin = prefs?.enrichmentIntervalMin as number | undefined;
+            const intervalMs = intMin ? intMin * 60 * 1000 : 2 * 60 * 60 * 1000;
+            const lastEnrich = db.getLastJob('context-enrich');
+            const nextAt = enabled && lastEnrich ? new Date(new Date(lastEnrich.startedAt).getTime() + intervalMs).toISOString() : null;
+            return { intervalMs, nextAt, enabled };
           })(),
           ...Object.fromEntries(Object.entries(DIGEST_SCHEDULES).map(([type, sched]) => {
             const tz = db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -212,7 +226,7 @@ async function handleApi(
         systems: systems.map(s => ({ id: s!.id, name: s!.name, kind: s!.kind })),
         contacts: contacts.map(c => ({ id: c!.id, name: c!.name, role: c!.role, team: c!.team })),
         observations: observations.slice(0, 10).map(o => ({ id: o.id, kind: o.kind, severity: o.severity, title: o.title, votes: o.votes, createdAt: o.createdAt })),
-        suggestions: suggestions.slice(0, 10).map(s => ({ id: s.id, kind: s.kind, title: s.title, impactScore: s.impactScore, confidenceScore: s.confidenceScore })),
+        suggestions: suggestions.slice(0, 10).map(s => ({ id: s.id, kind: s.kind, title: s.title, impactScore: s.impactScore, confidenceScore: s.confidenceScore, riskScore: s.riskScore })),
         memories: memories.slice(0, 10).map(m => ({ id: m.id, kind: m.kind, layer: m.layer, title: m.title, createdAt: m.createdAt })),
         enrichment,
         counts: {
@@ -263,6 +277,24 @@ async function handleApi(
       } catch {
         return json(res, { items: [], total: 0 });
       }
+    }
+
+    // Soul history: current reflection + archived snapshots
+    if (pathname === '/api/soul/history') {
+      const all = db.listMemories({ archived: false });
+      const current = all.find(m => m.kind === 'soul_reflection');
+      // Snapshots are archived memories with kind='soul_snapshot'
+      const snapshots = db.rawDb
+        .prepare("SELECT id, title, body_md, created_at, archived_at FROM memories WHERE kind = 'soul_snapshot' ORDER BY created_at DESC LIMIT 20")
+        .all()
+        .map((row: unknown) => {
+          const r = row as Record<string, unknown>;
+          return { id: String(r.id), title: String(r.title), bodyMd: String(r.body_md), createdAt: String(r.created_at), archivedAt: String(r.archived_at) };
+        });
+      return json(res, {
+        current: current ? { id: current.id, bodyMd: current.bodyMd, updatedAt: current.updatedAt } : null,
+        snapshots,
+      });
     }
 
     if (pathname === '/api/usage') {

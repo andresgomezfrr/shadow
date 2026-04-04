@@ -16,6 +16,9 @@ const PHASE_STYLES: Record<string, string> = {
   analyze: 'text-purple bg-purple/15',
   suggest: 'text-accent bg-accent-soft',
   consolidate: 'text-orange bg-orange/15',
+  reflect: 'text-blue bg-blue/15',
+  enrich: 'text-cyan bg-cyan/15',
+  'remote-sync': 'text-pink-400 bg-pink-400/15',
   notify: 'text-text-dim bg-border',
   idle: 'text-text-muted bg-text-muted/10',
   skip: 'text-text-muted bg-text-muted/10',
@@ -23,7 +26,11 @@ const PHASE_STYLES: Record<string, string> = {
 
 
 function isActive(hb: Job): boolean {
-  return hb.llmCalls > 0;
+  // Jobs that did real work: LLM calls, or non-empty result with actual data
+  if (hb.llmCalls > 0) return true;
+  const result = hb.result ?? {};
+  const hasResultData = Object.values(result).some(v => v !== null && v !== undefined && v !== 0 && v !== false && v !== '');
+  return hasResultData;
 }
 
 function interestingPhases(phases: string[]): string[] {
@@ -40,6 +47,8 @@ const TYPE_FILTERS = [
   { label: 'Suggest', value: 'suggest' },
   { label: 'Reflect', value: 'reflect' },
   { label: 'Consolidate', value: 'consolidate' },
+  { label: 'Remote sync', value: 'remote-sync' },
+  { label: 'Enrich', value: 'context-enrich' },
   { label: 'Digest', value: 'digest' },
 ];
 
@@ -48,6 +57,8 @@ const TYPE_COLORS: Record<string, string> = {
   suggest: 'text-green bg-green/15',
   consolidate: 'text-orange bg-orange/15',
   reflect: 'text-blue bg-blue/15',
+  'remote-sync': 'text-pink-400 bg-pink-400/15',
+  'context-enrich': 'text-cyan bg-cyan/15',
   'digest-daily': 'text-cyan bg-cyan/15',
   'digest-weekly': 'text-cyan bg-cyan/15',
   'digest-brag': 'text-cyan bg-cyan/15',
@@ -115,11 +126,11 @@ export function JobsPage() {
       {/* Job schedule */}
       <div className="bg-card border border-border rounded-lg p-3 mb-4 text-xs space-y-1.5">
         <div className="flex items-center gap-3 flex-wrap">
-          <Badge title="Extracts memories and generates observations from your conversations and activity" tooltipBelow className={TYPE_COLORS.heartbeat}>heartbeat</Badge>
-          <span className="text-text-muted">every 15m · </span>
+          <Badge title="Detects active projects, extracts memories and generates observations" tooltipBelow className={TYPE_COLORS.heartbeat}>heartbeat</Badge>
+          <span className="text-text-muted">every 30m · </span>
           <span className="text-text font-mono">{formatCountdown(schedule?.heartbeat?.nextAt, now)}</span>
           <span className="text-text-muted">→ if activity →</span>
-          <Badge title="Generates actionable technical suggestions based on observations" tooltipBelow className={TYPE_COLORS.suggest}>suggest</Badge>
+          <Badge title="Generates project-aware technical suggestions based on observations" tooltipBelow className={TYPE_COLORS.suggest}>suggest</Badge>
           <button
             onClick={handleTrigger}
             disabled={!canTrigger}
@@ -130,15 +141,21 @@ export function JobsPage() {
         </div>
         <div className="flex items-center gap-3">
           <Badge title="Promotes and demotes memories between layers based on access patterns" tooltipBelow className={TYPE_COLORS.consolidate}>consolidate</Badge>
-          <span className="text-text-muted">every 6h</span>
-          <span className="text-text-muted">·</span>
+          <span className="text-text-muted">every 6h ·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.consolidate?.nextAt, now)}</span>
+          <span className="text-text-muted">│</span>
+          <Badge title="2-phase soul reflection: Sonnet extracts deltas, Opus evolves understanding" tooltipBelow className={TYPE_COLORS.reflect}>reflect</Badge>
+          <span className="text-text-muted">every 24h ·</span>
+          <span className="text-text font-mono">{formatCountdown(schedule?.reflect?.nextAt, now)}</span>
         </div>
         <div className="flex items-center gap-3">
-          <Badge title="Synthesizes all feedback and memories into Shadow's soul — understanding of you" tooltipBelow className={TYPE_COLORS.reflect}>reflect</Badge>
-          <span className="text-text-muted">every 24h</span>
-          <span className="text-text-muted">·</span>
-          <span className="text-text font-mono">{formatCountdown(schedule?.reflect?.nextAt, now)}</span>
+          <Badge title="Checks git remotes for new commits via ls-remote" tooltipBelow className={TYPE_COLORS['remote-sync']}>remote-sync</Badge>
+          <span className="text-text-muted">every 30m ·</span>
+          <span className="text-text font-mono">{formatCountdown(schedule?.['remote-sync']?.nextAt, now)}</span>
+          <span className="text-text-muted">│</span>
+          <Badge title="Queries user MCP tools for external context (calendar, monitoring, CI). Enable with SHADOW_ENRICHMENT_ENABLED=true" tooltipBelow className={TYPE_COLORS['context-enrich']}>enrich</Badge>
+          <span className="text-text-muted">every 2h ·</span>
+          <span className="text-text font-mono">{(schedule?.['context-enrich'] as Record<string, unknown>)?.enabled ? formatCountdown(schedule?.['context-enrich']?.nextAt, now) : 'disabled'}</span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Badge title="Daily standup digest" tooltipBelow className={TYPE_COLORS['digest-daily']}>digest-daily</Badge>
@@ -206,6 +223,7 @@ export function JobsPage() {
                   onClick={() => toggle(hb.id)}
                   className="bg-card/50 border border-border/50 rounded px-4 py-2 cursor-pointer flex items-center gap-2 text-text-muted hover:border-border transition-colors"
                 >
+                  <Badge className={TYPE_COLORS[hb.type] ?? PHASE_STYLES.skip}>{hb.type}</Badge>
                   <Badge className={PHASE_STYLES.skip}>skip</Badge>
                   <span className="text-xs flex-1">{duration}</span>
                   <span className="text-xs">{timeAgo(hb.startedAt)}</span>
