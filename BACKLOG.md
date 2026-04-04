@@ -2,21 +2,6 @@
 
 Actualizado 2026-04-04. Items completados en [COMPLETED.md](COMPLETED.md).
 
-### Recientemente completado (mega-refactor C+D+E+F)
-- ✅ **Project-aware analysis** — active project detection, project context in extract/observe/suggest prompts, cross_project observation kind
-- ✅ **MCP Enrichment** — 2-phase plan+execute with user MCPs, enrichment_cache (migration v30), configurable interval
-- ✅ **Dashboard overhaul** — ProjectDetailPage, SystemDetailPage, clickable cards, MorningProjects, MorningEnrichment
-- ✅ **MCP tools expansion** (42→52) — shadow_active_projects, shadow_project_detail, shadow_enrichment_query, shadow_enrichment_config, projectId/kind filters on observations/suggestions
-- ✅ **Status line** — active project indicator, ghost states for enrich (mint/teal) + sync (pink)
-- ✅ **Guide page** — modular guide with updated phases, observation kinds, MCP tools, config vars
-- ✅ **Reflect 2-phase** — Sonnet extracts deltas → Opus evolves soul. Removed Active focus + Project status sections. Soul snapshots before each update.
-- ✅ **Soul history** — GET /api/soul/history + expandable timeline in ProfilePage
-- ✅ **Enrichment settings** — toggle + interval selector in ProfilePage, stored in profile preferences
-- ✅ **Suggest cap removed** — was 30, blocked generation. Now unlimited (paginated + ranked)
-- ✅ **Jobs page legend** — remote-sync + context-enrich in schedule header with countdowns
-- ✅ **Suggestion kind colors** — refactor=purple, bug=red, improvement=blue, feature=green
-- ✅ **ProjectDetailPage UX** — ScoreBar, deep links, clickable items
-
 ---
 
 ## Prioridad media — Refactoring
@@ -66,9 +51,6 @@ Convertir la página Events en un activity feed real: jobs, observations, sugges
 
 ## Long-term — Trust Levels → [`docs/plan-trust-levels.md`](docs/plan-trust-levels.md)
 
-### ~~L3 — auto-execute con confidence/doubts gate~~ ✅
-Accept → plan → auto-execute si Shadow no tiene dudas. Si tiene dudas → se comporta como L2. **Done**: confidence evaluation (Sonnet high), auto child run, draft PR button, RunsPage redesign.
-
 ### L4 — proactivo con LLM evaluator
 Shadow actúa sin esperar accept. LLM evaluator filtra qué sugerencias merecen auto-ejecución.
 
@@ -79,36 +61,18 @@ Autonomía por repo/scope configurable. Shadow mergea donde tiene permiso.
 
 ## Long-term — Arquitectura
 
-### ~~Runs paralelos~~ ✅
-**Done**: RunQueue con maxConcurrentRuns. Concurrent execution via ClaudeCliAdapter instances.
-
-### ~~Concepto de Proyecto~~ ✅
-**Done**: First-class entity. Project-aware analysis, active project detection, momentum scoring, MCP tools (shadow_project_detail, shadow_active_projects), dashboard detail page.
-
 ### Concepto de Tarea/Iniciativa
 Agrupación temporal (1-2 semanas) con repos, PRs, docs y tickets.
-
-### ~~Semantic search (sqlite-vec)~~ ✅
-**Done**: Hybrid FTS5 + vector search via RRF (k=60). shadow_search MCP tool. Backfill on startup.
-
-### ~~UI preparada para escala (+40 repos)~~ ✅ (parcial)
-Paginación offset/limit + filtros server-side con URL persistence en Suggestions, Observations, Memories, Runs, Jobs. Falta: agrupación por repo, búsqueda global.
-
-### ~~`shadow teach` — enseñanza interactiva~~ ✅
-**Done**: System prompt teaching mode, personalidad SOUL.md, --allowedTools, --topic flag.
-
-### ~~Comunicación externa via MCP servers~~ ✅ (parcial)
-**Done**: MCP Enrichment — Shadow discovers user MCPs from settings.json and queries them for context (calendar, monitoring, CI). Not direct communication, but reads external data.
 
 ### Multi-repo operations
 Sugerencias y runs multi-repo. Schema lo soporta, UI no.
 
+### Agrupación por repo + búsqueda global en dashboard
+Paginación y filtros ya existen. Falta: agrupación visual por repo, barra de búsqueda global.
+
 ---
 
 ## Long-term — Features (evaluar)
-
-### ~~Validación Zod de resultados LLM por tipo de job~~ ✅
-Schemas Zod para output de extract/observe/suggest. safeParse en frontera LLM → DB. **Done**: schemas.ts + safeParse en activities.ts.
 
 ### Circuit breaker para LLM calls
 Tras N fallos consecutivos, abrir circuito y saltar calls por cooldown.
