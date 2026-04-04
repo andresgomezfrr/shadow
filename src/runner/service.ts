@@ -117,8 +117,9 @@ export class RunnerService {
       const personalityPrompt = getPersonalityPrompt(this.config.personalityLevel);
 
       const currentProfile = this.db.ensureProfile();
-      // L3 also generates plan first — auto-execute is gated by confidence evaluation
-      const planOnly = run.kind !== 'execution' && currentProfile.trustLevel <= 3;
+      // Plan-first for L1-4 — auto-execute gated by confidence evaluation (L3+)
+      // L4 proactive features not yet implemented, so cap behavior at L3
+      const planOnly = run.kind !== 'execution' && currentProfile.trustLevel <= 4;
 
       const briefing = [
         personalityPrompt,
