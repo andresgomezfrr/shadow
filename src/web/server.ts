@@ -370,7 +370,7 @@ async function handleApi(
         return json(res, { ok: true, status: 'executed_manual' });
       }
 
-      if (run.status !== 'completed') return json(res, { error: 'Run must be completed' }, 400);
+      if (action === 'execute' && run.status !== 'completed') return json(res, { error: 'Run must be completed' }, 400);
 
       if (action === 'execute') {
         const childRun = db.createRun({
@@ -463,6 +463,15 @@ async function handleApi(
       }
 
       const branchName = `shadow/${run.id.slice(0, 8)}`;
+
+      // Verify branch exists locally before attempting push
+      const { execSync: execCheck } = await import('node:child_process');
+      try {
+        execCheck(`git rev-parse --verify ${branchName}`, { cwd: repo.path, stdio: 'pipe', timeout: 5_000 });
+      } catch {
+        return json(res, { error: `Branch ${branchName} no longer exists — worktree may have been cleaned up` }, 400);
+      }
+
       const suggestion = run.suggestionId ? db.getSuggestion(run.suggestionId) : null;
       const title = suggestion?.title ?? run.prompt.slice(0, 70);
       const body = [

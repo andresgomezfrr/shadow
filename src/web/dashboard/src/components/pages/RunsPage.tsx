@@ -378,14 +378,21 @@ export function RunsPage() {
 
                       {expanded.has(childRun.id) && (
                         <div className="mt-2 animate-fade-in space-y-2" onClick={(e) => e.stopPropagation()}>
-                          {childRun.worktreePath && !childRun.prUrl && (
+                          <div className="flex items-center gap-3">
+                            {childRun.worktreePath && !childRun.prUrl && (
+                              <button
+                                onClick={() => handleDraftPr(childRun.id)}
+                                disabled={prLoading === childRun.id || !githubRepoIds.has(childRun.repoId)}
+                                title={!githubRepoIds.has(childRun.repoId) ? 'No GitHub remote configured' : undefined}
+                                className="px-4 py-2 rounded-lg text-xs font-semibold bg-purple text-bg border-none cursor-pointer transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >{prLoading === childRun.id ? 'Creating PR...' : 'Create draft PR'}</button>
+                            )}
                             <button
-                              onClick={() => handleDraftPr(childRun.id)}
-                              disabled={prLoading === childRun.id || !githubRepoIds.has(childRun.repoId)}
-                              title={!githubRepoIds.has(childRun.repoId) ? 'No GitHub remote configured' : undefined}
-                              className="px-4 py-2 rounded-lg text-xs font-semibold bg-purple text-bg border-none cursor-pointer transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >{prLoading === childRun.id ? 'Creating PR...' : 'Create draft PR'}</button>
-                          )}
+                              onClick={() => handleSession(childRun.id)}
+                              disabled={sessionLoading === childRun.id}
+                              className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                            >{sessionLoading === childRun.id ? 'Creating...' : 'Open session'}</button>
+                          </div>
                           {childRun.resultSummaryMd && (
                             <div className="bg-bg rounded-lg p-3 max-h-48 overflow-y-auto">
                               <Markdown>{childRun.resultSummaryMd}</Markdown>

@@ -30,7 +30,7 @@ function tryGitExec(args: string[], cwd: string): string | null {
 
 // --- Lightweight context collector ---
 
-export function collectRepoContext(repo: RepoRecord): RepoContext {
+export function collectRepoContext(repo: RepoRecord, db?: ShadowDatabase): RepoContext {
   const ctx: RepoContext = {
     repoId: repo.id,
     repoName: repo.name,
@@ -59,6 +59,14 @@ export function collectRepoContext(repo: RepoRecord): RepoContext {
     if (log) {
       ctx.recentCommits = log.trim().split('\n').filter(Boolean);
     }
+
+    // Sync remote URL if missing or changed
+    if (db) {
+      const remoteUrl = tryGitExec(['remote', 'get-url', 'origin'], repo.path)?.trim() ?? null;
+      if (remoteUrl !== repo.remoteUrl) {
+        db.updateRepo(repo.id, { remoteUrl });
+      }
+    }
   } catch {
     // Not a git repo or other error
   }
@@ -68,7 +76,7 @@ export function collectRepoContext(repo: RepoRecord): RepoContext {
 
 export function collectAllRepoContexts(db: ShadowDatabase): RepoContext[] {
   const repos = db.listRepos();
-  return repos.map(repo => collectRepoContext(repo));
+  return repos.map(repo => collectRepoContext(repo, db));
 }
 
 /**
@@ -80,7 +88,7 @@ export function collectActiveRepoContexts(db: ShadowDatabase, sinceMs = 30 * 60 
   const repos = db.listRepos();
 
   // Small repo count: just process all
-  if (repos.length <= 5) return repos.map(repo => collectRepoContext(repo));
+  if (repos.length <= 5) return repos.map(repo => collectRepoContext(repo, db));
 
   const now = Date.now();
   const active: RepoContext[] = [];
@@ -92,7 +100,7 @@ export function collectActiveRepoContexts(db: ShadowDatabase, sinceMs = 30 * 60 
     const lastCommitTs = tsRaw ? parseInt(tsRaw.trim(), 10) * 1000 : 0;
 
     if (lastCommitTs && (now - lastCommitTs) < sinceMs) {
-      active.push(collectRepoContext(repo));
+      active.push(collectRepoContext(repo, db));
     } else {
       dormant.push(repo);
     }
@@ -104,7 +112,7 @@ export function collectActiveRepoContexts(db: ShadowDatabase, sinceMs = 30 * 60 
   const dayOfYear = Math.floor(now / (24 * 60 * 60 * 1000));
   for (let i = 0; i < rotationCount; i++) {
     const idx = (dayOfYear + i) % dormant.length;
-    active.push(collectRepoContext(dormant[idx]));
+    active.push(collectRepoContext(dormant[idx], db));
   }
 
   return active;
