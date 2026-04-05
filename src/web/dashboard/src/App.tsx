@@ -15,6 +15,8 @@ import { SystemDetailPage } from './components/pages/SystemDetailPage';
 import { UsagePage } from './components/pages/UsagePage';
 import { JobsPage } from './components/pages/JobsPage';
 import { RunsPage } from './components/pages/RunsPage';
+import { WorkspacePage } from './components/pages/WorkspacePage';
+import { ActivityPage } from './components/pages/ActivityPage';
 import { EventsPage } from './components/pages/EventsPage';
 import { DigestsPage } from './components/pages/DigestsPage';
 import { GuidePage } from './components/pages/GuidePage';
@@ -25,7 +27,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/morning" replace />} />
         <Route path="/morning" element={<MorningPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/dashboard" element={<Navigate to="/morning" replace />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/memories" element={<MemoriesPage />} />
         <Route path="/suggestions" element={<SuggestionsPage />} />
@@ -37,8 +39,10 @@ export function App() {
         <Route path="/systems" element={<SystemsPage />} />
         <Route path="/systems/:id" element={<SystemDetailPage />} />
         <Route path="/usage" element={<UsagePage />} />
-        <Route path="/jobs" element={<JobsPage />} />
-        <Route path="/runs" element={<RunsPage />} />
+        <Route path="/jobs" element={<Navigate to="/activity" replace />} />
+        <Route path="/runs" element={<Navigate to="/workspace" replace />} />
+        <Route path="/workspace" element={<WorkspacePage />} />
+        <Route path="/activity" element={<ActivityPage />} />
         <Route path="/digests" element={<DigestsPage />} />
         <Route path="/events" element={<EventsPage />} />
         <Route path="/guide" element={<GuidePage />} />

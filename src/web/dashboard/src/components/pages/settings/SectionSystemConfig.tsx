@@ -11,6 +11,7 @@ const DISPLAY_KEYS = [
   { key: 'daemonPollIntervalMs', label: 'Daemon poll interval', format: 'ms' },
   { key: 'runnerTimeoutMs', label: 'Runner timeout', format: 'ms' },
   { key: 'maxConcurrentRuns', label: 'Max concurrent runs', format: 'number' },
+  { key: 'maxConcurrentJobs', label: 'Max concurrent jobs', format: 'number' },
   { key: 'maxWatchedRepos', label: 'Max watched repos', format: 'number' },
   { key: 'remoteSyncEnabled', label: 'Remote sync', format: 'bool' },
   { key: 'remoteSyncIntervalMs', label: 'Remote sync interval', format: 'ms' },

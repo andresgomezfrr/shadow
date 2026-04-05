@@ -31,7 +31,7 @@ function formatDate(): string {
 
 export function MorningPage() {
   const { data, refresh } = useApi(fetchDailySummary, [], 60_000);
-  const { data: digests } = useApi(() => fetchDigests('daily'), [], 60_000);
+  const { data: digests } = useApi(() => fetchDigests({ kind: 'daily' }), [], 60_000);
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().split('T')[0];
   const latestDigest = digests?.find((d) => d.periodStart === yesterday) ?? null;
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());

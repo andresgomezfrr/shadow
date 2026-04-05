@@ -43,6 +43,7 @@ interface RepoSignals {
   packageInfo: string | null;
   diffStats: string | null;
   ghPrList: string | null;
+  readme: string | null;
 }
 
 function gatherRepoSignals(repo: RepoRecord): RepoSignals {
@@ -94,6 +95,16 @@ function gatherRepoSignals(repo: RepoRecord): RepoSignals {
   // GitHub PRs (best-effort, silent fail)
   const ghPrList = exec('gh pr list --json number,title,state,author --limit 10', cwd, 10_000);
 
+  // README for summary context
+  let readme: string | null = null;
+  for (const file of ['README.md', 'readme.md', 'README']) {
+    const p = join(cwd, file);
+    if (existsSync(p)) {
+      try { readme = readFileSync(p, 'utf-8').slice(0, 500); } catch { /* ignore */ }
+      break;
+    }
+  }
+
   return {
     contributors,
     recentCommits,
@@ -106,6 +117,7 @@ function gatherRepoSignals(repo: RepoRecord): RepoSignals {
     packageInfo,
     diffStats,
     ghPrList,
+    readme,
   };
 }
 
@@ -149,6 +161,9 @@ function formatSignals(repo: RepoRecord, signals: RepoSignals): string {
   if (signals.ghPrList) {
     sections.push(`### Open Pull Requests\n${signals.ghPrList}`);
   }
+  if (signals.readme) {
+    sections.push(`### README (first 500 chars)\n${signals.readme}`);
+  }
 
   return sections.join('\n\n');
 }
@@ -169,6 +184,7 @@ ${formatSignals(repo, signals)}
 Produce a structured context summary in markdown with EXACTLY this format:
 
 ## ${repo.name}
+**Summary**: (2-3 sentences: what this repo does, why it exists, and who uses it. Written for someone seeing this repo for the first time.)
 **Type**: (library / service / tool / monolith / monorepo / etc.)
 **Stack**: (languages, frameworks, key dependencies)
 **Phase**: (prototype / active-development / stabilizing / maintenance / legacy)
@@ -218,15 +234,16 @@ export async function profileRepos(
   db: ShadowDatabase,
   config: ShadowConfig,
   batchSize: number,
+  force = false,
 ): Promise<{ reposProfiled: number; llmCalls: number; tokensUsed: number }> {
   const repos = db.listRepos();
   const now = Date.now();
   const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
 
   // Sort: never-profiled first, then oldest contextUpdatedAt
-  // Filter: never profiled OR last profile > 7 days ago
+  // Filter: never profiled OR last profile > 7 days ago (unless forced)
   const candidates = repos
-    .filter(r => !r.contextUpdatedAt || (now - new Date(r.contextUpdatedAt).getTime()) > sevenDaysMs)
+    .filter(r => force || !r.contextUpdatedAt || (now - new Date(r.contextUpdatedAt).getTime()) > sevenDaysMs)
     .sort((a, b) => {
       if (!a.contextUpdatedAt) return -1;
       if (!b.contextUpdatedAt) return 1;

@@ -1,4 +1,5 @@
 import { spawn, execFileSync } from 'node:child_process';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 import type { ShadowConfig } from '../config/load-config.js';
 import type { BackendAdapter, BackendDoctorResult, BackendExecutionResult, ObjectivePack } from './types.js';
@@ -6,18 +7,30 @@ import type { BackendAdapter, BackendDoctorResult, BackendExecutionResult, Objec
 // Instance registry for concurrent adapter tracking
 const adapterInstances = new Set<ClaudeCliAdapter>();
 
-// Legacy singleton for backward compat (heartbeat/suggest jobs still use single adapter)
-let activeChild: import('node:child_process').ChildProcess | null = null;
+// Per-job adapter tracking via AsyncLocalStorage (safe for parallel execution)
+const jobIdStorage = new AsyncLocalStorage<string>();
+const jobAdapterGroups = new Map<string, Set<ClaudeCliAdapter>>();
 
-export function killActiveChild(): void {
-  if (activeChild && !activeChild.killed) {
-    activeChild.kill('SIGTERM');
-    activeChild = null;
+/** Run a function within a job scope — any adapters created inside will be tracked for that jobId */
+export function runInJobScope<T>(jobId: string, fn: () => T): T {
+  return jobIdStorage.run(jobId, fn);
+}
+
+/** Kill all adapters associated with a specific job (used on job timeout) */
+export function killJobAdapters(jobId: string): void {
+  const group = jobAdapterGroups.get(jobId);
+  if (group) {
+    for (const adapter of group) adapter.kill();
+    jobAdapterGroups.delete(jobId);
   }
 }
 
+/** @deprecated Use killJobAdapters(jobId) or killAllActiveChildren() instead */
+export function killActiveChild(): void {
+  killAllActiveChildren();
+}
+
 export function killAllActiveChildren(): void {
-  killActiveChild();
   for (const adapter of adapterInstances) {
     adapter.kill();
   }
@@ -29,6 +42,12 @@ export class ClaudeCliAdapter implements BackendAdapter {
 
   constructor(private readonly config: ShadowConfig) {
     adapterInstances.add(this);
+    // Auto-register with job group if running inside a job scope
+    const jobId = jobIdStorage.getStore();
+    if (jobId) {
+      if (!jobAdapterGroups.has(jobId)) jobAdapterGroups.set(jobId, new Set());
+      jobAdapterGroups.get(jobId)!.add(this);
+    }
   }
 
   kill(): void {
@@ -37,6 +56,9 @@ export class ClaudeCliAdapter implements BackendAdapter {
       this.instanceChild = null;
     }
     adapterInstances.delete(this);
+    for (const group of jobAdapterGroups.values()) {
+      group.delete(this);
+    }
   }
 
   dispose(): void {
@@ -85,10 +107,9 @@ export class ClaudeCliAdapter implements BackendAdapter {
       const { stdout, stderr, exitCode } = await spawnAsync(
         this.config.claudeBin, args, {
           cwd, timeout: timeoutMs, env, stdin: pack.prompt,
-          onSpawn: (child) => { activeChild = child; this.instanceChild = child; },
+          onSpawn: (child) => { this.instanceChild = child; },
         },
       );
-      activeChild = null;
       this.instanceChild = null;
 
       const finishedAt = new Date().toISOString();

@@ -66,6 +66,7 @@ export const ConfigSchema = z.object({
   activityHeartbeatMaxIntervalMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
   activityTriggerThreshold: z.coerce.number().int().positive().default(3),
   maxConcurrentRuns: z.coerce.number().int().min(1).max(8).default(2),
+  maxConcurrentJobs: z.coerce.number().int().min(1).max(8).default(3),
   maxWatchedRepos: z.coerce.number().int().min(1).max(100).default(30),
   remoteSyncEnabled: z.coerce.boolean().default(true),
   remoteSyncIntervalMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
@@ -79,6 +80,17 @@ export const ConfigSchema = z.object({
   suggestReactiveThreshold: z.coerce.number().int().min(1).default(3),
   suggestReactiveMinGapMs: z.coerce.number().int().positive().default(4 * 60 * 60 * 1000),
 });
+
+/** Validates profile fields coming from the API / MCP. */
+export const ProfileUpdateSchema = z.object({
+  displayName: z.string().max(100).optional(),
+  timezone: z.string().max(60).optional(),
+  locale: z.string().max(10).optional(),
+  proactivityLevel: z.coerce.number().int().min(1).max(10).optional(),
+  personalityLevel: z.coerce.number().int().min(1).max(5).optional(),
+  models: ModelsSchema.partial().optional(),
+  efforts: EffortsSchema.partial().optional(),
+}).passthrough();
 
 export type ShadowConfig = z.infer<typeof ConfigSchema> & {
   resolvedDataDir: string;

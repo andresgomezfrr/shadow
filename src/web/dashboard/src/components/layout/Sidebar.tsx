@@ -3,21 +3,33 @@ import type { StatusResponse } from '../../api/types';
 
 type Counts = StatusResponse['counts'];
 
-const NAV_ITEMS: { to: string; icon: string; label: string; countKey?: keyof Counts }[] = [
-  { to: '/morning', icon: '🌅', label: 'Good morning' },
-  { to: '/dashboard', icon: '📊', label: 'Dashboard' },
+type NavItem = { to: string; icon: string; label: string; countKey?: keyof Counts };
+type NavDivider = { divider: true };
+type NavEntry = NavItem | NavDivider;
+
+const NAV: NavEntry[] = [
+  // Home
+  { to: '/morning', icon: '☀️', label: 'Morning' },
+
+  // Action
+  { divider: true },
+  { to: '/workspace', icon: '▶', label: 'Workspace', countKey: 'runsToReview' },
   { to: '/suggestions', icon: '💡', label: 'Suggestions', countKey: 'pendingSuggestions' },
-  { to: '/memories', icon: '🧠', label: 'Memories' },
-  { to: '/observations', icon: '👀', label: 'Observations', countKey: 'activeObservations' },
-  { to: '/repos', icon: '📁', label: 'Repos' },
-  { to: '/projects', icon: '📋', label: 'Projects' },
-  { to: '/team', icon: '👥', label: 'Team' },
-  { to: '/systems', icon: '🔧', label: 'Systems' },
-  { to: '/usage', icon: '📈', label: 'Usage' },
-  { to: '/jobs', icon: '⚙️', label: 'Jobs' },
-  { to: '/runs', icon: '▶', label: 'Runs', countKey: 'runsToReview' },
+  { to: '/observations', icon: '👁', label: 'Observations', countKey: 'activeObservations' },
+
+  // System
+  { divider: true },
+  { to: '/activity', icon: '⚡', label: 'Activity' },
   { to: '/digests', icon: '📝', label: 'Digests' },
-  { to: '/profile', icon: '👾', label: 'Settings' },
+  { to: '/projects', icon: '📋', label: 'Projects' },
+  { to: '/memories', icon: '🧠', label: 'Memories' },
+
+  // Configure
+  { divider: true },
+  { to: '/repos', icon: '📦', label: 'Repos' },
+  { to: '/systems', icon: '🔧', label: 'Systems' },
+  { to: '/team', icon: '👥', label: 'Team' },
+  { to: '/profile', icon: '⚙', label: 'Settings' },
   { to: '/guide', icon: '📖', label: 'Guide' },
 ];
 
@@ -25,7 +37,11 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
   return (
     <aside className="fixed top-0 left-0 w-[60px] h-full bg-card border-r border-border flex flex-col items-center z-50 pt-2 gap-0.5">
       <div className="text-[22px] py-2 pb-3 cursor-default select-none">👤</div>
-      {NAV_ITEMS.map((item) => {
+      {NAV.map((entry, i) => {
+        if ('divider' in entry) {
+          return <div key={`div-${i}`} className="border-t border-border/30 w-8 my-1" />;
+        }
+        const item = entry;
         const count = item.countKey && counts ? counts[item.countKey] : 0;
         return (
           <NavLink

@@ -18,6 +18,8 @@ import type {
   EventRecord,
   Run,
   UserProfile,
+  ActivityEntry,
+  ActivitySummary,
 } from './types';
 
 async function api<T>(path: string, opts?: RequestInit): Promise<T | null> {
@@ -57,8 +59,13 @@ export const fetchRepos = () => api<Repo[]>('/api/repos');
 export const fetchContacts = (team?: string) =>
   api<Contact[]>(`/api/contacts${qs({ team })}`);
 
-export const fetchDigests = (kind?: string) =>
-  api<Digest[]>(`/api/digests${qs({ kind })}`);
+export const fetchDigests = (params?: { kind?: string; limit?: number; before?: string; after?: string }) =>
+  api<Digest[]>(`/api/digests${qs({
+    kind: params?.kind,
+    limit: params?.limit != null ? String(params.limit) : undefined,
+    before: params?.before,
+    after: params?.after,
+  })}`);
 
 export type DigestKindStatus = { status: string; periodStart?: string };
 
@@ -100,6 +107,12 @@ export const fetchHeartbeats = () => api<Heartbeat[]>('/api/heartbeats');
 
 export const fetchJobs = (params?: { type?: string; typePrefix?: string; limit?: number; offset?: number }) =>
   api<{ items: Job[]; total: number }>(`/api/jobs${qs({ type: params?.type, typePrefix: params?.typePrefix, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+
+export const fetchActivity = (params?: { type?: string; source?: string; status?: string; period?: string; limit?: number; offset?: number }) =>
+  api<{ items: ActivityEntry[]; total: number }>(`/api/activity${qs({ type: params?.type, source: params?.source, status: params?.status, period: params?.period, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+
+export const fetchActivitySummary = (period: string = 'today') =>
+  api<ActivitySummary>(`/api/activity/summary${qs({ period })}`);
 
 export const fetchEvents = () => api<EventRecord[]>('/api/events');
 
@@ -167,6 +180,9 @@ export const reopenObservation = (id: string) =>
 
 export const triggerHeartbeat = () =>
   api<{ triggered: boolean }>('/api/heartbeat/trigger', { method: 'POST' });
+
+export const triggerJob = (type: string) =>
+  api<{ triggered: boolean }>(`/api/jobs/trigger/${type}`, { method: 'POST' });
 
 export const acceptSuggestion = (id: string, category?: string) =>
   api<Suggestion>(`/api/suggestions/${id}/accept`, {

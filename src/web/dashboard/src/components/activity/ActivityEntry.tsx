@@ -1,0 +1,457 @@
+import { useState } from 'react';
+import { timeAgo, formatTokens } from '../../utils/format';
+import { Badge } from '../common/Badge';
+import { ConfidenceIndicator } from '../common/ConfidenceIndicator';
+import { JobOutputSummary } from './JobOutputSummary';
+import type { ActivityEntry as ActivityEntryType } from '../../api/types';
+
+const TYPE_COLORS: Record<string, string> = {
+  heartbeat: 'bg-purple-500/20 text-purple-300',
+  suggest: 'bg-green-500/20 text-green-300',
+  consolidate: 'bg-orange-500/20 text-orange-300',
+  reflect: 'bg-blue-500/20 text-blue-300',
+  'remote-sync': 'bg-pink-400/20 text-pink-300',
+  'repo-profile': 'bg-teal-400/20 text-teal-300',
+  'context-enrich': 'bg-amber-400/20 text-amber-300',
+  'digest-daily': 'bg-cyan-500/20 text-cyan-300',
+  'digest-weekly': 'bg-cyan-500/20 text-cyan-300',
+  'digest-brag': 'bg-cyan-500/20 text-cyan-300',
+  'run:plan': 'bg-indigo-500/20 text-indigo-300',
+  'run:execution': 'bg-violet-500/20 text-violet-300',
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  completed: 'text-green bg-green/15',
+  running: 'text-blue bg-blue/15',
+  failed: 'text-red bg-red/15',
+  queued: 'text-orange bg-orange/15',
+  executed: 'text-purple bg-purple/15',
+  executed_manual: 'text-blue bg-blue/15',
+  discarded: 'text-text-muted bg-text-muted/10',
+};
+
+const PHASE_DOT: Record<string, string> = {
+  observe: 'bg-blue',
+  cleanup: 'bg-text-muted',
+  analyze: 'bg-purple',
+  suggest: 'bg-green',
+  notify: 'bg-text-muted',
+  consolidate: 'bg-orange',
+  reflect: 'bg-blue',
+  'reflect-delta': 'bg-blue',
+  'reflect-evolve': 'bg-purple',
+  enrich: 'bg-amber-400',
+  'remote-sync': 'bg-pink-400',
+  'repo-profile': 'bg-teal-400',
+  digest: 'bg-cyan',
+};
+
+const PHASE_TEXT: Record<string, string> = {
+  observe: 'text-blue',
+  cleanup: 'text-text-muted',
+  analyze: 'text-purple',
+  suggest: 'text-green',
+  notify: 'text-text-muted',
+  consolidate: 'text-orange',
+  reflect: 'text-blue',
+  'reflect-delta': 'text-blue',
+  'reflect-evolve': 'text-purple',
+  enrich: 'text-amber-400',
+  'remote-sync': 'text-pink-400',
+  'repo-profile': 'text-teal-400',
+  digest: 'text-cyan',
+};
+
+// --- Helpers ---
+
+function num(r: Record<string, unknown>, key: string): number {
+  const v = r[key]; return typeof v === 'number' ? v : 0;
+}
+function str(r: Record<string, unknown>, key: string): string | undefined {
+  const v = r[key]; return typeof v === 'string' ? v : undefined;
+}
+function arr(r: Record<string, unknown>, key: string): string[] {
+  const v = r[key]; return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+}
+function items(r: Record<string, unknown>, key: string): Array<{ id: string; title: string }> {
+  const v = r[key];
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is { id: string; title: string } =>
+    typeof x === 'object' && x !== null && typeof (x as Record<string, unknown>).id === 'string' && typeof (x as Record<string, unknown>).title === 'string'
+  );
+}
+
+function isSkip(entry: ActivityEntryType): boolean {
+  if (entry.source === 'run') return false;
+  if (entry.llmCalls > 0) return false;
+  const result = entry.result ?? {};
+  return !Object.values(result).some(v => v !== null && v !== undefined && v !== 0 && v !== false && v !== '');
+}
+
+function interestingPhases(phases: string[]): string[] {
+  return phases.filter((p) => !['wake', 'idle', 'notify'].includes(p));
+}
+
+function formatDuration(ms: number | null): string {
+  if (ms == null) return '--';
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${(ms / 60_000).toFixed(1)}m`;
+}
+
+// --- Phase Pipeline Component ---
+
+function PhasePipeline({ phases, currentPhase }: { phases: string[]; currentPhase?: string }) {
+  const visible = interestingPhases(phases);
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-0 mb-2">
+      {visible.map((phase, i) => {
+        const isCurrent = phase === currentPhase;
+        const dotColor = PHASE_DOT[phase] ?? 'bg-text-muted';
+        const textColor = PHASE_TEXT[phase] ?? 'text-text-muted';
+        return (
+          <div key={phase} className="flex items-center">
+            {i > 0 && <div className="w-4 h-px bg-border mx-0.5" />}
+            <div className="flex items-center gap-1">
+              <div className={`w-1.5 h-1.5 rounded-full ${dotColor} ${isCurrent ? 'animate-pulse' : ''}`} />
+              <span className={`text-[10px] ${textColor}`}>{phase}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// --- Per-Type Expanded Detail ---
+
+function renderExpandedDetail(entry: ActivityEntryType) {
+  const r = entry.result ?? {};
+  const type = entry.type;
+
+  if (type === 'heartbeat') {
+    const obsItems = items(r, 'observationItems');
+    const memItems = items(r, 'memoryItems');
+    const repos = arr(r, 'reposAnalyzed');
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} />
+        {num(r, 'observationsCreated') > 0 && (
+          <div>
+            <span className="text-accent">Observations ({num(r, 'observationsCreated')}):</span>
+            {obsItems.length > 0 ? (
+              <ul className="ml-3 mt-0.5 space-y-0.5">
+                {obsItems.map((item) => (
+                  <li key={item.id}>
+                    <a href={`/observations?highlight=${item.id}`} className="text-text-dim hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>
+                      - {item.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="text-text-muted ml-1">{num(r, 'observationsCreated')} created</span>
+            )}
+          </div>
+        )}
+        {num(r, 'memoriesCreated') > 0 && (
+          <div>
+            <span className="text-accent">Memories ({num(r, 'memoriesCreated')}):</span>
+            {memItems.length > 0 ? (
+              <ul className="ml-3 mt-0.5 space-y-0.5">
+                {memItems.map((item) => (
+                  <li key={item.id}>
+                    <a href={`/memories?highlight=${item.id}`} className="text-text-dim hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>
+                      - {item.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="text-text-muted ml-1">{num(r, 'memoriesCreated')} created</span>
+            )}
+          </div>
+        )}
+        {repos.length > 0 && (
+          <div><span className="text-accent">Repos:</span> <span className="text-text-dim">{repos.join(', ')}</span></div>
+        )}
+      </>
+    );
+  }
+
+  if (type === 'suggest') {
+    const sugItems = items(r, 'suggestionItems');
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} />
+        {num(r, 'suggestionsCreated') > 0 ? (
+          <div>
+            <span className="text-accent">Suggestions ({num(r, 'suggestionsCreated')}):</span>
+            {sugItems.length > 0 ? (
+              <ul className="ml-3 mt-0.5 space-y-0.5">
+                {sugItems.map((item) => (
+                  <li key={item.id}>
+                    <a href={`/suggestions?highlight=${item.id}`} className="text-text-dim hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>
+                      - {item.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="text-text-muted ml-1">{num(r, 'suggestionsCreated')} created</span>
+            )}
+          </div>
+        ) : (
+          <div className="text-text-muted">No suggestions generated</div>
+        )}
+      </>
+    );
+  }
+
+  if (type === 'consolidate') {
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} />
+        <div className="flex items-center gap-3">
+          <span><span className="text-accent">Promoted:</span> <span className="text-text-dim">{num(r, 'memoriesPromoted')}</span></span>
+          <span><span className="text-accent">Demoted:</span> <span className="text-text-dim">{num(r, 'memoriesDemoted')}</span></span>
+          <span><span className="text-accent">Expired:</span> <span className="text-text-dim">{num(r, 'memoriesExpired')}</span></span>
+        </div>
+      </>
+    );
+  }
+
+  if (type === 'reflect') {
+    const preview = str(r, 'deltaPreview');
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} />
+        {r.skipped ? (
+          <div className="text-text-muted">Skipped{str(r, 'reason') ? ` — ${str(r, 'reason')}` : ' — no changes since last reflect'}</div>
+        ) : (
+          <div>
+            <span className="text-accent">Soul updated</span>
+            {preview && <div className="text-text-dim mt-0.5 italic">"{preview}"</div>}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (type === 'remote-sync') {
+    const summaries = (r.repoSummaries ?? []) as Array<{ name: string; newCommits: number }>;
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} />
+        <div>
+          <span className="text-accent">{num(r, 'reposSynced')} repos synced</span>
+          <span className="text-text-muted">, {num(r, 'reposWithChanges')} with changes</span>
+        </div>
+        {summaries.length > 0 && (
+          <ul className="ml-3 mt-0.5 space-y-0.5">
+            {summaries.map((s, i) => (
+              <li key={i} className="text-text-dim">- {s.name}: {s.newCommits} new commit{s.newCommits !== 1 ? 's' : ''}</li>
+            ))}
+          </ul>
+        )}
+      </>
+    );
+  }
+
+  if (type === 'repo-profile') {
+    const names = arr(r, 'repoNames');
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} />
+        <div>
+          <span className="text-accent">Profiled:</span>{' '}
+          <span className="text-text-dim">{names.length > 0 ? names.join(', ') : `${num(r, 'reposProfiled')} repos`}</span>
+        </div>
+      </>
+    );
+  }
+
+  if (type === 'context-enrich') {
+    const sources = arr(r, 'sources');
+    const entities = arr(r, 'entityNames');
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} />
+        <div>
+          <span className="text-accent">{num(r, 'itemsCollected')} items</span>
+          {sources.length > 0 && <span className="text-text-dim"> from: {sources.join(', ')}</span>}
+        </div>
+        {entities.length > 0 && (
+          <div><span className="text-accent">Entities:</span> <span className="text-text-dim">{entities.join(', ')}</span></div>
+        )}
+      </>
+    );
+  }
+
+  if (type.startsWith('digest-')) {
+    const words = num(r, 'wordCount');
+    const digestId = str(r, 'digestId');
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} />
+        <div>
+          <span className="text-accent">{type.replace('digest-', '')} digest</span>
+          {words > 0 && <span className="text-text-dim">, {words} words</span>}
+          {digestId && (
+            <a href={`/digests?highlight=${digestId}`} className="text-accent hover:underline ml-2" onClick={e => e.stopPropagation()}>
+              view digest
+            </a>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  if (type.startsWith('run:')) {
+    return (
+      <>
+        {entry.runId && (
+          <div>
+            <a href={`/workspace?highlight=${entry.runId}`} className="text-accent hover:underline" onClick={e => e.stopPropagation()}>
+              View in Workspace
+            </a>
+          </div>
+        )}
+        {entry.prUrl && (
+          <div>
+            <a href={entry.prUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline" onClick={e => e.stopPropagation()}>
+              {entry.prUrl}
+            </a>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // Fallback: generic key-value dump
+  return (
+    <>
+      {entry.phases.length > 0 && <PhasePipeline phases={entry.phases} />}
+      {Object.entries(r)
+        .filter(([, v]) => v != null && v !== 0 && v !== '' && v !== false)
+        .map(([k, v]) => (
+          <div key={k}>
+            <span className="text-accent">{k.replace(/([A-Z])/g, ' $1').toLowerCase()}:</span>{' '}
+            {Array.isArray(v) ? v.join(', ') : String(v)}
+          </div>
+        ))}
+    </>
+  );
+}
+
+// --- Main Component ---
+
+type Props = {
+  entry: ActivityEntryType;
+  defaultExpanded?: boolean;
+};
+
+export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+
+  const isRunning = entry.status === 'running';
+  const isFailed = entry.status === 'failed';
+  const skip = isSkip(entry);
+  const isRun = entry.source === 'run';
+  const typeColor = TYPE_COLORS[entry.type] ?? 'text-text-dim bg-border';
+
+  const borderClass = isRunning
+    ? 'border-l-blue animate-pulse'
+    : isFailed
+    ? 'border-l-red'
+    : 'border-l-transparent';
+
+  // Skip rows: dimmed, collapsed
+  if (skip && !expanded) {
+    return (
+      <div
+        onClick={() => setExpanded(true)}
+        className="bg-card/50 border border-l-[3px] border-l-transparent border-border/50 rounded px-4 py-2 cursor-pointer flex items-center gap-2 text-text-muted hover:border-border transition-colors"
+      >
+        <Badge className={typeColor}>{entry.type}</Badge>
+        <Badge className="text-text-muted bg-text-muted/10">skip</Badge>
+        <span className="text-xs flex-1">{formatDuration(entry.durationMs)}</span>
+        {entry.startedAt && <span className="text-xs">{timeAgo(entry.startedAt)}</span>}
+      </div>
+    );
+  }
+
+  // Running state
+  if (isRunning) {
+    return (
+      <div className="bg-accent/5 border border-l-[3px] border-l-blue border-accent/30 rounded-lg px-4 py-3 animate-pulse">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge className={typeColor}>{entry.type}</Badge>
+          {isRun && entry.repoName && <Badge className="text-text-dim bg-border">{entry.repoName}</Badge>}
+          <span className="text-xs text-accent">running</span>
+          {entry.activity && <span className="text-xs text-text-dim">{entry.activity}</span>}
+          {entry.startedAt && <span className="text-xs text-text-muted ml-auto">{timeAgo(entry.startedAt)}</span>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onClick={() => setExpanded(!expanded)}
+      className={`bg-card border border-l-[3px] ${borderClass} rounded-lg px-4 py-3 cursor-pointer transition-colors hover:border-accent/50 ${
+        skip ? 'border-border/50' : 'border-border'
+      }`}
+    >
+      {/* Collapsed row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge className={typeColor}>{entry.type}</Badge>
+        {isRun && entry.repoName && <Badge className="text-text-dim bg-border">{entry.repoName}</Badge>}
+        {isRun && entry.confidence && (
+          <ConfidenceIndicator confidence={entry.confidence} compact />
+        )}
+        {isRun && entry.status && (
+          <Badge className={STATUS_BADGE[entry.status] ?? 'text-text-dim bg-border'}>{entry.status.replace('_', ' ')}</Badge>
+        )}
+        <span className="flex-1 min-w-0">
+          <JobOutputSummary entry={entry} />
+        </span>
+        {isFailed && !!entry.result?.error && (
+          <span className="text-red text-xs truncate max-w-60">
+            {String(entry.result.error).slice(0, 60)}
+          </span>
+        )}
+        {entry.tokensUsed > 0 && (
+          <span className="font-mono text-xs text-text-muted">{formatTokens(entry.tokensUsed)} tok</span>
+        )}
+        <span className="font-mono text-xs text-text-muted">{formatDuration(entry.durationMs)}</span>
+        {entry.startedAt && <span className="text-xs text-text-muted shrink-0">{timeAgo(entry.startedAt)}</span>}
+      </div>
+
+      {/* Expanded view */}
+      {expanded && (
+        <div className="mt-3 animate-fade-in bg-bg rounded p-3 text-xs text-text-dim space-y-1.5" onClick={(e) => e.stopPropagation()}>
+          {/* Per-type detail */}
+          {renderExpandedDetail(entry)}
+
+          {/* Common metadata */}
+          {entry.llmCalls > 0 && (
+            <div className="pt-1 border-t border-border/30 mt-2">
+              <span className="text-text-muted">{entry.llmCalls} LLM call{entry.llmCalls !== 1 ? 's' : ''}</span>
+              {entry.tokensUsed > 0 && <span className="text-text-muted"> · {entry.tokensUsed.toLocaleString()} tokens</span>}
+              <span className="text-text-muted"> · {formatDuration(entry.durationMs)}</span>
+            </div>
+          )}
+
+          {/* Timestamps */}
+          <div className="text-text-muted">
+            {entry.startedAt && <span>{new Date(entry.startedAt).toLocaleString()}</span>}
+            {entry.finishedAt && <span> → {new Date(entry.finishedAt).toLocaleTimeString()}</span>}
+            <span className="ml-2 text-text-muted/50">{entry.id.slice(0, 8)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

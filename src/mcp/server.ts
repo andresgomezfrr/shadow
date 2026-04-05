@@ -2,6 +2,7 @@ import { resolve, basename } from 'node:path';
 
 import type { ShadowDatabase } from '../storage/database.js';
 import type { ShadowConfig } from '../config/load-config.js';
+import { ProfileUpdateSchema } from '../config/schema.js';
 import type { UserProfileRecord } from '../storage/models.js';
 import { applyTrustDelta } from '../profile/trust.js';
 import { loadPersonality } from '../personality/loader.js';
@@ -1012,8 +1013,11 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
 
         const key = params.key as string;
         const rawValue = params.value as string;
-        const numericFields = ['proactivityLevel', 'personalityLevel', 'trustLevel', 'trustScore', 'bondLevel'];
-        const parsedValue = numericFields.includes(key) ? Number(rawValue) : rawValue;
+        const parsed = ProfileUpdateSchema.safeParse({ [key]: rawValue });
+        if (!parsed.success) {
+          return { isError: true, message: `Invalid value for ${key}: ${parsed.error.issues.map(i => i.message).join(', ')}` };
+        }
+        const parsedValue = (parsed.data as Record<string, unknown>)[key];
 
         db.updateProfile('default', { [key]: parsedValue });
         return { ok: true, set: key, value: parsedValue };
@@ -1091,6 +1095,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         if (!memory) return { isError: true, message: `Memory not found: ${memoryId}` };
 
         db.updateMemory(memoryId, { archivedAt: new Date().toISOString() });
+        db.deleteEmbedding('memory_vectors', memoryId);
         const reason = params.reason as string | undefined;
         db.createFeedback({ targetKind: 'memory', targetId: memoryId, action: 'archive', note: reason });
         return { ok: true, archived: memoryId, title: memory.title };

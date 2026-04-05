@@ -192,14 +192,17 @@ export class ShadowDatabase {
     return row ? mapDigest(row) : null;
   }
 
-  listDigests(filters?: { kind?: string; limit?: number }): DigestRecord[] {
+  listDigests(filters?: { kind?: string; limit?: number; before?: string; after?: string }): DigestRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
     if (filters?.kind) { clauses.push('kind = ?'); values.push(filters.kind); }
+    if (filters?.before) { clauses.push('period_start < ?'); values.push(filters.before); }
+    if (filters?.after) { clauses.push('period_start > ?'); values.push(filters.after); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     const limit = filters?.limit ?? 20;
+    const order = filters?.after ? 'ASC' : 'DESC';
     return this.database
-      .prepare(`SELECT * FROM digests ${where} ORDER BY period_start DESC LIMIT ?`)
+      .prepare(`SELECT * FROM digests ${where} ORDER BY period_start ${order} LIMIT ?`)
       .all(...values, limit)
       .map(mapDigest);
   }
@@ -233,6 +236,23 @@ export class ShadowDatabase {
       this.database.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
     } catch (e) {
       console.error(`[shadow:db] Failed to delete embedding from ${table}:`, e instanceof Error ? e.message : e);
+    }
+  }
+
+  /** Remove entity references from entities_json in memories, observations, and suggestions. */
+  removeEntityReferences(entityType: string, entityId: string): void {
+    const tables = ['memories', 'observations', 'suggestions'];
+    for (const table of tables) {
+      const rows = this.database
+        .prepare(`SELECT id, entities_json FROM ${table} WHERE entities_json LIKE ?`)
+        .all(`%${entityId}%`) as { id: string; entities_json: string }[];
+      for (const row of rows) {
+        const entities: EntityLink[] = jsonParse(row.entities_json, []);
+        const filtered = entities.filter(e => !(e.type === entityType && e.id === entityId));
+        this.database
+          .prepare(`UPDATE ${table} SET entities_json = ? WHERE id = ?`)
+          .run(JSON.stringify(filtered), row.id);
+      }
     }
   }
 
@@ -307,7 +327,7 @@ export class ShadowDatabase {
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
       sets.push(`${toSnake(key)} = ?`);
-      values.push((value ?? null) as SQLValue);
+      values.push(toSqlValue(value));
     }
     if (sets.length === 0) return;
     sets.push('updated_at = ?');
@@ -389,7 +409,7 @@ export class ShadowDatabase {
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
       sets.push(`${toSnake(key)} = ?`);
-      values.push((value ?? null) as SQLValue);
+      values.push(toSqlValue(value));
     }
     if (sets.length === 0) return;
     sets.push('updated_at = ?');
@@ -400,6 +420,7 @@ export class ShadowDatabase {
 
   deleteSystem(id: string): void {
     this.database.prepare('DELETE FROM systems WHERE id = ?').run(id);
+    this.removeEntityReferences('system', id);
   }
 
   // --- Projects ---
@@ -463,7 +484,7 @@ export class ShadowDatabase {
         values.push(JSON.stringify(value ?? []));
       } else {
         sets.push(`${col} = ?`);
-        values.push((value ?? null) as SQLValue);
+        values.push(toSqlValue(value));
       }
     }
     if (sets.length === 0) return this.getProject(id)!;
@@ -476,6 +497,7 @@ export class ShadowDatabase {
 
   deleteProject(id: string): void {
     this.database.prepare('DELETE FROM projects WHERE id = ?').run(id);
+    this.removeEntityReferences('project', id);
   }
 
   findProjectsForRepo(repoId: string): ProjectRecord[] {
@@ -543,7 +565,7 @@ export class ShadowDatabase {
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
       sets.push(`${toSnake(key)} = ?`);
-      values.push((value ?? null) as SQLValue);
+      values.push(toSqlValue(value));
     }
     if (sets.length === 0) return;
     sets.push('updated_at = ?');
@@ -583,7 +605,7 @@ export class ShadowDatabase {
         values.push(JSON.stringify(value));
       } else {
         sets.push(`${col} = ?`);
-        values.push((value ?? null) as SQLValue);
+        values.push(toSqlValue(value));
       }
     }
     if (sets.length === 0) return;
@@ -755,10 +777,10 @@ export class ShadowDatabase {
         values.push(JSON.stringify(value));
       } else if (key === 'bodyMd') {
         sets.push('body_md = ?');
-        values.push((value ?? null) as SQLValue);
+        values.push(toSqlValue(value));
       } else {
         sets.push(`${toSnake(key)} = ?`);
-        values.push((value ?? null) as SQLValue);
+        values.push(toSqlValue(value));
       }
     }
     if (sets.length === 0) return;
@@ -1052,7 +1074,7 @@ export class ShadowDatabase {
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
       sets.push(`${toSnake(key)} = ?`);
-      values.push((value ?? null) as SQLValue);
+      values.push(toSqlValue(value));
     }
     if (sets.length === 0) return;
     values.push(id);
@@ -1277,12 +1299,7 @@ export class ShadowDatabase {
     for (const [key, value] of Object.entries(updates)) {
       const colName = key === 'doubts' ? 'doubts_json' : key === 'verification' ? 'verification_json' : toSnake(key);
       sets.push(`${colName} = ?`);
-      // SQLite doesn't accept JS booleans, arrays, or objects — convert appropriately
-      const sqlValue = typeof value === 'boolean' ? (value ? 1 : 0)
-        : Array.isArray(value) ? JSON.stringify(value)
-        : (typeof value === 'object' && value !== null) ? JSON.stringify(value)
-        : value;
-      values.push((sqlValue ?? null) as SQLValue);
+      values.push(toSqlValue(value));
     }
     if (sets.length === 0) return;
     values.push(id);
@@ -1476,12 +1493,16 @@ export class ShadowDatabase {
     return this.getJob(id)!;
   }
 
-  claimNextJob(types?: string[]): JobRecord | null {
+  claimNextJob(opts?: { types?: string[]; excludeTypes?: string[] }): JobRecord | null {
     const params: SQLValue[] = [];
     let where = "status = 'queued'";
-    if (types?.length) {
-      where += ` AND type IN (${types.map(() => '?').join(',')})`;
-      params.push(...types);
+    if (opts?.types?.length) {
+      where += ` AND type IN (${opts.types.map(() => '?').join(',')})`;
+      params.push(...opts.types);
+    }
+    if (opts?.excludeTypes?.length) {
+      where += ` AND type NOT IN (${opts.excludeTypes.map(() => '?').join(',')})`;
+      params.push(...opts.excludeTypes);
     }
     const row = this.database
       .prepare(`SELECT id FROM jobs WHERE ${where} ORDER BY priority DESC, created_at ASC LIMIT 1`)
@@ -1743,6 +1764,14 @@ function num(v: unknown): number {
 
 function bool(v: unknown): boolean {
   return v === 1 || v === true;
+}
+
+/** Convert a JS value to a SQLite-safe value (booleans→0/1, objects/arrays→JSON). */
+function toSqlValue(value: unknown): SQLValue {
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (Array.isArray(value)) return JSON.stringify(value);
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  return (value ?? null) as SQLValue;
 }
 
 function jsonParse<T>(v: unknown, fallback: T): T {

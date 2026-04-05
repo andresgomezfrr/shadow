@@ -4,6 +4,7 @@ import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDatabase, type ShadowDatabase } from '../storage/database.js';
 import { loadConfig } from '../config/load-config.js';
+import { ProfileUpdateSchema } from '../config/schema.js';
 import { DIGEST_SCHEDULES, nextScheduledAt } from '../daemon/schedules.js';
 import type { EventBus } from './event-bus.js';
 
@@ -81,7 +82,12 @@ async function handleApi(
         nextHeartbeatAt,
         jobSchedule: {
           heartbeat: { intervalMs: 30 * 60 * 1000, nextAt: nextHeartbeatAt },
-          suggest: { trigger: 'after heartbeat with activity' },
+          suggest: (() => {
+            const lastSug = db.getLastJob('suggest');
+            const intervalMs = config.suggestIntervalMs;
+            const nextAt = lastSug ? new Date(new Date(lastSug.startedAt).getTime() + intervalMs).toISOString() : null;
+            return { intervalMs, nextAt };
+          })(),
           consolidate: (() => {
             const lastCon = db.getLastJob('consolidate');
             const nextAt = lastCon ? new Date(new Date(lastCon.startedAt).getTime() + 6 * 60 * 60 * 1000).toISOString() : null;
@@ -94,14 +100,20 @@ async function handleApi(
           })(),
           'remote-sync': (() => {
             const lastSync = db.getLastJob('remote-sync');
-            const nextAt = lastSync ? new Date(new Date(lastSync.startedAt).getTime() + 30 * 60 * 1000).toISOString() : null;
-            return { intervalMs: 30 * 60 * 1000, nextAt };
+            const nextAt = lastSync ? new Date(new Date(lastSync.startedAt).getTime() + config.remoteSyncIntervalMs).toISOString() : null;
+            return { intervalMs: config.remoteSyncIntervalMs, nextAt };
+          })(),
+          'repo-profile': (() => {
+            const lastRp = db.getLastJob('repo-profile');
+            const intervalMs = config.repoProfileIntervalMs;
+            const nextAt = lastRp ? new Date(new Date(lastRp.startedAt).getTime() + intervalMs).toISOString() : null;
+            return { intervalMs, nextAt, enabled: config.repoProfileEnabled };
           })(),
           'context-enrich': (() => {
             const prefs = profile.preferences as Record<string, unknown> | undefined;
-            const enabled = (prefs?.enrichmentEnabled as boolean | undefined) ?? false;
+            const enabled = (prefs?.enrichmentEnabled as boolean | undefined) ?? config.enrichmentEnabled;
             const intMin = prefs?.enrichmentIntervalMin as number | undefined;
-            const intervalMs = intMin ? intMin * 60 * 1000 : 2 * 60 * 60 * 1000;
+            const intervalMs = intMin ? intMin * 60 * 1000 : config.enrichmentIntervalMs;
             const lastEnrich = db.getLastJob('context-enrich');
             const nextAt = enabled && lastEnrich ? new Date(new Date(lastEnrich.startedAt).getTime() + intervalMs).toISOString() : null;
             return { intervalMs, nextAt, enabled };
@@ -181,7 +193,9 @@ async function handleApi(
     if (pathname === '/api/digests') {
       const kind = params.get('kind') ?? undefined;
       const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : 20;
-      const digests = db.listDigests({ kind, limit });
+      const before = params.get('before') ?? undefined;
+      const after = params.get('after') ?? undefined;
+      const digests = db.listDigests({ kind, limit, before, after });
       return json(res, digests);
     }
 
@@ -414,6 +428,197 @@ async function handleApi(
       const targetKind = params.get('targetKind');
       if (!targetKind) return json(res, { error: 'Missing targetKind' }, 400);
       return json(res, db.getThumbsState(targetKind));
+    }
+
+    // --- Unified activity timeline (jobs + runs) ---
+    if (pathname === '/api/activity') {
+      const typeFilter = params.get('type') ?? undefined;
+      const sourceFilter = params.get('source') ?? undefined;
+      const statusFilter = params.get('status') ?? undefined;
+      const periodFilter = params.get('period') ?? undefined;
+      const limit = parseInt(params.get('limit') ?? '30', 10);
+      const offset = parseInt(params.get('offset') ?? '0', 10);
+
+      // Compute period start date
+      let periodDate: string | null = null;
+      if (periodFilter === 'today') {
+        const d = new Date(); d.setHours(0, 0, 0, 0);
+        periodDate = d.toISOString();
+      } else if (periodFilter === '7d') {
+        periodDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      } else if (periodFilter === '30d') {
+        periodDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      }
+
+      // Determine which sources to query
+      const isRunType = typeFilter === 'run' || typeFilter?.startsWith('run:');
+      const fetchJobs = sourceFilter !== 'run' && !isRunType;
+      const fetchRuns = sourceFilter !== 'job' && (!typeFilter || isRunType);
+
+      type ActivityEntry = {
+        id: string;
+        source: 'job' | 'run';
+        type: string;
+        status: string;
+        phases: string[];
+        activity: string | null;
+        llmCalls: number;
+        tokensUsed: number;
+        durationMs: number | null;
+        result: Record<string, unknown>;
+        startedAt: string | null;
+        finishedAt: string | null;
+        runId: string | null;
+        repoName: string | null;
+        confidence: string | null;
+        verified: string | null;
+        parentRunId: string | null;
+        prUrl: string | null;
+      };
+
+      const merged: ActivityEntry[] = [];
+      let totalJobs = 0;
+      let totalRuns = 0;
+
+      // Fetch enough from each table to cover offset+limit after merge
+      const fetchLimit = limit + offset;
+
+      if (fetchJobs) {
+        const jobFilters: { type?: string; status?: string; limit: number; offset: number } = { limit: fetchLimit, offset: 0 };
+        if (typeFilter && !isRunType) jobFilters.type = typeFilter;
+        if (statusFilter) jobFilters.status = statusFilter;
+        let jobs = db.listJobs(jobFilters);
+        if (periodDate) jobs = jobs.filter(j => j.startedAt && j.startedAt >= periodDate!);
+        for (const j of jobs) {
+          merged.push({
+            id: j.id,
+            source: 'job',
+            type: j.type,
+            status: j.status,
+            phases: j.phases ?? [],
+            activity: j.activity ?? null,
+            llmCalls: j.llmCalls ?? 0,
+            tokensUsed: j.tokensUsed ?? 0,
+            durationMs: j.durationMs ?? null,
+            result: j.result ?? {},
+            startedAt: j.startedAt ?? null,
+            finishedAt: j.finishedAt ?? null,
+            runId: null,
+            repoName: null,
+            confidence: null,
+            verified: null,
+            parentRunId: null,
+            prUrl: null,
+          });
+        }
+        // Count: filter by period in JS if needed
+        if (periodDate) {
+          totalJobs = jobs.length;
+        } else {
+          const countFilters: { type?: string; status?: string } = {};
+          if (typeFilter && !isRunType) countFilters.type = typeFilter;
+          if (statusFilter) countFilters.status = statusFilter;
+          totalJobs = db.countJobs(countFilters);
+        }
+      }
+
+      if (fetchRuns) {
+        const runFilters: { status?: string; limit: number; offset: number } = { limit: fetchLimit, offset: 0 };
+        if (statusFilter) runFilters.status = statusFilter;
+        let runs = db.listRuns(runFilters);
+        if (periodDate) runs = runs.filter(r => (r.startedAt ?? r.createdAt) >= periodDate!);
+        for (const r of runs) {
+          const repoName = r.repoId ? (db.getRepo(r.repoId)?.name ?? null) : null;
+          merged.push({
+            id: r.id,
+            source: 'run',
+            type: `run:${r.kind}`,
+            status: r.status,
+            phases: [],
+            activity: null,
+            llmCalls: 0,
+            tokensUsed: 0,
+            durationMs: r.startedAt && r.finishedAt ? new Date(r.finishedAt).getTime() - new Date(r.startedAt).getTime() : null,
+            result: r.resultSummaryMd ? { summaryMd: r.resultSummaryMd } : {},
+            startedAt: r.startedAt ?? r.createdAt,
+            finishedAt: r.finishedAt ?? null,
+            runId: r.id,
+            repoName,
+            confidence: r.confidence ?? null,
+            verified: r.verified ?? null,
+            parentRunId: r.parentRunId ?? null,
+            prUrl: r.prUrl ?? null,
+          });
+        }
+        if (periodDate) {
+          totalRuns = runs.length;
+        } else {
+          const countFilters: { status?: string } = {};
+          if (statusFilter) countFilters.status = statusFilter;
+          totalRuns = db.countRuns(countFilters);
+        }
+      }
+
+      // Sort by startedAt DESC, then paginate
+      merged.sort((a, b) => {
+        const ta = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+        const tb = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+        return tb - ta;
+      });
+      const items = merged.slice(offset, offset + limit);
+      const total = totalJobs + totalRuns;
+      return json(res, { items, total });
+    }
+
+    // --- Activity summary (aggregated metrics) ---
+    if (pathname === '/api/activity/summary') {
+      const periodParam = params.get('period') ?? 'today';
+      let periodDate: string;
+      if (periodParam === '7d') {
+        periodDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      } else if (periodParam === '30d') {
+        periodDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      } else {
+        // 'today' or default
+        const d = new Date(); d.setHours(0, 0, 0, 0);
+        periodDate = d.toISOString();
+      }
+
+      // Fetch generous limit and filter in JS
+      const allJobs = db.listJobs({ limit: 500 }).filter(j => j.startedAt && j.startedAt >= periodDate);
+      const allRuns = db.listRuns({ limit: 500 }).filter(r => (r.startedAt ?? r.createdAt) >= periodDate);
+
+      let llmCalls = 0;
+      let tokensUsed = 0;
+      let observationsCreated = 0;
+      let memoriesCreated = 0;
+      let suggestionsCreated = 0;
+
+      for (const j of allJobs) {
+        llmCalls += j.llmCalls ?? 0;
+        tokensUsed += j.tokensUsed ?? 0;
+        const result = j.result as Record<string, unknown> | undefined;
+        if (result) {
+          if (j.type === 'heartbeat' || j.type.startsWith('heartbeat')) {
+            observationsCreated += (typeof result.observationsCreated === 'number' ? result.observationsCreated : 0);
+            memoriesCreated += (typeof result.memoriesCreated === 'number' ? result.memoriesCreated : 0);
+          }
+          if (j.type === 'suggest' || j.type.startsWith('suggest')) {
+            suggestionsCreated += (typeof result.suggestionsCreated === 'number' ? result.suggestionsCreated : 0);
+          }
+        }
+      }
+
+      return json(res, {
+        period: periodParam,
+        jobCount: allJobs.length,
+        runCount: allRuns.length,
+        llmCalls,
+        tokensUsed,
+        observationsCreated,
+        memoriesCreated,
+        suggestionsCreated,
+      });
     }
   }
 
@@ -721,10 +926,13 @@ async function handleApi(
     if (pathname === '/api/profile') {
       let body: Record<string, unknown>;
       try { body = JSON.parse(await readBody(req)); } catch { return json(res, { error: 'Invalid JSON body' }, 400); }
-      const numericFields = ['proactivityLevel', 'personalityLevel', 'trustLevel', 'trustScore', 'bondLevel'];
+      const parsed = ProfileUpdateSchema.safeParse(body);
+      if (!parsed.success) {
+        return json(res, { error: 'Validation failed', issues: parsed.error.issues }, 400);
+      }
       const updates: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(body)) {
-        updates[key] = numericFields.includes(key) ? Number(value) : value;
+      for (const [key, value] of Object.entries(parsed.data)) {
+        updates[key] = value;
       }
       // Merge preferences instead of overwriting
       if (updates.preferences && typeof updates.preferences === 'object') {
@@ -771,6 +979,24 @@ async function handleApi(
       }
       db.enqueueJob('heartbeat', { priority: 10, triggerSource: 'manual' });
       return json(res, { triggered: true });
+    }
+
+    const jobTriggerMatch = pathname.match(/^\/api\/jobs\/trigger\/(.+)$/);
+    if (jobTriggerMatch) {
+      const type = decodeURIComponent(jobTriggerMatch[1]);
+      const VALID_TYPES = new Set(['heartbeat', 'suggest', 'consolidate', 'reflect', 'remote-sync', 'repo-profile', 'context-enrich', 'digest-daily', 'digest-weekly', 'digest-brag']);
+      if (!VALID_TYPES.has(type)) {
+        return json(res, { error: `Unknown job type: ${type}` }, 400);
+      }
+      if (db.hasQueuedOrRunning(type)) {
+        return json(res, { error: `${type} already queued or running` }, 409);
+      }
+      const PRIORITIES: Record<string, number> = {
+        heartbeat: 10, suggest: 8, reflect: 5, 'digest-daily': 5, 'digest-weekly': 5, 'digest-brag': 5,
+        'context-enrich': 4, consolidate: 3, 'repo-profile': 3, 'remote-sync': 2,
+      };
+      db.enqueueJob(type, { priority: PRIORITIES[type] ?? 5, triggerSource: 'manual' });
+      return json(res, { triggered: true, type });
     }
 
     const digestTriggerMatch = pathname.match(/^\/api\/digest\/(daily|weekly|brag)\/trigger$/);

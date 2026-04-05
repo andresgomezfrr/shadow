@@ -3,13 +3,16 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 
 import type { ShadowConfig } from '../config/schema.js';
-import { killActiveChild } from '../backend/claude-cli.js';
+import { killAllActiveChildren } from '../backend/claude-cli.js';
 import { createDatabase, ShadowDatabase } from '../storage/database.js';
 import { startThoughtLoop, stopThoughtLoop } from './thought.js';
 import { DIGEST_SCHEDULES, isScheduleReady } from './schedules.js';
 import { EventBus } from '../web/event-bus.js';
 import { RepoWatcher } from '../observation/repo-watcher.js';
 import { RunQueue } from '../runner/queue.js';
+import { JobQueue } from './job-queue.js';
+import { buildHandlerRegistry } from './job-handlers.js';
+import type { DaemonSharedState } from './job-handlers.js';
 
 // --- Types ---
 
@@ -19,7 +22,7 @@ export type DaemonState = {
   lastHeartbeatAt: string | null;
   lastTickAt: string | null;
   nextHeartbeatAt: string | null;
-  lastHeartbeatPhase: string | null;
+  lastHeartbeatPhase: string | null; // backward compat — derived from activeJobs
   lastConsolidationAt: string | null;
   consecutiveIdleTicks: number;
   currentSleepMs: number | null;
@@ -30,6 +33,8 @@ export type DaemonState = {
   pendingActivityCount: number;
   watchedRepoCount: number;
   activeRunCount: number;
+  activeJobCount: number;
+  activeJobs: Array<{ jobId: string; type: string; phase: string | null }>;
   activeProjects: Array<{ projectId: string; projectName: string; score: number }>;
 };
 
@@ -112,6 +117,8 @@ function emptyState(): DaemonState {
     pendingActivityCount: 0,
     watchedRepoCount: 0,
     activeRunCount: 0,
+    activeJobCount: 0,
+    activeJobs: [],
     activeProjects: [],
   };
 }
@@ -171,18 +178,17 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
   let db: ShadowDatabase | null = null;
   let webServer: { close: () => void } | null = null;
   let sleepReject: (() => void) | null = null;
-  let currentJobPromise: Promise<void> | null = null;
 
   const shutdown = () => {
     running = false;
     stopThoughtLoop();
-    killActiveChild();
     if (sleepReject) sleepReject();
   };
 
   let repoWatcherRef: RepoWatcher | null = null;
   let eventBusRef: EventBus | null = null;
   let runQueueRef: RunQueue | null = null;
+  let jobQueueRef: JobQueue | null = null;
 
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
@@ -240,7 +246,6 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     const now = new Date().toISOString();
     let consecutiveIdleTicks = 0;
     let lastHeartbeatAt: string | null = null;
-    let lastHeartbeatPhase: string | null = null;
     let lastConsolidationAt: string | null = null;
     let nextHeartbeatAt: string = new Date(
       Date.now() + config.activityHeartbeatMaxIntervalMs,
@@ -252,7 +257,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       lastHeartbeatAt,
       lastTickAt: null,
       nextHeartbeatAt,
-      lastHeartbeatPhase,
+      lastHeartbeatPhase: null,
       lastConsolidationAt,
       consecutiveIdleTicks,
       currentSleepMs: null,
@@ -263,6 +268,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       pendingActivityCount: 0,
       watchedRepoCount: repoWatcher.watchedCount,
       activeRunCount: 0,
+      activeJobCount: 0,
+      activeJobs: [],
       activeProjects: [],
     };
 
@@ -274,6 +281,20 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     // Step 4b: Create concurrent run queue (after _db is assigned)
     const runQueue = new RunQueue(config, _db);
     runQueueRef = runQueue;
+
+    // Step 4c: Create parallel job queue
+    const daemonShared: DaemonSharedState = {
+      lastHeartbeatAt: null,
+      nextHeartbeatAt: nextHeartbeatAt,
+      lastConsolidationAt: null,
+      pendingGitEvents,
+      pendingRemoteSyncResults,
+      activeProjects: [],
+      consecutiveIdleTicks: 0,
+    };
+    const jobHandlers = buildHandlerRegistry();
+    const jobQueue = new JobQueue(config, _db, eventBus, jobHandlers, daemonShared);
+    jobQueueRef = jobQueue;
 
     // --- Job scheduler helpers ---
 
@@ -357,52 +378,6 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       return Date.now() - new Date(last.startedAt).getTime() >= intervalMs;
     }
 
-    let currentJobId: string | null = null;
-    const JOB_TIMEOUT_MS = 8 * 60 * 1000; // 8min (< 10min stale threshold)
-
-    async function executeJob(job: import('../storage/models.js').JobRecord, fn: (jobId: string) => Promise<{ llmCalls: number; tokensUsed: number; phases: string[]; result: Record<string, unknown> }>, timeoutMs = JOB_TIMEOUT_MS): Promise<void> {
-      currentJobId = job.id;
-      const startMs = Date.now();
-      let cancelled = false;
-
-      const p = (async () => {
-        try {
-          const out = await fn(job.id);
-          if (cancelled) return; // timeout already handled this job
-          _db.updateJob(job.id, {
-            status: 'completed', phases: out.phases, llmCalls: out.llmCalls,
-            tokensUsed: out.tokensUsed, result: out.result,
-            durationMs: Date.now() - startMs, finishedAt: new Date().toISOString(),
-          });
-        } catch (err) {
-          if (cancelled) return;
-          _db.updateJob(job.id, {
-            status: 'failed', result: { error: err instanceof Error ? err.message : String(err) },
-            durationMs: Date.now() - startMs, finishedAt: new Date().toISOString(),
-          });
-          console.error(`[daemon] Job ${job.type} failed:`, err instanceof Error ? err.message : err);
-        }
-      })();
-      currentJobPromise = p;
-
-      // Race the job against a timeout that kills the LLM child process
-      const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), timeoutMs));
-      const winner = await Promise.race([p.then(() => 'done' as const), timeout]);
-
-      if (winner === 'timeout') {
-        cancelled = true;
-        killActiveChild();
-        _db.updateJob(job.id, {
-          status: 'failed', result: { error: `timeout (${Math.round(timeoutMs / 60000)}min)` },
-          durationMs: timeoutMs, finishedAt: new Date().toISOString(),
-        });
-        console.error(`[daemon] Job ${job.type}/${job.id.slice(0, 8)} timed out after ${Math.round(timeoutMs / 60000)}min — killed child process`);
-      }
-
-      currentJobPromise = null;
-      currentJobId = null;
-    }
-
     // Step 5: Main loop
     while (running) {
       let worked = false;
@@ -425,17 +400,6 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         if (expired > 0) console.error(`[daemon] Expired ${expired} stale observations`);
         if (capped > 0) console.error(`[daemon] Capped ${capped} excess observations`);
       } catch { /* ignore */ }
-
-      // Live phase tracking — updates daemon state file so status line can show current phase
-      const setPhase = (phase: string | null) => {
-        lastHeartbeatPhase = phase;
-        state.lastHeartbeatPhase = phase;
-        writeDaemonState(config, state);
-        if (currentJobId) {
-          try { _db.updateJob(currentJobId, { activity: phase }); } catch { /* best-effort */ }
-        }
-        eventBus.emit({ type: 'heartbeat:phase', data: { phase, jobId: currentJobId } });
-      };
 
       // === Phase 1: Enqueue scheduled jobs ===
 
@@ -487,252 +451,13 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         }
       }
 
-      // === Phase 2: Claim and execute one job ===
+      // === Phase 2: Parallel job execution via JobQueue ===
 
-      const claimed = _db.claimNextJob();
-      if (claimed) {
-        const jobType = claimed.type;
-
-        if (jobType === 'heartbeat') {
-          // Get last completed heartbeat for context (the claimed one is now 'running', skip it)
-          const previousHeartbeat = _db.listJobs({ type: 'heartbeat', status: 'completed', limit: 1 })[0] ?? null;
-          setPhase('observe');
-          try {
-            await executeJob(claimed, async () => {
-              const profile = _db.ensureProfile();
-              const pendingEvts = _db.listPendingEvents().length;
-
-              // Detect active projects from recent interactions + conversations
-              let detectedProjects: Array<{ projectId: string; projectName: string; score: number }> = [];
-              try {
-                const { detectActiveProjects } = await import('../heartbeat/project-detection.js');
-                const { readFileSync } = await import('node:fs');
-                const { resolve } = await import('node:path');
-                const sinceIso = previousHeartbeat?.startedAt
-                  ? previousHeartbeat.startedAt
-                  : new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-                const sinceMs = new Date(sinceIso).getTime();
-
-                // Load recent interactions
-                let recentInteractions: Array<{ file: string; tool: string; ts: string }> = [];
-                try {
-                  const intPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
-                  const lines = readFileSync(intPath, 'utf8').trim().split('\n').filter(Boolean);
-                  recentInteractions = lines.flatMap(line => {
-                    try {
-                      const e = JSON.parse(line) as { ts: string; tool: string; file?: string };
-                      return new Date(e.ts).getTime() > sinceMs ? [{ ts: e.ts, tool: e.tool, file: e.file ?? '' }] : [];
-                    } catch { return []; }
-                  });
-                } catch { /* no file */ }
-
-                // Load recent conversations
-                let recentConvTexts: Array<{ text: string }> = [];
-                try {
-                  const convPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
-                  const lines = readFileSync(convPath, 'utf8').trim().split('\n').filter(Boolean);
-                  recentConvTexts = lines.flatMap(line => {
-                    try {
-                      const e = JSON.parse(line) as { ts: string; text?: string };
-                      return new Date(e.ts).getTime() > sinceMs && e.text ? [{ text: e.text }] : [];
-                    } catch { return []; }
-                  });
-                } catch { /* no file */ }
-
-                detectedProjects = detectActiveProjects(_db, recentInteractions, recentConvTexts);
-                if (detectedProjects.length > 0) {
-                  console.error(`[daemon] Active projects: ${detectedProjects.map(p => `${p.projectName}(${p.score.toFixed(0)})`).join(', ')}`);
-                }
-              } catch (e) {
-                console.error('[daemon] Project detection failed:', e instanceof Error ? e.message : e);
-              }
-
-              // Persist to daemon state
-              state.activeProjects = detectedProjects;
-
-              // Build enrichment context from cached MCP data
-              let enrichmentCtx: string | undefined;
-              try {
-                const { buildEnrichmentContext } = await import('../heartbeat/enrichment.js');
-                enrichmentCtx = buildEnrichmentContext(_db);
-              } catch { /* enrichment not available */ }
-
-              setPhase('analyze');
-              const { runHeartbeat } = await import('../heartbeat/state-machine.js');
-              // Drain sensor data for heartbeat context
-              const gitEvents = pendingGitEvents.splice(0);
-              const remoteSyncData = pendingRemoteSyncResults.splice(0);
-              const result = await runHeartbeat({
-                config, db: _db, profile, lastHeartbeat: previousHeartbeat, pendingEventCount: pendingEvts,
-                pendingGitEvents: gitEvents.length > 0 ? gitEvents : undefined,
-                remoteSyncResults: remoteSyncData.length > 0 ? remoteSyncData : undefined,
-                enrichmentContext: enrichmentCtx,
-                activeProjects: detectedProjects.length > 0 ? detectedProjects : undefined,
-              });
-              return {
-                llmCalls: result.llmCalls, tokensUsed: result.tokensUsed, phases: result.phases,
-                result: { observationsCreated: result.observationsCreated },
-              };
-            });
-          } catch (hbErr) {
-            console.error('[daemon] Heartbeat failed/timeout:', hbErr instanceof Error ? hbErr.message : hbErr);
-          } finally {
-            setPhase(null);
-          }
-          lastHeartbeatAt = new Date().toISOString();
-          nextHeartbeatAt = new Date(Date.now() + config.activityHeartbeatMaxIntervalMs).toISOString();
-          eventBus.emit({ type: 'heartbeat:complete', data: { jobId: claimed.id } });
-
-          // Post-heartbeat: consolidate similar observations
-          try {
-            const { consolidateObservations } = await import('../observation/consolidation.js');
-            const obsMerged = await consolidateObservations(_db);
-            if (obsMerged > 0) console.error(`[daemon] Consolidated ${obsMerged} similar observations`);
-          } catch { /* ignore */ }
-
-          // Post-heartbeat: reactive suggest boost (only if many observations + enough gap)
-          const hbJob = _db.getJob(claimed.id);
-          const hbResult = (hbJob?.result ?? {}) as Record<string, number>;
-          if ((hbResult.observationsCreated ?? 0) >= config.suggestReactiveThreshold) {
-            const profile = _db.ensureProfile();
-            if (profile.trustLevel >= 2) {
-              const lastSuggest = _db.getLastJob('suggest');
-              const suggestGap = lastSuggest ? Date.now() - new Date(lastSuggest.startedAt).getTime() : Infinity;
-              if (suggestGap >= config.suggestReactiveMinGapMs) {
-                _db.enqueueJob('suggest', { priority: 8, triggerSource: 'reactive' });
-              }
-            }
-          }
-
-        } else if (jobType === 'suggest') {
-          const { activitySuggest, activityNotify } = await import('../heartbeat/activities.js');
-          setPhase('suggest');
-          try {
-            await executeJob(claimed, async () => {
-              const unprocessed = _db.listObservations({ processed: false });
-              const profile = _db.ensureProfile();
-              const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
-              const suggestResult = await activitySuggest(ctx, unprocessed);
-              await activityNotify(ctx);
-              return {
-                llmCalls: suggestResult.llmCalls, tokensUsed: suggestResult.tokensUsed,
-                phases: ['suggest', 'notify'],
-                result: { suggestionsCreated: suggestResult.suggestionsCreated },
-              };
-            });
-          } catch (sugErr) {
-            console.error('[daemon] Suggest failed/timeout:', sugErr instanceof Error ? sugErr.message : sugErr);
-          } finally {
-            setPhase(null);
-          }
-
-        } else if (jobType === 'consolidate') {
-          const { activityConsolidate } = await import('../heartbeat/activities.js');
-          setPhase('consolidate');
-          try {
-            await executeJob(claimed, async () => {
-              const profile = _db.ensureProfile();
-              const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
-              const consolidateResult = await activityConsolidate(ctx);
-              return {
-                llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,
-                phases: ['consolidate'],
-                result: { memoriesPromoted: consolidateResult.memoriesPromoted, memoriesDemoted: consolidateResult.memoriesDemoted },
-              };
-            });
-          } catch (conErr) {
-            console.error('[daemon] Consolidate failed/timeout:', conErr instanceof Error ? conErr.message : conErr);
-          } finally {
-            setPhase(null);
-          }
-
-        } else if (jobType === 'reflect') {
-          const { activityReflect } = await import('../heartbeat/activities.js');
-          setPhase('reflect');
-          try {
-            await executeJob(claimed, async () => {
-              const profile = _db.ensureProfile();
-              const ctx = { config, db: _db, profile, lastHeartbeat: _db.getLastJob('heartbeat'), pendingEventCount: _db.listPendingEvents().length };
-              const reflectResult = await activityReflect(ctx);
-              return {
-                llmCalls: reflectResult.llmCalls, tokensUsed: reflectResult.tokensUsed,
-                phases: reflectResult.skipped ? ['reflect', 'skip'] : ['reflect-delta', 'reflect-evolve'],
-                result: { skipped: reflectResult.skipped, ...(reflectResult.reason ? { reason: reflectResult.reason } : {}) },
-              };
-            });
-          } catch (refErr) {
-            console.error('[daemon] Reflect failed/timeout:', refErr instanceof Error ? refErr.message : refErr);
-          } finally {
-            setPhase(null);
-          }
-
-        } else if (jobType.startsWith('digest-')) {
-          const periodStart = claimed.result.periodStart as string | undefined;
-          const { activityDailyDigest, activityWeeklyDigest, activityBragDoc } = await import('../heartbeat/digests.js');
-          const activities: Record<string, () => Promise<{ contentMd: string; tokensUsed: number }>> = {
-            'digest-daily': () => activityDailyDigest(_db, config, periodStart),
-            'digest-weekly': () => activityWeeklyDigest(_db, config, periodStart),
-            'digest-brag': () => activityBragDoc(_db, config),
-          };
-          setPhase('digest');
-          try {
-            await executeJob(claimed, async () => {
-              const result = await activities[jobType]();
-              return { llmCalls: 1, tokensUsed: result.tokensUsed, phases: [jobType], result: { periodStart } };
-            });
-          } catch (e) { console.error(`[daemon] ${jobType} failed:`, e instanceof Error ? e.message : e); }
-          finally { setPhase(null); }
-
-        } else if (jobType === 'remote-sync') {
-          setPhase('remote-sync');
-          try {
-            await executeJob(claimed, async () => {
-              const { remoteSyncRepos } = await import('../observation/remote-sync.js');
-              const results = remoteSyncRepos(_db, config.remoteSyncBatchSize);
-              const withChanges = results.filter(r => r.newRemoteCommits > 0);
-              if (withChanges.length > 0) {
-                pendingRemoteSyncResults.push(...withChanges);
-              }
-              return {
-                llmCalls: 0, tokensUsed: 0, phases: ['remote-sync'],
-                result: { reposSynced: results.length, reposWithChanges: withChanges.length },
-              };
-            });
-          } catch (e) { console.error('[daemon] Remote sync failed:', e instanceof Error ? e.message : e); }
-          finally { setPhase(null); }
-
-        } else if (jobType === 'context-enrich') {
-          setPhase('enrich');
-          try {
-            await executeJob(claimed, async () => {
-              const { activityEnrich } = await import('../heartbeat/enrichment.js');
-              const result = await activityEnrich(_db, config);
-              return {
-                llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
-                phases: ['enrich'],
-                result: { itemsCollected: result.itemsCollected },
-              };
-            });
-          } catch (e) { console.error('[daemon] Enrichment failed:', e instanceof Error ? e.message : e); }
-          finally { setPhase(null); }
-
-        } else if (jobType === 'repo-profile') {
-          setPhase('repo-profile');
-          try {
-            await executeJob(claimed, async () => {
-              const { profileRepos } = await import('../observation/repo-profile.js');
-              const result = await profileRepos(_db, config, config.repoProfileBatchSize);
-              return {
-                llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
-                phases: ['repo-profile'],
-                result: { reposProfiled: result.reposProfiled },
-              };
-            });
-          } catch (e) { console.error('[daemon] Repo profile failed:', e instanceof Error ? e.message : e); }
-          finally { setPhase(null); }
-        }
-
-        worked = true;
+      try {
+        const jobsActive = await jobQueue.tick();
+        if (jobsActive) worked = true;
+      } catch (jqErr) {
+        console.error('[daemon] Job queue tick failed:', jqErr instanceof Error ? jqErr.message : jqErr);
       }
 
       // --- Stale run detector ---
@@ -779,13 +504,18 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         consecutiveIdleTicks,
       );
 
+      // Sync shared state back from job handlers
+      lastHeartbeatAt = daemonShared.lastHeartbeatAt ?? lastHeartbeatAt;
+      nextHeartbeatAt = daemonShared.nextHeartbeatAt ?? nextHeartbeatAt;
+      lastConsolidationAt = daemonShared.lastConsolidationAt ?? lastConsolidationAt;
+      daemonShared.consecutiveIdleTicks = consecutiveIdleTicks;
+
       // Update and persist daemon state
       const pendingCount = _db.listPendingEvents().length;
       state.pid = process.pid;
       state.lastHeartbeatAt = lastHeartbeatAt;
       state.lastTickAt = tickStart.toISOString();
       state.nextHeartbeatAt = nextHeartbeatAt;
-      state.lastHeartbeatPhase = lastHeartbeatPhase;
       state.lastConsolidationAt = lastConsolidationAt;
       state.consecutiveIdleTicks = consecutiveIdleTicks;
       state.currentSleepMs = sleepMs;
@@ -793,6 +523,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       state.lastActivityAt = lastActivityAt;
       state.pendingActivityCount = pendingActivityCount;
       state.watchedRepoCount = repoWatcher.watchedCount;
+      state.activeJobCount = jobQueue.activeCount;
+      state.activeJobs = jobQueue.activeJobs;
+      state.activeProjects = daemonShared.activeProjects;
+      // Backward compat: derive lastHeartbeatPhase from active heartbeat job
+      const activeHb = state.activeJobs.find(j => j.type === 'heartbeat');
+      state.lastHeartbeatPhase = activeHb?.phase ?? null;
 
       // Periodically rotate watchers to pick up newly-active repos (~every 60 idle ticks ≈ 30min)
       if (consecutiveIdleTicks > 0 && consecutiveIdleTicks % 60 === 0) {
@@ -812,18 +548,15 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       wakeLoop = null;
     }
   } finally {
-    // Step 6: Graceful drain — wait for current job to finish (max 60s)
-    if (currentJobPromise) {
-      console.error('[daemon] Draining current job (max 60s)...');
-      await Promise.race([
-        currentJobPromise,
-        new Promise<void>(r => setTimeout(r, 60_000)),
-      ]);
+    // Step 6: Graceful drain — wait for active jobs + runs to finish (max 60s)
+    if (jobQueueRef) {
+      try { await jobQueueRef.drainAll(60_000); } catch { /* timeout */ }
     }
 
-    // Step 7: Kill any lingering child claude process + run queue
-    killActiveChild();
+    // Step 7: Kill any lingering child processes
+    if (jobQueueRef) try { jobQueueRef.killAll(); } catch { /* cleanup */ }
     if (runQueueRef) try { runQueueRef.killAll(); } catch { /* cleanup */ }
+    killAllActiveChildren(); // safety net
 
     // Step 7b: Shutdown watcher + SSE
     if (repoWatcherRef) repoWatcherRef.stopAll();

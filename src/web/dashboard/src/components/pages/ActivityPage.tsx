@@ -1,0 +1,156 @@
+import { useApi } from '../../hooks/useApi';
+import { useFilterParams } from '../../hooks/useFilterParams';
+import { fetchActivity, fetchActivitySummary, fetchStatus } from '../../api/client';
+import { formatTokens } from '../../utils/format';
+import { MetricCard } from '../common/MetricCard';
+import { EmptyState } from '../common/EmptyState';
+import { FilterTabs } from '../common/FilterTabs';
+import { Pagination } from '../common/Pagination';
+import { LiveStatusBar } from '../activity/LiveStatusBar';
+import { ScheduleRibbon } from '../activity/ScheduleRibbon';
+import { ActivityEntryCard } from '../activity/ActivityEntry';
+
+const TYPE_FILTERS = [
+  { label: 'All', value: '' },
+  { label: 'Active now', value: '_running', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
+  { label: 'Heartbeat', value: 'heartbeat', dotColor: 'bg-purple', activeClass: 'bg-purple/15 text-purple' },
+  { label: 'Suggest', value: 'suggest', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
+  { label: 'Consolidate', value: 'consolidate', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
+  { label: 'Reflect', value: 'reflect', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
+  { label: 'Sync', value: 'remote-sync', dotColor: 'bg-pink-400', activeClass: 'bg-pink-400/15 text-pink-400' },
+  { label: 'Repo profile', value: 'repo-profile', dotColor: 'bg-teal-400', activeClass: 'bg-teal-400/15 text-teal-400' },
+  { label: 'Enrich', value: 'context-enrich', dotColor: 'bg-amber-400', activeClass: 'bg-amber-400/15 text-amber-400' },
+  { label: 'Digest', value: '_digest', dotColor: 'bg-cyan', activeClass: 'bg-cyan/15 text-cyan' },
+  { label: 'Runs', value: '_runs', dotColor: 'bg-indigo-400', activeClass: 'bg-indigo-400/15 text-indigo-400' },
+];
+
+const PERIOD_OPTIONS = [
+  { label: 'Today', value: 'today' },
+  { label: '7d', value: '7d' },
+  { label: '30d', value: '30d' },
+  { label: 'All', value: 'all' },
+];
+
+const PAGE_SIZE = 30;
+
+function buildFetchParams(params: Record<string, string>) {
+  const base: Record<string, string | undefined> = {
+    limit: String(PAGE_SIZE),
+    offset: params.offset || '0',
+    period: params.period !== 'all' ? params.period : undefined,
+  };
+
+  const filter = params.type;
+  if (filter === '_running') {
+    base.status = 'running';
+  } else if (filter === '_runs') {
+    base.source = 'run';
+  } else if (filter === '_digest') {
+    base.type = 'digest';
+  } else if (filter) {
+    base.type = filter;
+  }
+
+  return base as Parameters<typeof fetchActivity>[0];
+}
+
+export function ActivityPage() {
+  const { params, setParam } = useFilterParams({ type: '', period: 'today', offset: '0' });
+
+  const fetchParams = buildFetchParams(params);
+  const { data: rawData, refresh } = useApi(
+    () => fetchActivity(fetchParams),
+    [params.type, params.period, params.offset],
+    15_000,
+  );
+  const items = rawData?.items ?? null;
+  const total = rawData?.total ?? 0;
+
+  const { data: summary } = useApi(
+    () => fetchActivitySummary(params.period),
+    [params.period],
+    30_000,
+  );
+
+  const { data: status } = useApi(fetchStatus, [], 15_000);
+  const schedule = (status as Record<string, unknown>)?.jobSchedule as Record<string, { intervalMs?: number; nextAt?: string | null; trigger?: string; schedule?: string; enabled?: boolean }> | undefined;
+
+  const itemsProduced = (summary?.observationsCreated ?? 0)
+    + (summary?.memoriesCreated ?? 0)
+    + (summary?.suggestionsCreated ?? 0);
+
+  return (
+    <div>
+      <h1 className="text-xl font-semibold mb-3">Activity</h1>
+
+      {/* Live status bar */}
+      <div className="mb-4">
+        <LiveStatusBar />
+      </div>
+
+      {/* Summary metrics + schedule */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <MetricCard label="Jobs" value={summary?.jobCount ?? 0}>
+          {(summary?.runCount ?? 0) > 0 && (
+            <div className="text-xs text-text-muted mt-1">{summary!.runCount} runs</div>
+          )}
+        </MetricCard>
+        <MetricCard label="LLM calls" value={summary?.llmCalls ?? 0} />
+        <MetricCard label="Tokens" value={formatTokens(summary?.tokensUsed ?? 0)} />
+        <MetricCard label="Items produced" value={itemsProduced} accent={itemsProduced > 0}>
+          <div className="text-xs text-text-muted mt-1">
+            {summary?.observationsCreated ?? 0} obs, {summary?.memoriesCreated ?? 0} mem, {summary?.suggestionsCreated ?? 0} sug
+          </div>
+        </MetricCard>
+      </div>
+
+      <div className="mb-4">
+        <ScheduleRibbon schedule={schedule} onTrigger={refresh} />
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <FilterTabs options={TYPE_FILTERS} active={params.type} onChange={(v) => setParam('type', v)} />
+        <div className="ml-auto flex gap-1">
+          {PERIOD_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setParam('period', opt.value)}
+              className={`px-2.5 py-1 rounded text-xs border-none cursor-pointer transition-colors ${
+                params.period === opt.value
+                  ? 'bg-accent-soft text-accent'
+                  : 'bg-transparent text-text-muted hover:text-text'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Timeline */}
+      {!items ? (
+        <div className="text-text-dim">Loading...</div>
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon="⚙️"
+          title="No activity"
+          description={params.type === '_running' ? 'Nothing running right now' : 'No matching activity in this period'}
+        />
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {items.map((entry) => (
+            <ActivityEntryCard key={entry.id} entry={entry} />
+          ))}
+        </div>
+      )}
+
+      <Pagination
+        total={total}
+        offset={Number(params.offset) || 0}
+        limit={PAGE_SIZE}
+        onChange={(o) => setParam('offset', String(o))}
+      />
+    </div>
+  );
+}

@@ -50,6 +50,9 @@ export type Repo = {
   lintCommand: string | null;
   buildCommand: string | null;
   lastObservedAt: string | null;
+  lastFetchedAt: string | null;
+  contextMd: string | null;
+  contextUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -255,6 +258,38 @@ export type Job = {
   startedAt: string;
   finishedAt: string | null;
   createdAt: string;
+};
+
+export type ActivityEntry = {
+  id: string;
+  source: 'job' | 'run';
+  type: string;
+  status: string;
+  phases: string[];
+  activity: string | null;
+  llmCalls: number;
+  tokensUsed: number;
+  durationMs: number | null;
+  result: Record<string, unknown>;
+  startedAt: string | null;
+  finishedAt: string | null;
+  runId: string | null;
+  repoName: string | null;
+  confidence: string | null;
+  verified: string | null;
+  parentRunId: string | null;
+  prUrl: string | null;
+};
+
+export type ActivitySummary = {
+  period: string;
+  jobCount: number;
+  runCount: number;
+  llmCalls: number;
+  tokensUsed: number;
+  observationsCreated: number;
+  memoriesCreated: number;
+  suggestionsCreated: number;
 };
 
 export type UsageSummary = {
