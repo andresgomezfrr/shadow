@@ -656,7 +656,7 @@ export class ShadowDatabase {
     return row ? mapMemory(row) : null;
   }
 
-  listMemories(filters?: { layer?: string; layers?: string[]; scope?: string; repoId?: string; memoryType?: string; archived?: boolean; createdSince?: string; limit?: number; offset?: number }): MemoryRecord[] {
+  listMemories(filters?: { layer?: string; layers?: string[]; scope?: string; repoId?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string; limit?: number; offset?: number }): MemoryRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -681,6 +681,10 @@ export class ShadowDatabase {
       clauses.push('memory_type = ?');
       values.push(filters.memoryType);
     }
+    if (filters?.kind) {
+      clauses.push('kind = ?');
+      values.push(filters.kind);
+    }
     if (filters?.archived === false) {
       clauses.push('archived_at IS NULL');
     } else if (filters?.archived === true) {
@@ -699,11 +703,12 @@ export class ShadowDatabase {
       .map(mapMemory);
   }
 
-  countMemories(filters?: { layer?: string; memoryType?: string; archived?: boolean; createdSince?: string }): number {
+  countMemories(filters?: { layer?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string }): number {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
     if (filters?.layer) { clauses.push('layer = ?'); values.push(filters.layer); }
     if (filters?.memoryType) { clauses.push('memory_type = ?'); values.push(filters.memoryType); }
+    if (filters?.kind) { clauses.push('kind = ?'); values.push(filters.kind); }
     if (filters?.archived === false) { clauses.push('archived_at IS NULL'); }
     else if (filters?.archived === true) { clauses.push('archived_at IS NOT NULL'); }
     if (filters?.createdSince) { clauses.push('created_at > ?'); values.push(filters.createdSince); }

@@ -1011,6 +1011,46 @@ async function handleApi(
       db.enqueueJob(jobType, { triggerSource: 'manual', params });
       return json(res, { triggered: true, kind, periodStart: body.periodStart ?? null });
     }
+
+    if (pathname === '/api/corrections') {
+      const body = await readBody(req).then(b => b ? JSON.parse(b) : {}).catch(() => ({}));
+      const { title, body: correctionBody, scope, entityType, entityId } = body;
+
+      if (!correctionBody || !scope) {
+        return json(res, { error: 'Missing body or scope' }, 400);
+      }
+
+      const correctionTitle = title || correctionBody.slice(0, 60) + (correctionBody.length > 60 ? '...' : '');
+
+      const memory = db.createMemory({
+        layer: 'core',
+        scope,
+        kind: 'correction',
+        title: correctionTitle,
+        bodyMd: correctionBody,
+        tags: [],
+        sourceType: 'api',
+        confidenceScore: 100,
+        relevanceScore: 1.0,
+      });
+
+      // Link entities if provided
+      if (entityType && entityId) {
+        try {
+          const entities = [{ type: entityType, id: entityId }];
+          db.rawDb.prepare('UPDATE memories SET entities_json = ? WHERE id = ?')
+            .run(JSON.stringify(entities), memory.id);
+        } catch { /* best-effort */ }
+      }
+
+      // Generate embedding
+      try {
+        const { generateAndStoreEmbedding } = await import('../memory/lifecycle.js');
+        await generateAndStoreEmbedding(db, 'memory', memory.id, { kind: memory.kind, title: memory.title, bodyMd: memory.bodyMd });
+      } catch { /* best-effort */ }
+
+      return json(res, { ok: true, correction: memory });
+    }
   }
 
   // --- CORS preflight ---

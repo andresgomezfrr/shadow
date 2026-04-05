@@ -33,7 +33,7 @@ const LOW_CONFIDENCE_THRESHOLD = 50;
 const VERY_LOW_CONFIDENCE_THRESHOLD = 30;
 
 const CORE_CAPACITY = 30;
-const CORE_PROTECTED_KINDS = ['soul_reflection', 'taught', 'knowledge_summary'];
+const CORE_PROTECTED_KINDS = ['soul_reflection', 'taught', 'knowledge_summary', 'correction'];
 const HOT_CAPACITY = 50;
 const WARM_CAPACITY = 100;
 

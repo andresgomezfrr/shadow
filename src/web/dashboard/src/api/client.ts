@@ -218,3 +218,10 @@ export const setFocusMode = (mode: 'focus' | 'available', duration?: string) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode, duration }),
   });
+
+export const createCorrection = (params: { title?: string; body: string; scope: string; entityType?: string; entityId?: string }) =>
+  api<{ ok: boolean; correction: unknown }>('/api/corrections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });

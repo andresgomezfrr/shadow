@@ -232,13 +232,29 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
   };
   const consolidateResult = await activityConsolidate(actCtx);
 
+  // Enforce user corrections: archive/edit contradicting memories, promote corrections to taught
+  let correctionsResult = { processed: 0, archived: 0, edited: 0 };
+  try {
+    const { enforceCorrections } = await import('../memory/retrieval.js');
+    correctionsResult = await enforceCorrections(ctx.db, ctx.config);
+    if (correctionsResult.processed > 0) {
+      console.error(`[daemon] Corrections enforced: ${correctionsResult.processed} processed, ${correctionsResult.archived} archived, ${correctionsResult.edited} edited`);
+    }
+  } catch (e) {
+    console.error('[daemon] Correction enforcement failed:', e instanceof Error ? e.message : e);
+  }
+
   return {
-    llmCalls: consolidateResult.llmCalls, tokensUsed: consolidateResult.tokensUsed,
+    llmCalls: consolidateResult.llmCalls + (correctionsResult.processed > 0 ? 1 : 0),
+    tokensUsed: consolidateResult.tokensUsed,
     phases: ['consolidate'],
     result: {
       memoriesPromoted: consolidateResult.memoriesPromoted,
       memoriesDemoted: consolidateResult.memoriesDemoted,
       memoriesExpired: consolidateResult.memoriesExpired,
+      correctionsProcessed: correctionsResult.processed,
+      memoriesArchived: correctionsResult.archived,
+      memoriesEdited: correctionsResult.edited,
     },
   };
 }

@@ -5,6 +5,7 @@ import { fetchRepos, triggerJob } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
+import { CorrectionPanel } from '../common/CorrectionPanel';
 import type { Repo } from '../../api/types';
 
 // --- helpers ---
@@ -134,6 +135,7 @@ function RepoCard({
   onToggle: () => void;
 }) {
   const [reprofileTriggered, setReprofileTriggered] = useState(false);
+  const [showCorrection, setShowCorrection] = useState(false);
 
   const languageHint = repo.languageHint;
   const phase = repo.contextMd ? extractField(repo.contextMd, 'Phase') : null;
@@ -224,6 +226,12 @@ function RepoCard({
               <span>· Synced {timeAgo(repo.lastFetchedAt)}</span>
             )}
             <button
+              onClick={(e) => { e.stopPropagation(); setShowCorrection(true); }}
+              className="px-3 py-1 rounded bg-orange-400/15 text-orange-300 hover:bg-orange-400/25 border-none cursor-pointer transition-colors text-xs"
+            >
+              Correct
+            </button>
+            <button
               onClick={handleReprofile}
               disabled={reprofileTriggered}
               className="ml-auto px-3 py-1 rounded bg-teal-400/15 text-teal-300 hover:bg-teal-400/25 border-none cursor-pointer transition-colors disabled:opacity-50 text-xs"
@@ -237,6 +245,14 @@ function RepoCard({
           </div>
         </div>
       )}
+      <CorrectionPanel
+        open={showCorrection}
+        onClose={() => setShowCorrection(false)}
+        defaultScope="repo"
+        defaultEntityType="repo"
+        defaultEntityId={repo.id}
+        defaultEntityName={repo.name}
+      />
     </div>
   );
 }

@@ -368,6 +368,11 @@ export async function activityAnalyze(
       .map(m => `- [${m.layer}] ${m.title}`)
       .join('\n');
 
+    // Load pending corrections for repos being analyzed
+    const { loadPendingCorrections } = await import('../memory/retrieval.js');
+    const repoEntities = [...repoIds].map(id => ({ type: 'repo' as const, id }));
+    const correctionsSection = loadPendingCorrections(ctx.db, repoEntities);
+
     const extractPrompt = [
       'Extract DURABLE KNOWLEDGE from this engineering session.',
       'Ask: "would I want to know this in 3 months? Can it be derived from reading the code or git log?"',
@@ -407,10 +412,7 @@ export async function activityAnalyze(
       dataSources,
       soulSection,
       existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
-      (() => {
-        const mf = ctx.db.listFeedback('memory', 10).filter(f => f.note);
-        return mf.length > 0 ? `### Memory corrections (learn from these)\n${mf.map(f => `- ${f.action}: ${f.note}`).join('\n')}\n` : '';
-      })(),
+      correctionsSection,
       'Respond with JSON only.',
     ].join('\n');
 

@@ -34,6 +34,14 @@ const MemoryUpdateSchema = z.object({
   reason: z.string().describe('Why this memory is being modified').optional(),
 });
 
+const MemoryCorrectSchema = z.object({
+  title: z.string().describe('Short description of the correction').optional(),
+  body: z.string().describe('The correct information that should override what Shadow learned'),
+  scope: z.enum(['personal', 'repo', 'project', 'system']).describe('What this correction applies to'),
+  entityType: z.enum(['repo', 'project', 'system']).describe('Type of entity being corrected').optional(),
+  entityId: z.string().describe('ID of entity being corrected').optional(),
+});
+
 const MemoryListSchema = z.object({
   layer: z.string().describe('Filter by layer: core, hot, warm, cool, cold').optional(),
   scope: z.string().describe('Filter by scope: personal, repo, team, system, cross-repo').optional(),
@@ -167,6 +175,57 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
           })),
           total,
         };
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // shadow_correct
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_correct',
+      description: 'Correct wrong information Shadow has learned. Creates a permanent correction that overrides learned knowledge and will be enforced by the consolidation job.',
+      inputSchema: mcpSchema(MemoryCorrectSchema),
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const parsed = MemoryCorrectSchema.parse(params);
+        const title = parsed.title || parsed.body.slice(0, 60) + (parsed.body.length > 60 ? '...' : '');
+
+        const memory = db.createMemory({
+          layer: 'core',
+          scope: parsed.scope,
+          kind: 'correction',
+          title,
+          bodyMd: parsed.body,
+          tags: [],
+          sourceType: 'mcp',
+          confidenceScore: 100,
+          relevanceScore: 1.0,
+        });
+
+        // Link entities if provided
+        if (parsed.entityType && parsed.entityId) {
+          try {
+            const entities = [{ type: parsed.entityType as 'repo' | 'project' | 'system', id: parsed.entityId }];
+            db.rawDb.prepare('UPDATE memories SET entities_json = ? WHERE id = ?')
+              .run(JSON.stringify(entities), memory.id);
+          } catch { /* best-effort */ }
+        }
+
+        // Generate embedding for semantic matching in enforceCorrections
+        try {
+          const { generateAndStoreEmbedding } = await import('../../memory/lifecycle.js');
+          await generateAndStoreEmbedding(db, 'memory', memory.id, { kind: memory.kind, title: memory.title, bodyMd: memory.bodyMd });
+        } catch { /* best-effort */ }
+
+        // Trust: teaching/correcting increases trust
+        try {
+          const { applyTrustDelta } = await import('../../profile/trust.js');
+          applyTrustDelta(db, 'memory_taught');
+        } catch { /* ignore */ }
+
+        return { ok: true, correction: { id: memory.id, title: memory.title, kind: memory.kind, layer: memory.layer } };
       },
     },
   ];

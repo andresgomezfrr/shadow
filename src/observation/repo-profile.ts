@@ -172,9 +172,14 @@ async function analyzeRepoContext(
   signals: RepoSignals,
   repo: RepoRecord,
   config: ShadowConfig,
+  db: ShadowDatabase,
 ): Promise<{ contextMd: string; llmCalls: number; tokensUsed: number }> {
   const adapter = selectAdapter(config);
   const model = config.models.repoProfile;
+
+  // Load corrections relevant to this repo
+  const { loadPendingCorrections } = await import('../memory/retrieval.js');
+  const correctionsSection = loadPendingCorrections(db, [{ type: 'repo', id: repo.id }]);
 
   const prompt = `You are Shadow, an engineering companion analyzing a repository to understand its context.
 This analysis will be used to calibrate what kind of suggestions are appropriate for this repo.
@@ -194,7 +199,7 @@ Produce a structured context summary in markdown with EXACTLY this format:
 **Open PRs**: (summary if PR data available, otherwise "N/A")
 **Valuable suggestions**: (what kind of suggestions would genuinely help this repo — be specific)
 **Avoid suggesting**: (what kind of suggestions are NOT appropriate given the repo's context — be specific based on team size, phase, CI maturity)
-
+${correctionsSection ? `\n${correctionsSection}\nYou MUST respect these corrections in your analysis.\n` : ''}
 Be concise. Each field 1-2 lines max. Respond with JSON: { "contextMd": "..." }`;
 
   const result = await adapter.execute({
@@ -262,7 +267,7 @@ export async function profileRepos(
   for (const repo of candidates) {
     console.error(`[shadow:repo-profile] Profiling: ${repo.name}`);
     const signals = gatherRepoSignals(repo);
-    const { contextMd, llmCalls, tokensUsed } = await analyzeRepoContext(signals, repo, config);
+    const { contextMd, llmCalls, tokensUsed } = await analyzeRepoContext(signals, repo, config, db);
 
     if (contextMd) {
       db.updateRepo(repo.id, { contextMd, contextUpdatedAt: new Date().toISOString() });
