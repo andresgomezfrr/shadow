@@ -908,35 +908,35 @@ export class ShadowDatabase {
       .run(status, id);
   }
 
-  resolveStaleObservations(): number {
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const result = this.database
-      .prepare(`UPDATE observations SET status = 'resolved' WHERE status = 'active' AND last_seen_at < ?`)
-      .run(cutoff);
-    return (result as unknown as { changes: number }).changes;
-  }
-
-  /** Auto-expire observations by severity: info=7d, warning=14d. High never auto-expires. */
+  /**
+   * Single canonical expiration method. Severity-aware TTLs:
+   *   active:       info=7d, warning=14d, high=never
+   *   acknowledged: info=14d, warning=28d, high=never
+   */
   expireObservationsBySeverity(): number {
     const now = Date.now();
-    const infoCutoff = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const warningCutoff = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const DAY = 24 * 60 * 60 * 1000;
     let expired = 0;
 
-    const r1 = this.database
-      .prepare(`UPDATE observations SET status = 'expired' WHERE status = 'active' AND severity = 'info' AND last_seen_at < ?`)
-      .run(infoCutoff);
-    expired += (r1 as unknown as { changes: number }).changes;
+    const runs: { status: string; severity: string; days: number }[] = [
+      { status: 'active', severity: 'info', days: 7 },
+      { status: 'active', severity: 'warning', days: 14 },
+      { status: 'acknowledged', severity: 'info', days: 14 },
+      { status: 'acknowledged', severity: 'warning', days: 28 },
+    ];
 
-    const r2 = this.database
-      .prepare(`UPDATE observations SET status = 'expired' WHERE status = 'active' AND severity = 'warning' AND last_seen_at < ?`)
-      .run(warningCutoff);
-    expired += (r2 as unknown as { changes: number }).changes;
+    for (const { status, severity, days } of runs) {
+      const cutoff = new Date(now - days * DAY).toISOString();
+      const r = this.database
+        .prepare(`UPDATE observations SET status = 'expired' WHERE status = ? AND severity = ? AND last_seen_at < ?`)
+        .run(status, severity, cutoff);
+      expired += (r as unknown as { changes: number }).changes;
+    }
 
     return expired;
   }
 
-  /** Enforce max active observations per repo. Auto-resolve excess (oldest, lowest votes). */
+  /** Enforce max active observations per repo. Protects high-severity from cap. */
   capObservationsPerRepo(maxPerRepo = 10): number {
     const repos = this.database
       .prepare(`SELECT repo_id, COUNT(*) as cnt FROM observations WHERE status = 'active' GROUP BY repo_id HAVING cnt > ?`)
@@ -946,7 +946,12 @@ export class ShadowDatabase {
     for (const { repo_id, cnt } of repos) {
       const excess = cnt - maxPerRepo;
       const toResolve = this.database
-        .prepare(`SELECT id FROM observations WHERE status = 'active' AND repo_id = ? ORDER BY votes ASC, last_seen_at ASC LIMIT ?`)
+        .prepare(
+          `SELECT id FROM observations WHERE status = 'active' AND repo_id = ? AND severity != 'high'
+           ORDER BY CASE severity WHEN 'info' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END ASC,
+                    votes ASC, last_seen_at ASC
+           LIMIT ?`,
+        )
         .all(repo_id, excess) as { id: string }[];
       if (toResolve.length > 0) {
         const ids = toResolve.map(r => r.id);
@@ -958,12 +963,19 @@ export class ShadowDatabase {
     return resolved;
   }
 
-  expireStaleObservations(): number {
-    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const result = this.database
-      .prepare(`UPDATE observations SET status = 'expired' WHERE status IN ('active', 'acknowledged') AND last_seen_at < ?`)
-      .run(cutoff);
-    return (result as unknown as { changes: number }).changes;
+  touchObservationLastSeen(id: string): void {
+    this.database
+      .prepare('UPDATE observations SET last_seen_at = ? WHERE id = ?')
+      .run(new Date().toISOString(), id);
+  }
+
+  touchObservationsLastSeen(ids: string[]): void {
+    if (ids.length === 0) return;
+    const now = new Date().toISOString();
+    const ph = ids.map(() => '?').join(',');
+    this.database
+      .prepare(`UPDATE observations SET last_seen_at = ? WHERE id IN (${ph})`)
+      .run(now, ...ids);
   }
 
   // --- Suggestions ---

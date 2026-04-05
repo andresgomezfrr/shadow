@@ -485,7 +485,7 @@ export async function activityAnalyze(
   // ========== CALL 2: Observe-cleanup (MCP — resolve obsolete/duplicate observations) ==========
   try {
     const preCleanupObs = ctx.db.listObservations({ status: 'active', limit: 30 });
-    if (preCleanupObs.length > 3) {
+    if (preCleanupObs.length > 5) {
       const cleanupPrompt = [
         'You are Shadow\'s observation cleanup phase.',
         '',
@@ -497,10 +497,11 @@ export async function activityAnalyze(
         '- It\'s an activity log, not an actionable insight ("X ediciones en Y" without a clear action)',
         '- It was about something that happened during active development and is no longer relevant',
         '',
+        'DO NOT resolve observations with severity "high" unless you have strong evidence the condition is fully resolved.',
+        'Err on the side of keeping observations active — automated expiration handles stale ones over time.',
+        '',
         'Use shadow_observations to see the full list, then use shadow_observation_resolve for each one you want to resolve.',
         'Provide a reason when resolving.',
-        '',
-        'Be aggressive — it\'s better to have 5 high-quality observations than 20 noisy ones.',
         '',
         dataSources,
       ].join('\n');
@@ -522,6 +523,8 @@ export async function activityAnalyze(
   // ========== CALL 3: Observe (generate new observations — JSON-only) ==========
   try {
     const activeObservations = ctx.db.listObservations({ status: 'active', limit: 20 });
+    // Touch last_seen_at — observations still relevant to heartbeat stay alive longer
+    ctx.db.touchObservationsLastSeen(activeObservations.map(o => o.id));
     const activeObsSummary = activeObservations.map(o => `- [${o.severity}/${o.kind}] ${o.title} (${o.votes}x, ${o.createdAt.slice(0, 10)})`).join('\n');
     const dismissFeedback = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10)
       .filter(s => s.feedbackNote).map(s => `- "${s.title}" — dismissed: ${s.feedbackNote}`).join('\n');
@@ -1045,10 +1048,6 @@ function rotateInteractionsLog(config: ShadowConfig, cutoffIso: string): void {
 export async function activityNotify(
   ctx: HeartbeatContext,
 ): Promise<{ eventsQueued: number }> {
-  // Observation lifecycle maintenance
-  ctx.db.resolveStaleObservations();
-  ctx.db.expireStaleObservations();
-
   let eventsQueued = 0;
 
   // Check proactivity level to decide what gets queued

@@ -275,6 +275,11 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         if (projectId || kind) {
           items = items.slice(offset, offset + limit);
         }
+        // Touch last_seen_at for active/acknowledged observations being queried
+        const touchable = items.filter(o => o.status === 'active' || o.status === 'acknowledged');
+        if (touchable.length > 0) {
+          db.touchObservationsLastSeen(touchable.map(o => o.id));
+        }
         if (detail) return { items, total };
         return {
           items: items.map(o => ({
@@ -626,6 +631,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         if (!obs) return { isError: true, message: `Observation not found: ${id}` };
         if (obs.status !== 'active') return { isError: true, message: `Observation is ${obs.status}, not active` };
         db.updateObservationStatus(id, 'acknowledged');
+        db.touchObservationLastSeen(id);
         return { ok: true, observationId: id, status: 'acknowledged' };
       },
     },
@@ -672,6 +678,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         if (!obs) return { isError: true, message: `Observation not found: ${id}` };
         if (obs.status === 'active') return { isError: true, message: 'Already active' };
         db.updateObservationStatus(id, 'active');
+        db.touchObservationLastSeen(id);
         return { ok: true, observationId: id, status: 'active' };
       },
     },

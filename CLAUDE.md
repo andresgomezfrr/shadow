@@ -372,7 +372,7 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 - **Daemon** — launchd, graceful shutdown, stale job detector (every tick, 10min threshold), graceful drain (60s)
 - **Dashboard** — React at localhost:3700, sidebar badges, markdown rendering, deep linking, job schedule header with countdowns
 - **Feedback loop** — unified feedback table. 👍/👎 toggle with persistence. Reason on dismiss/resolve/discard. All fed to LLM prompts.
-- **Observation lifecycle** — semantic dedup, auto-expiration by severity (info=7d, warning=14d, high=never), cap per repo (max 10), retroactive consolidation via embeddings, votes, status (active/acknowledged/resolved/expired)
+- **Observation lifecycle** — semantic dedup, single canonical expiration by severity (active: info=7d, warning=14d, high=never; acknowledged: 2x TTL), severity-aware cap per repo (max 10, high excluded), `last_seen_at` touch on query/ack/reopen/heartbeat, consolidation via embeddings, LLM cleanup (>5 active, severity-protective), status (active/acknowledged/resolved/expired)
 - **Suggestion pipeline** — semantic dedup vs pending+dismissed+accepted, accept creates Run, plan by Claude with MCP + filesystem, execute/session/discard/executed-manual/retry states
 - **Runner with MCP delegation** — briefing-only prompt, Claude reads files + searches memories. `--allowedTools "mcp__shadow__*"`. Execution runs also get `Edit,Write,Bash`.
 - **Trust L3 complete** — confidence gate (Sonnet high) + auto-execute if no doubts + draft PR button. Schema v21 (confidence, doubts_json) + v22 (pr_url). L4+ designed in docs/plan-trust-levels.md.
