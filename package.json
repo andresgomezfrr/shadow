@@ -15,7 +15,7 @@
     "build": "tsc -p tsconfig.json && npm run dashboard:build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test $(find dist -type f -name '*.test.js' | sort)",
-    "test:dev": "node --test $(find src -type f -name '*.test.ts' | sort)",
+    "test:dev": "node --import=tsx --test $(find src -type f -name '*.test.ts' | sort)",
     "lint": "npm run typecheck",
     "clean": "rm -rf dist",
     "dashboard:install": "cd src/web/dashboard && npm install",

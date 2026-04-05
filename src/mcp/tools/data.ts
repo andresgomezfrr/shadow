@@ -1,0 +1,305 @@
+import { z } from 'zod';
+
+import { mcpSchema, type McpTool, type ToolContext } from './types.js';
+
+// ---------------------------------------------------------------------------
+// Schemas
+// ---------------------------------------------------------------------------
+
+const SearchSchema = z.object({
+  query: z.string().describe('Natural language search query'),
+  types: z.array(z.enum(['memory', 'observation', 'suggestion'])).describe('Entity types to search (default: all three)').optional(),
+  limit: z.number().describe('Max results per type (default 5)').optional(),
+});
+
+const RunListSchema = z.object({
+  status: z.string().describe('Filter by status: queued, running, completed, failed').optional(),
+});
+
+const RunViewSchema = z.object({
+  runId: z.string().describe('Run ID to view'),
+});
+
+const UsageSchema = z.object({
+  period: z.string().describe('Time period: day, week, month (default: day)').optional(),
+});
+
+const DigestSchema = z.object({
+  kind: z.enum(['daily', 'weekly', 'brag']).describe('Digest type'),
+});
+
+const DigestsSchema = z.object({
+  kind: z.enum(['daily', 'weekly', 'brag']).describe('Filter by digest type').optional(),
+  limit: z.number().describe('Max results (default 10)').optional(),
+});
+
+const EnrichmentConfigSchema = z.object({
+  includeCache: z.boolean().describe('Include recent cache entries (default false)').optional(),
+  limit: z.number().describe('Max cache entries to return (default 10)').optional(),
+});
+
+const EnrichmentQuerySchema = z.object({
+  source: z.string().describe('Filter by MCP server name').optional(),
+  entityName: z.string().describe('Filter by entity name (case-insensitive substring match)').optional(),
+  unreportedOnly: z.boolean().describe('Only return new/unreported items (default false)').optional(),
+  limit: z.number().describe('Max results (default 20)').optional(),
+  offset: z.number().describe('Offset for pagination (default 0)').optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Tool definitions
+// ---------------------------------------------------------------------------
+
+export function dataTools(ctx: ToolContext): McpTool[] {
+  const { db, config, trustGate } = ctx;
+
+  return [
+    // ---- Events ----
+    {
+      name: 'shadow_events',
+      description: 'Returns pending (undelivered) events.',
+      inputSchema: mcpSchema(z.object({})),
+      handler: async () => {
+        return db.listPendingEvents();
+      },
+    },
+    {
+      name: 'shadow_events_ack',
+      description: 'Acknowledge all pending events. Requires trust level >= 1.',
+      inputSchema: mcpSchema(z.object({})),
+      handler: async () => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const count = db.deliverAllEvents();
+        return { ok: true, acknowledged: count };
+      },
+    },
+
+    // ---- Search ----
+    {
+      name: 'shadow_search',
+      description: 'Unified semantic search across memories, observations, and suggestions using hybrid search (FTS5 + embeddings).',
+      inputSchema: mcpSchema(SearchSchema),
+      handler: async (params) => {
+        const { query, types: rawTypes, limit: rawLimit } = SearchSchema.parse(params);
+        const types = rawTypes ?? ['memory', 'observation', 'suggestion'];
+        const limit = rawLimit ?? 5;
+        const { hybridSearch } = await import('../../memory/search.js');
+
+        const results: Array<{ type: string; id: string; title: string; kind: string; score: number; similarity?: number }> = [];
+
+        if (types.includes('memory')) {
+          const memResults = await hybridSearch({
+            db: db.rawDb, query, ftsTable: 'memories_fts', vecTable: 'memory_vectors',
+            mainTable: 'memories', limit, filters: { archived: false },
+          });
+          for (const r of memResults) {
+            const m = db.getMemory(r.id);
+            if (m) results.push({ type: 'memory', id: m.id, title: m.title, kind: m.kind, score: r.score, similarity: r.vecSimilarity });
+          }
+        }
+
+        if (types.includes('observation')) {
+          const obsResults = await hybridSearch({
+            db: db.rawDb, query, ftsTable: 'observations_fts', vecTable: 'observation_vectors',
+            mainTable: 'observations', limit,
+          }).catch(() => [] as Array<{ id: string; score: number; vecSimilarity?: number }>);
+          // observations_fts may not exist yet — fallback to vector-only
+          const { vectorSearch } = await import('../../memory/search.js');
+          const finalObs = obsResults.length > 0 ? obsResults
+            : (await vectorSearch({ db: db.rawDb, text: query, vecTable: 'observation_vectors', limit }))
+                .map(r => ({ id: r.id, score: r.similarity, vecSimilarity: r.similarity }));
+          for (const r of finalObs) {
+            const o = db.getObservation(r.id);
+            if (o) results.push({ type: 'observation', id: o.id, title: o.title, kind: o.kind, score: r.score, similarity: r.vecSimilarity });
+          }
+        }
+
+        if (types.includes('suggestion')) {
+          const { vectorSearch } = await import('../../memory/search.js');
+          const sugResults = await vectorSearch({ db: db.rawDb, text: query, vecTable: 'suggestion_vectors', limit });
+          for (const r of sugResults) {
+            const s = db.getSuggestion(r.id);
+            if (s) results.push({ type: 'suggestion', id: s.id, title: s.title, kind: s.kind, score: r.similarity, similarity: r.similarity });
+          }
+        }
+
+        return results.sort((a, b) => b.score - a.score).slice(0, limit * 2);
+      },
+    },
+
+    // ---- Runs ----
+    {
+      name: 'shadow_run_list',
+      description: 'List task runs with optional status filter.',
+      inputSchema: mcpSchema(RunListSchema),
+      handler: async (params) => {
+        const { status } = RunListSchema.parse(params);
+        return db.listRuns({ status });
+      },
+    },
+    {
+      name: 'shadow_run_view',
+      description: 'View details of a specific run.',
+      inputSchema: mcpSchema(RunViewSchema),
+      handler: async (params) => {
+        const { runId } = RunViewSchema.parse(params);
+        const run = db.getRun(runId);
+        if (!run) return { isError: true, message: `Run not found: ${runId}` };
+        return run;
+      },
+    },
+
+    // ---- Usage ----
+    {
+      name: 'shadow_usage',
+      description: 'Returns LLM token usage summary for a given period.',
+      inputSchema: mcpSchema(UsageSchema),
+      handler: async (params) => {
+        const { period: rawPeriod } = UsageSchema.parse(params);
+        const period = (rawPeriod as 'day' | 'week' | 'month' | undefined) ?? 'day';
+        return db.getUsageSummary(period);
+      },
+    },
+
+    // ---- Daily Summary ----
+    {
+      name: 'shadow_daily_summary',
+      description: 'Get a comprehensive summary of today\'s engineering activity: repos touched, memories created, suggestions, observations, tokens used, and active hours.',
+      inputSchema: mcpSchema(z.object({})),
+      handler: async () => {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const sinceIso = todayStart.toISOString();
+
+        const profile = db.ensureProfile();
+        const repos = db.listRepos();
+        const observations = db.listObservations({ status: 'active', limit: 100 });
+        const todayObs = observations.filter(o => o.createdAt > sinceIso);
+        const memories = db.listMemories({ archived: false });
+        const todayMemories = memories.filter(m => m.createdAt > sinceIso);
+        const suggestions = db.listSuggestions({ status: 'pending' });
+        const usage = db.getUsageSummary('day');
+        const events = db.listPendingEvents();
+
+        return {
+          date: todayStart.toISOString().split('T')[0],
+          user: profile.displayName ?? 'unknown',
+          trustLevel: profile.trustLevel,
+          trustScore: profile.trustScore,
+          activity: {
+            observationsToday: todayObs.length,
+            memoriesCreatedToday: todayMemories.length,
+            pendingSuggestions: suggestions.length,
+            pendingEvents: events.length,
+          },
+          topObservations: todayObs.slice(0, 5).map(o => ({ kind: o.kind, title: o.title, repo: o.repoId })),
+          newMemories: todayMemories.map(m => ({ layer: m.layer, kind: m.kind, title: m.title })),
+          pendingSuggestions: suggestions.slice(0, 5).map(s => ({ kind: s.kind, title: s.title, impact: s.impactScore })),
+          repos: repos.map(r => ({ name: r.name, lastObserved: r.lastObservedAt })),
+          tokens: {
+            input: usage.totalInputTokens,
+            output: usage.totalOutputTokens,
+            totalCalls: usage.totalCalls,
+            byModel: usage.byModel,
+          },
+        };
+      },
+    },
+
+    // ---- Digests ----
+    {
+      name: 'shadow_digest',
+      description: 'Generate a digest on demand: daily (standup), weekly (1:1), or brag (performance review). Requires trust level >= 1.',
+      inputSchema: mcpSchema(DigestSchema),
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const { kind } = DigestSchema.parse(params);
+        const { activityDailyDigest, activityWeeklyDigest, activityBragDoc } = await import('../../heartbeat/digests.js');
+        let result: { contentMd: string; tokensUsed: number };
+        if (kind === 'daily') result = await activityDailyDigest(db, config);
+        else if (kind === 'weekly') result = await activityWeeklyDigest(db, config);
+        else result = await activityBragDoc(db, config);
+        return { ok: true, kind, contentMd: result.contentMd, tokensUsed: result.tokensUsed };
+      },
+    },
+    {
+      name: 'shadow_digests',
+      description: 'List previous digests. Optionally filter by kind.',
+      inputSchema: mcpSchema(DigestsSchema),
+      handler: async (params) => {
+        const { kind, limit: rawLimit } = DigestsSchema.parse(params);
+        return db.listDigests({
+          kind,
+          limit: rawLimit ?? 10,
+        });
+      },
+    },
+
+    // ---- Enrichment ----
+    {
+      name: 'shadow_enrichment_config',
+      description: 'View enrichment configuration: available MCP servers, enabled status, interval, and recent cache entries.',
+      inputSchema: mcpSchema(EnrichmentConfigSchema),
+      handler: async (params) => {
+        const { discoverMcpServerNames } = await import('../../observation/mcp-discovery.js');
+        const servers = discoverMcpServerNames();
+        const { includeCache: rawIncludeCache, limit: rawLimit } = EnrichmentConfigSchema.parse(params);
+        const includeCache = rawIncludeCache ?? false;
+        const limit = rawLimit ?? 10;
+
+        const result: Record<string, unknown> = {
+          enabled: config.enrichmentEnabled,
+          intervalMs: config.enrichmentIntervalMs,
+          intervalHuman: `${Math.round(config.enrichmentIntervalMs / 60000)}min`,
+          availableMcpServers: servers,
+          serverCount: servers.length,
+        };
+
+        if (includeCache) {
+          const items = db.listEnrichment({ limit });
+          result.recentCache = items.map(i => ({
+            id: i.id,
+            source: i.source,
+            entityName: i.entityName,
+            summary: i.summary,
+            reported: i.reported,
+            createdAt: i.createdAt,
+          }));
+          result.totalCached = db.countEnrichment();
+          result.unreported = db.countEnrichment({ reported: false });
+        }
+
+        return result;
+      },
+    },
+    {
+      name: 'shadow_enrichment_query',
+      description: 'Query enrichment cache entries. Returns external context gathered from MCP tools.',
+      inputSchema: mcpSchema(EnrichmentQuerySchema),
+      handler: async (params) => {
+        const { source, entityName, unreportedOnly: rawUnreported, limit: rawLimit, offset: rawOffset } = EnrichmentQuerySchema.parse(params);
+        const unreportedOnly = rawUnreported ?? false;
+        const limit = rawLimit ?? 20;
+        const offset = rawOffset ?? 0;
+        try {
+          let items = db.listEnrichment({ source, reported: unreportedOnly ? false : undefined, limit: entityName ? 100 : limit, offset: entityName ? 0 : offset });
+          if (entityName) {
+            const lower = entityName.toLowerCase();
+            items = items.filter(i => i.entityName?.toLowerCase().includes(lower));
+            const total = items.length;
+            items = items.slice(offset, offset + limit);
+            return { items: items.map(i => ({ id: i.id, source: i.source, entityType: i.entityType, entityName: i.entityName, summary: i.summary, detail: i.detail, reported: i.reported, createdAt: i.createdAt })), total };
+          }
+          const total = db.countEnrichment({ source, reported: unreportedOnly ? false : undefined });
+          return { items: items.map(i => ({ id: i.id, source: i.source, entityType: i.entityType, entityName: i.entityName, summary: i.summary, detail: i.detail, reported: i.reported, createdAt: i.createdAt })), total };
+        } catch {
+          return { items: [], total: 0 };
+        }
+      },
+    },
+  ];
+}

@@ -151,8 +151,8 @@ export class JobQueue {
       }
     })();
 
-    // Race against timeout
-    const timeoutPromise = new Promise<'timeout'>(r => setTimeout(() => r('timeout'), JOB_TIMEOUT_MS));
+    // Race against timeout (unref so timer doesn't prevent process exit)
+    const timeoutPromise = new Promise<'timeout'>(r => { const t = setTimeout(() => r('timeout'), JOB_TIMEOUT_MS); t.unref(); });
     Promise.race([jobPromise.then(() => 'done' as const), timeoutPromise]).then(winner => {
       if (winner === 'timeout' && this.active.has(job.id)) {
         cancelled = true;
