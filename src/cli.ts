@@ -226,6 +226,9 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
     *remote-sync*|*sync*)
       case $V in 0) MASCOT="{•_•}🔄" ;; 1) MASCOT="{•‿•}⬇️" ;; *) MASCOT="{•_•}📥" ;; esac
       MCOLOR="$CK"; ACTIVITY_TEXT="syncing" ;;
+    *repo-profile*)
+      case $V in 0) MASCOT="{•_•}📋" ;; 1) MASCOT="{•‿•}📋" ;; *) MASCOT="{•_•}🔍" ;; esac
+      MCOLOR="$CT"; ACTIVITY_TEXT="profiling" ;;
     *)
       case $V in 0) MASCOT="{•_•}" ;; 1) MASCOT="{•‿•}" ;; *) MASCOT="{•_•}~" ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="working" ;;

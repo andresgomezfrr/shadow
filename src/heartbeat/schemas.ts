@@ -36,6 +36,16 @@ export const SuggestResponseSchema = z.object({
     impactScore: z.number().min(1).max(5).default(3),
     confidenceScore: z.number().min(0).max(100).default(70),
     riskScore: z.number().min(1).max(5).default(2),
+    effort: z.enum(['small', 'medium', 'large']).default('medium'),
     repoId: z.string().nullable().default(null),
+  })).default([]),
+});
+
+// Phase 2: validation verdicts from code review
+export const SuggestValidateResponseSchema = z.object({
+  verdicts: z.array(z.object({
+    title: z.string(),
+    keep: z.boolean(),
+    reason: z.string(),
   })).default([]),
 });

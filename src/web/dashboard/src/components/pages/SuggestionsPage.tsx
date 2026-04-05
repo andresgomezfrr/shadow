@@ -24,6 +24,7 @@ const SUG_KIND_COLORS: Record<string, string> = {
 
 const STATUS_BORDER: Record<string, string> = {
   pending: 'border-l-orange',
+  backlog: 'border-l-purple',
   snoozed: 'border-l-blue',
   accepted: 'border-l-green',
   dismissed: 'border-l-text-muted',
@@ -32,6 +33,7 @@ const STATUS_BORDER: Record<string, string> = {
 
 const STATUSES = [
   { label: 'Pending', value: 'pending', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
+  { label: 'Backlog', value: 'backlog', dotColor: 'bg-purple', activeClass: 'bg-purple/15 text-purple' },
   { label: 'Snoozed', value: 'snoozed', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
   { label: 'Accepted', value: 'accepted', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
   { label: 'Dismissed', value: 'dismissed', dotColor: 'bg-text-muted', activeClass: 'bg-text-muted/15 text-text-muted' },
@@ -48,7 +50,20 @@ const SNOOZE_OPTIONS = [
   { label: '7d', hours: 168 },
 ];
 
-const DISMISS_REASONS = ['Not relevant', 'Already done', 'Too risky', 'Not now'];
+const DISMISS_CATEGORIES: Array<{ label: string; category: string }> = [
+  { label: 'Premature', category: 'premature' },
+  { label: 'Over-engineering', category: 'over_engineering' },
+  { label: 'Already handled', category: 'already_handled' },
+  { label: 'Not relevant', category: 'not_relevant' },
+  { label: 'Low value', category: 'low_value' },
+  { label: 'Duplicate', category: 'duplicate' },
+  { label: "Won't do", category: 'wont_do' },
+];
+const ACCEPT_OPTIONS: Array<{ label: string; category: string }> = [
+  { label: 'Execute', category: 'execute' },
+  { label: 'Already done', category: 'manual' },
+  { label: 'Backlog', category: 'planned' },
+];
 
 function repoName(repos: Repo[] | null, repoId: string | null): string | null {
   if (!repoId || !repos) return null;
@@ -105,23 +120,24 @@ export function SuggestionsPage() {
   const [snoozeOpen, setSnoozeOpen] = useState<string | null>(null);
   const [dismissOpen, setDismissOpen] = useState<string | null>(null);
   const [dismissNote, setDismissNote] = useState('');
+  const [acceptOpen, setAcceptOpen] = useState<string | null>(null);
 
   const toggle = (id: string) => {
     setExpanded((s) => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
 
-  const handleAccept = useCallback(async (id: string) => {
-    const result = await acceptSuggestion(id);
+  const handleAccept = useCallback(async (id: string, category?: string) => {
+    const result = await acceptSuggestion(id, category);
     if (result && 'runId' in (result as Record<string, unknown>)) {
       setRunCreated((result as Record<string, unknown>).runId as string);
       setTimeout(() => setRunCreated(null), 8000);
     }
+    setAcceptOpen(null);
     refresh();
   }, [refresh]);
 
-  const handleDismiss = useCallback(async (id: string, reason?: string, note?: string) => {
-    const fullNote = [reason, note].filter(Boolean).join(': ');
-    await dismissSuggestion(id, fullNote || undefined);
+  const handleDismiss = useCallback(async (id: string, category?: string, note?: string) => {
+    await dismissSuggestion(id, note || undefined, category);
     setDismissOpen(null);
     setDismissNote('');
     refresh();
@@ -193,10 +209,23 @@ export function SuggestionsPage() {
                     {/* Actions */}
                     {s.status === 'pending' && (
                       <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => handleAccept(s.id)}
-                          className="px-4 py-2 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer transition-all hover:brightness-110"
-                        >✓ Accept</button>
+                        <div className="relative">
+                          <button
+                            onClick={() => setAcceptOpen(acceptOpen === s.id ? null : s.id)}
+                            className="px-4 py-2 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer transition-all hover:brightness-110"
+                          >✓ Accept</button>
+                          {acceptOpen === s.id && (
+                            <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 overflow-hidden min-w-40">
+                              {ACCEPT_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.category}
+                                  onClick={() => handleAccept(s.id, opt.category)}
+                                  className="block w-full px-4 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer border-none bg-transparent"
+                                >{opt.label}</button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         <div className="relative">
                           <button
                             onClick={() => setSnoozeOpen(snoozeOpen === s.id ? null : s.id)}
@@ -222,20 +251,20 @@ export function SuggestionsPage() {
                           >Dismiss</button>
                           {dismissOpen === s.id && (
                             <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 p-2 space-y-1 min-w-48">
-                              {DISMISS_REASONS.map((reason) => (
+                              {DISMISS_CATEGORIES.map((dc) => (
                                 <button
-                                  key={reason}
-                                  onClick={() => handleDismiss(s.id, reason)}
+                                  key={dc.category}
+                                  onClick={() => handleDismiss(s.id, dc.category)}
                                   className="block w-full px-3 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer rounded border-none bg-transparent"
-                                >{reason}</button>
+                                >{dc.label}</button>
                               ))}
                               <div className="pt-1 border-t border-border mt-1">
                                 <input
                                   type="text"
-                                  placeholder="Other reason..."
+                                  placeholder="Note (optional)..."
                                   value={dismissNote}
                                   onChange={(e) => setDismissNote(e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === 'Enter' && dismissNote) handleDismiss(s.id, undefined, dismissNote); }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter' && dismissNote) handleDismiss(s.id, 'wont_do', dismissNote); }}
                                   className="w-full px-2 py-1 text-xs bg-bg border border-border rounded outline-none focus:border-accent"
                                 />
                               </div>

@@ -11,6 +11,8 @@ export const ModelsSchema = z.object({
   digestDaily: z.string().default('sonnet'),
   digestWeekly: z.string().default('opus'),
   digestBrag: z.string().default('opus'),
+  repoProfile: z.string().default('sonnet'),
+  suggestValidate: z.string().default('opus'),
 });
 
 export const EffortsSchema = z.object({
@@ -47,6 +49,8 @@ export const ConfigSchema = z.object({
     digestDaily: 'sonnet',
     digestWeekly: 'opus',
     digestBrag: 'opus',
+    repoProfile: 'sonnet',
+    suggestValidate: 'opus',
   }),
   efforts: EffortsSchema.default({
     analyze: 'medium',
@@ -68,6 +72,12 @@ export const ConfigSchema = z.object({
   remoteSyncBatchSize: z.coerce.number().int().min(1).max(20).default(5),
   enrichmentEnabled: z.coerce.boolean().default(false),
   enrichmentIntervalMs: z.coerce.number().int().positive().default(2 * 60 * 60 * 1000),
+  repoProfileEnabled: z.coerce.boolean().default(true),
+  repoProfileIntervalMs: z.coerce.number().int().positive().default(24 * 60 * 60 * 1000),
+  repoProfileBatchSize: z.coerce.number().int().min(1).max(20).default(5),
+  suggestIntervalMs: z.coerce.number().int().positive().default(12 * 60 * 60 * 1000),
+  suggestReactiveThreshold: z.coerce.number().int().min(1).default(3),
+  suggestReactiveMinGapMs: z.coerce.number().int().positive().default(4 * 60 * 60 * 1000),
 });
 
 export type ShadowConfig = z.infer<typeof ConfigSchema> & {

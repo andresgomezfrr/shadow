@@ -521,6 +521,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         type: 'object',
         properties: {
           suggestionId: { type: 'string', description: 'The suggestion ID to accept' },
+          category: { type: 'string', description: 'Accept category: execute (run via runner, default), manual (already implemented), planned (add to backlog)' },
         },
         required: ['suggestionId'],
         additionalProperties: false,
@@ -530,13 +531,14 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         if (!gate.ok) return gate.error;
 
         const suggestionId = params.suggestionId as string;
+        const category = (params.category as string | undefined) ?? 'execute';
         const suggestion = db.getSuggestion(suggestionId);
         if (!suggestion) {
           return { isError: true, message: `Suggestion not found: ${suggestionId}` };
         }
 
         const { acceptSuggestion } = await import('../suggestion/engine.js');
-        const result = acceptSuggestion(db, suggestionId);
+        const result = acceptSuggestion(db, suggestionId, category);
         if (!result.ok) return { isError: true, message: 'Cannot accept — suggestion not pending' };
 
         return { accepted: true, suggestionId, runCreated: result.runCreated };
@@ -550,6 +552,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
         properties: {
           suggestionId: { type: 'string', description: 'The suggestion ID to dismiss' },
           note: { type: 'string', description: 'Optional feedback note explaining the dismissal' },
+          category: { type: 'string', description: 'Dismiss category: premature, over_engineering, already_handled, not_relevant, low_value, duplicate, wont_do' },
         },
         required: ['suggestionId'],
         additionalProperties: false,
@@ -560,16 +563,15 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
 
         const suggestionId = params.suggestionId as string;
         const note = params.note as string | undefined;
+        const category = params.category as string | undefined;
         const suggestion = db.getSuggestion(suggestionId);
         if (!suggestion) {
           return { isError: true, message: `Suggestion not found: ${suggestionId}` };
         }
 
-        db.updateSuggestion(suggestionId, {
-          status: 'dismissed',
-          feedbackNote: note ?? null,
-          resolvedAt: new Date().toISOString(),
-        });
+        const { dismissSuggestion } = await import('../suggestion/engine.js');
+        const result = dismissSuggestion(db, suggestionId, note, category);
+        if (!result.ok) return { isError: true, message: 'Cannot dismiss — suggestion not pending' };
 
         return { dismissed: true, suggestionId };
       },

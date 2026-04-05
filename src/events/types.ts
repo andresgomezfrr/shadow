@@ -7,6 +7,7 @@ export type ShadowEventKind =
   | 'pattern_detected'
   | 'memory_insight'
   | 'consolidation_complete'
+  | 'suggestion_expiring'
   | 'suggestion_expired';
 
 export type ShadowEventPayload = {
@@ -29,5 +30,6 @@ export const EVENT_PRIORITIES: Record<ShadowEventKind, number> = {
   pattern_detected: 5,
   memory_insight: 4,
   consolidation_complete: 3,
+  suggestion_expiring: 3,
   suggestion_expired: 2,
 };

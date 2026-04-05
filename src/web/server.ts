@@ -424,15 +424,18 @@ async function handleApi(
       const [, id, action] = match;
       if (action === 'accept') {
         const { acceptSuggestion } = await import('../suggestion/engine.js');
-        const result = acceptSuggestion(db, id);
+        let category: string | undefined;
+        try { const body = JSON.parse(await readBody(req)); category = body.category; } catch { /* no body is ok */ }
+        const result = acceptSuggestion(db, id, category);
         if (!result.ok) return json(res, { error: 'Cannot accept — suggestion not pending' }, 400);
         const updated = db.getSuggestion(id);
         return json(res, { ...updated, runId: result.runCreated });
       } else if (action === 'dismiss') {
         const { dismissSuggestion } = await import('../suggestion/engine.js');
         let note: string | undefined;
-        try { const body = JSON.parse(await readBody(req)); note = body.note; } catch { /* no body is ok */ }
-        dismissSuggestion(db, id, note);
+        let category: string | undefined;
+        try { const body = JSON.parse(await readBody(req)); note = body.note; category = body.category; } catch { /* no body is ok */ }
+        dismissSuggestion(db, id, note, category);
         const updated = db.getSuggestion(id);
         return json(res, updated);
       } else if (action === 'snooze') {

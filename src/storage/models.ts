@@ -37,6 +37,8 @@ export type RepoRecord = {
   buildCommand: string | null;
   lastObservedAt: string | null;
   lastFetchedAt: string | null;
+  contextMd: string | null;
+  contextUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -317,6 +319,7 @@ export type FeedbackRecord = {
   targetId: string;
   action: string;
   note: string | null;
+  category: string | null;
   createdAt: string;
 };
 

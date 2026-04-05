@@ -168,14 +168,18 @@ export const reopenObservation = (id: string) =>
 export const triggerHeartbeat = () =>
   api<{ triggered: boolean }>('/api/heartbeat/trigger', { method: 'POST' });
 
-export const acceptSuggestion = (id: string) =>
-  api<Suggestion>(`/api/suggestions/${id}/accept`, { method: 'POST' });
+export const acceptSuggestion = (id: string, category?: string) =>
+  api<Suggestion>(`/api/suggestions/${id}/accept`, {
+    method: 'POST',
+    headers: category ? { 'Content-Type': 'application/json' } : undefined,
+    body: category ? JSON.stringify({ category }) : undefined,
+  });
 
-export const dismissSuggestion = (id: string, note?: string) =>
+export const dismissSuggestion = (id: string, note?: string, category?: string) =>
   api<Suggestion>(`/api/suggestions/${id}/dismiss`, {
     method: 'POST',
-    headers: note ? { 'Content-Type': 'application/json' } : undefined,
-    body: note ? JSON.stringify({ note }) : undefined,
+    headers: (note || category) ? { 'Content-Type': 'application/json' } : undefined,
+    body: (note || category) ? JSON.stringify({ note, category }) : undefined,
   });
 
 export const snoozeSuggestion = (id: string, hours: number) =>

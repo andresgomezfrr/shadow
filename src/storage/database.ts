@@ -302,7 +302,7 @@ export class ShadowDatabase {
     return (this.database.prepare('SELECT COUNT(*) as total FROM repos').get() as { total: number }).total;
   }
 
-  updateRepo(id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt' | 'lastFetchedAt'>>): void {
+  updateRepo(id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt' | 'lastFetchedAt' | 'contextMd' | 'contextUpdatedAt'>>): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
@@ -1491,11 +1491,11 @@ export class ShadowDatabase {
 
   // --- Feedback ---
 
-  createFeedback(input: { targetKind: string; targetId: string; action: string; note?: string | null }): void {
+  createFeedback(input: { targetKind: string; targetId: string; action: string; note?: string | null; category?: string | null }): void {
     const id = randomUUID();
     this.database
-      .prepare('INSERT INTO feedback (id, target_kind, target_id, action, note, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(id, input.targetKind, input.targetId, input.action, input.note ?? null, new Date().toISOString());
+      .prepare('INSERT INTO feedback (id, target_kind, target_id, action, note, category, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(id, input.targetKind, input.targetId, input.action, input.note ?? null, input.category ?? null, new Date().toISOString());
   }
 
   listFeedback(targetKind?: string, limit = 15): FeedbackRecord[] {
@@ -1521,6 +1521,46 @@ export class ShadowDatabase {
       if (!state[row.target_id]) state[row.target_id] = row.action;
     }
     return state;
+  }
+
+  getDismissPatterns(repoId?: string): Array<{ category: string; count: number; recentNotes: string[] }> {
+    const sql = repoId
+      ? `SELECT f.category, COUNT(*) as cnt, GROUP_CONCAT(f.note, '|||') as notes
+         FROM feedback f JOIN suggestions s ON f.target_id = s.id
+         WHERE f.target_kind = 'suggestion' AND f.action = 'dismiss'
+           AND f.category IS NOT NULL AND f.created_at > datetime('now', '-30 days')
+           AND s.repo_id = ?
+         GROUP BY f.category ORDER BY cnt DESC`
+      : `SELECT f.category, COUNT(*) as cnt, GROUP_CONCAT(f.note, '|||') as notes
+         FROM feedback f
+         WHERE f.target_kind = 'suggestion' AND f.action = 'dismiss'
+           AND f.category IS NOT NULL AND f.created_at > datetime('now', '-30 days')
+         GROUP BY f.category ORDER BY cnt DESC`;
+    const rows = repoId
+      ? this.database.prepare(sql).all(repoId)
+      : this.database.prepare(sql).all();
+    return rows.map((row: unknown) => {
+      const d = row as { category: string; cnt: number; notes: string | null };
+      const allNotes = d.notes ? d.notes.split('|||').filter(Boolean) : [];
+      return { category: d.category, count: d.cnt, recentNotes: allNotes.slice(0, 3) };
+    });
+  }
+
+  getAcceptDismissRate(days = 30): { accepted: number; dismissed: number; total: number; rate: number } {
+    const rows = this.database
+      .prepare(`SELECT action, COUNT(*) as cnt FROM feedback
+                WHERE target_kind = 'suggestion' AND action IN ('accept', 'dismiss')
+                  AND created_at > datetime('now', '-' || ? || ' days')
+                GROUP BY action`)
+      .all(days) as Array<{ action: string; cnt: number }>;
+    let accepted = 0;
+    let dismissed = 0;
+    for (const row of rows) {
+      if (row.action === 'accept') accepted = row.cnt;
+      else if (row.action === 'dismiss') dismissed = row.cnt;
+    }
+    const total = accepted + dismissed;
+    return { accepted, dismissed, total, rate: total > 0 ? accepted / total : 0 };
   }
 
   // --- Audit Events ---
@@ -1716,6 +1756,8 @@ function mapRepo(row: unknown): RepoRecord {
     buildCommand: strOrNull(d.build_command),
     lastObservedAt: strOrNull(d.last_observed_at),
     lastFetchedAt: strOrNull(d.last_fetched_at),
+    contextMd: strOrNull(d.context_md),
+    contextUpdatedAt: strOrNull(d.context_updated_at),
     createdAt: str(d.created_at),
     updatedAt: str(d.updated_at),
   };
@@ -2064,6 +2106,7 @@ function mapFeedback(row: unknown): FeedbackRecord {
     targetId: str(d.target_id),
     action: str(d.action),
     note: strOrNull(d.note),
+    category: strOrNull(d.category),
     createdAt: str(d.created_at),
   };
 }

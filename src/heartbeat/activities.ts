@@ -651,204 +651,240 @@ export async function activitySuggest(
     return { suggestionsCreated: 0, llmCalls: 0, tokensUsed: 0 };
   }
 
-  // Cache entity names once for this suggest phase
   const entityCache = loadEntityNameCache(ctx.db);
+  const adapter = selectAdapter(ctx.config);
 
-  // Gather context
-  const repoIds = [...new Set(observations.map((o) => o.repoId))];
-  const filePaths: string[] = [];
-  const topics: string[] = [];
-
+  // --- Pre-fase: group observations by repo ---
+  const byRepo = new Map<string, ObservationRecord[]>();
   for (const obs of observations) {
-    topics.push(obs.kind, obs.title);
-    const detail = obs.detail as Record<string, unknown>;
-    if (typeof detail.file === 'string') filePaths.push(detail.file);
+    const rid = obs.repoId ?? '__none__';
+    if (!byRepo.has(rid)) byRepo.set(rid, []);
+    byRepo.get(rid)!.push(obs);
   }
 
-  const relevantMemories = findRelevantMemories(ctx.db, {
-    filePaths,
-    topics: [...new Set(topics)],
-    repoId: repoIds.length === 1 ? repoIds[0] : undefined,
-  }, 10, false); // touch=false: internal suggest lookup
+  let totalCreated = 0;
+  let totalLlmCalls = 0;
+  let totalTokens = 0;
 
-  // Build the suggestion prompt
-  const observationSummaries = observations.map((obs) =>
-    `- [${obs.severity}] ${obs.kind}: ${obs.title}`,
-  ).join('\n');
+  for (const [repoId, repoObs] of byRepo) {
+    if (repoId === '__none__') continue;
+    const repo = ctx.db.getRepo(repoId);
+    if (!repo) continue;
 
-  const memorySummaries = relevantMemories.map((mem) =>
-    `- [${mem.layer}/${mem.kind}] ${mem.title}: ${mem.bodyMd.slice(0, 200)}`,
-  ).join('\n');
+    // --- Pre-fase: gather context for this repo ---
+    const topics = repoObs.flatMap(o => [o.kind, o.title]);
+    const relevantMemories = findRelevantMemories(ctx.db, {
+      topics: [...new Set(topics)], repoId,
+    }, 10, false);
 
-  const profileContext = [
-    `Trust level: ${ctx.profile.trustLevel}`,
-    `Proactivity level: ${ctx.profile.proactivityLevel}`,
-    `Verbosity: ${ctx.profile.verbosity}`,
-  ].join(', ');
+    const dismissPatterns = ctx.db.getDismissPatterns(repoId);
+    const globalDismissPatterns = ctx.db.getDismissPatterns();
+    const allPatterns = globalDismissPatterns.length > dismissPatterns.length ? globalDismissPatterns : dismissPatterns;
+    const acceptDismissRate = ctx.db.getAcceptDismissRate(30);
+    const pendingSuggestions = ctx.db.listSuggestions({ status: 'pending', repoId });
+    const recentDismissed = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10);
+    const recentAccepted = ctx.db.listSuggestions({ status: 'accepted' }).slice(0, 5);
 
-  // Gather feedback from recently dismissed suggestions
-  const recentDismissed = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10);
-  const dismissFeedback = recentDismissed
-    .filter(s => s.feedbackNote)
-    .map(s => `- "${s.title}" — dismissed: ${s.feedbackNote}`)
-    .join('\n');
+    // --- Phase 1: Generate candidates ---
+    const observationSummaries = repoObs.map(o => `- [${o.severity}] ${o.kind}: ${o.title}`).join('\n');
+    const memorySummaries = relevantMemories.map(m => `- [${m.layer}/${m.kind}] ${m.title}: ${m.bodyMd.slice(0, 200)}`).join('\n');
+    const pendingTitles = pendingSuggestions.map(s => `- ${s.title}`).join('\n');
+    const dismissFeedback = recentDismissed.filter(s => s.feedbackNote).map(s => `- "${s.title}" — dismissed: ${s.feedbackNote}`).join('\n');
+    const acceptedContext = recentAccepted.map(s => `- "${s.title}" (${s.kind}) — accepted`).join('\n');
 
-  // Recently accepted suggestions — Shadow knows what the user values
-  const recentAccepted = ctx.db.listSuggestions({ status: 'accepted' }).slice(0, 5);
-  const acceptedContext = recentAccepted
-    .map(s => `- "${s.title}" (${s.kind}) — accepted`)
-    .join('\n');
+    // Format dismiss patterns as anti-constraints
+    const patternSection = allPatterns.length > 0
+      ? `## Dismiss Patterns (DO NOT generate suggestions matching these)\n${allPatterns.map(p =>
+          `- ${p.category}: ${p.count} dismissals${p.recentNotes.length ? ` (examples: ${p.recentNotes.slice(0, 2).map(n => `"${n}"`).join(', ')})` : ''}`
+        ).join('\n')}\n`
+      : '';
 
-  // Existing pending suggestions — don't duplicate
-  const existingPending = ctx.db.listSuggestions({ status: 'pending' });
-  const pendingTitles = existingPending.map(s => `- ${s.title}`).join('\n');
+    // Format acceptance rate
+    const rateSection = acceptDismissRate.total > 0
+      ? `Acceptance rate: ${(acceptDismissRate.rate * 100).toFixed(0)}% (${acceptDismissRate.accepted} accepted / ${acceptDismissRate.dismissed} dismissed in last 30 days). Be very selective.\n`
+      : '';
 
-  // Active project context for project-aware suggestions
-  const suggestActiveProjects = ctx.activeProjects ?? [];
-  const suggestProjectContext = suggestActiveProjects.length > 0
-    ? suggestActiveProjects.map(ap => {
-        const project = ctx.db.getProject(ap.projectId);
-        if (!project) return '';
-        const projRepos = project.repoIds.map(id => ctx.db.getRepo(id)?.name).filter(Boolean);
-        return `- **${project.name}** (${project.kind}): repos=[${projRepos.join(', ')}]`;
-      }).filter(Boolean).join('\n')
-    : '';
+    // Repo context from repo-profile job
+    const repoContextSection = repo.contextMd
+      ? `## Repository Context\n${repo.contextMd}\n`
+      : '';
 
-  const prompt = [
-    'Based on the following observations and context, propose actionable TECHNICAL suggestions.',
-    '',
-    'IMPORTANT RULES:',
-    '- Only suggest code changes, refactors, bug fixes, features, or architecture improvements.',
-    '- Do NOT suggest operational tasks like "commit files", "clean up branches", "update docs".',
-    '- Do NOT duplicate existing pending suggestions (listed below).',
-    '- Do NOT suggest improvements for code that was just created or modified in this session. Fresh code needs time to settle.',
-    '- Do NOT suggest micro-optimizations (error handling tweaks, type annotations, logging improvements) unless they fix a real bug.',
-    '- Consolidate related ideas into ONE suggestion. Never output multiple variations of the same improvement.',
-    '- Learn from dismissed suggestions — if the user gave feedback, respect it. NEVER re-suggest something similar to a dismissed suggestion.',
-    '- Learn from accepted suggestions — generate more suggestions in the same direction as what the user accepted.',
-    '- Minimum quality: only output suggestions where impact >= 3 AND confidence >= 60.',
-    '',
-    'Suggestion kinds: refactor, bug, improvement, feature.',
-    `User profile: ${profileContext}`,
-    '',
-    'Return at most 3 suggestions. Fewer is better if quality is higher.',
-    'Return structured JSON:',
-    '{ "suggestions": [{ "kind": string, "title": string, "summaryMd": string, "reasoningMd": string, "impactScore": 1-5, "confidenceScore": 0-100, "riskScore": 1-5, "repoId": string|null }] }',
-    '',
-    '## Recent Observations',
-    observationSummaries,
-    '',
-    suggestProjectContext ? `## Active Projects (prioritize suggestions for these)\n${suggestProjectContext}\n` : '',
-    relevantMemories.length > 0 ? `## Relevant Memories\n${memorySummaries}\n` : '',
-    pendingTitles ? `## Already Pending (DO NOT duplicate)\n${pendingTitles}\n` : '',
-    dismissFeedback ? `## Dismissed by User (learn from this feedback)\n${dismissFeedback}\n` : '',
-    acceptedContext ? `## Accepted by User (this is what they value)\n${acceptedContext}\n` : '',
-    'Respond with JSON only.',
-  ].join('\n');
+    // Active projects
+    const suggestActiveProjects = ctx.activeProjects ?? [];
+    const projectContext = suggestActiveProjects.length > 0
+      ? suggestActiveProjects.map(ap => {
+          const project = ctx.db.getProject(ap.projectId);
+          if (!project) return '';
+          const projRepos = project.repoIds.map(id => ctx.db.getRepo(id)?.name).filter(Boolean);
+          return `- **${project.name}** (${project.kind}): repos=[${projRepos.join(', ')}]`;
+        }).filter(Boolean).join('\n')
+      : '';
 
-  const pack: ObjectivePack = {
-    repos: [],
-    title: 'Heartbeat Suggestions',
-    goal: 'Propose actionable suggestions based on observations',
-    prompt,
-    relevantMemories,
-    model: getModel(ctx, 'suggest'),
-    effort: getEffort(ctx, 'suggest'),
-  };
+    const generatePrompt = [
+      'Based on the following observations and context, propose actionable TECHNICAL suggestions for this specific repository.',
+      '',
+      'IMPORTANT RULES:',
+      '- Only suggest code changes, refactors, bug fixes, features, or architecture improvements.',
+      '- Do NOT suggest operational tasks like "commit files", "clean up branches", "update docs".',
+      '- Do NOT duplicate existing pending suggestions (listed below).',
+      '- Do NOT suggest improvements for code that was just created or modified in this session.',
+      '- Do NOT suggest micro-optimizations unless they fix a real bug.',
+      '- Consolidate related ideas into ONE suggestion.',
+      '- Learn from dismissed suggestions and patterns — NEVER re-suggest dismissed patterns.',
+      '- Learn from accepted suggestions — generate more in that direction.',
+      '- Minimum quality: impact >= 3 AND confidence >= 60.',
+      '- Include effort estimation for each suggestion.',
+      '',
+      rateSection,
+      'Generate 1-2 high-confidence suggestions only. Zero is acceptable if nothing meets the bar.',
+      'Suggestion kinds: refactor, bug, improvement, feature.',
+      '',
+      'Return structured JSON:',
+      '{ "suggestions": [{ "kind": string, "title": string, "summaryMd": string, "reasoningMd": string, "impactScore": 1-5, "confidenceScore": 0-100, "riskScore": 1-5, "effort": "small"|"medium"|"large", "repoId": string|null }] }',
+      '',
+      repoContextSection,
+      `## Recent Observations (${repo.name})\n${observationSummaries}\n`,
+      projectContext ? `## Active Projects\n${projectContext}\n` : '',
+      relevantMemories.length > 0 ? `## Relevant Memories\n${memorySummaries}\n` : '',
+      pendingTitles ? `## Already Pending (DO NOT duplicate)\n${pendingTitles}\n` : '',
+      patternSection,
+      dismissFeedback ? `## Dismissed by User\n${dismissFeedback}\n` : '',
+      acceptedContext ? `## Accepted by User (what they value)\n${acceptedContext}\n` : '',
+      'Respond with JSON only.',
+    ].join('\n');
 
-  let llmCalls = 0;
-  let tokensUsed = 0;
-  let suggestionsCreated = 0;
+    let candidates: Array<{ kind: string; title: string; summaryMd: string; reasoningMd: string | null; impactScore: number; confidenceScore: number; riskScore: number; effort: string; repoId: string | null }> = [];
 
-  try {
-    const adapter = selectAdapter(ctx.config);
-    const result = await adapter.execute(pack);
-    llmCalls = 1;
-    tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    try {
+      const genResult = await adapter.execute({
+        repos: [], title: `Suggest: ${repo.name}`, goal: 'Generate suggestion candidates',
+        prompt: generatePrompt, relevantMemories, model: getModel(ctx, 'suggest'), effort: getEffort(ctx, 'suggest'),
+      });
+      totalLlmCalls++;
+      const genTokens = (genResult.inputTokens ?? 0) + (genResult.outputTokens ?? 0);
+      totalTokens += genTokens;
+      ctx.db.recordLlmUsage({ source: 'suggest_generate', sourceId: repo.id, model: getModel(ctx, 'suggest'), inputTokens: genResult.inputTokens ?? 0, outputTokens: genResult.outputTokens ?? 0 });
 
-    // Record token usage
-    ctx.db.recordLlmUsage({
-      source: 'heartbeat_suggest',
-      sourceId: null,
-      model: getModel(ctx, 'suggest'),
-      inputTokens: result.inputTokens ?? 0,
-      outputTokens: result.outputTokens ?? 0,
-    });
-
-    // Parse suggestions from LLM response
-    if (result.status === 'success' && result.output) {
-      const parseResult = safeParseJson(result.output, SuggestResponseSchema, 'suggest');
-      if (!parseResult.success) {
-        console.error(`[shadow:suggest] ${parseResult.error}`);
-        console.error(`[shadow:suggest] Raw (500): ${result.output.slice(0, 500)}`);
-      } else {
-        const parsed = parseResult.data;
-        console.error(`[shadow:suggest] Parsed ${parsed.suggestions.length} suggestions${parseResult.repaired ? ' (repaired)' : ''}`);
-
-        // Quality filter: discard low-quality suggestions even if LLM ignores prompt rules
-        const qualitySuggestions = parsed.suggestions.filter(sug =>
-          sug.impactScore >= 3 && sug.confidenceScore >= 60
-        );
-        if (qualitySuggestions.length < parsed.suggestions.length) {
-          console.error(`[shadow:suggest] Filtered ${parsed.suggestions.length - qualitySuggestions.length} low-quality suggestions`);
-        }
-
-        for (const sug of qualitySuggestions) {
-          // Semantic dedup: check against pending → skip if similar
-          const vsPending = await checkSuggestionDuplicate(ctx.db, {
-            kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd,
-          }, 'pending');
-          if (vsPending.action !== 'create') {
-            console.error(`[shadow:suggest] Skip (similar to pending, ${(vsPending.similarity * 100).toFixed(0)}%): ${sug.title}`);
-            continue;
-          }
-
-          // Check against dismissed → skip (don't re-suggest rejected)
-          const vsDismissed = await checkSuggestionDuplicate(ctx.db, {
-            kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd,
-          }, 'dismissed');
-          if (vsDismissed.action !== 'create') {
-            console.error(`[shadow:suggest] Skip (similar to dismissed, ${(vsDismissed.similarity * 100).toFixed(0)}%): ${sug.title}`);
-            continue;
-          }
-
-          // Check against accepted → boost confidence
-          const vsAccepted = await checkSuggestionDuplicate(ctx.db, {
-            kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd,
-          }, 'accepted');
-          if (vsAccepted.action === 'update' || vsAccepted.action === 'skip') {
-            sug.confidenceScore = Math.min(100, sug.confidenceScore + 10);
-            console.error(`[shadow:suggest] Boosted confidence (similar to accepted, ${(vsAccepted.similarity * 100).toFixed(0)}%): ${sug.title}`);
-          }
-
-          const sugPrimaryRepo = repoIds.length === 1 ? repoIds[0] : null;
-          const created = ctx.db.createSuggestion({
-            repoId: sugPrimaryRepo,
-            repoIds,
-            sourceObservationId: observations[0]?.id ?? null,
-            kind: sug.kind,
-            title: sug.title,
-            summaryMd: sug.summaryMd,
-            reasoningMd: sug.reasoningMd,
-            impactScore: sug.impactScore,
-            confidenceScore: sug.confidenceScore,
-            riskScore: sug.riskScore,
-            requiredTrustLevel: ctx.profile.trustLevel,
-          });
-          // Auto-link to projects + systems
-          const sugEntities = buildEntityLinks(ctx.db, sugPrimaryRepo, `${sug.title} ${sug.summaryMd}`, entityCache);
-          if (sugEntities.length > 0) persistEntityLinks(ctx.db, 'suggestions', created.id, sugEntities);
-          // Store embedding for new suggestion
-          await generateAndStoreEmbedding(ctx.db, 'suggestion', created.id, { kind: created.kind, title: created.title, summaryMd: created.summaryMd });
-          suggestionsCreated++;
+      if (genResult.status === 'success' && genResult.output) {
+        const parseResult = safeParseJson(genResult.output, SuggestResponseSchema, 'suggest');
+        if (parseResult.success) {
+          candidates = parseResult.data.suggestions.filter(s => s.impactScore >= 3 && s.confidenceScore >= 60);
+          console.error(`[shadow:suggest] Phase 1 (${repo.name}): ${candidates.length} candidates generated`);
+        } else {
+          console.error(`[shadow:suggest] Phase 1 parse failed (${repo.name}): ${parseResult.error}`);
         }
       }
+    } catch (e) {
+      console.error(`[shadow:suggest] Phase 1 failed (${repo.name}):`, e instanceof Error ? e.message : e);
     }
-  } catch (llmErr) {
-    console.error('[shadow:suggest] LLM call failed:', llmErr instanceof Error ? llmErr.message : llmErr);
+
+    if (candidates.length === 0) continue;
+
+    // --- Phase 2: Validate candidates against actual code ---
+    const validatePrompt = [
+      'You are Shadow, validating suggestion candidates against actual code.',
+      `Repository: ${repo.name}`,
+      `Path: ${repo.path}`,
+      '',
+      repo.contextMd ? `## Repository Context\n${repo.contextMd}\n` : '',
+      pendingTitles ? `## Pending suggestions already in queue\n${pendingTitles}\n` : '',
+      '',
+      '## Candidates to validate',
+      ...candidates.map((c, i) => [
+        `### Candidate ${i + 1}: ${c.title}`,
+        `Kind: ${c.kind} | Impact: ${c.impactScore} | Confidence: ${c.confidenceScore} | Risk: ${c.riskScore} | Effort: ${c.effort}`,
+        c.summaryMd,
+        c.reasoningMd || '',
+        '',
+      ].join('\n')),
+      '',
+      'For EACH candidate:',
+      '1. Use tools to read relevant code files in the repository',
+      '2. Verify: Does the problem actually exist in the code?',
+      '3. Verify: Is it already handled or solved?',
+      '4. Verify: Is it redundant with pending suggestions?',
+      '5. Judge: Given this repo\'s context, is this worth doing?',
+      '',
+      'Respond with JSON:',
+      '{ "verdicts": [{ "title": "...", "keep": true/false, "reason": "brief explanation" }] }',
+    ].join('\n');
+
+    try {
+      const { SuggestValidateResponseSchema } = await import('./schemas.js');
+      const valResult = await adapter.execute({
+        repos: [{ id: repo.id, name: repo.name, path: repo.path }],
+        title: `Validate: ${repo.name}`, goal: 'Validate suggestion candidates against code',
+        prompt: validatePrompt, relevantMemories: [],
+        model: ctx.config.models.suggestValidate ?? getModel(ctx, 'suggest'),
+        effort: 'high',
+        allowedTools: ['Read', 'Grep', 'Glob', 'Bash'],
+        systemPrompt: null,
+      });
+      totalLlmCalls++;
+      const valTokens = (valResult.inputTokens ?? 0) + (valResult.outputTokens ?? 0);
+      totalTokens += valTokens;
+      ctx.db.recordLlmUsage({ source: 'suggest_validate', sourceId: repo.id, model: ctx.config.models.suggestValidate ?? getModel(ctx, 'suggest'), inputTokens: valResult.inputTokens ?? 0, outputTokens: valResult.outputTokens ?? 0 });
+
+      if (valResult.status === 'success' && valResult.output) {
+        const valParsed = safeParseJson(valResult.output, SuggestValidateResponseSchema, 'suggest-validate');
+        if (valParsed.success) {
+          const kept = new Set<string>();
+          for (const v of valParsed.data.verdicts) {
+            if (v.keep) {
+              kept.add(v.title);
+              console.error(`[shadow:suggest] Phase 2 KEEP (${repo.name}): "${v.title}" — ${v.reason}`);
+            } else {
+              console.error(`[shadow:suggest] Phase 2 DROP (${repo.name}): "${v.title}" — ${v.reason}`);
+            }
+          }
+          // Filter candidates to only kept ones
+          candidates = candidates.filter(c => kept.has(c.title));
+        } else {
+          console.error(`[shadow:suggest] Phase 2 parse failed (${repo.name}): ${valParsed.error}`);
+          // On parse failure, keep all candidates (fail-open)
+        }
+      } else {
+        console.error(`[shadow:suggest] Phase 2 LLM failed (${repo.name}): status=${valResult.status}`);
+      }
+    } catch (e) {
+      console.error(`[shadow:suggest] Phase 2 failed (${repo.name}):`, e instanceof Error ? e.message : e);
+      // On failure, keep all candidates (fail-open)
+    }
+
+    // --- Persist kept candidates (with semantic dedup) ---
+    for (const sug of candidates) {
+      const vsPending = await checkSuggestionDuplicate(ctx.db, { kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd }, 'pending');
+      if (vsPending.action !== 'create') {
+        console.error(`[shadow:suggest] Skip (similar to pending, ${(vsPending.similarity * 100).toFixed(0)}%): ${sug.title}`);
+        continue;
+      }
+
+      const vsDismissed = await checkSuggestionDuplicate(ctx.db, { kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd }, 'dismissed');
+      if (vsDismissed.action !== 'create') {
+        console.error(`[shadow:suggest] Skip (similar to dismissed, ${(vsDismissed.similarity * 100).toFixed(0)}%): ${sug.title}`);
+        continue;
+      }
+
+      const vsAccepted = await checkSuggestionDuplicate(ctx.db, { kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd }, 'accepted');
+      if (vsAccepted.action === 'update' || vsAccepted.action === 'skip') {
+        sug.confidenceScore = Math.min(100, sug.confidenceScore + 10);
+      }
+
+      const created = ctx.db.createSuggestion({
+        repoId: repo.id, repoIds: [repo.id],
+        sourceObservationId: repoObs[0]?.id ?? null,
+        kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd, reasoningMd: sug.reasoningMd,
+        impactScore: sug.impactScore, confidenceScore: sug.confidenceScore, riskScore: sug.riskScore,
+        requiredTrustLevel: ctx.profile.trustLevel,
+      });
+      const sugEntities = buildEntityLinks(ctx.db, repo.id, `${sug.title} ${sug.summaryMd}`, entityCache);
+      if (sugEntities.length > 0) persistEntityLinks(ctx.db, 'suggestions', created.id, sugEntities);
+      await generateAndStoreEmbedding(ctx.db, 'suggestion', created.id, { kind: created.kind, title: created.title, summaryMd: created.summaryMd });
+      totalCreated++;
+    }
   }
 
-  return { suggestionsCreated, llmCalls, tokensUsed };
+  return { suggestionsCreated: totalCreated, llmCalls: totalLlmCalls, tokensUsed: totalTokens };
 }
 
 // --- Activity: Consolidate ---

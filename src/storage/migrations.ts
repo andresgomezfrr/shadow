@@ -686,6 +686,16 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_enrichment_hash ON enrichment_cache(content_hash);
     `,
   },
+  {
+    version: 31,
+    name: 'feedback_category_and_repo_context',
+    sql: `
+      ALTER TABLE feedback ADD COLUMN category TEXT;
+      CREATE INDEX IF NOT EXISTS idx_feedback_category ON feedback(target_kind, category, created_at DESC);
+      ALTER TABLE repos ADD COLUMN context_md TEXT;
+      ALTER TABLE repos ADD COLUMN context_updated_at TEXT;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync): void {

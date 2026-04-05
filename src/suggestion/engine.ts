@@ -3,7 +3,7 @@ import type { SuggestionRecord } from '../storage/models.js';
 
 export type SuggestionAction = 'accept' | 'dismiss' | 'snooze' | 'expire';
 
-const STALE_DAYS = 7;
+const STALE_DAYS = 30;
 const TRUST_ACCEPT = 2.0;
 const TRUST_DISMISS = -0.5;
 const TRUST_STREAK_PENALTY = -3.0;
@@ -21,6 +21,7 @@ const STREAK_THRESHOLD = 3;
 export function acceptSuggestion(
   db: ShadowDatabase,
   suggestionId: string,
+  category?: string,
 ): { ok: boolean; runCreated?: string } {
   const suggestion = db.getSuggestion(suggestionId);
   if (!suggestion || suggestion.status !== 'pending') {
@@ -28,30 +29,35 @@ export function acceptSuggestion(
   }
 
   const now = new Date().toISOString();
+  const acceptCategory = category ?? 'execute';
 
-  // Mark suggestion as accepted
+  // Mark suggestion as accepted — store category in feedbackNote for filtering
   db.updateSuggestion(suggestionId, {
-    status: 'accepted',
+    status: acceptCategory === 'planned' ? 'backlog' : 'accepted',
+    feedbackNote: acceptCategory,
     resolvedAt: now,
   });
-  db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'accept' });
-
-  // Determine repo context for the run
-  const primaryRepoId = suggestion.repoIds.length > 0
-    ? suggestion.repoIds[0]
-    : suggestion.repoId ?? 'unknown';
-
-  // Create a run from the suggestion
-  const run = db.createRun({
-    repoId: primaryRepoId,
-    repoIds: suggestion.repoIds.length > 0 ? suggestion.repoIds : (suggestion.repoId ? [suggestion.repoId] : []),
-    suggestionId: suggestion.id,
-    kind: suggestion.kind,
-    prompt: suggestion.summaryMd,
-  });
+  db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'accept', category: acceptCategory });
 
   // Apply positive trust delta
   applyTrustDelta(db, TRUST_ACCEPT);
+
+  // Only create a Run for 'execute' category (default behavior)
+  let runId: string | undefined;
+  if (acceptCategory === 'execute') {
+    const primaryRepoId = suggestion.repoIds.length > 0
+      ? suggestion.repoIds[0]
+      : suggestion.repoId ?? 'unknown';
+
+    const run = db.createRun({
+      repoId: primaryRepoId,
+      repoIds: suggestion.repoIds.length > 0 ? suggestion.repoIds : (suggestion.repoId ? [suggestion.repoId] : []),
+      suggestionId: suggestion.id,
+      kind: suggestion.kind,
+      prompt: suggestion.summaryMd,
+    });
+    runId = run.id;
+  }
 
   // Audit trail
   db.createAuditEvent({
@@ -59,10 +65,10 @@ export function acceptSuggestion(
     action: 'accept-suggestion',
     targetKind: 'suggestion',
     targetId: suggestionId,
-    detail: { runId: run.id },
+    detail: { category: acceptCategory, runId: runId ?? null },
   });
 
-  return { ok: true, runCreated: run.id };
+  return { ok: true, runCreated: runId };
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +84,7 @@ export function dismissSuggestion(
   db: ShadowDatabase,
   suggestionId: string,
   note?: string,
+  category?: string,
 ): { ok: boolean } {
   const suggestion = db.getSuggestion(suggestionId);
   if (!suggestion || suggestion.status !== 'pending') {
@@ -91,7 +98,7 @@ export function dismissSuggestion(
     feedbackNote: note ?? null,
     resolvedAt: now,
   });
-  db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'dismiss', note });
+  db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'dismiss', note, category });
 
   // Apply base dismiss trust delta
   let totalDelta = TRUST_DISMISS;
@@ -216,6 +223,36 @@ export function expireStale(db: ShadowDatabase): number {
   }
 
   return expiredCount;
+}
+
+// ---------------------------------------------------------------------------
+// Notify expiring soon (3 days before STALE_DAYS)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create notification events for suggestions that will expire in 3 days.
+ * Only notifies once per suggestion (checks if event already exists).
+ */
+export function notifyExpiringSoon(db: ShadowDatabase): number {
+  const warningDays = STALE_DAYS - 3;
+  const cutoff = new Date(Date.now() - warningDays * 24 * 60 * 60 * 1000).toISOString();
+  const expiryCutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const pending = db.listSuggestions({ status: 'pending' });
+
+  let count = 0;
+  for (const s of pending) {
+    // Between warning and expiry cutoff, and not snoozed
+    if (s.createdAt < cutoff && s.createdAt >= expiryCutoff && !s.expiresAt) {
+      db.createEvent({
+        kind: 'suggestion_expiring',
+        priority: 3,
+        payload: { message: `Suggestion expiring in 3 days: ${s.title}`, suggestionId: s.id },
+      });
+      count++;
+    }
+  }
+
+  return count;
 }
 
 // ---------------------------------------------------------------------------

@@ -459,6 +459,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         _db.enqueueJob('remote-sync', { priority: 2 });
       }
 
+      // Repo profiling: periodic LLM analysis of repo context
+      if (config.repoProfileEnabled && shouldEnqueue('repo-profile', config.repoProfileIntervalMs)) {
+        _db.enqueueJob('repo-profile', { priority: 3 });
+      }
+
       // Context enrichment: periodic MCP-based external data gathering
       // Profile preferences override config defaults
       const profilePrefs = _db.ensureProfile().preferences as Record<string, unknown> | undefined;
@@ -467,6 +472,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       const enrichIntervalMs = enrichIntervalMin ? enrichIntervalMin * 60 * 1000 : config.enrichmentIntervalMs;
       if (enrichEnabled && shouldEnqueue('context-enrich', enrichIntervalMs)) {
         _db.enqueueJob('context-enrich', { priority: 4 });
+      }
+
+      // Suggest v2: scheduled + reactive boost (replaces pure-reactive trigger)
+      if (shouldEnqueue('suggest', config.suggestIntervalMs)) {
+        _db.enqueueJob('suggest', { priority: 8 });
       }
 
       // Digests: clock-time scheduled, timezone-aware
@@ -580,13 +590,17 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
             if (obsMerged > 0) console.error(`[daemon] Consolidated ${obsMerged} similar observations`);
           } catch { /* ignore */ }
 
-          // Post-heartbeat: enqueue suggest if there was activity
+          // Post-heartbeat: reactive suggest boost (only if many observations + enough gap)
           const hbJob = _db.getJob(claimed.id);
           const hbResult = (hbJob?.result ?? {}) as Record<string, number>;
-          if ((hbResult.observationsCreated ?? 0) > 0) {
+          if ((hbResult.observationsCreated ?? 0) >= config.suggestReactiveThreshold) {
             const profile = _db.ensureProfile();
             if (profile.trustLevel >= 2) {
-              _db.enqueueJob('suggest', { priority: 8, triggerSource: 'reactive' });
+              const lastSuggest = _db.getLastJob('suggest');
+              const suggestGap = lastSuggest ? Date.now() - new Date(lastSuggest.startedAt).getTime() : Infinity;
+              if (suggestGap >= config.suggestReactiveMinGapMs) {
+                _db.enqueueJob('suggest', { priority: 8, triggerSource: 'reactive' });
+              }
             }
           }
 
@@ -700,6 +714,21 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
               };
             });
           } catch (e) { console.error('[daemon] Enrichment failed:', e instanceof Error ? e.message : e); }
+          finally { setPhase(null); }
+
+        } else if (jobType === 'repo-profile') {
+          setPhase('repo-profile');
+          try {
+            await executeJob(claimed, async () => {
+              const { profileRepos } = await import('../observation/repo-profile.js');
+              const result = await profileRepos(_db, config, config.repoProfileBatchSize);
+              return {
+                llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
+                phases: ['repo-profile'],
+                result: { reposProfiled: result.reposProfiled },
+              };
+            });
+          } catch (e) { console.error('[daemon] Repo profile failed:', e instanceof Error ? e.message : e); }
           finally { setPhase(null); }
         }
 
