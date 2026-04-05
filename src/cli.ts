@@ -846,6 +846,7 @@ memory
         return { error: `memory not found: ${memoryId}` };
       }
       db.updateMemory(memoryId, { archivedAt: new Date().toISOString() });
+      db.deleteEmbedding('memory_vectors', memoryId);
       return { ok: true, archived: memoryId, title: existing.title };
     }),
   );

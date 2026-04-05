@@ -86,6 +86,7 @@ export function maintainMemoryLayers(db: ShadowDatabase): LayerMaintenanceResult
     for (const mem of memories) {
       if (isExpired(mem)) {
         db.updateMemory(mem.id, { archivedAt: new Date().toISOString() });
+        db.deleteEmbedding('memory_vectors', mem.id);
         expired++;
       }
     }
