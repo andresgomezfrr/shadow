@@ -56,6 +56,9 @@ Autonomía por repo/scope configurable. Shadow mergea donde tiene permiso.
 
 ## Long-term — Arquitectura
 
+### Centralizar MCP server en el daemon → [`docs/plan-mcp-centralized.md`](docs/plan-mcp-centralized.md)
+MCP actualmente es proceso ephemeral con acceso directo a SQLite. Centralizar como HTTP proxy al daemon elimina dual-writer issues, tsx cache bugs, y habilita SSE events desde MCP actions.
+
 ### Concepto de Tarea/Iniciativa
 Agrupación temporal (1-2 semanas) con repos, PRs, docs y tickets.
 
