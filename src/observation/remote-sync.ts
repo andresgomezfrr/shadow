@@ -35,18 +35,25 @@ function gitExec(cmd: string, cwd: string, timeoutMs = 10_000): string | null {
  * then selective git fetch only for repos with detected changes.
  * Round-robin: processes repos sorted by lastFetchedAt ASC (oldest first).
  */
-export function remoteSyncRepos(db: ShadowDatabase, batchSize: number): RemoteSyncResult[] {
-  const repos = db.listRepos();
+export function remoteSyncRepos(db: ShadowDatabase, batchSize: number, repoId?: string): RemoteSyncResult[] {
+  const allRepos = db.listRepos();
   const results: RemoteSyncResult[] = [];
 
-  // Sort by lastFetchedAt ASC (NULL first = never fetched), then take batchSize
-  const sorted = [...repos].sort((a, b) => {
-    if (!a.lastFetchedAt && !b.lastFetchedAt) return 0;
-    if (!a.lastFetchedAt) return -1;
-    if (!b.lastFetchedAt) return 1;
-    return a.lastFetchedAt.localeCompare(b.lastFetchedAt);
-  });
-  const batch = sorted.slice(0, batchSize);
+  let batch: typeof allRepos;
+  if (repoId) {
+    // Specific repo requested (manual trigger)
+    const repo = allRepos.find(r => r.id === repoId);
+    batch = repo ? [repo] : [];
+  } else {
+    // Sort by lastFetchedAt ASC (NULL first = never fetched), then take batchSize
+    const sorted = [...allRepos].sort((a, b) => {
+      if (!a.lastFetchedAt && !b.lastFetchedAt) return 0;
+      if (!a.lastFetchedAt) return -1;
+      if (!b.lastFetchedAt) return 1;
+      return a.lastFetchedAt.localeCompare(b.lastFetchedAt);
+    });
+    batch = sorted.slice(0, batchSize);
+  }
 
   for (const repo of batch) {
     const now = new Date().toISOString();

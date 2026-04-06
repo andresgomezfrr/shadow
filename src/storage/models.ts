@@ -19,6 +19,8 @@ export type ProjectRecord = {
   startDate: string | null;
   endDate: string | null;
   notesMd: string | null;
+  contextMd: string | null;
+  contextUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

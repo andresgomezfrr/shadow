@@ -1,9 +1,12 @@
+import { useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
-import { fetchProjectDetail } from '../../api/client';
+import { fetchProjectDetail, triggerJobWithParams } from '../../api/client';
 import { Badge } from '../common/Badge';
+import { Markdown } from '../common/Markdown';
 import { ScoreBar } from '../common/ScoreBar';
 import { SEVERITY_COLORS, LAYER_COLORS } from '../../api/types';
+import { timeAgo } from '../../utils/format';
 
 const KIND_COLORS: Record<string, string> = {
   'long-term': 'text-blue bg-blue/15',
@@ -27,7 +30,23 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { data } = useApi(() => fetchProjectDetail(id!), [id], 30_000);
+  const { data, refresh } = useApi(() => fetchProjectDetail(id!), [id], 30_000);
+  const [analyzeTriggered, setAnalyzeTriggered] = useState(false);
+  const [profileTriggered, setProfileTriggered] = useState(false);
+
+  const handleAnalyze = useCallback(() => {
+    if (analyzeTriggered || !id) return;
+    setAnalyzeTriggered(true);
+    triggerJobWithParams('suggest-project', { projectId: id });
+    setTimeout(() => setAnalyzeTriggered(false), 15_000);
+  }, [analyzeTriggered, id]);
+
+  const handleProfile = useCallback(() => {
+    if (profileTriggered || !id) return;
+    setProfileTriggered(true);
+    triggerJobWithParams('project-profile', { projectId: id });
+    setTimeout(() => { setProfileTriggered(false); refresh(); }, 15_000);
+  }, [profileTriggered, id, refresh]);
 
   if (!data) return <div className="text-text-dim">Loading...</div>;
   if ('error' in data) return <div className="text-red">Project not found</div>;
@@ -41,6 +60,22 @@ export function ProjectDetailPage() {
           <h1 className="text-2xl font-semibold">{data.name}</h1>
           <Badge className={KIND_COLORS[data.kind] ?? 'text-text-dim bg-text-dim/15'}>{data.kind}</Badge>
           <Badge className={STATUS_COLORS[data.status] ?? 'text-text-dim bg-text-dim/15'}>{data.status}</Badge>
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={handleProfile}
+              disabled={profileTriggered}
+              className="px-3 py-1.5 rounded text-xs bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25 border-none cursor-pointer transition-colors disabled:opacity-50"
+            >
+              {profileTriggered ? 'Triggered' : data.contextMd ? 'Re-profile' : 'Profile'}
+            </button>
+            <button
+              onClick={handleAnalyze}
+              disabled={analyzeTriggered}
+              className="px-3 py-1.5 rounded text-xs bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25 border-none cursor-pointer transition-colors disabled:opacity-50"
+            >
+              {analyzeTriggered ? 'Triggered' : 'Analyze cross-repo'}
+            </button>
+          </div>
         </div>
         {data.description && <p className="text-text-dim mt-1">{data.description}</p>}
       </div>
@@ -92,6 +127,98 @@ export function ProjectDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Project Profile — structured */}
+      {data.contextMd && (() => {
+        const extractField = (md: string, field: string): string | null => {
+          const match = md.match(new RegExp(`\\*\\*${field}\\*\\*:\\s*(.+?)(?:\\n|$)`));
+          return match ? match[1].trim() : null;
+        };
+        const ctx = data.contextMd!;
+        const summary = extractField(ctx, 'Summary');
+        const architecture = extractField(ctx, 'Architecture');
+        const patterns = extractField(ctx, 'Cross-repo patterns');
+        const integration = extractField(ctx, 'Integration points');
+        const tensions = extractField(ctx, 'Active tensions');
+        const valuable = extractField(ctx, 'Valuable cross-repo suggestions');
+        const hasFields = summary || architecture || patterns;
+
+        if (!hasFields) {
+          return (
+            <div className="bg-card border border-border rounded-lg p-5 mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-text-muted uppercase tracking-wide">Project Profile</span>
+                {data.contextUpdatedAt && <span className="text-xs text-text-muted">Profiled {timeAgo(data.contextUpdatedAt)}</span>}
+              </div>
+              <Markdown>{ctx}</Markdown>
+            </div>
+          );
+        }
+
+        return (
+          <div className="mb-6 space-y-3">
+            {/* Summary */}
+            {summary && (
+              <div className="bg-card border border-border rounded-lg px-5 py-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-text-muted uppercase tracking-wide">Project Profile</span>
+                  {data.contextUpdatedAt && <span className="text-xs text-text-muted">Profiled {timeAgo(data.contextUpdatedAt)}</span>}
+                </div>
+                <p className="text-sm text-text-dim">{summary}</p>
+              </div>
+            )}
+
+            {/* Architecture + Patterns */}
+            {(architecture || patterns || integration) && (
+              <div className="bg-card border border-border rounded-lg p-4 space-y-2">
+                <div className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Architecture & Patterns</div>
+                {architecture && (
+                  <div className="text-xs"><span className="text-text-muted">Architecture:</span> <span className="text-text-dim">{architecture}</span></div>
+                )}
+                {patterns && (
+                  <div className="text-xs"><span className="text-text-muted">Cross-repo patterns:</span> <span className="text-text-dim">{patterns}</span></div>
+                )}
+                {integration && (
+                  <div className="text-xs"><span className="text-text-muted">Integration points:</span> <span className="text-text-dim">{integration}</span></div>
+                )}
+              </div>
+            )}
+
+            {/* Tensions + Suggestions */}
+            {(tensions || valuable) && (
+              <div className="bg-card border border-border rounded-lg p-4 space-y-2">
+                <div className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Insights</div>
+                {tensions && (
+                  <div className="text-xs">
+                    <span className="text-orange">⚠ Tensions:</span>{' '}
+                    <span className="text-text-dim">{tensions}</span>
+                  </div>
+                )}
+                {valuable && (() => {
+                  // Split numbered items like "(1) foo (2) bar" into a list
+                  const items = valuable.split(/\(\d+\)\s*/).filter(Boolean);
+                  if (items.length > 1) {
+                    return (
+                      <div className="text-xs">
+                        <span className="text-green">✓ Opportunities:</span>
+                        <ul className="ml-3 mt-1 space-y-1">
+                          {items.map((item, i) => <li key={i} className="text-text-dim">- {item.replace(/\.\s*$/, '')}</li>)}
+                        </ul>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="text-xs">
+                      <span className="text-green">✓ Opportunities:</span>{' '}
+                      <span className="text-text-dim">{valuable}</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 2-col grid: Observations + Suggestions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

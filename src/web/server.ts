@@ -83,10 +83,15 @@ async function handleApi(
         jobSchedule: {
           heartbeat: { intervalMs: 30 * 60 * 1000, nextAt: nextHeartbeatAt },
           suggest: (() => {
-            const lastSug = db.getLastJob('suggest');
-            const intervalMs = config.suggestIntervalMs;
-            const nextAt = lastSug ? new Date(new Date(lastSug.startedAt).getTime() + intervalMs).toISOString() : null;
-            return { intervalMs, nextAt };
+            return { trigger: 'reactive post-heartbeat', nextAt: null };
+          })(),
+          'suggest-deep': (() => {
+            const lastSd = db.getLastJob('suggest-deep');
+            return { trigger: 'periodic + first-scan', nextAt: null, lastRanAt: lastSd?.startedAt ?? null };
+          })(),
+          'suggest-project': (() => {
+            const lastSp = db.getLastJob('suggest-project');
+            return { trigger: 'reactive after deep scan', nextAt: null, lastRanAt: lastSp?.startedAt ?? null };
           })(),
           consolidate: (() => {
             const lastCon = db.getLastJob('consolidate');
@@ -111,6 +116,10 @@ async function handleApi(
               enabled: config.repoProfileEnabled,
               lastRanAt: lastRp?.startedAt ?? null,
             };
+          })(),
+          'project-profile': (() => {
+            const lastPp = db.getLastJob('project-profile');
+            return { trigger: 'reactive after repo-profile', nextAt: null, lastRanAt: lastPp?.startedAt ?? null };
           })(),
           'context-enrich': (() => {
             const prefs = profile.preferences as Record<string, unknown> | undefined;
@@ -1026,7 +1035,7 @@ async function handleApi(
     const jobTriggerMatch = pathname.match(/^\/api\/jobs\/trigger\/(.+)$/);
     if (jobTriggerMatch) {
       const type = decodeURIComponent(jobTriggerMatch[1]);
-      const VALID_TYPES = new Set(['heartbeat', 'suggest', 'consolidate', 'reflect', 'remote-sync', 'repo-profile', 'context-enrich', 'digest-daily', 'digest-weekly', 'digest-brag']);
+      const VALID_TYPES = new Set(['heartbeat', 'suggest', 'suggest-deep', 'suggest-project', 'consolidate', 'reflect', 'remote-sync', 'repo-profile', 'project-profile', 'context-enrich', 'digest-daily', 'digest-weekly', 'digest-brag']);
       if (!VALID_TYPES.has(type)) {
         return json(res, { error: `Unknown job type: ${type}` }, 400);
       }
@@ -1034,10 +1043,11 @@ async function handleApi(
         return json(res, { error: `${type} already queued or running` }, 409);
       }
       const PRIORITIES: Record<string, number> = {
-        heartbeat: 10, suggest: 8, reflect: 5, 'digest-daily': 5, 'digest-weekly': 5, 'digest-brag': 5,
-        'context-enrich': 4, consolidate: 3, 'repo-profile': 3, 'remote-sync': 2,
+        heartbeat: 10, suggest: 8, 'suggest-deep': 6, 'suggest-project': 5, reflect: 5, 'digest-daily': 5, 'digest-weekly': 5, 'digest-brag': 5,
+        'context-enrich': 4, 'project-profile': 4, consolidate: 3, 'repo-profile': 3, 'remote-sync': 2,
       };
-      db.enqueueJob(type, { priority: PRIORITIES[type] ?? 5, triggerSource: 'manual' });
+      const body = await readBody(req).then(b => b ? JSON.parse(b) : {}).catch(() => ({}));
+      db.enqueueJob(type, { priority: PRIORITIES[type] ?? 5, triggerSource: 'manual', params: Object.keys(body).length > 0 ? body : undefined });
       return json(res, { triggered: true, type });
     }
 

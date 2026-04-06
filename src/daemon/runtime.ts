@@ -445,10 +445,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         _db.enqueueJob('context-enrich', { priority: 4 });
       }
 
-      // Suggest v2: scheduled + reactive boost (replaces pure-reactive trigger)
-      if (shouldEnqueue('suggest', config.suggestIntervalMs)) {
-        _db.enqueueJob('suggest', { priority: 8 });
-      }
+      // Suggest: reactive only (triggered by heartbeat handler when activity detected)
+      // No scheduled timer — activity score determines when to suggest
 
       // Digests: clock-time scheduled, timezone-aware, with backfill for missed days
       const userTz = _db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -507,6 +505,33 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       // Brag: normal scheduling only (quarterly, no backfill)
       if (!_db.hasQueuedOrRunning('digest-brag') && isScheduleReady(DIGEST_SCHEDULES['digest-brag'], userTz, _db.getLastJob('digest-brag')?.startedAt)) {
         _db.enqueueJob('digest-brag', { priority: 5 });
+      }
+
+      // Suggest-deep: periodic deep scan — find the repo with highest need
+      if (!_db.hasQueuedOrRunning('suggest-deep')) {
+        const repos = _db.listRepos();
+        for (const repo of repos) {
+          const lastDeep = _db.listJobs({ type: 'suggest-deep', status: 'completed', limit: 50 })
+            .find(j => (j.result as Record<string, unknown>)?.repoId === repo.id);
+
+          if (!lastDeep) continue; // first-time handled by repo-profile trigger
+
+          const daysSince = (Date.now() - new Date(lastDeep.startedAt).getTime()) / (24 * 60 * 60 * 1000);
+          const { execSync } = await import('node:child_process');
+          let commitsSince = 0;
+          try {
+            const log = execSync(`git log --since="${lastDeep.startedAt}" --oneline`, { cwd: repo.path, encoding: 'utf-8', timeout: 5000, stdio: 'pipe' }).trim();
+            commitsSince = log ? log.split('\n').length : 0;
+          } catch { /* ignore */ }
+
+          const isDormant = commitsSince === 0 && daysSince >= config.suggestDeepDormantThresholdDays;
+          const maxDays = isDormant ? config.suggestDeepDormantIntervalDays : config.suggestDeepActiveIntervalDays;
+
+          if (commitsSince >= config.suggestDeepMinCommits || daysSince >= maxDays) {
+            _db.enqueueJob('suggest-deep', { priority: 6, params: { repoId: repo.id } });
+            break; // one at a time
+          }
+        }
       }
 
       // === Phase 2: Parallel job execution via JobQueue ===

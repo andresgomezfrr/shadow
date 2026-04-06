@@ -474,7 +474,7 @@ export class ShadowDatabase {
       .map(mapProject);
   }
 
-  updateProject(id: string, updates: Partial<Pick<ProjectRecord, 'name' | 'kind' | 'description' | 'status' | 'repoIds' | 'systemIds' | 'contactIds' | 'startDate' | 'endDate' | 'notesMd'>>): ProjectRecord {
+  updateProject(id: string, updates: Partial<Pick<ProjectRecord, 'name' | 'kind' | 'description' | 'status' | 'repoIds' | 'systemIds' | 'contactIds' | 'startDate' | 'endDate' | 'notesMd' | 'contextMd' | 'contextUpdatedAt'>>): ProjectRecord {
     const sets: string[] = [];
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
@@ -1844,6 +1844,8 @@ function mapProject(row: unknown): ProjectRecord {
     startDate: strOrNull(d.start_date),
     endDate: strOrNull(d.end_date),
     notesMd: strOrNull(d.notes_md),
+    contextMd: strOrNull(d.context_md),
+    contextUpdatedAt: strOrNull(d.context_updated_at),
     createdAt: str(d.created_at),
     updatedAt: str(d.updated_at),
   };

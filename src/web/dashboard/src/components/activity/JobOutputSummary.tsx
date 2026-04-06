@@ -147,6 +147,26 @@ export function JobOutputSummary({ entry }: Props) {
     return chip(label, 'text-cyan bg-cyan/15');
   }
 
+  if (type === 'suggest-deep') {
+    const count = num(r, 'suggestionsCreated');
+    const repoName = str(r, 'repoName');
+    if (count === 0) return <span className="text-text-muted text-xs">deep scan{repoName ? ` ${repoName}` : ''} — no suggestions</span>;
+    return chip(`deep scan: ${count} suggestion${count !== 1 ? 's' : ''}${repoName ? ` for ${repoName}` : ''}`, 'text-green-400 bg-green-600/15');
+  }
+
+  if (type === 'suggest-project') {
+    const count = num(r, 'suggestionsCreated');
+    const projectName = str(r, 'projectName');
+    if (count === 0) return <span className="text-text-muted text-xs">cross-repo{projectName ? ` ${projectName}` : ''} — no suggestions</span>;
+    return chip(`cross-repo: ${count} suggestion${count !== 1 ? 's' : ''}${projectName ? ` for ${projectName}` : ''}`, 'text-emerald-300 bg-emerald-400/15');
+  }
+
+  if (type === 'project-profile') {
+    const projectName = str(r, 'projectName');
+    const repoCount = num(r, 'repoCount');
+    return chip(`profiled ${projectName ?? 'project'} (${repoCount} repos)`, 'text-emerald-300 bg-emerald-400/15');
+  }
+
   if (type === 'run:plan' || type === 'run:execution') {
     return (
       <span className="inline-flex items-center gap-1.5">

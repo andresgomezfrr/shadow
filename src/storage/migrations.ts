@@ -698,6 +698,14 @@ export const migrations: Migration[] = [
       ALTER TABLE repos ADD COLUMN context_updated_at TEXT;
     `,
   },
+  {
+    version: 32,
+    name: 'project_context',
+    sql: `
+      ALTER TABLE projects ADD COLUMN context_md TEXT;
+      ALTER TABLE projects ADD COLUMN context_updated_at TEXT;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

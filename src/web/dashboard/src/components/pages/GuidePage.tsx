@@ -6,10 +6,12 @@ import { GuideCli } from './guide/GuideCli';
 import { GuideMcpTools } from './guide/GuideMcpTools';
 import { GuideStatusLine } from './guide/GuideStatusLine';
 import { GuideConfig } from './guide/GuideConfig';
+import { GuideJobs } from './guide/GuideJobs';
 
 const SECTIONS = [
   { label: 'Overview', value: 'overview' },
   { label: 'Concepts', value: 'concepts' },
+  { label: 'Jobs', value: 'jobs' },
   { label: 'CLI', value: 'cli' },
   { label: 'MCP Tools', value: 'mcp-tools' },
   { label: 'Status Line', value: 'status-line' },
@@ -28,6 +30,7 @@ export function GuidePage() {
 
       {params.section === 'overview' && <GuideOverview />}
       {params.section === 'concepts' && <GuideConcepts />}
+      {params.section === 'jobs' && <GuideJobs />}
       {params.section === 'cli' && <GuideCli />}
       {params.section === 'mcp-tools' && <GuideMcpTools />}
       {params.section === 'status-line' && <GuideStatusLine />}

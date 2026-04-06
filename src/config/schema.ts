@@ -13,6 +13,9 @@ export const ModelsSchema = z.object({
   digestBrag: z.string().default('opus'),
   repoProfile: z.string().default('sonnet'),
   suggestValidate: z.string().default('opus'),
+  suggestDeep: z.string().default('opus'),
+  suggestProject: z.string().default('opus'),
+  projectProfile: z.string().default('opus'),
 });
 
 export const EffortsSchema = z.object({
@@ -20,6 +23,9 @@ export const EffortsSchema = z.object({
   suggest: z.string().default('high'),
   consolidate: z.string().default('medium'),
   runner: z.string().default('high'),
+  suggestDeep: z.string().default('high'),
+  suggestProject: z.string().default('high'),
+  projectProfile: z.string().default('high'),
 });
 
 export const ConfigSchema = z.object({
@@ -51,12 +57,18 @@ export const ConfigSchema = z.object({
     digestBrag: 'opus',
     repoProfile: 'sonnet',
     suggestValidate: 'opus',
+    suggestDeep: 'opus',
+    suggestProject: 'opus',
+    projectProfile: 'opus',
   }),
   efforts: EffortsSchema.default({
     analyze: 'medium',
     suggest: 'high',
     consolidate: 'medium',
     runner: 'high',
+    suggestDeep: 'high',
+    suggestProject: 'high',
+    projectProfile: 'high',
   }),
   locale: z.string().default('es'),
   watcherEnabled: z.coerce.boolean().default(true),
@@ -77,8 +89,14 @@ export const ConfigSchema = z.object({
   repoProfileIntervalMs: z.coerce.number().int().positive().default(24 * 60 * 60 * 1000),
   repoProfileBatchSize: z.coerce.number().int().min(1).max(20).default(5),
   suggestIntervalMs: z.coerce.number().int().positive().default(12 * 60 * 60 * 1000),
-  suggestReactiveThreshold: z.coerce.number().int().min(1).default(3),
-  suggestReactiveMinGapMs: z.coerce.number().int().positive().default(4 * 60 * 60 * 1000),
+  suggestReactiveThreshold: z.coerce.number().int().min(1).default(1),
+  suggestReactiveMinGapMs: z.coerce.number().int().positive().default(1 * 60 * 60 * 1000),
+  suggestDeepMinCommits: z.coerce.number().int().min(1).default(20),
+  suggestDeepActiveIntervalDays: z.coerce.number().int().min(1).default(7),
+  suggestDeepDormantIntervalDays: z.coerce.number().int().min(1).default(30),
+  suggestDeepDormantThresholdDays: z.coerce.number().int().min(1).default(14),
+  suggestProjectMinGapDays: z.coerce.number().int().min(1).default(7),
+  projectProfileMinGapMs: z.coerce.number().int().positive().default(4 * 60 * 60 * 1000),
 });
 
 /** Validates profile fields coming from the API / MCP. */

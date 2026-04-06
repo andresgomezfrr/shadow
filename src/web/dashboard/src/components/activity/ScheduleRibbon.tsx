@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useNow, formatCountdown } from '../../utils/format';
+import { useApi } from '../../hooks/useApi';
 import { Badge } from '../common/Badge';
-import { triggerJob } from '../../api/client';
+import { triggerJob, triggerJobWithParams, fetchRepos, fetchProjects } from '../../api/client';
 
 type ScheduleEntry = {
   intervalMs?: number;
@@ -19,10 +20,13 @@ type Props = {
 const TYPE_COLORS: Record<string, string> = {
   heartbeat: 'bg-purple-500/20 text-purple-300',
   suggest: 'bg-green-500/20 text-green-300',
+  'suggest-deep': 'bg-green-600/20 text-green-400',
+  'suggest-project': 'bg-emerald-400/20 text-emerald-300',
   consolidate: 'bg-orange-500/20 text-orange-300',
   reflect: 'bg-blue-500/20 text-blue-300',
   'remote-sync': 'bg-pink-400/20 text-pink-300',
   'repo-profile': 'bg-teal-400/20 text-teal-300',
+  'project-profile': 'bg-emerald-400/20 text-emerald-300',
   'context-enrich': 'bg-amber-400/20 text-amber-300',
   'digest-daily': 'bg-cyan-500/20 text-cyan-300',
   'digest-weekly': 'bg-cyan-500/20 text-cyan-300',
@@ -32,25 +36,38 @@ const TYPE_COLORS: Record<string, string> = {
 const TRIGGER_COLORS: Record<string, string> = {
   heartbeat: 'bg-purple-500/15 text-purple-300 hover:bg-purple-500/25',
   suggest: 'bg-green-500/15 text-green-300 hover:bg-green-500/25',
+  'suggest-deep': 'bg-green-600/15 text-green-400 hover:bg-green-600/25',
+  'suggest-project': 'bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25',
   consolidate: 'bg-orange-500/15 text-orange-300 hover:bg-orange-500/25',
   reflect: 'bg-blue-500/15 text-blue-300 hover:bg-blue-500/25',
   'remote-sync': 'bg-pink-400/15 text-pink-300 hover:bg-pink-400/25',
   'repo-profile': 'bg-teal-400/15 text-teal-300 hover:bg-teal-400/25',
+  'project-profile': 'bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25',
   'context-enrich': 'bg-amber-400/15 text-amber-300 hover:bg-amber-400/25',
   'digest-daily': 'bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25',
   'digest-weekly': 'bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25',
   'digest-brag': 'bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25',
 };
 
-const JOB_ORDER = ['heartbeat', 'suggest', 'consolidate', 'reflect', 'remote-sync', 'repo-profile', 'context-enrich', 'digest-daily', 'digest-weekly', 'digest-brag'];
+const JOB_GROUPS: Array<{ label: string; jobs: string[] }> = [
+  { label: 'Analysis', jobs: ['heartbeat', 'suggest', 'suggest-deep', 'suggest-project'] },
+  { label: 'Knowledge', jobs: ['consolidate', 'reflect'] },
+  { label: 'Sync', jobs: ['remote-sync', 'repo-profile', 'project-profile', 'context-enrich'] },
+  { label: 'Digests', jobs: ['digest-daily', 'digest-weekly', 'digest-brag'] },
+];
+
+const ALL_JOBS = JOB_GROUPS.flatMap(g => g.jobs);
 
 const JOB_DESCRIPTIONS: Record<string, string> = {
   heartbeat: 'Discovers active projects, extracts memories, generates observations',
-  suggest: 'Analyzes observations to generate code suggestions (scheduled + reactive)',
+  suggest: 'Incremental: analyzes recent changes in active repos (reactive post-heartbeat)',
+  'suggest-deep': 'Full scan: deep codebase review — architecture, tech debt, features (20+ commits or 7d)',
+  'suggest-project': 'Cross-repo: finds opportunities across project repos (reactive after deep scan)',
   consolidate: 'Promotes/demotes memories between layers, synthesizes meta-patterns',
   reflect: '2-phase soul reflection: extract deltas (Sonnet) → evolve soul (Opus)',
   'remote-sync': 'Lightweight git ls-remote to detect remote changes across repos',
   'repo-profile': 'Reactive: re-profiles repos when remote-sync detects new commits (2h min gap)',
+  'project-profile': 'Reactive: synthesizes cross-repo project context when repos are re-profiled',
   'context-enrich': 'Queries external MCP servers for deployment, CI/CD, calendar data',
   'digest-daily': 'Daily standup summary (3-5 bullets)',
   'digest-weekly': 'Weekly 1:1 summary from daily digests',
@@ -67,15 +84,25 @@ function intervalLabel(entry: ScheduleEntry): string {
   return 'on demand';
 }
 
+const REPO_JOBS = new Set(['suggest', 'suggest-deep', 'repo-profile', 'remote-sync']);
+const PROJECT_JOBS = new Set(['suggest-project', 'project-profile']);
+
 export function ScheduleRibbon({ schedule, onTrigger }: Props) {
   const now = useNow();
   const [expanded, setExpanded] = useState(false);
   const [triggeredSet, setTriggeredSet] = useState<Set<string>>(new Set());
+  const [selectorFor, setSelectorFor] = useState<string | null>(null); // which job type has selector open
 
-  const handleTriggerJob = useCallback(async (jobType: string) => {
-    const result = await triggerJob(jobType);
+  const { data: repos } = useApi(fetchRepos, [], 60_000);
+  const { data: projects } = useApi(() => fetchProjects(), [], 60_000);
+
+  const handleTriggerJob = useCallback(async (jobType: string, params?: Record<string, string>) => {
+    const result = params
+      ? await triggerJobWithParams(jobType, params)
+      : await triggerJob(jobType);
     if (result) {
       setTriggeredSet(prev => new Set(prev).add(jobType));
+      setSelectorFor(null);
       setTimeout(() => setTriggeredSet(prev => {
         const next = new Set(prev);
         next.delete(jobType);
@@ -85,12 +112,20 @@ export function ScheduleRibbon({ schedule, onTrigger }: Props) {
     }
   }, [onTrigger]);
 
+  const handleTriggerClick = useCallback((jobType: string) => {
+    if (REPO_JOBS.has(jobType) || PROJECT_JOBS.has(jobType)) {
+      setSelectorFor(prev => prev === jobType ? null : jobType);
+    } else {
+      handleTriggerJob(jobType);
+    }
+  }, [handleTriggerJob]);
+
   const isTriggered = (key: string) => triggeredSet.has(key);
 
   if (!schedule) return null;
 
   // Sort entries by next-at for the collapsed preview
-  const sorted = JOB_ORDER
+  const sorted = ALL_JOBS
     .filter((k) => schedule[k]?.nextAt)
     .sort((a, b) => {
       const ta = new Date(schedule[a]!.nextAt!).getTime();
@@ -131,29 +166,92 @@ export function ScheduleRibbon({ schedule, onTrigger }: Props) {
           collapse &#x25B4;
         </button>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {JOB_ORDER.filter((k) => schedule[k]).map((key) => {
-          const entry = schedule[key]!;
-          const disabled = entry.enabled === false;
+      <div className="space-y-3">
+        {JOB_GROUPS.map((group, gi) => {
+          const visibleJobs = group.jobs.filter(k => schedule[k]);
+          if (visibleJobs.length === 0) return null;
           return (
-            <div key={key} className={`flex flex-col gap-0.5 ${disabled ? 'opacity-50' : ''}`}>
-              <div className="flex items-center gap-2">
-                <Badge className={TYPE_COLORS[key] ?? 'text-text-dim bg-border'}>{key}</Badge>
-                <span className="text-text-muted">{intervalLabel(entry)}</span>
-                <span className="font-mono text-text ml-auto">
-                  {disabled ? 'disabled' : formatCountdown(entry.nextAt, now)}
-                </span>
-                <button
-                  onClick={() => handleTriggerJob(key)}
-                  disabled={isTriggered(key) || entry.enabled === false}
-                  className={`px-2 py-0.5 rounded border-none cursor-pointer transition-colors disabled:opacity-50 text-[10px] ${TRIGGER_COLORS[key] ?? 'bg-accent-soft text-accent hover:bg-accent/25'}`}
-                >
-                  {isTriggered(key) ? 'Triggered' : 'Trigger'}
-                </button>
+            <div key={group.label}>
+              {gi > 0 && <div className="border-t border-border/30 mb-2" />}
+              <div className="text-[10px] text-text-muted uppercase tracking-wide mb-1.5">{group.label}</div>
+              <div className="space-y-1.5">
+                {visibleJobs.map((key) => {
+                  const entry = schedule[key]!;
+                  const disabled = entry.enabled === false;
+                  return (
+                    <div key={key} className={`flex flex-col gap-0.5 ${disabled ? 'opacity-50' : ''}`}>
+                      <div className="flex items-center gap-2">
+                        <Badge className={TYPE_COLORS[key] ?? 'text-text-dim bg-border'}>{key}</Badge>
+                        <span className="text-text-muted">{intervalLabel(entry)}</span>
+                        <span className="font-mono text-text ml-auto">
+                          {disabled ? 'disabled' : formatCountdown(entry.nextAt, now)}
+                        </span>
+                        <button
+                          onClick={() => handleTriggerClick(key)}
+                          disabled={isTriggered(key) || entry.enabled === false}
+                          className={`px-2 py-0.5 rounded border-none cursor-pointer transition-colors disabled:opacity-50 text-[10px] ${TRIGGER_COLORS[key] ?? 'bg-accent-soft text-accent hover:bg-accent/25'}`}
+                        >
+                          {isTriggered(key) ? 'Triggered' : 'Trigger'}
+                        </button>
+                      </div>
+                      {/* Entity selector for repo/project jobs */}
+                      {selectorFor === key && REPO_JOBS.has(key) && repos && (
+                        <div className="flex items-center gap-1.5 pl-1 mt-1 animate-fade-in">
+                          <span className="text-[10px] text-text-muted">Repo:</span>
+                          {repos.length <= 6 ? (
+                            repos.map(r => (
+                              <button
+                                key={r.id}
+                                onClick={() => handleTriggerJob(key, { repoId: r.id })}
+                                className={`px-2 py-0.5 rounded text-[10px] border-none cursor-pointer transition-colors ${TRIGGER_COLORS[key] ?? 'bg-accent-soft text-accent'}`}
+                              >
+                                {r.name}
+                              </button>
+                            ))
+                          ) : (
+                            <select
+                              onChange={(e) => { if (e.target.value) handleTriggerJob(key, { repoId: e.target.value }); }}
+                              defaultValue=""
+                              className="bg-bg border border-border rounded px-2 py-0.5 text-[10px] text-text"
+                            >
+                              <option value="" disabled>Select repo...</option>
+                              {repos.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                            </select>
+                          )}
+                        </div>
+                      )}
+                      {selectorFor === key && PROJECT_JOBS.has(key) && projects && (
+                        <div className="flex items-center gap-1.5 pl-1 mt-1 animate-fade-in">
+                          <span className="text-[10px] text-text-muted">Project:</span>
+                          {projects.length <= 6 ? (
+                            projects.map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => handleTriggerJob(key, { projectId: p.id })}
+                                className={`px-2 py-0.5 rounded text-[10px] border-none cursor-pointer transition-colors ${TRIGGER_COLORS[key] ?? 'bg-accent-soft text-accent'}`}
+                              >
+                                {p.name}
+                              </button>
+                            ))
+                          ) : (
+                            <select
+                              onChange={(e) => { if (e.target.value) handleTriggerJob(key, { projectId: e.target.value }); }}
+                              defaultValue=""
+                              className="bg-bg border border-border rounded px-2 py-0.5 text-[10px] text-text"
+                            >
+                              <option value="" disabled>Select project...</option>
+                              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                          )}
+                        </div>
+                      )}
+                      {JOB_DESCRIPTIONS[key] && (
+                        <span className="text-text-muted/70 text-[10px] pl-1">{JOB_DESCRIPTIONS[key]}</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              {JOB_DESCRIPTIONS[key] && (
-                <span className="text-text-muted/70 text-[10px] pl-1">{JOB_DESCRIPTIONS[key]}</span>
-              )}
             </div>
           );
         })}

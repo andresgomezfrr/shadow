@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { timeAgo } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
-import { fetchRepos, triggerJob } from '../../api/client';
+import { fetchRepos, triggerJob, triggerJobWithParams } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
@@ -135,6 +135,7 @@ function RepoCard({
   onToggle: () => void;
 }) {
   const [reprofileTriggered, setReprofileTriggered] = useState(false);
+  const [deepScanTriggered, setDeepScanTriggered] = useState(false);
   const [showCorrection, setShowCorrection] = useState(false);
 
   const languageHint = repo.languageHint;
@@ -150,6 +151,17 @@ function RepoCard({
       setTimeout(() => setReprofileTriggered(false), 15_000);
     },
     [reprofileTriggered],
+  );
+
+  const handleDeepScan = useCallback(
+    (e?: React.MouseEvent) => {
+      e?.stopPropagation();
+      if (deepScanTriggered) return;
+      setDeepScanTriggered(true);
+      triggerJobWithParams('suggest-deep', { repoId: repo.id });
+      setTimeout(() => setDeepScanTriggered(false), 15_000);
+    },
+    [deepScanTriggered, repo.id],
   );
 
   return (
@@ -230,6 +242,13 @@ function RepoCard({
               className="px-3 py-1 rounded bg-orange-400/15 text-orange-300 hover:bg-orange-400/25 border-none cursor-pointer transition-colors text-xs"
             >
               Correct
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDeepScan(e); }}
+              disabled={deepScanTriggered}
+              className="px-3 py-1 rounded bg-green-600/15 text-green-400 hover:bg-green-600/25 border-none cursor-pointer transition-colors disabled:opacity-50 text-xs"
+            >
+              {deepScanTriggered ? 'Triggered' : 'Deep Scan'}
             </button>
             <button
               onClick={handleReprofile}

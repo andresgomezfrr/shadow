@@ -197,7 +197,17 @@ async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> {
 
   ctx.setPhase('suggest');
 
-  const unprocessed = ctx.db.listObservations({ processed: false });
+  // If a specific repoId was passed (manual trigger), filter observations to that repo
+  const job = ctx.db.getJob(ctx.jobId);
+  const targetRepoId = (job?.result as Record<string, unknown>)?.repoId as string | undefined;
+
+  let unprocessed = ctx.db.listObservations({ processed: false });
+  if (targetRepoId) {
+    unprocessed = unprocessed.filter(o =>
+      o.entities?.some(e => e.type === 'repo' && e.id === targetRepoId),
+    );
+  }
+
   const profile = ctx.db.ensureProfile();
   const actCtx = {
     config: ctx.config, db: ctx.db, profile,
@@ -215,6 +225,7 @@ async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> {
     result: {
       suggestionsCreated: suggestResult.suggestionsCreated,
       suggestionItems,
+      ...(targetRepoId ? { repoId: targetRepoId } : {}),
     },
   };
 }
@@ -345,8 +356,12 @@ function createDigestHandler(digestType: string): (ctx: JobContext, shared: Daem
 async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedState): Promise<JobHandlerResult> {
   ctx.setPhase('remote-sync');
 
+  // If a specific repoId was passed (manual trigger), only sync that repo
+  const job = ctx.db.getJob(ctx.jobId);
+  const targetRepoId = (job?.result as Record<string, unknown>)?.repoId as string | undefined;
+
   const { remoteSyncRepos } = await import('../observation/remote-sync.js');
-  const results = remoteSyncRepos(ctx.db, ctx.config.remoteSyncBatchSize);
+  const results = remoteSyncRepos(ctx.db, ctx.config.remoteSyncBatchSize, targetRepoId);
   const withChanges = results.filter(r => r.newRemoteCommits > 0);
   if (withChanges.length > 0) {
     shared.pendingRemoteSyncResults.push(...withChanges);
@@ -388,6 +403,43 @@ async function handleRepoProfile(ctx: JobContext): Promise<JobHandlerResult> {
     .filter(r => r.contextUpdatedAt && new Date(r.contextUpdatedAt).getTime() > Date.now() - 5 * 60 * 1000)
     .map(r => r.name);
 
+  // Reactive triggers after profiling
+
+  // 1. First-time suggest-deep trigger for newly profiled repos
+  try {
+    const allRepos = ctx.db.listRepos();
+    for (const rName of repoNames) {
+      const r = allRepos.find(rr => rr.name === rName);
+      if (!r) continue;
+      const prevDeepScans = ctx.db.listJobs({ type: 'suggest-deep', limit: 50 })
+        .filter(j => (j.result as Record<string, unknown>)?.repoId === r.id);
+      if (prevDeepScans.length === 0 && !ctx.db.hasQueuedOrRunning('suggest-deep')) {
+        ctx.db.enqueueJob('suggest-deep', { priority: 6, triggerSource: 'first-scan', params: { repoId: r.id } });
+        console.error(`[daemon] First-time suggest-deep triggered for ${r.name}`);
+        break; // one at a time
+      }
+    }
+  } catch { /* best-effort */ }
+
+  // 2. Reactive project-profile trigger
+  try {
+    const projects = ctx.db.listProjects().filter(p => {
+      const rIds: string[] = p.repoIds ?? [];
+      return rIds.length >= 2;
+    });
+    for (const project of projects) {
+      if (!ctx.db.hasQueuedOrRunning('project-profile')) {
+        const lastPp = ctx.db.getLastJob('project-profile');
+        const gap = lastPp ? Date.now() - new Date(lastPp.startedAt).getTime() : Infinity;
+        if (gap >= ctx.config.projectProfileMinGapMs) {
+          ctx.db.enqueueJob('project-profile', { priority: 4, triggerSource: 'reactive', params: { projectId: project.id } });
+          console.error(`[daemon] Reactive project-profile triggered for ${project.name}`);
+          break;
+        }
+      }
+    }
+  } catch { /* best-effort */ }
+
   return {
     llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
     phases: ['repo-profile'],
@@ -415,6 +467,434 @@ async function handleContextEnrich(ctx: JobContext): Promise<JobHandlerResult> {
   };
 }
 
+// --- Project Profile Handler ---
+
+async function handleProjectProfile(ctx: JobContext): Promise<JobHandlerResult> {
+  ctx.setPhase('profile');
+
+  const job = ctx.db.getJob(ctx.jobId);
+  const projectId = (job?.result as Record<string, unknown>)?.projectId as string;
+  if (!projectId) return { llmCalls: 0, tokensUsed: 0, phases: ['profile'], result: { error: 'no projectId' } };
+
+  const project = ctx.db.getProject(projectId);
+  if (!project) return { llmCalls: 0, tokensUsed: 0, phases: ['profile'], result: { error: 'project not found' } };
+
+  const repoIds: string[] = project.repoIds ?? [];
+  const repos = repoIds.map(id => ctx.db.getRepo(id)).filter(Boolean);
+  const repoProfiles = repos.map(r => r!.contextMd ? `### ${r!.name}\n${r!.contextMd}` : `### ${r!.name}\nNo profile yet.`);
+
+  // Gather project context
+  const observations = ctx.db.listObservations({ limit: 20 })
+    .filter(o => o.entities?.some(e => e.type === 'project' && e.id === projectId));
+  const memories = ctx.db.listMemories({ limit: 20, archived: false })
+    .filter(m => m.entities?.some(e => e.type === 'project' && e.id === projectId));
+  const systems = (project.systemIds ?? []).map(id => ctx.db.getSystem(id)).filter(Boolean);
+
+  const prompt = `You are Shadow, analyzing project "${project.name}" to create a cross-repo context profile.
+This profile will be used to calibrate cross-repo suggestions and understand the project holistically.
+
+## Repos in this project (${repos.length})
+${repoProfiles.join('\n\n')}
+
+${systems.length > 0 ? `## Systems\n${systems.map(s => `- ${s!.name} (${s!.kind}): ${s!.description ?? 'no description'}`).join('\n')}` : ''}
+
+${observations.length > 0 ? `## Active Observations\n${observations.map(o => `- [${o.severity}] ${o.title}`).join('\n')}` : ''}
+
+${memories.length > 0 ? `## Relevant Memories\n${memories.map(m => `- ${m.title}`).join('\n')}` : ''}
+
+Produce a structured project profile in markdown with EXACTLY this format:
+
+## ${project.name}
+**Summary**: (2-3 sentences: what this project is, why it exists, how the repos work together)
+**Architecture**: (how repos relate — who calls whom, shared infrastructure, deployment model)
+**Cross-repo patterns**: (shared tech, conventions, design patterns across repos)
+**Integration points**: (runtime deps, shared DBs, APIs between repos, config sharing)
+**Active tensions**: (divergence, parity gaps, naming drift, version mismatches)
+**Valuable cross-repo suggestions**: (what would help this project as a whole — be specific)
+
+Be concise. Each field 1-3 lines max. Respond with JSON: { "contextMd": "..." }`;
+
+  const { selectAdapter } = await import('../backend/index.js');
+  const adapter = selectAdapter(ctx.config);
+  const model = ctx.config.models.projectProfile;
+  const effort = ctx.config.efforts.projectProfile;
+
+  const result = await adapter.execute({
+    repos: repos.map(r => ({ id: r!.id, name: r!.name, path: r!.path })),
+    title: `Project Profile: ${project.name}`,
+    goal: 'Analyze project cross-repo context',
+    prompt,
+    relevantMemories: [],
+    model,
+    effort,
+    allowedTools: ['Read', 'Grep', 'Glob'],
+  });
+
+  const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+
+  if (result.status === 'success' && result.output) {
+    const { safeParseJson } = await import('../backend/json-repair.js');
+    const { z } = await import('zod');
+    const parsed = safeParseJson(result.output, z.object({ contextMd: z.string() }), 'project-profile');
+    const contextMd = parsed.success ? parsed.data.contextMd : (result.output.includes('**Summary**') ? result.output.trim() : '');
+
+    if (contextMd) {
+      ctx.db.updateProject(projectId, { contextMd, contextUpdatedAt: new Date().toISOString() });
+    }
+  }
+
+  return {
+    llmCalls: 1, tokensUsed: tokens, phases: ['profile'],
+    result: { projectName: project.name, repoCount: repos.length },
+  };
+}
+
+// --- Suggest Deep Handler ---
+
+async function handleSuggestDeep(ctx: JobContext, _shared: DaemonSharedState): Promise<JobHandlerResult> {
+  ctx.setPhase('scan');
+
+  const job = ctx.db.getJob(ctx.jobId);
+  const repoId = (job?.result as Record<string, unknown>)?.repoId as string;
+  if (!repoId) return { llmCalls: 0, tokensUsed: 0, phases: ['scan'], result: { error: 'no repoId' } };
+
+  const repo = ctx.db.getRepo(repoId);
+  if (!repo) return { llmCalls: 0, tokensUsed: 0, phases: ['scan'], result: { error: 'repo not found' } };
+
+  // Gather rich context
+  const repoProfile = repo.contextMd ?? 'No profile available.';
+  const observations = ctx.db.listObservations({ limit: 20 })
+    .filter(o => o.entities?.some(e => e.type === 'repo' && e.id === repoId));
+  const memories = ctx.db.listMemories({ limit: 20, archived: false })
+    .filter(m => m.entities?.some(e => e.type === 'repo' && e.id === repoId));
+  const dismissPatterns = ctx.db.getDismissPatterns(repoId);
+  const recentAccepted = ctx.db.listSuggestions({ status: 'accepted', limit: 10 })
+    .filter(s => s.repoId === repoId);
+
+  // Find project profile if repo belongs to a project
+  let projectContext = '';
+  const projectsForRepo = ctx.db.listProjects().filter(p => (p.repoIds ?? []).includes(repoId));
+  if (projectsForRepo.length > 0 && projectsForRepo[0].contextMd) {
+    projectContext = `\n## Project Context\n${projectsForRepo[0].contextMd}`;
+  }
+
+  // Load corrections for this repo
+  const { loadPendingCorrections } = await import('../memory/retrieval.js');
+  const corrections = loadPendingCorrections(ctx.db, [{ type: 'repo', id: repoId }]);
+
+  const prompt = `You are Shadow doing a deep review of the ${repo.name} repository.
+You have FULL ACCESS to the codebase via tools. Explore freely.
+
+## Repo Profile
+${repoProfile}
+${projectContext}
+${corrections}
+
+${observations.length > 0 ? `## Active Observations\n${observations.map(o => `- [${o.severity}/${o.kind}] ${o.title}: ${typeof o.detail === 'object' ? JSON.stringify(o.detail).slice(0, 100) : ''}`).join('\n')}` : ''}
+
+${memories.length > 0 ? `## What Shadow Knows\n${memories.map(m => `- [${m.kind}] ${m.title}`).join('\n')}` : ''}
+
+${dismissPatterns.length > 0 ? `## DO NOT suggest (user rejected these patterns)\n${dismissPatterns.map(p => `- ${p.category}: ${p.count} dismissals${p.recentNotes?.length ? ` (${p.recentNotes[0]})` : ''}`).join('\n')}` : ''}
+
+${recentAccepted.length > 0 ? `## Recently Accepted (this direction works)\n${recentAccepted.map(s => `- ${s.title}`).join('\n')}` : ''}
+
+Your mission: explore the codebase and find high-value improvements.
+Look for: architecture issues, tech debt, missing features, dependency problems,
+security concerns, test coverage gaps, refactoring opportunities, performance issues.
+
+Use Read, Grep, Glob, Bash to explore the code. Use shadow_memory_search for context.
+Be thorough but selective — only suggest things that genuinely matter.
+
+Respond with JSON:
+{
+  "suggestions": [
+    {
+      "kind": "refactor" | "bug" | "improvement" | "feature",
+      "title": "short title",
+      "summaryMd": "detailed description in markdown",
+      "reasoningMd": "why this matters and what you found in the code",
+      "impactScore": 1-5,
+      "confidenceScore": 0-100,
+      "riskScore": 1-5,
+      "files": ["relevant/file/paths"]
+    }
+  ]
+}
+
+Generate 1-5 suggestions. Quality over quantity.`;
+
+  const { selectAdapter } = await import('../backend/index.js');
+  const adapter = selectAdapter(ctx.config);
+
+  const result = await adapter.execute({
+    repos: [{ id: repo.id, name: repo.name, path: repo.path }],
+    title: `Deep Scan: ${repo.name}`,
+    goal: 'Deep codebase review for suggestions',
+    prompt,
+    relevantMemories: [],
+    model: ctx.config.models.suggestDeep,
+    effort: ctx.config.efforts.suggestDeep,
+    systemPrompt: null,
+    allowedTools: ['Read', 'Grep', 'Glob', 'Bash'],
+  });
+
+  const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+  let suggestionsCreated = 0;
+  const suggestionTitles: string[] = [];
+
+  if (result.status === 'success' && result.output) {
+    ctx.setPhase('validate');
+
+    const { safeParseJson } = await import('../backend/json-repair.js');
+    const { z } = await import('zod');
+    const schema = z.object({
+      suggestions: z.array(z.object({
+        kind: z.string(),
+        title: z.string(),
+        summaryMd: z.string(),
+        reasoningMd: z.string().optional(),
+        impactScore: z.number().min(1).max(5),
+        confidenceScore: z.number().min(0).max(100),
+        riskScore: z.number().min(1).max(5),
+        files: z.array(z.string()).optional(),
+      })),
+    });
+
+    const parsed = safeParseJson(result.output, schema, 'suggest-deep');
+    if (parsed.success) {
+      const { checkSuggestionDuplicate } = await import('../memory/dedup.js');
+      const { generateAndStoreEmbedding } = await import('../memory/lifecycle.js');
+
+      for (const s of parsed.data.suggestions) {
+        if (s.impactScore < 3 || s.confidenceScore < 50) continue;
+
+        // Dedup vs existing suggestions
+        const dedupPending = await checkSuggestionDuplicate(ctx.db, { kind: s.kind, title: s.title, summaryMd: s.summaryMd }, 'pending');
+        if (dedupPending.action === 'skip') continue;
+        const dedupDismissed = await checkSuggestionDuplicate(ctx.db, { kind: s.kind, title: s.title, summaryMd: s.summaryMd }, 'dismissed');
+        if (dedupDismissed.action === 'skip') continue;
+
+        const created = ctx.db.createSuggestion({
+          repoId,
+          repoIds: [repoId],
+          kind: s.kind,
+          title: s.title,
+          summaryMd: s.summaryMd,
+          reasoningMd: s.reasoningMd ?? '',
+          impactScore: s.impactScore,
+          confidenceScore: s.confidenceScore,
+          riskScore: s.riskScore,
+          sourceObservationId: null,
+          requiredTrustLevel: ctx.db.ensureProfile().trustLevel,
+        });
+
+        // Persist entity links
+        const entities = [{ type: 'repo' as const, id: repoId }];
+        try {
+          ctx.db.rawDb.prepare('UPDATE suggestions SET entities_json = ? WHERE id = ?').run(JSON.stringify(entities), created.id);
+        } catch { /* best-effort */ }
+
+        // Generate embedding
+        try {
+          await generateAndStoreEmbedding(ctx.db, 'suggestion', created.id, { kind: created.kind, title: created.title, summaryMd: created.summaryMd });
+        } catch { /* best-effort */ }
+
+        suggestionsCreated++;
+        suggestionTitles.push(s.title);
+      }
+    }
+  }
+
+  // Post deep-scan: trigger suggest-project if repo belongs to a project with 2+ repos
+  try {
+    const projects = ctx.db.listProjects().filter(p => {
+      const rIds = p.repoIds ?? [];
+      return rIds.length >= 2 && rIds.includes(repoId);
+    });
+    for (const project of projects) {
+      if (!ctx.db.hasQueuedOrRunning('suggest-project')) {
+        const lastSp = ctx.db.getLastJob('suggest-project');
+        const gapDays = lastSp ? (Date.now() - new Date(lastSp.startedAt).getTime()) / (24 * 60 * 60 * 1000) : Infinity;
+        if (gapDays >= ctx.config.suggestProjectMinGapDays) {
+          ctx.db.enqueueJob('suggest-project', { priority: 5, triggerSource: 'reactive', params: { projectId: project.id } });
+          break;
+        }
+      }
+    }
+  } catch { /* best-effort */ }
+
+  return {
+    llmCalls: 1, tokensUsed: tokens,
+    phases: suggestionsCreated > 0 ? ['scan', 'validate'] : ['scan'],
+    result: { repoName: repo.name, suggestionsCreated, suggestionTitles, repoId },
+  };
+}
+
+// --- Suggest Project Handler ---
+
+async function handleSuggestProject(ctx: JobContext): Promise<JobHandlerResult> {
+  ctx.setPhase('analyze');
+
+  const job = ctx.db.getJob(ctx.jobId);
+  const projectId = (job?.result as Record<string, unknown>)?.projectId as string;
+  if (!projectId) return { llmCalls: 0, tokensUsed: 0, phases: ['analyze'], result: { error: 'no projectId' } };
+
+  const project = ctx.db.getProject(projectId);
+  if (!project) return { llmCalls: 0, tokensUsed: 0, phases: ['analyze'], result: { error: 'project not found' } };
+
+  const repoIds: string[] = project.repoIds ?? [];
+  if (repoIds.length < 2) return { llmCalls: 0, tokensUsed: 0, phases: ['analyze'], result: { error: 'need 2+ repos' } };
+
+  const repos = repoIds.map(id => ctx.db.getRepo(id)).filter(Boolean);
+  const repoProfiles = repos.map(r => r!.contextMd ? `### ${r!.name}\n${r!.contextMd}` : `### ${r!.name}\nNo profile.`);
+  const projectProfile = project.contextMd ?? 'No project profile.';
+
+  // Cross-project observations
+  const crossObs = ctx.db.listObservations({ limit: 20 })
+    .filter(o => o.kind === 'cross_project' || o.entities?.some(e => e.type === 'project' && e.id === projectId));
+  const memories = ctx.db.listMemories({ limit: 20, archived: false })
+    .filter(m => m.entities?.some(e => e.type === 'project' && e.id === projectId));
+  const dismissPatterns = ctx.db.getDismissPatterns();
+
+  const prompt = `You are Shadow analyzing project "${project.name}" across ${repos.length} repos.
+You have access to READ all repos. Find cross-repo improvement opportunities.
+
+## Project Profile
+${projectProfile}
+
+## Repo Profiles
+${repoProfiles.join('\n\n')}
+
+${crossObs.length > 0 ? `## Cross-Project Observations\n${crossObs.map(o => `- [${o.severity}] ${o.title}`).join('\n')}` : ''}
+
+${memories.length > 0 ? `## Project Memories\n${memories.map(m => `- ${m.title}`).join('\n')}` : ''}
+
+${dismissPatterns.length > 0 ? `## Dismissed Patterns (avoid)\n${dismissPatterns.map(p => `- ${p.category}: ${p.count}x`).join('\n')}` : ''}
+
+Look for cross-repo opportunities:
+- Shared libraries that could be extracted
+- Duplicated logic across repos
+- API contract gaps or inconsistencies
+- Dependency version mismatches
+- Convention drift between repos
+- Shared infrastructure improvements
+
+Use Read, Grep, Glob to compare code across repos. Use shadow_memory_search for context.
+
+Respond with JSON:
+{
+  "suggestions": [
+    {
+      "kind": "refactor" | "improvement" | "feature",
+      "title": "short title",
+      "summaryMd": "description",
+      "reasoningMd": "what you found across repos",
+      "impactScore": 1-5,
+      "confidenceScore": 0-100,
+      "riskScore": 1-5,
+      "repoNames": ["which repos this affects"]
+    }
+  ]
+}
+
+Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-repo issues.`;
+
+  const { selectAdapter } = await import('../backend/index.js');
+  const adapter = selectAdapter(ctx.config);
+
+  const result = await adapter.execute({
+    repos: repos.map(r => ({ id: r!.id, name: r!.name, path: r!.path })),
+    title: `Project Suggest: ${project.name}`,
+    goal: 'Cross-repo suggestion analysis',
+    prompt,
+    relevantMemories: [],
+    model: ctx.config.models.suggestProject,
+    effort: ctx.config.efforts.suggestProject,
+    systemPrompt: null,
+    allowedTools: ['Read', 'Grep', 'Glob'],
+  });
+
+  const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+  let suggestionsCreated = 0;
+  const suggestionTitles: string[] = [];
+
+  if (result.status === 'success' && result.output) {
+    ctx.setPhase('validate');
+
+    const { safeParseJson } = await import('../backend/json-repair.js');
+    const { z } = await import('zod');
+    const schema = z.object({
+      suggestions: z.array(z.object({
+        kind: z.string(),
+        title: z.string(),
+        summaryMd: z.string(),
+        reasoningMd: z.string().optional(),
+        impactScore: z.number().min(1).max(5),
+        confidenceScore: z.number().min(0).max(100),
+        riskScore: z.number().min(1).max(5),
+        repoNames: z.array(z.string()).optional(),
+      })),
+    });
+
+    const parsed = safeParseJson(result.output, schema, 'suggest-project');
+    if (parsed.success) {
+      const { checkSuggestionDuplicate } = await import('../memory/dedup.js');
+      const { generateAndStoreEmbedding } = await import('../memory/lifecycle.js');
+
+      for (const s of parsed.data.suggestions) {
+        if (s.impactScore < 3 || s.confidenceScore < 50) continue;
+
+        const dedupPending = await checkSuggestionDuplicate(ctx.db, { kind: s.kind, title: s.title, summaryMd: s.summaryMd }, 'pending');
+        if (dedupPending.action === 'skip') continue;
+        const dedupDismissed = await checkSuggestionDuplicate(ctx.db, { kind: s.kind, title: s.title, summaryMd: s.summaryMd }, 'dismissed');
+        if (dedupDismissed.action === 'skip') continue;
+
+        // Find repo IDs from repo names
+        const affectedRepoIds = (s.repoNames ?? [])
+          .map(name => repos.find(r => r!.name === name)?.id)
+          .filter(Boolean) as string[];
+
+        const created = ctx.db.createSuggestion({
+          repoId: affectedRepoIds[0] ?? repoIds[0],
+          repoIds: affectedRepoIds.length > 0 ? affectedRepoIds : repoIds,
+          kind: s.kind,
+          title: s.title,
+          summaryMd: s.summaryMd,
+          reasoningMd: s.reasoningMd ?? '',
+          impactScore: s.impactScore,
+          confidenceScore: s.confidenceScore,
+          riskScore: s.riskScore,
+          sourceObservationId: null,
+          requiredTrustLevel: ctx.db.ensureProfile().trustLevel,
+        });
+
+        // Persist entity links
+        const entities = [
+          { type: 'project' as const, id: projectId },
+          ...affectedRepoIds.map(id => ({ type: 'repo' as const, id })),
+        ];
+        try {
+          ctx.db.rawDb.prepare('UPDATE suggestions SET entities_json = ? WHERE id = ?').run(JSON.stringify(entities), created.id);
+        } catch { /* best-effort */ }
+
+        // Generate embedding
+        try {
+          await generateAndStoreEmbedding(ctx.db, 'suggestion', created.id, { kind: created.kind, title: created.title, summaryMd: created.summaryMd });
+        } catch { /* best-effort */ }
+
+        suggestionsCreated++;
+        suggestionTitles.push(s.title);
+      }
+    }
+  }
+
+  return {
+    llmCalls: 1, tokensUsed: tokens,
+    phases: suggestionsCreated > 0 ? ['analyze', 'validate'] : ['analyze'],
+    result: { projectName: project.name, suggestionsCreated, suggestionTitles },
+  };
+}
+
 // --- Registry ---
 
 export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
@@ -427,6 +907,9 @@ export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
   registry.set('remote-sync', { category: 'io', fn: handleRemoteSync });
   registry.set('repo-profile', { category: 'llm', fn: handleRepoProfile });
   registry.set('context-enrich', { category: 'llm', fn: handleContextEnrich });
+  registry.set('project-profile', { category: 'llm', fn: handleProjectProfile });
+  registry.set('suggest-deep', { category: 'llm', fn: handleSuggestDeep });
+  registry.set('suggest-project', { category: 'llm', fn: handleSuggestProject });
 
   // Digest handlers registered with their full type name
   for (const digestType of ['digest-daily', 'digest-weekly', 'digest-brag']) {

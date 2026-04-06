@@ -184,6 +184,13 @@ export const triggerHeartbeat = () =>
 export const triggerJob = (type: string) =>
   api<{ triggered: boolean }>(`/api/jobs/trigger/${type}`, { method: 'POST' });
 
+export const triggerJobWithParams = (type: string, params?: Record<string, string>) =>
+  api<{ triggered: boolean }>(`/api/jobs/trigger/${type}`, {
+    method: 'POST',
+    headers: params ? { 'Content-Type': 'application/json' } : undefined,
+    body: params ? JSON.stringify(params) : undefined,
+  });
+
 export const acceptSuggestion = (id: string, category?: string) =>
   api<Suggestion>(`/api/suggestions/${id}/accept`, {
     method: 'POST',

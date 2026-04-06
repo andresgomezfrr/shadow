@@ -20,6 +20,9 @@ const TYPE_FILTERS = [
   { label: 'Sync', value: 'remote-sync', dotColor: 'bg-pink-400', activeClass: 'bg-pink-400/15 text-pink-400' },
   { label: 'Repo profile', value: 'repo-profile', dotColor: 'bg-teal-400', activeClass: 'bg-teal-400/15 text-teal-400' },
   { label: 'Enrich', value: 'context-enrich', dotColor: 'bg-amber-400', activeClass: 'bg-amber-400/15 text-amber-400' },
+  { label: 'Deep scan', value: 'suggest-deep', dotColor: 'bg-green-600', activeClass: 'bg-green-600/15 text-green-600' },
+  { label: 'Project suggest', value: 'suggest-project', dotColor: 'bg-emerald-400', activeClass: 'bg-emerald-400/15 text-emerald-400' },
+  { label: 'Project profile', value: 'project-profile', dotColor: 'bg-emerald-400', activeClass: 'bg-emerald-400/15 text-emerald-400' },
   { label: 'Digest', value: '_digest', dotColor: 'bg-cyan', activeClass: 'bg-cyan/15 text-cyan' },
   { label: 'Runs', value: '_runs', dotColor: 'bg-indigo-400', activeClass: 'bg-indigo-400/15 text-indigo-400' },
 ];

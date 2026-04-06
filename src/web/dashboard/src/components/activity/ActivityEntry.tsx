@@ -12,6 +12,9 @@ const TYPE_COLORS: Record<string, string> = {
   reflect: 'bg-blue-500/20 text-blue-300',
   'remote-sync': 'bg-pink-400/20 text-pink-300',
   'repo-profile': 'bg-teal-400/20 text-teal-300',
+  'suggest-deep': 'bg-green-600/20 text-green-400',
+  'suggest-project': 'bg-emerald-400/20 text-emerald-300',
+  'project-profile': 'bg-emerald-400/20 text-emerald-300',
   'context-enrich': 'bg-amber-400/20 text-amber-300',
   'digest-daily': 'bg-cyan-500/20 text-cyan-300',
   'digest-weekly': 'bg-cyan-500/20 text-cyan-300',
@@ -47,6 +50,8 @@ const PHASE_DOT: Record<string, string> = {
   enrich: 'bg-amber-400',
   'remote-sync': 'bg-pink-400',
   'repo-profile': 'bg-teal-400',
+  scan: 'bg-green-600',
+  profile: 'bg-emerald-400',
   digest: 'bg-cyan',
 };
 
@@ -67,6 +72,8 @@ const PHASE_TEXT: Record<string, string> = {
   enrich: 'text-amber-400',
   'remote-sync': 'text-pink-400',
   'repo-profile': 'text-teal-400',
+  scan: 'text-green-600',
+  profile: 'text-emerald-400',
   digest: 'text-cyan',
 };
 
@@ -77,6 +84,9 @@ const JOB_PHASES: Record<string, string[]> = {
   reflect: ['reflect-delta', 'reflect-evolve'],
   'remote-sync': ['remote-sync'],
   'repo-profile': ['repo-profile'],
+  'suggest-deep': ['scan', 'validate'],
+  'suggest-project': ['analyze', 'validate'],
+  'project-profile': ['profile'],
   'context-enrich': ['enrich'],
   'digest-daily': ['digest-daily'],
   'digest-weekly': ['digest-weekly'],
@@ -229,6 +239,67 @@ function renderExpandedDetail(entry: ActivityEntryType) {
         ) : (
           <div className="text-text-muted">No suggestions generated</div>
         )}
+      </>
+    );
+  }
+
+  if (type === 'suggest-deep') {
+    const sugItems = items(r, 'suggestionItems') ?? [];
+    const titles = sugItems.length > 0 ? sugItems : arr(r, 'suggestionTitles').map(t => ({ id: '', title: t }));
+    const repoName = str(r, 'repoName');
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['suggest-deep']} />
+        {repoName && <div><span className="text-accent">Repo:</span> <span className="text-text-dim">{repoName}</span></div>}
+        {num(r, 'suggestionsCreated') > 0 ? (
+          <div>
+            <span className="text-accent">Suggestions ({num(r, 'suggestionsCreated')}):</span>
+            <ul className="ml-3 mt-0.5 space-y-0.5">
+              {titles.map((t, i) => (
+                <li key={i} className="text-text-dim">
+                  {t.id ? <a href={`/suggestions?highlight=${t.id}`} className="hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>- {t.title}</a> : `- ${t.title}`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="text-text-muted">No suggestions generated</div>
+        )}
+      </>
+    );
+  }
+
+  if (type === 'suggest-project') {
+    const titles = arr(r, 'suggestionTitles');
+    const projectName = str(r, 'projectName');
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['suggest-project']} />
+        {projectName && <div><span className="text-accent">Project:</span> <span className="text-text-dim">{projectName}</span></div>}
+        {num(r, 'suggestionsCreated') > 0 ? (
+          <div>
+            <span className="text-accent">Cross-repo suggestions ({num(r, 'suggestionsCreated')}):</span>
+            <ul className="ml-3 mt-0.5 space-y-0.5">
+              {titles.map((t, i) => <li key={i} className="text-text-dim">- {t}</li>)}
+            </ul>
+          </div>
+        ) : (
+          <div className="text-text-muted">No cross-repo suggestions</div>
+        )}
+      </>
+    );
+  }
+
+  if (type === 'project-profile') {
+    const projectName = str(r, 'projectName');
+    const repoCount = num(r, 'repoCount');
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['project-profile']} />
+        <div>
+          <span className="text-accent">Profiled:</span>{' '}
+          <span className="text-text-dim">{projectName ?? 'unknown'} ({repoCount} repos)</span>
+        </div>
       </>
     );
   }
