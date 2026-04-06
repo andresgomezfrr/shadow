@@ -93,6 +93,9 @@ export function MemoriesPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge className={layerClass}>{m.layer}</Badge>
                   <Badge className="text-text-dim bg-border">{m.kind}</Badge>
+                  {m.sourceMemoryIds?.length > 0 && (
+                    <Badge className="text-orange bg-orange/15">from {m.sourceMemoryIds.length}</Badge>
+                  )}
                   <span className="font-medium text-sm flex-1 truncate">{m.title}</span>
                   {m.rank != null && (
                     <span className="text-xs text-text-muted">rank: {m.rank.toFixed(2)}</span>

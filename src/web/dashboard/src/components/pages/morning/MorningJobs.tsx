@@ -10,6 +10,7 @@ const TYPE_COLORS: Record<string, string> = {
   'digest-daily': 'text-cyan bg-cyan/15',
   'digest-weekly': 'text-cyan bg-cyan/15',
   'digest-brag': 'text-cyan bg-cyan/15',
+  'context-enrich': 'text-amber-400 bg-amber-400/15',
 };
 
 export function MorningJobs({ jobs }: { jobs: Job[] }) {

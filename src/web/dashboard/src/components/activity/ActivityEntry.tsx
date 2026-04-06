@@ -70,6 +70,19 @@ const PHASE_TEXT: Record<string, string> = {
   digest: 'text-cyan',
 };
 
+const JOB_PHASES: Record<string, string[]> = {
+  heartbeat: ['observe', 'cleanup', 'analyze', 'notify'],
+  suggest: ['suggest', 'notify'],
+  consolidate: ['layer-maintenance', 'corrections', 'merge', 'meta-patterns'],
+  reflect: ['reflect-delta', 'reflect-evolve'],
+  'remote-sync': ['remote-sync'],
+  'repo-profile': ['repo-profile'],
+  'context-enrich': ['enrich'],
+  'digest-daily': ['digest-daily'],
+  'digest-weekly': ['digest-weekly'],
+  'digest-brag': ['digest-brag'],
+};
+
 // --- Helpers ---
 
 function num(r: Record<string, unknown>, key: string): number {
@@ -90,6 +103,7 @@ function items(r: Record<string, unknown>, key: string): Array<{ id: string; tit
 }
 
 function isSkip(entry: ActivityEntryType): boolean {
+  if (entry.status === 'running' || entry.status === 'queued') return false;
   if (entry.source === 'run') return false;
   if (entry.llmCalls > 0) return false;
   const result = entry.result ?? {};
@@ -108,19 +122,21 @@ function formatDuration(ms: number | null): string {
 
 // --- Phase Pipeline Component ---
 
-function PhasePipeline({ phases, currentPhase }: { phases: string[]; currentPhase?: string }) {
-  const visible = interestingPhases(phases);
-  if (visible.length === 0) return null;
+function PhasePipeline({ phases, currentPhase, allPhases }: { phases: string[]; currentPhase?: string; allPhases?: string[] }) {
+  const displayPhases = allPhases ?? interestingPhases(phases);
+  if (displayPhases.length === 0) return null;
 
   return (
     <div className="flex items-center gap-0 mb-2">
-      {visible.map((phase, i) => {
+      {displayPhases.map((phase, i) => {
         const isCurrent = phase === currentPhase;
-        const dotColor = PHASE_DOT[phase] ?? 'bg-text-muted';
-        const textColor = PHASE_TEXT[phase] ?? 'text-text-muted';
+        const isCompleted = !allPhases || phases.includes(phase);
+        const isFuture = allPhases && !isCompleted && !isCurrent;
+        const dotColor = isFuture ? 'bg-border' : (PHASE_DOT[phase] ?? 'bg-text-muted');
+        const textColor = isFuture ? 'text-text-muted/40' : (PHASE_TEXT[phase] ?? 'text-text-muted');
         return (
           <div key={phase} className="flex items-center">
-            {i > 0 && <div className="w-4 h-px bg-border mx-0.5" />}
+            {i > 0 && <div className={`w-4 h-px ${isFuture ? 'bg-border/50' : 'bg-border'} mx-0.5`} />}
             <div className="flex items-center gap-1">
               <div className={`w-1.5 h-1.5 rounded-full ${dotColor} ${isCurrent ? 'animate-pulse' : ''}`} />
               <span className={`text-[10px] ${textColor}`}>{phase}</span>
@@ -398,15 +414,20 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
 
   // Running state
   if (isRunning) {
+    const expectedPhases = JOB_PHASES[entry.type];
     return (
-      <div className="bg-accent/5 border border-l-[3px] border-l-blue border-accent/30 rounded-lg px-4 py-3 animate-pulse">
+      <div className="bg-accent/5 border border-l-[3px] border-l-blue border-accent/30 rounded-lg px-4 py-3">
         <div className="flex items-center gap-2 flex-wrap">
           <Badge className={typeColor}>{entry.type}</Badge>
           {isRun && entry.repoName && <Badge className="text-text-dim bg-border">{entry.repoName}</Badge>}
           <span className="text-xs text-accent">running</span>
-          {entry.activity && <span className="text-xs text-text-dim">{entry.activity}</span>}
           {entry.startedAt && <span className="text-xs text-text-muted ml-auto">{timeAgo(entry.startedAt)}</span>}
         </div>
+        {expectedPhases && (
+          <div className="mt-2">
+            <PhasePipeline phases={[]} currentPhase={entry.activity ?? undefined} allPhases={expectedPhases} />
+          </div>
+        )}
       </div>
     );
   }

@@ -435,6 +435,16 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
         }
       }
 
+      // Collect all source memory IDs (including transitive — if a source was itself a merge)
+      const allSourceIds: string[] = [];
+      for (const m of toMerge) {
+        allSourceIds.push(m.id);
+        const existing = db.getMemory(m.id);
+        if (existing?.sourceMemoryIds?.length) {
+          allSourceIds.push(...existing.sourceMemoryIds);
+        }
+      }
+
       // Create merged memory
       const newMem = db.createMemory({
         layer: toMerge[0].layer, // use first memory's layer
@@ -445,6 +455,7 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
         sourceType: 'consolidation',
         confidenceScore: 80,
         relevanceScore: 0.7,
+        sourceMemoryIds: allSourceIds,
       });
 
       // Set entities via raw SQL (createMemory doesn't support entities_json)

@@ -113,7 +113,7 @@ export function JobOutputSummary({ entry }: Props) {
   if (type === 'context-enrich') {
     const items = num(r, 'itemsCollected');
     const sources = arr(r, 'sources');
-    if (items === 0) return <span className="text-text-muted text-xs">no items</span>;
+    if (items === 0) return <span className="text-text-muted text-xs">no MCP servers to query</span>;
     return (
       <span className="inline-flex items-center gap-1.5">
         <Badge className="text-amber-400 bg-amber-400/15">{items} item{items !== 1 ? 's' : ''}</Badge>
