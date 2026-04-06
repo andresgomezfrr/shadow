@@ -241,18 +241,25 @@ export class ShadowDatabase {
 
   /** Remove entity references from entities_json in memories, observations, and suggestions. */
   removeEntityReferences(entityType: string, entityId: string): void {
-    const tables = ['memories', 'observations', 'suggestions'];
-    for (const table of tables) {
-      const rows = this.database
-        .prepare(`SELECT id, entities_json FROM ${table} WHERE entities_json LIKE ?`)
-        .all(`%${entityId}%`) as { id: string; entities_json: string }[];
-      for (const row of rows) {
-        const entities: EntityLink[] = jsonParse(row.entities_json, []);
-        const filtered = entities.filter(e => !(e.type === entityType && e.id === entityId));
-        this.database
-          .prepare(`UPDATE ${table} SET entities_json = ? WHERE id = ?`)
-          .run(JSON.stringify(filtered), row.id);
+    this.database.exec('BEGIN');
+    try {
+      const tables = ['memories', 'observations', 'suggestions'];
+      for (const table of tables) {
+        const rows = this.database
+          .prepare(`SELECT id, entities_json FROM ${table} WHERE entities_json LIKE ?`)
+          .all(`%${entityId}%`) as { id: string; entities_json: string }[];
+        for (const row of rows) {
+          const entities: EntityLink[] = jsonParse(row.entities_json, []);
+          const filtered = entities.filter(e => !(e.type === entityType && e.id === entityId));
+          this.database
+            .prepare(`UPDATE ${table} SET entities_json = ? WHERE id = ?`)
+            .run(JSON.stringify(filtered), row.id);
+        }
       }
+      this.database.exec('COMMIT');
+    } catch (e) {
+      this.database.exec('ROLLBACK');
+      throw e;
     }
   }
 
@@ -698,7 +705,7 @@ export class ShadowDatabase {
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
     return this.database
-      .prepare(`SELECT * FROM memories ${where} ORDER BY created_at DESC${pagination}`)
+      .prepare(`SELECT * FROM memories ${where} ORDER BY created_at DESC, id ASC${pagination}`)
       .all(...values)
       .map(mapMemory);
   }
@@ -869,7 +876,7 @@ export class ShadowDatabase {
     return row ? mapObservation(row) : null;
   }
 
-  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; severity?: string; limit?: number; offset?: number }): ObservationRecord[] {
+  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; severity?: string; kind?: string; projectId?: string; limit?: number; offset?: number }): ObservationRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -893,21 +900,31 @@ export class ShadowDatabase {
       clauses.push('severity = ?');
       values.push(filters.severity);
     }
+    if (filters?.kind) {
+      clauses.push('kind = ?');
+      values.push(filters.kind);
+    }
+    if (filters?.projectId) {
+      clauses.push("entities_json LIKE ?");
+      values.push(`%"id":"${filters.projectId}"%`);
+    }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-    const pagination = `${filters?.limit != null ? `LIMIT ${filters.limit}` : ''}${filters?.offset != null ? ` OFFSET ${filters.offset}` : ''}`;
+    const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
     return this.database
-      .prepare(`SELECT * FROM observations ${where} ORDER BY votes DESC, last_seen_at DESC ${pagination}`)
+      .prepare(`SELECT * FROM observations ${where} ORDER BY votes DESC, last_seen_at DESC, id ASC${pagination}`)
       .all(...values)
       .map(mapObservation);
   }
 
-  countObservations(filters?: { repoId?: string; status?: string; severity?: string }): number {
+  countObservations(filters?: { repoId?: string; status?: string; severity?: string; kind?: string; projectId?: string }): number {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
     if (filters?.repoId) { clauses.push('repo_id = ?'); values.push(filters.repoId); }
     if (filters?.status && filters.status !== 'all') { clauses.push('status = ?'); values.push(filters.status); }
     if (filters?.severity) { clauses.push('severity = ?'); values.push(filters.severity); }
+    if (filters?.kind) { clauses.push('kind = ?'); values.push(filters.kind); }
+    if (filters?.projectId) { clauses.push("entities_json LIKE ?"); values.push(`%"id":"${filters.projectId}"%`); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     return (this.database.prepare(`SELECT COUNT(*) as total FROM observations ${where}`).get(...values) as { total: number }).total;
   }
@@ -1035,7 +1052,7 @@ export class ShadowDatabase {
     return row ? mapSuggestion(row) : null;
   }
 
-  listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; limit?: number; offset?: number }): SuggestionRecord[] {
+  listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; limit?: number; offset?: number }): SuggestionRecord[] {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
 
@@ -1051,21 +1068,26 @@ export class ShadowDatabase {
       clauses.push('repo_id = ?');
       values.push(filters.repoId);
     }
+    if (filters?.projectId) {
+      clauses.push("entities_json LIKE ?");
+      values.push(`%"id":"${filters.projectId}"%`);
+    }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
     return this.database
-      .prepare(`SELECT * FROM suggestions ${where} ORDER BY created_at DESC${pagination}`)
+      .prepare(`SELECT * FROM suggestions ${where} ORDER BY created_at DESC, id ASC${pagination}`)
       .all(...values)
       .map(mapSuggestion);
   }
 
-  countSuggestions(filters?: { status?: string; kind?: string; repoId?: string }): number {
+  countSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string }): number {
     const clauses: string[] = [];
     const values: SQLValue[] = [];
     if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
     if (filters?.kind) { clauses.push('kind = ?'); values.push(filters.kind); }
     if (filters?.repoId) { clauses.push('repo_id = ?'); values.push(filters.repoId); }
+    if (filters?.projectId) { clauses.push("entities_json LIKE ?"); values.push(`%"id":"${filters.projectId}"%`); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     return (this.database.prepare(`SELECT COUNT(*) as total FROM suggestions ${where}`).get(...values) as { total: number }).total;
   }
@@ -1228,7 +1250,7 @@ export class ShadowDatabase {
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
     return this.database
-      .prepare(`SELECT * FROM runs ${where} ORDER BY created_at DESC${pagination}`)
+      .prepare(`SELECT * FROM runs ${where} ORDER BY created_at DESC, id ASC${pagination}`)
       .all(...values)
       .map(mapRun);
   }
@@ -1311,7 +1333,7 @@ export class ShadowDatabase {
     if (filters?.relation) { conditions.push('relation = ?'); values.push(filters.relation); }
 
     const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
-    const rows = this.database.prepare(`SELECT * FROM entity_relations${where} ORDER BY created_at DESC`).all(...values);
+    const rows = this.database.prepare(`SELECT * FROM entity_relations${where} ORDER BY created_at DESC, id ASC`).all(...values);
     return rows.map(mapRelation);
   }
 
@@ -1664,7 +1686,7 @@ export class ShadowDatabase {
     const limit = filters?.limit ?? 50;
     const offset = filters?.offset ?? 0;
     values.push(limit, offset);
-    return this.database.prepare(`SELECT * FROM enrichment_cache ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...values).map(mapEnrichment);
+    return this.database.prepare(`SELECT * FROM enrichment_cache ${where} ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`).all(...values).map(mapEnrichment);
   }
 
   countEnrichment(filters?: { source?: string; reported?: boolean }): number {

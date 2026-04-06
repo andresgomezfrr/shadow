@@ -31,7 +31,7 @@ export class AgentSdkAdapter implements BackendAdapter {
 
       const agent = new sdk.Agent({
         model,
-        tools: [],
+        tools: pack.allowedTools ?? [],
       });
 
       const result = await agent.run(pack.prompt, {

@@ -38,18 +38,8 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         const limit = rawLimit ?? 20;
         const offset = rawOffset ?? 0;
         const detail = rawDetail ?? false;
-        let items = db.listObservations({ repoId, status, limit: projectId || kind ? 100 : limit, offset: projectId || kind ? 0 : offset });
-        // Post-filter by projectId (entity link) and kind
-        if (projectId) {
-          items = items.filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === projectId));
-        }
-        if (kind) {
-          items = items.filter(o => o.kind === kind);
-        }
-        const total = projectId || kind ? items.length : db.countObservations({ status: status !== 'all' ? status : undefined });
-        if (projectId || kind) {
-          items = items.slice(offset, offset + limit);
-        }
+        const items = db.listObservations({ repoId, status, kind, projectId, limit, offset });
+        const total = db.countObservations({ status: status !== 'all' ? status : undefined, kind, projectId });
         // Touch last_seen_at for active/acknowledged observations being queried
         const touchable = items.filter(o => o.status === 'active' || o.status === 'acknowledged');
         if (touchable.length > 0) {

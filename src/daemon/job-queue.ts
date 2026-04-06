@@ -202,10 +202,14 @@ export class JobQueue {
     if (this.active.size === 0) return;
     console.error(`[job-queue] Draining ${this.active.size} active jobs (max ${Math.round(timeoutMs / 1000)}s)...`);
     const promises = [...this.active.values()].map(a => a.promise);
-    await Promise.race([
-      Promise.allSettled(promises),
-      new Promise<void>(r => setTimeout(r, timeoutMs)),
+    const result = await Promise.race([
+      Promise.allSettled(promises).then(() => 'done' as const),
+      new Promise<'timeout'>(r => setTimeout(r, timeoutMs)),
     ]);
+    if (result === 'timeout' && this.active.size > 0) {
+      console.error(`[job-queue] Drain timeout — killing ${this.active.size} remaining jobs`);
+      this.killAll();
+    }
   }
 
   killAll(): void {

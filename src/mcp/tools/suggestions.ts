@@ -40,17 +40,8 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
         const limit = rawLimit ?? 20;
         const offset = rawOffset ?? 0;
         const detail = rawDetail ?? false;
-        let items = db.listSuggestions({ status, limit: projectId || repoId ? 100 : limit, offset: projectId || repoId ? 0 : offset });
-        if (projectId) {
-          items = items.filter(s => (s.entities ?? []).some(e => e.type === 'project' && e.id === projectId));
-        }
-        if (repoId) {
-          items = items.filter(s => s.repoIds.includes(repoId));
-        }
-        const total = projectId || repoId ? items.length : db.countSuggestions({ status });
-        if (projectId || repoId) {
-          items = items.slice(offset, offset + limit);
-        }
+        const items = db.listSuggestions({ status, repoId, projectId, limit, offset });
+        const total = db.countSuggestions({ status, repoId, projectId });
         if (detail) return { items, total };
         return {
           items: items.map(s => ({

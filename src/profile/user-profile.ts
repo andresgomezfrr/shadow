@@ -106,12 +106,19 @@ export function detectWorkHours(db: ShadowDatabase): WorkHoursResult | null {
   const weekdayHours: number[] = [];
   const weekendCount = { total: 0 };
 
+  // Resolve user timezone for accurate day/hour extraction
+  const profile = db.ensureProfile();
+  const tz = profile.timezone || 'UTC';
+
   for (const obs of recent) {
     const date = new Date(obs.createdAt);
-    const day = date.getDay(); // 0=Sun, 6=Sat
-    const hour = date.getHours();
+    // Extract day and hour in user's timezone
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', hour12: false }).formatToParts(date);
+    const dayName = parts.find(p => p.type === 'weekday')?.value ?? '';
+    const hour = Number(parts.find(p => p.type === 'hour')?.value ?? 0);
+    const isWeekend = dayName === 'Sat' || dayName === 'Sun';
 
-    if (day === 0 || day === 6) {
+    if (isWeekend) {
       weekendCount.total++;
     } else {
       weekdayHours.push(hour);

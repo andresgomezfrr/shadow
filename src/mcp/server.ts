@@ -24,7 +24,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: 
     return profile?.trustLevel ?? 0;
   }
 
-  function trustGate(required: number): { ok: true } | { ok: false; error: unknown } {
+  function trustGate(required: number): { ok: true } | { ok: false; error: { isError: true; message: string } } {
     const current = getTrustLevel();
     if (current < required) {
       return {
