@@ -64,9 +64,15 @@ function resolveSettings(profile: UserProfileRecord, config: ShadowConfig): Thou
 // --- Internal ---
 
 function scheduleNext(ctx: ThoughtContext): void {
-  // Re-read settings each cycle so dashboard changes take effect immediately
-  const profile = ctx.db.ensureProfile();
-  const settings = resolveSettings(profile, ctx.config);
+  let settings: ThoughtSettings;
+  try {
+    // Re-read settings each cycle so dashboard changes take effect immediately
+    const profile = ctx.db.ensureProfile();
+    settings = resolveSettings(profile, ctx.config);
+  } catch {
+    // DB closed (daemon shutting down) — stop the loop gracefully
+    return;
+  }
 
   if (!settings.enabled) {
     // Re-check in 1 minute in case the user re-enables
