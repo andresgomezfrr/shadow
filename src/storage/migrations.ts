@@ -1,4 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { copyFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { dirname, basename, join } from 'node:path';
 
 export type Migration = {
   version: number;
@@ -698,7 +700,7 @@ export const migrations: Migration[] = [
   },
 ];
 
-export function applyMigrations(database: DatabaseSync): void {
+export function applyMigrations(database: DatabaseSync, dbPath?: string): void {
   database.exec('PRAGMA foreign_keys = ON;');
   database.exec('PRAGMA journal_mode = WAL;');
   database.exec('PRAGMA busy_timeout = 5000;');
@@ -720,11 +722,26 @@ export function applyMigrations(database: DatabaseSync): void {
     'INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)',
   );
 
-  for (const migration of migrations) {
-    if (applied.has(migration.version)) {
-      continue;
-    }
+  const pendingMigrations = migrations.filter(m => !applied.has(m.version));
 
+  // Snapshot DB before applying new migrations
+  if (pendingMigrations.length > 0 && dbPath) {
+    try {
+      const maxVersion = Math.max(...pendingMigrations.map(m => m.version));
+      copyFileSync(dbPath, `${dbPath}.pre-v${maxVersion}`);
+
+      // Prune: keep only last 3 snapshots
+      const dir = dirname(dbPath);
+      const base = basename(dbPath);
+      const snapshots = readdirSync(dir)
+        .filter(f => f.startsWith(`${base}.pre-v`))
+        .sort()
+        .map(f => join(dir, f));
+      while (snapshots.length > 3) unlinkSync(snapshots.shift()!);
+    } catch { /* non-fatal */ }
+  }
+
+  for (const migration of pendingMigrations) {
     database.exec('BEGIN');
     try {
       database.exec(migration.sql);

@@ -165,7 +165,7 @@ export class ShadowDatabase {
     mkdirSync(dirname(config.resolvedDatabasePath), { recursive: true });
     this.database = new DatabaseSync(config.resolvedDatabasePath, { allowExtension: true });
     sqliteVec.load(this.database);
-    applyMigrations(this.database);
+    applyMigrations(this.database, config.resolvedDatabasePath);
   }
 
   /** Raw DatabaseSync handle — used by search.ts for vector queries */
