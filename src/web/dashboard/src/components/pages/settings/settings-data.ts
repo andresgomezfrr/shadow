@@ -65,12 +65,18 @@ export const MODEL_OPTIONS = [
 ];
 
 export const MODEL_PHASES = [
-  { key: 'analyze', label: 'Analyze', desc: 'Processes observations + conversations', default: 'sonnet' },
-  { key: 'suggest', label: 'Suggest', desc: 'Generates recommendations', default: 'opus' },
-  { key: 'consolidate', label: 'Consolidate', desc: 'Maintains memory layers', default: 'sonnet' },
-  { key: 'runner', label: 'Runner', desc: 'Executes accepted tasks', default: 'sonnet' },
+  { key: 'analyze', label: 'Analyze', desc: 'Heartbeat: extract memories + generate observations', default: 'sonnet' },
+  { key: 'suggest', label: 'Suggest', desc: 'Incremental suggestions for active repos', default: 'opus' },
+  { key: 'suggestValidate', label: 'Suggest Validate', desc: 'Code validation of suggestion candidates', default: 'opus' },
+  { key: 'suggestDeep', label: 'Suggest Deep', desc: 'Full codebase review with tool access', default: 'opus' },
+  { key: 'suggestProject', label: 'Suggest Project', desc: 'Cross-repo analysis for projects', default: 'opus' },
+  { key: 'consolidate', label: 'Consolidate', desc: 'Memory maintenance: corrections, merge, meta-patterns', default: 'opus' },
+  { key: 'runner', label: 'Runner', desc: 'Executes accepted suggestions', default: 'sonnet' },
+  { key: 'repoProfile', label: 'Repo Profile', desc: 'LLM analysis of repo context', default: 'sonnet' },
+  { key: 'projectProfile', label: 'Project Profile', desc: 'Cross-repo project context synthesis', default: 'opus' },
   { key: 'enrichPlan', label: 'Enrich Plan', desc: 'Plans MCP enrichment queries', default: 'sonnet' },
   { key: 'enrichExecute', label: 'Enrich Execute', desc: 'Gathers external context via MCP', default: 'opus' },
+  { key: 'thought', label: 'Thought', desc: 'Random status line thoughts', default: 'haiku' },
   { key: 'digestDaily', label: 'Digest Daily', desc: 'Daily standup summary', default: 'sonnet' },
   { key: 'digestWeekly', label: 'Digest Weekly', desc: 'Weekly 1:1 summary', default: 'opus' },
   { key: 'digestBrag', label: 'Digest Brag', desc: 'Quarterly brag doc', default: 'opus' },
