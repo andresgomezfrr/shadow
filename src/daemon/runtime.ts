@@ -605,9 +605,21 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       state.activeJobCount = jobQueue.activeCount;
       state.activeJobs = jobQueue.activeJobs;
       state.activeProjects = daemonShared.activeProjects;
-      // Backward compat: derive lastHeartbeatPhase from active heartbeat job
-      const activeHb = state.activeJobs.find(j => j.type === 'heartbeat');
-      state.lastHeartbeatPhase = activeHb?.phase ?? null;
+      // Derive lastHeartbeatPhase from the highest-priority active job
+      // For heartbeat: use phase directly (observe, analyze, etc.)
+      // For other jobs: use "type" or "type-phase" to distinguish in status line
+      if (state.activeJobs.length > 0) {
+        const top = state.activeJobs[0]; // already sorted by claim priority
+        if (top.type === 'heartbeat') {
+          state.lastHeartbeatPhase = top.phase;
+        } else if (top.phase && top.phase !== top.type) {
+          state.lastHeartbeatPhase = `${top.type}-${top.phase}`;
+        } else {
+          state.lastHeartbeatPhase = top.type;
+        }
+      } else {
+        state.lastHeartbeatPhase = null;
+      }
 
       // Periodically rotate watchers to pick up newly-active repos (~every 60 idle ticks ≈ 30min)
       if (consecutiveIdleTicks > 0 && consecutiveIdleTicks % 60 === 0) {

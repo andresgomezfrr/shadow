@@ -211,10 +211,25 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
     *analyze*)
       case $V in 0) MASCOT="{°_°}.." ;; 1) MASCOT="{°_°}..." ;; *) MASCOT="{°.°}🔎" ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="analyzing" ;;
-    *suggest*)
+    *suggest-deep*|*scan*)
+      case $V in 0) MASCOT="{°.°}🔬" ;; 1) MASCOT="{°_°}🔍" ;; *) MASCOT="{°‿°}🧬" ;; esac
+      MCOLOR="$CG"; ACTIVITY_TEXT="deep-scan" ;;
+    *suggest-project*|*cross-repo*)
+      case $V in 0) MASCOT="{•ᴗ•}🔗" ;; 1) MASCOT="{•‿•}🌐" ;; *) MASCOT="{•ᴗ•}🕸️" ;; esac
+      MCOLOR="$CG"; ACTIVITY_TEXT="cross-repo" ;;
+    *suggest*|*notify*)
       case $V in 0) MASCOT="{•ᴗ•}💡" ;; 1) MASCOT="{•‿•}💡" ;; *) MASCOT="{•ᴗ•}!" ;; esac
       MCOLOR="$CG"; ACTIVITY_TEXT="suggesting" ;;
-    *consolidat*)
+    *validat*)
+      case $V in 0) MASCOT="{°.°}✓" ;; 1) MASCOT="{°‿°}☑️" ;; *) MASCOT="{°_°}🎯" ;; esac
+      MCOLOR="$CG"; ACTIVITY_TEXT="validating" ;;
+    *correction*)
+      case $V in 0) MASCOT="{•̀_•́}✏️" ;; 1) MASCOT="{•̀‿•́}📝" ;; *) MASCOT="{•̀_•́}🔧" ;; esac
+      MCOLOR="$CY"; ACTIVITY_TEXT="correcting" ;;
+    *merge*)
+      case $V in 0) MASCOT="{•~•}🧩" ;; 1) MASCOT="{•‿•}🔀" ;; *) MASCOT="{•~•}🫂" ;; esac
+      MCOLOR="$CY"; ACTIVITY_TEXT="merging" ;;
+    *consolidat*|*layer-maint*|*meta-pat*)
       case $V in 0) MASCOT="{•_•}⚙" ;; 1) MASCOT="{•‿•}⚙" ;; *) MASCOT="{•_•}~" ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="consolidating" ;;
     *reflect*)
@@ -226,9 +241,15 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
     *remote-sync*|*sync*)
       case $V in 0) MASCOT="{•_•}🔄" ;; 1) MASCOT="{•‿•}⬇️" ;; *) MASCOT="{•_•}📥" ;; esac
       MCOLOR="$CK"; ACTIVITY_TEXT="syncing" ;;
+    *project-profile*|*mapping*)
+      case $V in 0) MASCOT="{°_°}📐" ;; 1) MASCOT="{°‿°}📊" ;; *) MASCOT="{°.°}🗺️" ;; esac
+      MCOLOR="$CT"; ACTIVITY_TEXT="mapping" ;;
     *repo-profile*)
       case $V in 0) MASCOT="{•_•}📋" ;; 1) MASCOT="{•‿•}📋" ;; *) MASCOT="{•_•}🔍" ;; esac
       MCOLOR="$CT"; ACTIVITY_TEXT="profiling" ;;
+    *digest*)
+      case $V in 0) MASCOT="{-‿-}📝" ;; 1) MASCOT="{-_-}✍️" ;; *) MASCOT="{-‿-}📄" ;; esac
+      MCOLOR="$CC"; ACTIVITY_TEXT="writing" ;;
     *)
       case $V in 0) MASCOT="{•_•}" ;; 1) MASCOT="{•‿•}" ;; *) MASCOT="{•_•}~" ;; esac
       MCOLOR="$CY"; ACTIVITY_TEXT="working" ;;
