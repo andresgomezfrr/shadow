@@ -1,9 +1,16 @@
 import { TRUST_NAMES, MOOD_EMOJIS } from '../../api/types';
 import type { StatusResponse } from '../../api/types';
-import { useSSEConnected } from '../../hooks/useEventStream';
+import { useSSEConnected, useSSEStaleness } from '../../hooks/useEventStream';
+
+function formatAgo(sec: number): string {
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  return min < 60 ? `${min}m ago` : `${Math.floor(min / 60)}h ago`;
+}
 
 export function Topbar({ status }: { status?: StatusResponse | null }) {
   const sseConnected = useSSEConnected();
+  const { stale, agoSec } = useSSEStaleness();
   const profile = status?.profile;
   const trustLevel = profile?.trustLevel ?? 1;
   const trustName = TRUST_NAMES[trustLevel] ?? 'Unknown';
@@ -20,7 +27,11 @@ export function Topbar({ status }: { status?: StatusResponse | null }) {
         </span>
       </div>
       <div className="flex items-center gap-3.5 text-[13px] text-text-dim">
-        <span className={`w-2 h-2 rounded-full ${sseConnected ? 'bg-green' : 'bg-orange animate-pulse'}`} title={sseConnected ? 'Live' : 'Reconnecting...'} />
+        <span className="flex items-center gap-1.5" title={!sseConnected ? 'Offline — reconnecting' : stale ? `Stale — last update ${formatAgo(agoSec)}` : 'Live'}>
+          <span className={`w-2 h-2 rounded-full ${!sseConnected ? 'bg-orange animate-pulse' : stale ? 'bg-yellow' : 'bg-green'}`} />
+          {!sseConnected && <span className="text-[11px] text-orange">Offline</span>}
+          {sseConnected && stale && <span className="text-[11px] text-yellow">{formatAgo(agoSec)}</span>}
+        </span>
         <span className="text-[15px]" title={`Mood: ${mood}`}>{moodEmoji}</span>
         {focusActive && (
           <span className="text-[11px] px-2 py-0.5 rounded-xl bg-green/15 text-green">

@@ -9,9 +9,33 @@ const listeners = new Map<string, Set<EventHandler>>();
 let connectedState = false;
 const connectedCallbacks = new Set<(v: boolean) => void>();
 
+// Reconnect state
+let reconnectAttempt = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Staleness tracking
+let lastMessageAt: number = Date.now();
+const staleCallbacks = new Set<() => void>();
+
 function notifyConnected(v: boolean) {
   connectedState = v;
   for (const cb of connectedCallbacks) cb(v);
+}
+
+function touchLastMessage() {
+  lastMessageAt = Date.now();
+  for (const cb of staleCallbacks) cb();
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30000);
+  reconnectAttempt++;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    if (sharedSource) { sharedSource.close(); sharedSource = null; }
+    if (refCount > 0) getOrCreateSource();
+  }, delay);
 }
 
 function getOrCreateSource(): EventSource {
@@ -19,11 +43,19 @@ function getOrCreateSource(): EventSource {
 
   const source = new EventSource('/api/events/stream');
 
-  source.onopen = () => notifyConnected(true);
-  source.onerror = () => notifyConnected(false);
+  source.onopen = () => {
+    reconnectAttempt = 0;
+    notifyConnected(true);
+    touchLastMessage();
+  };
+  source.onerror = () => {
+    notifyConnected(false);
+    scheduleReconnect();
+  };
 
   // Listen for all events via the generic message handler + named events
   source.onmessage = (event) => {
+    touchLastMessage();
     const handlers = listeners.get('message');
     if (handlers) for (const h of handlers) h(tryParse(event.data));
   };
@@ -31,6 +63,7 @@ function getOrCreateSource(): EventSource {
   // Register listeners for specific event types
   const proxyEvent = (type: string) => {
     source.addEventListener(type, (event) => {
+      touchLastMessage();
       const handlers = listeners.get(type);
       if (handlers) for (const h of handlers) h(tryParse((event as MessageEvent).data));
     });
@@ -92,6 +125,7 @@ export function useEventStream(
         sharedSource.close();
         sharedSource = null;
         refCount = 0;
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       }
     };
   }, [eventTypes.join(',')]);
@@ -116,9 +150,36 @@ export function useSSEConnected(): boolean {
         sharedSource.close();
         sharedSource = null;
         refCount = 0;
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       }
     };
   }, []);
 
   return connected;
+}
+
+/**
+ * Hook that tracks staleness — how long since the last SSE message.
+ * Returns stale boolean (true if no message for > thresholdMs) and
+ * seconds since last update.
+ */
+export function useSSEStaleness(thresholdMs = 45000): { stale: boolean; agoSec: number } {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    // Re-render on any new message
+    const cb = () => setTick(t => t + 1);
+    staleCallbacks.add(cb);
+
+    // Poll every 10s for time-based staleness updates
+    const interval = setInterval(() => setTick(t => t + 1), 10000);
+
+    return () => {
+      staleCallbacks.delete(cb);
+      clearInterval(interval);
+    };
+  }, []);
+
+  const agoMs = Date.now() - lastMessageAt;
+  return { stale: agoMs > thresholdMs, agoSec: Math.round(agoMs / 1000) };
 }
