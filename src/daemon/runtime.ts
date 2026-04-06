@@ -448,12 +448,58 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         _db.enqueueJob('suggest', { priority: 8 });
       }
 
-      // Digests: clock-time scheduled, timezone-aware
+      // Digests: clock-time scheduled, timezone-aware, with backfill for missed days
       const userTz = _db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-      for (const [jobType, schedule] of Object.entries(DIGEST_SCHEDULES)) {
-        if (!_db.hasQueuedOrRunning(jobType) && isScheduleReady(schedule, userTz, _db.getLastJob(jobType)?.startedAt)) {
-          _db.enqueueJob(jobType, { priority: 5 });
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: userTz }); // YYYY-MM-DD
+
+      // Daily backfill: check for missed days
+      if (!_db.hasQueuedOrRunning('digest-daily')) {
+        const lastDaily = _db.getLatestDigest('daily');
+        const lastDate = lastDaily?.periodStart;
+
+        if (lastDate && lastDate < todayStr) {
+          const next = new Date(lastDate);
+          next.setDate(next.getDate() + 1);
+          const nextStr = next.toISOString().slice(0, 10);
+
+          if (nextStr < todayStr) {
+            // Backfill a missed day (one per tick, catches up over multiple ticks)
+            _db.enqueueJob('digest-daily', { priority: 3, triggerSource: 'backfill', params: { periodStart: nextStr } });
+          } else {
+            // No gaps — normal clock scheduling for today
+            if (isScheduleReady(DIGEST_SCHEDULES['digest-daily'], userTz, _db.getLastJob('digest-daily')?.startedAt)) {
+              _db.enqueueJob('digest-daily', { priority: 5 });
+            }
+          }
+        } else {
+          // Up to date or never generated — normal scheduling
+          if (isScheduleReady(DIGEST_SCHEDULES['digest-daily'], userTz, _db.getLastJob('digest-daily')?.startedAt)) {
+            _db.enqueueJob('digest-daily', { priority: 5 });
+          }
         }
+      }
+
+      // Weekly backfill: check if last Sunday was missed
+      if (!_db.hasQueuedOrRunning('digest-weekly')) {
+        const lastWeekly = _db.getLatestDigest('weekly');
+        const nowTz = new Date(new Date().toLocaleString('en-US', { timeZone: userTz }));
+        const lastSunday = new Date(nowTz);
+        lastSunday.setDate(lastSunday.getDate() - lastSunday.getDay());
+        const lastSundayStr = lastSunday.toISOString().slice(0, 10);
+
+        const gapDays = (nowTz.getTime() - lastSunday.getTime()) / (24 * 60 * 60 * 1000);
+        if ((!lastWeekly || lastWeekly.periodStart < lastSundayStr) && gapDays >= 1) {
+          const weekStart = new Date(lastSunday);
+          weekStart.setDate(weekStart.getDate() - 6);
+          _db.enqueueJob('digest-weekly', { priority: 3, triggerSource: 'backfill', params: { periodStart: weekStart.toISOString().slice(0, 10) } });
+        } else if (isScheduleReady(DIGEST_SCHEDULES['digest-weekly'], userTz, _db.getLastJob('digest-weekly')?.startedAt)) {
+          _db.enqueueJob('digest-weekly', { priority: 5 });
+        }
+      }
+
+      // Brag: normal scheduling only (quarterly, no backfill)
+      if (!_db.hasQueuedOrRunning('digest-brag') && isScheduleReady(DIGEST_SCHEDULES['digest-brag'], userTz, _db.getLastJob('digest-brag')?.startedAt)) {
+        _db.enqueueJob('digest-brag', { priority: 5 });
       }
 
       // === Phase 2: Parallel job execution via JobQueue ===
