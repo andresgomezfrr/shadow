@@ -228,6 +228,9 @@ function renderExpandedDetail(entry: ActivityEntryType) {
           {num(r, 'memoriesMerged') > 0 && (
             <span><span className="text-accent">Merged:</span> <span className="text-text-dim">{num(r, 'memoriesMerged')} clusters ({num(r, 'memoriesArchivedByMerge')} archived)</span></span>
           )}
+          {num(r, 'memoriesDeduped') > 0 && (
+            <span><span className="text-accent">Deduped:</span> <span className="text-text-dim">{num(r, 'memoriesDeduped')}</span></span>
+          )}
         </div>
       </>
     );

@@ -247,12 +247,12 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
 
   // Phase 3: Memory merge
   ctx.setPhase('merge');
-  let mergeResult = { merged: 0, archived: 0 };
+  let mergeResult = { merged: 0, archived: 0, deduped: 0 };
   try {
     const { mergeRelatedMemories } = await import('../memory/retrieval.js');
     mergeResult = await mergeRelatedMemories(ctx.db, ctx.config);
-    if (mergeResult.merged > 0) {
-      console.error(`[daemon] Memory merge: ${mergeResult.merged} clusters merged, ${mergeResult.archived} memories archived`);
+    if (mergeResult.merged > 0 || mergeResult.deduped > 0) {
+      console.error(`[daemon] Memory merge: ${mergeResult.merged} clusters merged, ${mergeResult.archived} archived, ${mergeResult.deduped} deduped`);
     }
   } catch (e) {
     console.error('[daemon] Memory merge failed:', e instanceof Error ? e.message : e);
@@ -275,6 +275,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
       memoriesEdited: correctionsResult.edited,
       memoriesMerged: mergeResult.merged,
       memoriesArchivedByMerge: mergeResult.archived,
+      memoriesDeduped: mergeResult.deduped,
     },
   };
 }

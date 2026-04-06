@@ -284,14 +284,15 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
 export async function mergeRelatedMemories(
   db: ShadowDatabase,
   config: ShadowConfig,
-): Promise<{ merged: number; archived: number }> {
+): Promise<{ merged: number; archived: number; deduped: number }> {
   const PROTECTED_KINDS = new Set(['soul_reflection', 'correction', 'knowledge_summary']);
   const candidates = db.listMemories({ archived: false, limit: 200 })
     .filter(m => !PROTECTED_KINDS.has(m.kind));
 
-  if (candidates.length < 2) return { merged: 0, archived: 0 };
+  if (candidates.length < 2) return { merged: 0, archived: 0, deduped: 0 };
 
   // Step 0: Trivial dedup — archive exact duplicates (same title + same kind) keeping the newest
+  let deduped = 0;
   let archived = 0;
   const byTitleKind = new Map<string, typeof candidates>();
   for (const m of candidates) {
@@ -303,16 +304,15 @@ export async function mergeRelatedMemories(
   const dedupArchived = new Set<string>();
   for (const group of byTitleKind.values()) {
     if (group.length < 2) continue;
-    // Keep the newest, archive the rest
     const sorted = group.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     for (let i = 1; i < sorted.length; i++) {
       db.updateMemory(sorted[i].id, { archivedAt: new Date().toISOString() });
       db.createFeedback({ targetKind: 'memory', targetId: sorted[i].id, action: 'deduped', note: `Exact duplicate of ${sorted[0].id}` });
       dedupArchived.add(sorted[i].id);
-      archived++;
+      deduped++;
     }
   }
-  if (archived > 0) console.error(`[memory-merge] Deduped ${archived} exact duplicates`);
+  if (deduped > 0) console.error(`[memory-merge] Deduped ${deduped} exact duplicates`);
 
   // Filter out just-archived duplicates from candidates
   const dedupedCandidates = candidates.filter(m => !dedupArchived.has(m.id));
@@ -358,7 +358,7 @@ export async function mergeRelatedMemories(
     }
   }
 
-  if (clusters.length === 0) return { merged: 0, archived: 0 };
+  if (clusters.length === 0) return { merged: 0, archived: 0, deduped };
 
   // No artificial cap — natural limits are job timeout (8min) and LLM call duration.
   // Safeguard: can't archive more than 20% of total memories in one cycle.
@@ -478,5 +478,5 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
     }
   }
 
-  return { merged, archived };
+  return { merged, archived, deduped };
 }

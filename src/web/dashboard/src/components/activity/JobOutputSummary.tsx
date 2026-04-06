@@ -75,11 +75,13 @@ export function JobOutputSummary({ entry }: Props) {
     const promoted = num(r, 'memoriesPromoted');
     const demoted = num(r, 'memoriesDemoted');
     const merged = num(r, 'memoriesMerged');
-    if (promoted === 0 && demoted === 0 && merged === 0) return <span className="text-text-muted text-xs">no changes</span>;
+    const deduped = num(r, 'memoriesDeduped');
+    if (promoted === 0 && demoted === 0 && merged === 0 && deduped === 0) return <span className="text-text-muted text-xs">no changes</span>;
     const parts = [];
     if (promoted > 0) parts.push(`promoted ${promoted}`);
     if (demoted > 0) parts.push(`demoted ${demoted}`);
     if (merged > 0) parts.push(`merged ${merged}`);
+    if (deduped > 0) parts.push(`deduped ${deduped}`);
     return chip(parts.join(', '), 'text-orange bg-orange/15');
   }
 
