@@ -483,18 +483,23 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         }
       }
 
-      // Weekly backfill: check if last Sunday was missed
+      // Weekly backfill: check if last week's digest is missing
       if (!_db.hasQueuedOrRunning('digest-weekly')) {
         const lastWeekly = _db.getLatestDigest('weekly');
         const nowTz = new Date(new Date().toLocaleString('en-US', { timeZone: userTz }));
-        const lastSunday = new Date(nowTz);
-        lastSunday.setDate(lastSunday.getDate() - lastSunday.getDay());
-        const lastSundayStr = lastSunday.toISOString().slice(0, 10);
+        // Last Sunday = start of current week (or today if Sunday)
+        const thisSunday = new Date(nowTz);
+        thisSunday.setDate(thisSunday.getDate() - thisSunday.getDay());
+        // Previous Sunday = start of last week
+        const prevSunday = new Date(thisSunday);
+        prevSunday.setDate(prevSunday.getDate() - 7);
+        const prevSundayStr = prevSunday.toISOString().slice(0, 10);
 
-        const gapDays = (nowTz.getTime() - lastSunday.getTime()) / (24 * 60 * 60 * 1000);
-        if ((!lastWeekly || lastWeekly.periodStart < lastSundayStr) && gapDays >= 1) {
-          const weekStart = new Date(lastSunday);
-          weekStart.setDate(weekStart.getDate() - 6);
+        // Backfill if no weekly covers last week (periodEnd >= prevSunday+6)
+        const lastWeekCovered = lastWeekly && lastWeekly.periodEnd >= prevSundayStr;
+        if (!lastWeekCovered && nowTz.getDay() !== 0) {
+          // Missing last week's digest and it's not Sunday yet (avoid racing with normal schedule)
+          const weekStart = new Date(prevSunday);
           _db.enqueueJob('digest-weekly', { priority: 3, triggerSource: 'backfill', params: { periodStart: weekStart.toISOString().slice(0, 10) } });
         } else if (isScheduleReady(DIGEST_SCHEDULES['digest-weekly'], userTz, _db.getLastJob('digest-weekly')?.startedAt)) {
           _db.enqueueJob('digest-weekly', { priority: 5 });
