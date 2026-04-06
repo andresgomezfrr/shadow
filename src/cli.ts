@@ -92,17 +92,35 @@ ${endMarker}`;
       const endIdx = claudeMdContent.indexOf(endMarker);
 
       if (startIdx !== -1 && endIdx !== -1) {
-        // Replace existing section
-        claudeMdContent =
-          claudeMdContent.slice(0, startIdx) +
-          shadowSection +
-          claudeMdContent.slice(endIdx + endMarker.length);
+        // Existing block — check if content changed
+        const existingBlock = claudeMdContent.slice(startIdx, endIdx + endMarker.length);
+        if (existingBlock === shadowSection) {
+          console.error('[init] CLAUDE.md Shadow section already up to date');
+        } else {
+          // Content differs — ask for confirmation
+          const { createInterface } = await import('node:readline');
+          const rl = createInterface({ input: process.stdin, output: process.stdout });
+          const answer = await new Promise<string>(resolve => {
+            rl.question('Shadow section in ~/.claude/CLAUDE.md has changed. Update? [Y/n] ', resolve);
+          });
+          rl.close();
+          if (answer.toLowerCase() !== 'n') {
+            claudeMdContent =
+              claudeMdContent.slice(0, startIdx) +
+              shadowSection +
+              claudeMdContent.slice(endIdx + endMarker.length);
+            writeFileSync(claudeMdPath, claudeMdContent, 'utf8');
+            console.error('[init] CLAUDE.md Shadow section updated');
+          } else {
+            console.error('[init] CLAUDE.md Shadow section skipped');
+          }
+        }
       } else {
-        // Append section
+        // First time — append without confirmation
         claudeMdContent = claudeMdContent.trimEnd() + '\n\n' + shadowSection + '\n';
+        writeFileSync(claudeMdPath, claudeMdContent, 'utf8');
+        console.error('[init] CLAUDE.md Shadow section added');
       }
-
-      writeFileSync(claudeMdPath, claudeMdContent, 'utf8');
 
       // Generate hook scripts
       const shadowSrcDir = resolve(__dirname);
