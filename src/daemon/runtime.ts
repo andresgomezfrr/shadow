@@ -432,10 +432,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         _db.enqueueJob('remote-sync', { priority: 2 });
       }
 
-      // Repo profiling: periodic LLM analysis of repo context
-      if (config.repoProfileEnabled && shouldEnqueue('repo-profile', config.repoProfileIntervalMs)) {
-        _db.enqueueJob('repo-profile', { priority: 3 });
-      }
+      // Repo profiling: now reactive (triggered by remote-sync when changes detected)
+      // Manual trigger still available via /api/jobs/trigger/repo-profile
 
       // Context enrichment: periodic MCP-based external data gathering
       // Profile preferences override config defaults

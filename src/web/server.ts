@@ -105,9 +105,12 @@ async function handleApi(
           })(),
           'repo-profile': (() => {
             const lastRp = db.getLastJob('repo-profile');
-            const intervalMs = config.repoProfileIntervalMs;
-            const nextAt = lastRp ? new Date(new Date(lastRp.startedAt).getTime() + intervalMs).toISOString() : null;
-            return { intervalMs, nextAt, enabled: config.repoProfileEnabled };
+            return {
+              trigger: 'after remote-sync detects changes',
+              nextAt: null,
+              enabled: config.repoProfileEnabled,
+              lastRanAt: lastRp?.startedAt ?? null,
+            };
           })(),
           'context-enrich': (() => {
             const prefs = profile.preferences as Record<string, unknown> | undefined;

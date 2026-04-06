@@ -50,7 +50,7 @@ const JOB_DESCRIPTIONS: Record<string, string> = {
   consolidate: 'Promotes/demotes memories between layers, synthesizes meta-patterns',
   reflect: '2-phase soul reflection: extract deltas (Sonnet) → evolve soul (Opus)',
   'remote-sync': 'Lightweight git ls-remote to detect remote changes across repos',
-  'repo-profile': 'LLM analysis of repo context (stack, phase, team, CI) for suggestion calibration',
+  'repo-profile': 'Reactive: re-profiles repos when remote-sync detects new commits (2h min gap)',
   'context-enrich': 'Queries external MCP servers for deployment, CI/CD, calendar data',
   'digest-daily': 'Daily standup summary (3-5 bullets)',
   'digest-weekly': 'Weekly 1:1 summary from daily digests',

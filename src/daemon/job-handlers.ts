@@ -352,6 +352,17 @@ async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedState): Pro
     shared.pendingRemoteSyncResults.push(...withChanges);
   }
 
+  // Reactive repo-profile: trigger if changed repos need re-profiling (2h min gap)
+  if (withChanges.length > 0 && !ctx.db.hasQueuedOrRunning('repo-profile')) {
+    const lastProfile = ctx.db.getLastJob('repo-profile');
+    const gapMs = lastProfile ? Date.now() - new Date(lastProfile.startedAt).getTime() : Infinity;
+    const minGapMs = 2 * 60 * 60 * 1000; // 2h minimum between profiles
+    if (gapMs >= minGapMs) {
+      ctx.db.enqueueJob('repo-profile', { priority: 3, triggerSource: 'reactive' });
+      console.error(`[daemon] Reactive repo-profile triggered: ${withChanges.length} repos with changes`);
+    }
+  }
+
   return {
     llmCalls: 0, tokensUsed: 0, phases: ['remote-sync'],
     result: {

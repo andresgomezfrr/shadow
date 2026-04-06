@@ -242,13 +242,16 @@ export async function profileRepos(
   force = false,
 ): Promise<{ reposProfiled: number; llmCalls: number; tokensUsed: number }> {
   const repos = db.listRepos();
-  const now = Date.now();
-  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
 
-  // Sort: never-profiled first, then oldest contextUpdatedAt
-  // Filter: never profiled OR last profile > 7 days ago (unless forced)
+  // Filter: never profiled OR has new commits since last profile (git log check)
   const candidates = repos
-    .filter(r => force || !r.contextUpdatedAt || (now - new Date(r.contextUpdatedAt).getTime()) > sevenDaysMs)
+    .filter(r => {
+      if (force) return true;
+      if (!r.contextUpdatedAt) return true; // never profiled
+      // Only re-profile if repo has new commits since last profile
+      const newCommits = exec(`git log --since="${r.contextUpdatedAt}" --oneline`, r.path);
+      return newCommits !== null && newCommits.trim().length > 0;
+    })
     .sort((a, b) => {
       if (!a.contextUpdatedAt) return -1;
       if (!b.contextUpdatedAt) return 1;
@@ -257,7 +260,7 @@ export async function profileRepos(
     .slice(0, batchSize);
 
   if (candidates.length === 0) {
-    console.error('[shadow:repo-profile] All repos profiled recently, skipping');
+    console.error('[shadow:repo-profile] No repos with new commits, skipping');
     return { reposProfiled: 0, llmCalls: 0, tokensUsed: 0 };
   }
 
