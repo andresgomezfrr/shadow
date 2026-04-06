@@ -37,6 +37,10 @@ const PHASE_DOT: Record<string, string> = {
   suggest: 'bg-green',
   notify: 'bg-text-muted',
   consolidate: 'bg-orange',
+  'layer-maintenance': 'bg-orange',
+  corrections: 'bg-yellow-400',
+  merge: 'bg-amber-400',
+  'meta-patterns': 'bg-orange',
   reflect: 'bg-blue',
   'reflect-delta': 'bg-blue',
   'reflect-evolve': 'bg-purple',
@@ -53,6 +57,10 @@ const PHASE_TEXT: Record<string, string> = {
   suggest: 'text-green',
   notify: 'text-text-muted',
   consolidate: 'text-orange',
+  'layer-maintenance': 'text-orange',
+  corrections: 'text-yellow-400',
+  merge: 'text-amber-400',
+  'meta-patterns': 'text-orange',
   reflect: 'text-blue',
   'reflect-delta': 'text-blue',
   'reflect-evolve': 'text-purple',
@@ -213,10 +221,13 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     return (
       <>
         <PhasePipeline phases={entry.phases} />
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <span><span className="text-accent">Promoted:</span> <span className="text-text-dim">{num(r, 'memoriesPromoted')}</span></span>
           <span><span className="text-accent">Demoted:</span> <span className="text-text-dim">{num(r, 'memoriesDemoted')}</span></span>
           <span><span className="text-accent">Expired:</span> <span className="text-text-dim">{num(r, 'memoriesExpired')}</span></span>
+          {num(r, 'memoriesMerged') > 0 && (
+            <span><span className="text-accent">Merged:</span> <span className="text-text-dim">{num(r, 'memoriesMerged')} clusters ({num(r, 'memoriesArchivedByMerge')} archived)</span></span>
+          )}
         </div>
       </>
     );

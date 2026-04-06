@@ -227,8 +227,8 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
           goal: 'Evaluate memories against user correction',
           prompt,
           relevantMemories: [],
-          model: 'sonnet',
-          effort: 'low',
+          model: 'opus',
+          effort: 'high',
         });
 
         if (result.status === 'success' && result.output) {
@@ -273,4 +273,185 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
   }
 
   return { processed: corrections.length, archived, edited };
+}
+
+/**
+ * Merge semantically similar memories into richer combined memories.
+ * Uses vector search to find clusters, then LLM to decide and merge.
+ * Protected kinds (soul_reflection, taught, correction, knowledge_summary, meta_pattern) are excluded.
+ * Core-layer memories are excluded.
+ */
+export async function mergeRelatedMemories(
+  db: ShadowDatabase,
+  config: ShadowConfig,
+): Promise<{ merged: number; archived: number }> {
+  const PROTECTED_KINDS = new Set(['soul_reflection', 'correction', 'knowledge_summary']);
+  const candidates = db.listMemories({ archived: false, limit: 200 })
+    .filter(m => !PROTECTED_KINDS.has(m.kind));
+
+  if (candidates.length < 2) return { merged: 0, archived: 0 };
+
+  // Build merge clusters via vector search
+  const processed = new Set<string>();
+  const clusters: Array<Array<{ id: string; title: string; bodyMd: string; kind: string; layer: string; scope: string; entities: Array<{ type: string; id: string }> }>> = [];
+
+  for (const mem of candidates) {
+    if (processed.has(mem.id)) continue;
+
+    // Search for similar memories
+    let embedding: Float32Array;
+    try {
+      embedding = await embed(`${mem.title} ${mem.bodyMd}`);
+    } catch { continue; }
+
+    let similar: Array<{ id: string; distance: number }>;
+    try {
+      similar = db.rawDb
+        .prepare('SELECT id, distance FROM memory_vectors WHERE embedding MATCH ? ORDER BY distance LIMIT 10')
+        .all(embedding) as Array<{ id: string; distance: number }>;
+    } catch { continue; }
+
+    const cluster = [{ id: mem.id, title: mem.title, bodyMd: mem.bodyMd, kind: mem.kind, layer: mem.layer, scope: mem.scope, entities: mem.entities ?? [] }];
+
+    for (const row of similar) {
+      if (row.id === mem.id || processed.has(row.id)) continue;
+      const similarity = 1 - (row.distance * row.distance) / 2;
+      if (similarity < 0.65) break;
+
+      const other = db.getMemory(row.id);
+      if (!other || other.archivedAt || PROTECTED_KINDS.has(other.kind) || other.layer === 'core') continue;
+      if (other.scope !== mem.scope) continue; // same scope only
+
+      cluster.push({ id: other.id, title: other.title, bodyMd: other.bodyMd, kind: other.kind, layer: other.layer, scope: other.scope, entities: other.entities ?? [] });
+      if (cluster.length >= 5) break; // max cluster size
+    }
+
+    if (cluster.length >= 2) {
+      clusters.push(cluster);
+      for (const c of cluster) processed.add(c.id);
+    }
+  }
+
+  if (clusters.length === 0) return { merged: 0, archived: 0 };
+
+  // No artificial cap — natural limits are job timeout (8min) and LLM call duration.
+  // Safeguard: can't archive more than 20% of total memories in one cycle.
+  const totalMemories = db.countMemories({ archived: false });
+  const maxArchived = Math.max(10, Math.floor(totalMemories * 0.2));
+  let merged = 0;
+  let archived = 0;
+
+  const adapter = selectAdapter(config);
+
+  for (const cluster of clusters) {
+    if (archived >= maxArchived) break; // proportion safeguard
+
+    const prompt = `You are consolidating knowledge memories for Shadow, an engineering companion. These memories are about similar topics and may overlap.
+
+Memories:
+${cluster.map((m, i) => `[${i}] "${m.title}" (${m.kind}, ${m.layer}): ${m.bodyMd}`).join('\n\n')}
+
+Should these be merged into a single, richer memory? Consider:
+- Are they genuinely about the same topic/system?
+- Does merging lose important nuance?
+- Would a combined memory be more useful than ${cluster.length} separate ones?
+
+Respond with JSON:
+{
+  "shouldMerge": true or false,
+  "reason": "brief explanation",
+  "mergedTitle": "combined title if merging",
+  "mergedBody": "combined body in markdown — preserve ALL important details, do not lose information",
+  "mergedKind": "most appropriate kind (convention, design_decision, workflow, preference, pattern, etc.)",
+  "keepIndices": []
+}
+
+If keepIndices is non-empty, those memories will NOT be merged and will be kept separate.`;
+
+    try {
+      const result = await adapter.execute({
+        repos: [],
+        title: 'Memory merge evaluation',
+        goal: 'Decide whether to merge similar memories',
+        prompt,
+        relevantMemories: [],
+        model: 'opus',
+        effort: 'high',
+      });
+
+      if (result.status !== 'success' || !result.output) continue;
+
+      const schema = z.object({
+        shouldMerge: z.boolean(),
+        reason: z.string(),
+        mergedTitle: z.string().optional(),
+        mergedBody: z.string().optional(),
+        mergedKind: z.string().optional(),
+        keepIndices: z.array(z.number()).optional(),
+      });
+
+      const parsed = safeParseJson(result.output, schema, 'memory-merge');
+      if (!parsed.success || !parsed.data.shouldMerge) continue;
+
+      const { mergedTitle, mergedBody, mergedKind, keepIndices } = parsed.data;
+      if (!mergedTitle || !mergedBody) continue;
+
+      const keepSet = new Set(keepIndices ?? []);
+      const toMerge = cluster.filter((_, i) => !keepSet.has(i));
+      if (toMerge.length < 2) continue;
+
+      // Collect all entities from merged memories
+      const allEntities: Array<{ type: string; id: string }> = [];
+      for (const m of toMerge) {
+        for (const e of m.entities) {
+          if (!allEntities.some(ae => ae.type === e.type && ae.id === e.id)) {
+            allEntities.push(e);
+          }
+        }
+      }
+
+      // Create merged memory
+      const newMem = db.createMemory({
+        layer: toMerge[0].layer, // use first memory's layer
+        scope: toMerge[0].scope,
+        kind: mergedKind || toMerge[0].kind,
+        title: mergedTitle,
+        bodyMd: mergedBody,
+        sourceType: 'consolidation',
+        confidenceScore: 80,
+        relevanceScore: 0.7,
+      });
+
+      // Set entities via raw SQL (createMemory doesn't support entities_json)
+      if (allEntities.length > 0) {
+        db.rawDb
+          .prepare('UPDATE memories SET entities_json = ? WHERE id = ?')
+          .run(JSON.stringify(allEntities), newMem.id);
+      }
+
+      // Generate embedding for new memory
+      try {
+        await generateAndStoreEmbedding(db, 'memory', newMem.id, { kind: newMem.kind, title: mergedTitle, bodyMd: mergedBody });
+      } catch { /* best-effort */ }
+
+      // Archive source memories
+      for (const m of toMerge) {
+        db.updateMemory(m.id, { archivedAt: new Date().toISOString() });
+        db.createFeedback({
+          targetKind: 'memory',
+          targetId: m.id,
+          action: 'merged',
+          note: `Merged into ${newMem.id}: ${mergedTitle}`,
+        });
+        archived++;
+      }
+
+      merged++;
+      console.error(`[memory-merge] Merged ${toMerge.length} memories → "${mergedTitle}"`);
+    } catch (err) {
+      console.error('[memory-merge] LLM call failed:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  return { merged, archived };
 }

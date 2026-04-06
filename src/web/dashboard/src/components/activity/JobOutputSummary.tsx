@@ -74,8 +74,13 @@ export function JobOutputSummary({ entry }: Props) {
   if (type === 'consolidate') {
     const promoted = num(r, 'memoriesPromoted');
     const demoted = num(r, 'memoriesDemoted');
-    if (promoted === 0 && demoted === 0) return <span className="text-text-muted text-xs">no changes</span>;
-    return chip(`promoted ${promoted}, demoted ${demoted}`, 'text-orange bg-orange/15');
+    const merged = num(r, 'memoriesMerged');
+    if (promoted === 0 && demoted === 0 && merged === 0) return <span className="text-text-muted text-xs">no changes</span>;
+    const parts = [];
+    if (promoted > 0) parts.push(`promoted ${promoted}`);
+    if (demoted > 0) parts.push(`demoted ${demoted}`);
+    if (merged > 0) parts.push(`merged ${merged}`);
+    return chip(parts.join(', '), 'text-orange bg-orange/15');
   }
 
   if (type === 'reflect') {

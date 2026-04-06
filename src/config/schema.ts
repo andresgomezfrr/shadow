@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const ModelsSchema = z.object({
   analyze: z.string().default('sonnet'),
   suggest: z.string().default('opus'),
-  consolidate: z.string().default('sonnet'),
+  consolidate: z.string().default('opus'),
   runner: z.string().default('sonnet'),
   thought: z.string().default('haiku'),
   enrichPlan: z.string().default('sonnet'),
@@ -41,7 +41,7 @@ export const ConfigSchema = z.object({
   models: ModelsSchema.default({
     analyze: 'sonnet',
     suggest: 'opus',
-    consolidate: 'sonnet',
+    consolidate: 'opus',
     runner: 'sonnet',
     thought: 'haiku',
     enrichPlan: 'sonnet',

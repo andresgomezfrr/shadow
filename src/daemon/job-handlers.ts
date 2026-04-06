@@ -222,8 +222,8 @@ async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> {
 async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
   const { activityConsolidate } = await import('../heartbeat/activities.js');
 
-  ctx.setPhase('consolidate');
-
+  // Phase 1: Layer maintenance + meta-patterns
+  ctx.setPhase('layer-maintenance');
   const profile = ctx.db.ensureProfile();
   const actCtx = {
     config: ctx.config, db: ctx.db, profile,
@@ -232,7 +232,8 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
   };
   const consolidateResult = await activityConsolidate(actCtx);
 
-  // Enforce user corrections: archive/edit contradicting memories, promote corrections to taught
+  // Phase 2: Correction enforcement
+  ctx.setPhase('corrections');
   let correctionsResult = { processed: 0, archived: 0, edited: 0 };
   try {
     const { enforceCorrections } = await import('../memory/retrieval.js');
@@ -244,10 +245,27 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
     console.error('[daemon] Correction enforcement failed:', e instanceof Error ? e.message : e);
   }
 
+  // Phase 3: Memory merge
+  ctx.setPhase('merge');
+  let mergeResult = { merged: 0, archived: 0 };
+  try {
+    const { mergeRelatedMemories } = await import('../memory/retrieval.js');
+    mergeResult = await mergeRelatedMemories(ctx.db, ctx.config);
+    if (mergeResult.merged > 0) {
+      console.error(`[daemon] Memory merge: ${mergeResult.merged} clusters merged, ${mergeResult.archived} memories archived`);
+    }
+  } catch (e) {
+    console.error('[daemon] Memory merge failed:', e instanceof Error ? e.message : e);
+  }
+
+  const totalLlmCalls = consolidateResult.llmCalls
+    + (correctionsResult.processed > 0 ? correctionsResult.processed : 0)
+    + mergeResult.merged;
+
   return {
-    llmCalls: consolidateResult.llmCalls + (correctionsResult.processed > 0 ? 1 : 0),
+    llmCalls: totalLlmCalls,
     tokensUsed: consolidateResult.tokensUsed,
-    phases: ['consolidate'],
+    phases: ['layer-maintenance', 'corrections', 'merge', 'meta-patterns'],
     result: {
       memoriesPromoted: consolidateResult.memoriesPromoted,
       memoriesDemoted: consolidateResult.memoriesDemoted,
@@ -255,6 +273,8 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
       correctionsProcessed: correctionsResult.processed,
       memoriesArchived: correctionsResult.archived,
       memoriesEdited: correctionsResult.edited,
+      memoriesMerged: mergeResult.merged,
+      memoriesArchivedByMerge: mergeResult.archived,
     },
   };
 }
