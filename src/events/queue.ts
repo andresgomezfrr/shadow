@@ -1,5 +1,6 @@
 import type { ShadowDatabase } from '../storage/database.js';
 import type { EventRecord, UserProfileRecord } from '../storage/models.js';
+import { isFocusModeActive } from '../profile/user-profile.js';
 
 export type DeliveryDecision = {
   eventId: string;
@@ -34,12 +35,7 @@ export function checkDelivery(
   events: EventRecord[],
   profile: UserProfileRecord,
 ): DeliveryDecision[] {
-  const now = new Date();
-  const inFocusMode =
-    profile.focusMode !== null &&
-    profile.focusMode !== '' &&
-    profile.focusUntil !== null &&
-    new Date(profile.focusUntil) > now;
+  const inFocusMode = isFocusModeActive(profile);
 
   const minPriority = inFocusMode
     ? 9

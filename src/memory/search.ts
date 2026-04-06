@@ -15,7 +15,7 @@ const RRF_K = 60; // Standard RRF constant (from Cormack et al.)
 /**
  * Sanitize a text query for FTS5 — wrap words in quotes, join with OR.
  */
-function sanitizeFtsQuery(query: string): string {
+export function sanitizeFtsQuery(query: string): string {
   return query
     .replace(/[^\w\s]/g, ' ')
     .split(/\s+/)
@@ -116,10 +116,10 @@ export async function hybridSearch(opts: {
   // Build RRF scores
   const scores = new Map<string, { score: number; ftsRank?: number; vecSimilarity?: number }>();
 
-  ftsResults.forEach((r, rank) => {
+  ftsResults.forEach((r, idx) => {
     const entry = scores.get(r.id) ?? { score: 0 };
-    entry.score += 1 / (RRF_K + rank + 1);
-    entry.ftsRank = r.rank;
+    entry.score += 1 / (RRF_K + idx + 1);
+    entry.ftsRank = r.rank; // BM25 score (negative, closer to 0 = better)
     scores.set(r.id, entry);
   });
 

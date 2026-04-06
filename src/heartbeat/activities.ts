@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync as fsWriteFileSync } from 'node:fs';
+import { readFileSync, writeFileSync as fsWriteFileSync, renameSync, appendFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { ShadowConfig } from '../config/load-config.js';
@@ -6,7 +6,7 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { ObservationRecord, MemoryRecord, EntityLink } from '../storage/models.js';
 import type { ObjectivePack } from '../backend/types.js';
 
-import { observeAllRepos, collectActiveRepoContexts, summarizeRepoContexts } from '../observation/watcher.js';
+import { collectActiveRepoContexts, summarizeRepoContexts } from '../observation/watcher.js';
 import { findRelevantMemories } from '../memory/retrieval.js';
 import { maintainMemoryLayers } from '../memory/layers.js';
 import { checkMemoryDuplicate, checkSuggestionDuplicate } from '../memory/dedup.js';
@@ -88,24 +88,6 @@ function persistEntityLinks(db: ShadowDatabase, table: 'memories' | 'observation
   try {
     db.rawDb.prepare(`UPDATE ${table} SET entities_json = ? WHERE id = ?`).run(JSON.stringify(entities), id);
   } catch { /* best effort */ }
-}
-
-// --- Activity: Observe ---
-
-export async function activityObserve(
-  ctx: HeartbeatContext,
-): Promise<{ observationsCreated: number; reposObserved: string[] }> {
-  const results = await observeAllRepos(ctx.db);
-
-  let observationsCreated = 0;
-  const reposObserved: string[] = [];
-
-  for (const result of results) {
-    observationsCreated += result.observations.length;
-    reposObserved.push(result.repoId);
-  }
-
-  return { observationsCreated, reposObserved };
 }
 
 // --- Activity: Analyze ---
@@ -225,8 +207,13 @@ function summarizeConversations(conversations: ConversationTurn[]): string {
 
 function rotateConversationsLog(config: ShadowConfig): void {
   const convPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
+  const tmpPath = convPath + '.rotating';
+
+  // Atomic rename — hooks will create a new file on their next append
+  try { renameSync(convPath, tmpPath); } catch { return; }
+
   try {
-    const content = readFileSync(convPath, 'utf8');
+    const content = readFileSync(tmpPath, 'utf8');
     const lines = content.trim().split('\n').filter(Boolean);
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     const kept = lines.filter(line => {
@@ -235,8 +222,11 @@ function rotateConversationsLog(config: ShadowConfig): void {
         return entry.ts > twoHoursAgo;
       } catch { return false; }
     });
-    fsWriteFileSync(convPath, kept.length > 0 ? kept.join('\n') + '\n' : '', 'utf8');
-  } catch { /* fine */ }
+    // Append kept lines to the (possibly new) file — preserves any hook writes since rename
+    if (kept.length > 0) appendFileSync(convPath, kept.join('\n') + '\n', 'utf8');
+  } catch { /* read/filter error — non-fatal */ }
+
+  try { unlinkSync(tmpPath); } catch { /* already gone */ }
 }
 
 function getModel(ctx: HeartbeatContext, phase: 'analyze' | 'suggest' | 'consolidate' | 'runner'): string {
@@ -1025,10 +1015,15 @@ export async function activityConsolidate(
 
 // --- Interactions log rotation ---
 
-function rotateInteractionsLog(config: ShadowConfig, cutoffIso: string): void {
+function rotateInteractionsLog(config: ShadowConfig, _cutoffIso: string): void {
   const interactionsPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
+  const tmpPath = interactionsPath + '.rotating';
+
+  // Atomic rename — hooks will create a new file on their next append
+  try { renameSync(interactionsPath, tmpPath); } catch { return; }
+
   try {
-    const content = readFileSync(interactionsPath, 'utf8');
+    const content = readFileSync(tmpPath, 'utf8');
     const lines = content.trim().split('\n').filter(Boolean);
 
     // Keep lines from the last 2 hours as buffer (not 5 min — too aggressive)
@@ -1040,8 +1035,11 @@ function rotateInteractionsLog(config: ShadowConfig, cutoffIso: string): void {
       } catch { return false; }
     });
 
-    fsWriteFileSync(interactionsPath, kept.length > 0 ? kept.join('\n') + '\n' : '', 'utf8');
-  } catch { /* file doesn't exist or can't be read — fine */ }
+    // Append kept lines to the (possibly new) file — preserves any hook writes since rename
+    if (kept.length > 0) appendFileSync(interactionsPath, kept.join('\n') + '\n', 'utf8');
+  } catch { /* read/filter error — non-fatal */ }
+
+  try { unlinkSync(tmpPath); } catch { /* already gone */ }
 }
 
 // --- Activity: Notify ---

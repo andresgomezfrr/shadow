@@ -1,6 +1,13 @@
 import type { ShadowDatabase } from '../storage/database.js';
 import type { UserProfileRecord } from '../storage/models.js';
 
+/** Canonical focus mode check — use this everywhere instead of inline checks. */
+export function isFocusModeActive(profile: UserProfileRecord): boolean {
+  if (profile.focusMode !== 'focus') return false;
+  if (profile.focusUntil) return new Date(profile.focusUntil) > new Date();
+  return true; // focus with no expiry = always active
+}
+
 // --- Types ---
 
 export type ProfileUpdate = {
@@ -218,19 +225,7 @@ export function detectCommitPatterns(db: ShadowDatabase): CommitPatternsResult |
  * (minimal proactivity). Otherwise return the profile's proactivityLevel.
  */
 export function getEffectiveProactivity(profile: UserProfileRecord): number {
-  if (profile.focusMode === 'focus') {
-    // Check if focusUntil has expired
-    if (profile.focusUntil) {
-      const expiresAt = new Date(profile.focusUntil).getTime();
-      if (Date.now() < expiresAt) {
-        return 1;
-      }
-      // Focus period expired -- fall through to normal proactivity
-    } else {
-      // focusMode is 'focus' with no expiry -- always suppress
-      return 1;
-    }
-  }
+  if (isFocusModeActive(profile)) return 1;
 
   return profile.proactivityLevel;
 }

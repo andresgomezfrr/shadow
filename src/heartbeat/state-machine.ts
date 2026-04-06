@@ -1,6 +1,7 @@
 import type { ShadowConfig } from '../config/load-config.js';
 import type { ShadowDatabase } from '../storage/database.js';
 import type { JobRecord, UserProfileRecord } from '../storage/models.js';
+import { isFocusModeActive } from '../profile/user-profile.js';
 
 import {
   activityAnalyze,
@@ -32,14 +33,6 @@ export type HeartbeatResult = {
   llmCalls: number;
   tokensUsed: number;
 };
-
-// --- Helpers ---
-
-function isFocusModeActive(profile: UserProfileRecord): boolean {
-  if (profile.focusMode !== 'focus') return false;
-  if (profile.focusUntil) return new Date(profile.focusUntil) > new Date();
-  return true;
-}
 
 // --- State machine ---
 

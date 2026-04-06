@@ -61,8 +61,7 @@ export function remoteSyncRepos(db: ShadowDatabase, batchSize: number, repoId?: 
     // Step 1: Lightweight detection — git ls-remote vs local HEAD
     const remoteHead = gitExec('git ls-remote origin HEAD', repo.path);
     if (!remoteHead) {
-      // No remote or network error — skip, update timestamp to avoid retrying immediately
-      db.updateRepo(repo.id, { lastFetchedAt: now });
+      // No remote or network error — skip, don't update timestamp so we retry next cycle
       continue;
     }
 
@@ -83,8 +82,7 @@ export function remoteSyncRepos(db: ShadowDatabase, batchSize: number, repoId?: 
     // Step 2: Selective fetch — remote has changes
     const fetchResult = gitExec('git fetch --prune', repo.path, 30_000);
     if (fetchResult === null) {
-      // Fetch failed — still update timestamp
-      db.updateRepo(repo.id, { lastFetchedAt: now });
+      // Fetch failed — don't update timestamp so we retry next cycle
       continue;
     }
 

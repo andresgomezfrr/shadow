@@ -7,6 +7,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import type { ShadowConfig } from '../config/load-config.js';
+import { sanitizeFtsQuery } from '../memory/search.js';
 import type {
   AuditEventRecord,
   ContactRecord,
@@ -14,7 +15,6 @@ import type {
   EntityLink,
   EntityRelationRecord,
   EventRecord,
-  HeartbeatRecord,
   InteractionRecord,
   LlmUsageRecord,
   MemoryRecord,
@@ -719,14 +719,7 @@ export class ShadowDatabase {
   searchMemories(query: string, options?: { layer?: string; scope?: string; repoId?: string; limit?: number }): MemorySearchResult[] {
     const limit = options?.limit ?? 10;
 
-    // Sanitize query for FTS5 — wrap each word in double quotes to avoid syntax errors
-    const sanitized = query
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length > 1)
-      .map(w => `"${w}"`)
-      .join(' OR ');
-
+    const sanitized = sanitizeFtsQuery(query);
     if (!sanitized) return [];
 
     // Step 1: Get rowids from FTS5 with ranking
@@ -1094,57 +1087,6 @@ export class ShadowDatabase {
       .prepare("SELECT COUNT(*) as count FROM suggestions WHERE status = 'pending'")
       .get() as { count: number };
     return row.count;
-  }
-
-  // --- Heartbeats ---
-
-  createHeartbeat(input: { phase: string; activity?: string | null; startedAt: string }): HeartbeatRecord {
-    const id = randomUUID();
-    this.database
-      .prepare(
-        `INSERT INTO heartbeats (id, phase, activity, started_at) VALUES (?, ?, ?, ?)`,
-      )
-      .run(id, input.phase, input.activity ?? null, input.startedAt);
-    return this.getHeartbeat(id)!;
-  }
-
-  getHeartbeat(id: string): HeartbeatRecord | null {
-    const row = this.database.prepare('SELECT * FROM heartbeats WHERE id = ?').get(id);
-    return row ? mapHeartbeat(row) : null;
-  }
-
-  updateHeartbeat(id: string, updates: Partial<Pick<HeartbeatRecord, 'phase' | 'phases' | 'activity' | 'reposObserved' | 'observationsCreated' | 'suggestionsCreated' | 'llmCalls' | 'tokensUsed' | 'eventsQueued' | 'memoriesPromoted' | 'memoriesDemoted' | 'durationMs' | 'finishedAt'>>): void {
-    const sets: string[] = [];
-    const values: SQLValue[] = [];
-    for (const [key, value] of Object.entries(updates)) {
-      if (key === 'reposObserved') {
-        sets.push('repos_observed_json = ?');
-        values.push(JSON.stringify(value));
-      } else if (key === 'phases') {
-        sets.push('phases_json = ?');
-        values.push(JSON.stringify(value));
-      } else {
-        sets.push(`${toSnake(key)} = ?`);
-        values.push((value ?? null) as SQLValue);
-      }
-    }
-    if (sets.length === 0) return;
-    values.push(id);
-    this.database.prepare(`UPDATE heartbeats SET ${sets.join(', ')} WHERE id = ?`).run(...values);
-  }
-
-  getLastHeartbeat(): HeartbeatRecord | null {
-    const row = this.database
-      .prepare('SELECT * FROM heartbeats ORDER BY started_at DESC LIMIT 1')
-      .get();
-    return row ? mapHeartbeat(row) : null;
-  }
-
-  listHeartbeats(limit = 20): HeartbeatRecord[] {
-    return this.database
-      .prepare(`SELECT * FROM heartbeats ORDER BY started_at DESC LIMIT ?`)
-      .all(limit)
-      .map(mapHeartbeat);
   }
 
   // --- Interactions ---
@@ -1999,27 +1941,6 @@ function mapSuggestion(row: unknown): SuggestionRecord {
     resolvedAt: strOrNull(d.resolved_at),
     createdAt: str(d.created_at),
     expiresAt: strOrNull(d.expires_at),
-  };
-}
-
-function mapHeartbeat(row: unknown): HeartbeatRecord {
-  const d = r(row);
-  return {
-    id: str(d.id),
-    phase: str(d.phase),
-    phases: jsonParse(d.phases_json, []),
-    activity: strOrNull(d.activity),
-    reposObserved: jsonParse(d.repos_observed_json, []),
-    observationsCreated: num(d.observations_created),
-    suggestionsCreated: num(d.suggestions_created),
-    llmCalls: num(d.llm_calls ?? 0),
-    tokensUsed: num(d.tokens_used ?? 0),
-    eventsQueued: num(d.events_queued ?? 0),
-    memoriesPromoted: num(d.memories_promoted ?? 0),
-    memoriesDemoted: num(d.memories_demoted ?? 0),
-    durationMs: d.duration_ms != null ? num(d.duration_ms) : null,
-    startedAt: str(d.started_at),
-    finishedAt: strOrNull(d.finished_at),
   };
 }
 

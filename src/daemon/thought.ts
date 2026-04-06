@@ -70,7 +70,11 @@ function scheduleNext(ctx: ThoughtContext): void {
     const profile = ctx.db.ensureProfile();
     settings = resolveSettings(profile, ctx.config);
   } catch {
-    // DB closed (daemon shutting down) — stop the loop gracefully
+    // DB error (transient lock or shutdown) — retry in 5 min instead of dying
+    thoughtTimer = setTimeout(() => {
+      thoughtTimer = null;
+      scheduleNext(ctx);
+    }, 5 * 60_000);
     return;
   }
 

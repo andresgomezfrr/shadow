@@ -4,6 +4,7 @@ import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDatabase, type ShadowDatabase } from '../storage/database.js';
 import { loadConfig } from '../config/load-config.js';
+import { z } from 'zod';
 import { ProfileUpdateSchema } from '../config/schema.js';
 import { DIGEST_SCHEDULES, nextScheduledAt } from '../daemon/schedules.js';
 import type { EventBus } from './event-bus.js';
@@ -23,6 +24,20 @@ function html(res: ServerResponse, body: string): void {
   res.end(body);
 }
 
+const MAX_LIMIT = 200;
+function clampLimit(raw: string | null, fallback: number): number {
+  if (raw == null) return fallback;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 1) return fallback;
+  return Math.min(n, MAX_LIMIT);
+}
+
+function clampOffset(raw: string | null): number {
+  if (raw == null) return 0;
+  const n = parseInt(raw, 10);
+  return Number.isNaN(n) || n < 0 ? 0 : n;
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -31,6 +46,45 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('error', reject);
   });
 }
+
+async function parseBody<T>(req: IncomingMessage, res: ServerResponse, schema: z.ZodType<T>): Promise<T | null> {
+  let raw: string;
+  try { raw = await readBody(req); } catch { return json(res, { error: 'Failed to read body' }, 400), null; }
+  if (!raw) return json(res, { error: 'Missing request body' }, 400), null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return json(res, { error: 'Invalid JSON' }, 400), null; }
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    const issues = result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`);
+    return json(res, { error: 'Validation failed', issues }, 400), null;
+  }
+  return result.data;
+}
+
+async function parseOptionalBody<T>(req: IncomingMessage, schema: z.ZodType<T>): Promise<T> {
+  try {
+    const raw = await readBody(req);
+    if (!raw) return schema.parse({});
+    return schema.parse(JSON.parse(raw));
+  } catch { return schema.parse({}); }
+}
+
+// --- POST body schemas ---
+const BulkSuggestionSchema = z.object({
+  action: z.enum(['accept', 'dismiss', 'snooze']),
+  ids: z.array(z.string()).min(1),
+  category: z.string().max(100).optional(),
+  note: z.string().max(500).optional(),
+  hours: z.number().positive().optional(),
+});
+const OptionalCategorySchema = z.object({ category: z.string().max(100).optional() });
+const DismissCategorySchema = z.object({ note: z.string().max(500).optional(), category: z.string().max(100).optional() });
+const SnoozeSchema = z.object({ hours: z.number().min(0).default(72) });
+const OptionalNoteSchema = z.object({ note: z.string().max(500).optional() });
+const FocusSchema = z.object({ mode: z.string(), duration: z.string().optional() });
+const FeedbackSchema = z.object({ targetKind: z.string().min(1), targetId: z.string().min(1), action: z.string().min(1), note: z.string().max(500).optional() });
+const CorrectionSchema = z.object({ body: z.string().min(1), scope: z.string().min(1), title: z.string().max(200).optional(), entityType: z.enum(['repo', 'project', 'system']).optional(), entityId: z.string().optional() });
+const DigestTriggerSchema = z.object({ periodStart: z.string().optional() });
 
 function parseUrl(req: IncomingMessage): { pathname: string; params: URLSearchParams } {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
@@ -142,8 +196,8 @@ async function handleApi(
       const q = params.get('q');
       const layer = params.get('layer') ?? undefined;
       const memoryType = params.get('memoryType') ?? undefined;
-      const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : undefined;
-      const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
+      const limit = clampLimit(params.get('limit'), 50);
+      const offset = clampOffset(params.get('offset'));
       if (q) {
         const results = db.searchMemories(q, { layer, limit: limit ?? 50 });
         const items = results.map((r) => ({ ...r.memory, rank: r.rank, snippet: r.snippet }));
@@ -157,8 +211,8 @@ async function handleApi(
     if (pathname === '/api/suggestions') {
       const status = params.get('status') ?? undefined;
       const kind = params.get('kind') ?? undefined;
-      const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : undefined;
-      const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
+      const limit = clampLimit(params.get('limit'), 30);
+      const offset = clampOffset(params.get('offset'));
       let items = db.listSuggestions({ status, kind, limit, offset });
       // Sort pending suggestions by rank score (best first)
       if (status === 'pending' && items.length > 0) {
@@ -175,8 +229,8 @@ async function handleApi(
     }
 
     if (pathname === '/api/observations') {
-      const limit = parseInt(params.get('limit') ?? '20', 10);
-      const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
+      const limit = clampLimit(params.get('limit'), 20);
+      const offset = clampOffset(params.get('offset'));
       const status = params.get('status') ?? 'all';
       const repoId = params.get('repoId') ?? undefined;
       const severity = params.get('severity') ?? undefined;
@@ -207,7 +261,7 @@ async function handleApi(
 
     if (pathname === '/api/digests') {
       const kind = params.get('kind') ?? undefined;
-      const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : 20;
+      const limit = clampLimit(params.get('limit'), 20);
       const before = params.get('before') ?? undefined;
       const after = params.get('after') ?? undefined;
       const digests = db.listDigests({ kind, limit, before, after });
@@ -297,8 +351,8 @@ async function handleApi(
     // Enrichment cache: /api/enrichment
     if (pathname === '/api/enrichment') {
       const source = params.get('source') ?? undefined;
-      const limit = parseInt(params.get('limit') ?? '20', 10);
-      const offset = parseInt(params.get('offset') ?? '0', 10);
+      const limit = clampLimit(params.get('limit'), 20);
+      const offset = clampOffset(params.get('offset'));
       try {
         const items = db.listEnrichment({ source, limit, offset });
         const total = db.countEnrichment({ source });
@@ -341,7 +395,7 @@ async function handleApi(
 
     if (pathname === '/api/heartbeats') {
       // Legacy alias — redirect to jobs with type=heartbeat
-      const limit = parseInt(params.get('limit') ?? '30', 10);
+      const limit = clampLimit(params.get('limit'), 30);
       const jobs = db.listJobs({ type: 'heartbeat', limit });
       return json(res, jobs);
     }
@@ -349,8 +403,8 @@ async function handleApi(
     if (pathname === '/api/jobs') {
       const type = params.get('type') ?? undefined;
       const typePrefix = params.get('typePrefix') ?? undefined;
-      const limit = parseInt(params.get('limit') ?? '30', 10);
-      const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
+      const limit = clampLimit(params.get('limit'), 30);
+      const offset = clampOffset(params.get('offset'));
       const items = db.listJobs({ type, typePrefix, limit, offset });
       const total = db.countJobs({ type, typePrefix });
       return json(res, { items, total });
@@ -432,8 +486,8 @@ async function handleApi(
       const status = params.get('status') ?? undefined;
       const repoId = params.get('repoId') ?? undefined;
       const archived = params.get('archived') === 'true' ? true : undefined;
-      const limit = params.get('limit') ? parseInt(params.get('limit')!, 10) : undefined;
-      const offset = params.get('offset') ? parseInt(params.get('offset')!, 10) : undefined;
+      const limit = clampLimit(params.get('limit'), 30);
+      const offset = clampOffset(params.get('offset'));
       const items = db.listRuns({ status, repoId, archived, limit, offset });
       const total = db.countRuns({ status, archived });
       return json(res, { items, total });
@@ -451,8 +505,8 @@ async function handleApi(
       const sourceFilter = params.get('source') ?? undefined;
       const statusFilter = params.get('status') ?? undefined;
       const periodFilter = params.get('period') ?? undefined;
-      const limit = parseInt(params.get('limit') ?? '30', 10);
-      const offset = parseInt(params.get('offset') ?? '0', 10);
+      const limit = clampLimit(params.get('limit'), 30);
+      const offset = clampOffset(params.get('offset'));
 
       // Compute period start date
       let periodDate: string | null = null;
@@ -641,16 +695,8 @@ async function handleApi(
   if (req.method === 'POST') {
     // Bulk suggestion actions
     if (pathname === '/api/suggestions/bulk') {
-      const body = JSON.parse(await readBody(req)) as {
-        action: 'accept' | 'dismiss' | 'snooze';
-        ids: string[];
-        category?: string;
-        note?: string;
-        hours?: number;
-      };
-      if (!body.action || !Array.isArray(body.ids) || body.ids.length === 0) {
-        return json(res, { error: 'Missing action or ids' }, 400);
-      }
+      const body = await parseBody(req, res, BulkSuggestionSchema);
+      if (!body) return;
       let processed = 0;
       if (body.action === 'dismiss') {
         const { dismissSuggestion } = await import('../suggestion/engine.js');
@@ -680,31 +726,27 @@ async function handleApi(
       const [, id, action] = match;
       if (action === 'accept') {
         const { acceptSuggestion } = await import('../suggestion/engine.js');
-        let category: string | undefined;
-        try { const body = JSON.parse(await readBody(req)); category = body.category; } catch { /* no body is ok */ }
-        const result = acceptSuggestion(db, id, category);
+        const body = await parseOptionalBody(req, OptionalCategorySchema);
+        const result = acceptSuggestion(db, id, body.category);
         if (!result.ok) return json(res, { error: 'Cannot accept — suggestion not pending' }, 400);
         const updated = db.getSuggestion(id);
         return json(res, { ...updated, runId: result.runCreated });
       } else if (action === 'dismiss') {
         const { dismissSuggestion } = await import('../suggestion/engine.js');
-        let note: string | undefined;
-        let category: string | undefined;
-        try { const body = JSON.parse(await readBody(req)); note = body.note; category = body.category; } catch { /* no body is ok */ }
-        await dismissSuggestion(db, id, note, category);
+        const body = await parseOptionalBody(req, DismissCategorySchema);
+        await dismissSuggestion(db, id, body.note, body.category);
         const updated = db.getSuggestion(id);
         return json(res, updated);
       } else if (action === 'snooze') {
-        let hours = 72;
-        try { const body = JSON.parse(await readBody(req)); hours = body.hours ?? 72; } catch { /* */ }
-        if (hours === 0) {
+        const body = await parseOptionalBody(req, SnoozeSchema);
+        if (body.hours === 0) {
           // Unsnooze: wake immediately
           db.updateSuggestion(id, { status: 'pending', expiresAt: null });
           const updated = db.getSuggestion(id);
           return json(res, updated);
         }
         const { snoozeSuggestion } = await import('../suggestion/engine.js');
-        const until = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+        const until = new Date(Date.now() + body.hours * 60 * 60 * 1000).toISOString();
         const result = snoozeSuggestion(db, id, until);
         if (!result.ok) return json(res, { error: 'Cannot snooze — suggestion not pending' }, 400);
         const updated = db.getSuggestion(id);
@@ -719,9 +761,8 @@ async function handleApi(
       if (!obs) return json(res, { error: 'Not found' }, 404);
       const statusMap: Record<string, string> = { acknowledge: 'acknowledged', resolve: 'resolved', reopen: 'active' };
       db.updateObservationStatus(obsId, statusMap[action]);
-      let obsNote: string | undefined;
-      try { const body = JSON.parse(await readBody(req)); obsNote = body.note; } catch { /* ok */ }
-      if (action !== 'reopen') db.createFeedback({ targetKind: 'observation', targetId: obsId, action, note: obsNote });
+      const obsBody = await parseOptionalBody(req, OptionalNoteSchema);
+      if (action !== 'reopen') db.createFeedback({ targetKind: 'observation', targetId: obsId, action, note: obsBody.note });
       return json(res, db.getObservation(obsId));
     }
 
@@ -799,9 +840,8 @@ async function handleApi(
 
       if (action === 'discard') {
         try { db.transitionRun(runId, 'discarded'); } catch { return json(res, { error: 'Run must be completed to discard' }, 400); }
-        let discardNote: string | undefined;
-        try { const body = JSON.parse(await readBody(req)); discardNote = body.note; } catch { /* ok */ }
-        db.createFeedback({ targetKind: 'run', targetId: runId, action: 'discard', note: discardNote });
+        const discardBody = await parseOptionalBody(req, OptionalNoteSchema);
+        db.createFeedback({ targetKind: 'run', targetId: runId, action: 'discard', note: discardBody.note });
 
         // Auto-rollback + cleanup worktree on discard
         if (run.snapshotRef) {
@@ -998,12 +1038,12 @@ async function handleApi(
     }
 
     if (pathname === '/api/focus') {
-      let body: Record<string, unknown>;
-      try { body = JSON.parse(await readBody(req)); } catch { return json(res, { error: 'Invalid JSON body' }, 400); }
+      const body = await parseBody(req, res, FocusSchema);
+      if (!body) return;
       if (body.mode === 'focus') {
         let focusUntil: string | null = null;
         if (body.duration) {
-          const durMatch = String(body.duration).match(/^(\d+)\s*(h|m)$/i);
+          const durMatch = body.duration.match(/^(\d+)\s*(h|m)$/i);
           if (durMatch) {
             const ms = durMatch[2].toLowerCase() === 'h' ? Number(durMatch[1]) * 3600000 : Number(durMatch[1]) * 60000;
             focusUntil = new Date(Date.now() + ms).toISOString();
@@ -1017,10 +1057,9 @@ async function handleApi(
     }
 
     if (pathname === '/api/feedback') {
-      const body = JSON.parse(await readBody(req));
-      const { targetKind, targetId, action, note } = body;
-      if (!targetKind || !targetId || !action) return json(res, { error: 'Missing targetKind, targetId, or action' }, 400);
-      db.createFeedback({ targetKind, targetId, action, note });
+      const body = await parseBody(req, res, FeedbackSchema);
+      if (!body) return;
+      db.createFeedback({ targetKind: body.targetKind, targetId: body.targetId, action: body.action, note: body.note });
       return json(res, { ok: true });
     }
 
@@ -1058,28 +1097,24 @@ async function handleApi(
       if (db.hasQueuedOrRunning(jobType)) {
         return json(res, { error: `${kind} digest already queued or running` }, 409);
       }
-      const body = await readBody(req).then(b => b ? JSON.parse(b) : {}).catch(() => ({}));
-      const params = body.periodStart ? { periodStart: body.periodStart as string } : {};
+      const body = await parseOptionalBody(req, DigestTriggerSchema);
+      const params = body.periodStart ? { periodStart: body.periodStart } : {};
       db.enqueueJob(jobType, { triggerSource: 'manual', params });
       return json(res, { triggered: true, kind, periodStart: body.periodStart ?? null });
     }
 
     if (pathname === '/api/corrections') {
-      const body = await readBody(req).then(b => b ? JSON.parse(b) : {}).catch(() => ({}));
-      const { title, body: correctionBody, scope, entityType, entityId } = body;
+      const body = await parseBody(req, res, CorrectionSchema);
+      if (!body) return;
 
-      if (!correctionBody || !scope) {
-        return json(res, { error: 'Missing body or scope' }, 400);
-      }
-
-      const correctionTitle = title || correctionBody.slice(0, 60) + (correctionBody.length > 60 ? '...' : '');
+      const correctionTitle = body.title || body.body.slice(0, 60) + (body.body.length > 60 ? '...' : '');
 
       const memory = db.createMemory({
         layer: 'core',
-        scope,
+        scope: body.scope,
         kind: 'correction',
         title: correctionTitle,
-        bodyMd: correctionBody,
+        bodyMd: body.body,
         tags: [],
         sourceType: 'api',
         confidenceScore: 100,
@@ -1087,9 +1122,9 @@ async function handleApi(
       });
 
       // Link entities if provided
-      if (entityType && entityId) {
+      if (body.entityType && body.entityId) {
         try {
-          const entities = [{ type: entityType, id: entityId }];
+          const entities = [{ type: body.entityType, id: body.entityId }];
           db.rawDb.prepare('UPDATE memories SET entities_json = ? WHERE id = ?')
             .run(JSON.stringify(entities), memory.id);
         } catch { /* best-effort */ }

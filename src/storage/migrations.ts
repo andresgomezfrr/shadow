@@ -730,7 +730,7 @@ export function applyMigrations(database: DatabaseSync, dbPath?: string): void {
     'INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)',
   );
 
-  const pendingMigrations = migrations.filter(m => !applied.has(m.version));
+  const pendingMigrations = migrations.filter(m => !applied.has(m.version)).sort((a, b) => a.version - b.version);
 
   // Snapshot DB before applying new migrations
   if (pendingMigrations.length > 0 && dbPath) {

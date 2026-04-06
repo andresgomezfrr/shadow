@@ -19,11 +19,6 @@ function getStaleDays(memoryType: string, layer: string): number {
   return { hot: 14, warm: 30, cool: 90 }[layer] ?? 14;
 }
 
-// Legacy constants kept for backward compat in promotion logic
-const HOT_STALE_DAYS = 14;
-const WARM_STALE_DAYS = 30;
-const COOL_STALE_DAYS = 90;
-
 const HOT_PROMOTION_ACCESS_COUNT = 3;
 const HOT_PROMOTION_WINDOW_DAYS = 7;
 const WARM_PROMOTION_ACCESS_COUNT = 2;

@@ -67,10 +67,14 @@ export class RunnerService {
     this.db.transitionRun(run.id, 'running');
     this.db.updateRun(run.id, { startedAt: now });
 
+    // Declared outside try so cleanup can access them in catch
+    let worktreePath: string | null = null;
+    let mainRepoCwd: string | null = null;
+    const repoIds = run.repoIds.length > 0 ? run.repoIds : [run.repoId];
+    const repos: RepoPack[] = [];
+
     try {
       // 3. Build ObjectivePack with multi-repo support
-      const repoIds = run.repoIds.length > 0 ? run.repoIds : [run.repoId];
-      const repos: RepoPack[] = [];
 
       for (const repoId of repoIds) {
         const repo = this.db.getRepo(repoId);
@@ -93,8 +97,8 @@ export class RunnerService {
       }
 
       // For execution runs, create a git worktree
-      let worktreePath: string | null = null;
       if (run.kind === 'execution' && repos[0].path !== '.') {
+        mainRepoCwd = repos[0].path;
         const branchName = `shadow/${run.id.slice(0, 8)}`;
         worktreePath = join(repos[0].path, '.shadow-worktrees', run.id.slice(0, 8));
         try {
@@ -343,6 +347,7 @@ export class RunnerService {
       });
 
       const updatedRun = this.db.getRun(run.id)!;
+      this.cleanupWorktree(worktreePath, mainRepoCwd);
       return { processed: true, run: updatedRun };
     } catch (error) {
       // Handle unexpected errors
@@ -379,7 +384,19 @@ export class RunnerService {
       });
 
       const updatedRun = this.db.getRun(run.id)!;
+      this.cleanupWorktree(worktreePath, mainRepoCwd);
       return { processed: true, run: updatedRun };
+    }
+  }
+
+  /** Remove a worktree directory (branch is kept for PR drafts). */
+  private cleanupWorktree(worktreePath: string | null, repoCwd: string | null): void {
+    if (!worktreePath) return;
+    try {
+      const cwd = repoCwd ?? undefined;
+      execSync(`git worktree remove "${worktreePath}" --force`, { cwd, stdio: 'pipe', timeout: 10_000 });
+    } catch (err) {
+      console.error('[runner] Failed to remove worktree:', err instanceof Error ? err.message : err);
     }
   }
 

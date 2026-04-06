@@ -141,24 +141,3 @@ export function summarizeRepoContexts(contexts: RepoContext[]): string {
 
   return lines.join('\n');
 }
-
-// --- Legacy exports for backwards compatibility ---
-
-export type ObserveResult = {
-  repoId: string;
-  repoName: string;
-  observations: never[];
-  lastCommitAt: string | null;
-  commitsSinceLastObservation: number;
-};
-
-export async function observeAllRepos(db: ShadowDatabase): Promise<ObserveResult[]> {
-  const repos = db.listRepos();
-  return repos.map(repo => ({
-    repoId: repo.id,
-    repoName: repo.name,
-    observations: [],
-    lastCommitAt: null,
-    commitsSinceLastObservation: 0,
-  }));
-}

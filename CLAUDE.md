@@ -36,7 +36,7 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 | CLI | Commander.js 14 |
 | Validation | Zod 4 |
 | LLM Backend | Claude CLI (`--print --output-format json`) or Agent SDK |
-| MCP | JSON-RPC over stdio (52 tools) |
+| MCP | JSON-RPC over stdio (53 tools) |
 | Dashboard | React 19, Vite, Tailwind CSS 4, React Router 7 |
 | Daemon | launchd (macOS), KeepAlive=true |
 
@@ -47,26 +47,35 @@ shadow/
 ├── src/
 │   ├── cli.ts                    # Main CLI entry (25+ commands)
 │   ├── cli/output.ts             # Human-readable output formatter
+│   ├── run-heartbeat.ts          # Standalone heartbeat runner
 │   ├── config/
 │   │   ├── schema.ts             # Zod config schema (backend, models, proactivity, personality)
 │   │   └── load-config.ts        # SHADOW_* env var mapping
 │   ├── storage/
-│   │   ├── database.ts           # ShadowDatabase class (all CRUD + FTS5 search)
-│   │   ├── migrations.ts         # Schema v1-v30 (19 tables, FTS5, triggers, vec0)
-│   │   ├── models.ts             # 16 record types
+│   │   ├── database.ts           # ShadowDatabase class (all CRUD + FTS5 + hybrid search)
+│   │   ├── migrations.ts         # Schema v1-v32 (19 tables, FTS5, triggers, vec0)
+│   │   ├── models.ts             # Record types for all tables
 │   │   └── index.ts              # Re-exports
 │   ├── observation/
-│   │   ├── watcher.ts            # Git observation engine (4 kinds, dedup)
-│   │   ├── patterns.ts           # Cross-observation pattern detection
+│   │   ├── watcher.ts            # Lightweight git context collector (branch, status, commits)
+│   │   ├── repo-watcher.ts       # FS watcher: file change detection, debounce, git events
+│   │   ├── repo-profile.ts       # Per-repo LLM profile generation
+│   │   ├── consolidation.ts      # Merge semantically similar observations via embeddings
 │   │   ├── mcp-discovery.ts      # Discover user MCP servers from settings.json
 │   │   └── remote-sync.ts        # Git ls-remote + selective fetch
 │   ├── memory/
 │   │   ├── layers.ts             # 5-layer maintenance (core/hot/warm/cool/cold)
-│   │   └── retrieval.ts          # FTS5 search, context-aware memory loading
+│   │   ├── retrieval.ts          # FTS5 search, context-aware memory loading, corrections
+│   │   ├── search.ts             # Hybrid search: FTS5 BM25 + vector cosine via RRF
+│   │   ├── dedup.ts              # Semantic dedup thresholds for memories/observations/suggestions
+│   │   ├── embeddings.ts         # all-MiniLM-L6-v2 embedding generation + cosine similarity
+│   │   ├── lifecycle.ts          # Embedding generation + backfill for all entity types
+│   │   └── index.ts              # Re-exports
 │   ├── heartbeat/
 │   │   ├── state-machine.ts      # wake→cleanup→analyze→notify→idle
 │   │   ├── activities.ts         # Phase implementations (LLM prompts, memory creation)
 │   │   ├── schemas.ts            # Zod schemas for LLM output validation
+│   │   ├── digests.ts            # Daily/weekly/brag digest generation
 │   │   ├── project-detection.ts  # Active project detection + momentum scoring
 │   │   └── enrichment.ts         # 2-phase MCP enrichment (plan + execute)
 │   ├── profile/
@@ -78,22 +87,40 @@ shadow/
 │   │   ├── engine.ts             # Accept/dismiss/snooze/expire lifecycle
 │   │   └── ranking.ts            # Impact*20 + confidence*0.3 - risk*10 - daysOld
 │   ├── runner/
-│   │   └── service.ts            # Run executor (multi-repo ObjectivePack)
+│   │   ├── service.ts            # Run executor (multi-repo ObjectivePack, worktrees)
+│   │   ├── queue.ts              # RunQueue: concurrent run processing
+│   │   ├── state-machine.ts      # Run status transitions + parent aggregation
+│   │   └── schemas.ts            # Zod schemas for confidence evaluation
 │   ├── backend/
 │   │   ├── types.ts              # BackendAdapter interface, ObjectivePack
-│   │   ├── claude-cli.ts         # CLI adapter (--print --output-format json)
+│   │   ├── claude-cli.ts         # CLI adapter (--print, stdin prompt, per-job tracking)
 │   │   ├── agent-sdk.ts          # Agent SDK adapter (dynamic import)
+│   │   ├── json-repair.ts        # Truncated JSON repair + Zod safe parse
 │   │   └── index.ts              # selectAdapter(config)
 │   ├── daemon/
-│   │   └── runtime.ts            # Dual-tick loop, launchd integration, web server
+│   │   ├── runtime.ts            # Main loop, launchd, web server, repo watcher
+│   │   ├── job-queue.ts          # JobQueue: concurrent job execution with timeout
+│   │   ├── job-handlers.ts       # 13 job type handlers (heartbeat, suggest, reflect, etc.)
+│   │   ├── schedules.ts          # Clock-time job scheduling (timezone-aware)
+│   │   └── thought.ts            # Status line thought generation (decorative LLM)
 │   ├── events/
 │   │   ├── queue.ts              # Proactivity-based delivery filtering
 │   │   └── types.ts              # 9 event kinds with priority mapping
 │   ├── mcp/
-│   │   ├── server.ts             # 52 MCP tools (read + trust-gated write)
-│   │   └── stdio.ts              # JSON-RPC transport
+│   │   ├── server.ts             # Tool assembly + JSON-RPC handler
+│   │   ├── stdio.ts              # JSON-RPC transport
+│   │   └── tools/
+│   │       ├── types.ts          # McpTool type + ToolContext
+│   │       ├── status.ts         # check_in, status, available
+│   │       ├── memory.ts         # memory_search/teach/forget/update/list, correct
+│   │       ├── observations.ts   # observations, observe, ack/resolve/reopen
+│   │       ├── suggestions.ts    # suggestions, accept/dismiss/snooze
+│   │       ├── entities.ts       # repos/projects/systems/contacts CRUD, relations
+│   │       ├── profile.ts        # profile, profile_set, focus, feedback, soul
+│   │       └── data.ts           # events, search, runs, usage, digests, enrichment
 │   └── web/
-│       ├── server.ts             # HTTP API server (20+ endpoints)
+│       ├── server.ts             # HTTP API server (30+ endpoints, Zod validation)
+│       ├── event-bus.ts          # SSE event bus for real-time dashboard updates
 │       └── dashboard/            # React app (see below)
 ├── scripts/                      # Portable hook scripts for plugin
 ├── hooks/                        # Plugin hooks.json
@@ -108,15 +135,31 @@ shadow/
 ```
 src/web/dashboard/
 ├── src/
-│   ├── App.tsx                   # React Router with 13 routes
-│   ├── api.ts                    # Fetch wrapper for /api/* endpoints
-│   ├── layouts/
-│   │   ├── AppShell.tsx          # Sidebar + Topbar + content area
-│   │   ├── Sidebar.tsx           # Navigation (emoji icons + labels)
-│   │   └── Topbar.tsx            # Trust badge, mood, refresh timer
-│   ├── components/               # Badge, Card, EmptyState, FilterTabs, MetricCard, etc.
-│   └── pages/                    # Morning, Dashboard, Memories, Suggestions, Observations,
-│                                 # Repos, Team, Systems, Usage, Heartbeats, Runs, Events, Profile
+│   ├── App.tsx                   # React Router with 16 routes + redirects
+│   ├── main.tsx                  # Entry point
+│   ├── api/
+│   │   ├── client.ts             # Typed fetch wrappers for all /api/* endpoints
+│   │   └── types.ts              # Entity types re-exported from backend models
+│   ├── hooks/                    # useApi, useFilterParams, useSSERefresh, useEventStream, useHighlight
+│   ├── utils/format.ts           # Date/number formatting helpers
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── AppShell.tsx      # Sidebar + Topbar + content area
+│   │   │   ├── Sidebar.tsx       # Navigation (emoji icons + labels, grouped sections)
+│   │   │   └── Topbar.tsx        # Trust badge, mood, refresh timer
+│   │   ├── common/               # Badge, Card, EmptyState, FilterTabs, MetricCard, Pagination,
+│   │   │                         # Markdown, ScoreBar, RunPipeline, ConfidenceIndicator, Toggle,
+│   │   │                         # ThumbsFeedback, CorrectionPanel, SearchInput, SettingsField
+│   │   ├── activity/             # LiveStatusBar, ScheduleRibbon, ActivityEntry, JobOutputSummary
+│   │   └── pages/
+│   │       ├── MorningPage.tsx   # + morning/ subcomponents (Projects, Repos, Metrics, etc.)
+│   │       ├── ProfilePage.tsx   # + settings/ subcomponents (Identity, Models, Soul, etc.)
+│   │       ├── GuidePage.tsx     # + guide/ subcomponents (Overview, Concepts, Jobs, etc.)
+│   │       ├── ActivityPage.tsx  # Unified jobs+runs timeline with SSE
+│   │       ├── WorkspacePage.tsx # Runs with execute/session/discard/PR actions
+│   │       └── ...               # Memories, Suggestions, Observations, Repos, Projects,
+│   │                             # Systems, Team, Digests, Events, Usage, Jobs (legacy)
+│   └── ...
 ├── vite.config.ts                # Proxy /api to localhost:3700, output to ../../public
 └── tailwind.config.ts            # Dark theme config
 ```
@@ -130,27 +173,26 @@ src/web/dashboard/
 | Route | Page | Purpose |
 |-------|------|---------|
 | `/morning` | Morning | Daily brief: active projects, enrichment, metrics, runs, memories, observations, suggestions |
-| `/dashboard` | Dashboard | Overview metrics grid |
-| `/profile` | Profile | Edit displayName, timezone, proactivity, personality, LLM models |
+| `/profile` | Profile | Settings sections: identity, behavior, models, soul, thoughts, enrichment, trust, system config |
 | `/memories` | Memories | Search + layer filter (URL-persisted) + pagination + expandable list |
-| `/suggestions` | Suggestions | Filter tabs (status + kind, URL-persisted), pagination, accept/dismiss with reason, scores with tooltips, repo context, deep links |
-| `/observations` | Observations | Filter by status (URL-persisted), pagination, votes, ack/resolve/reopen, enriched context, deep links |
-| `/repos` | Repos | Registered repos with last observed |
-| `/projects` | Projects | Clickable cards with observation/suggestion counters, drill-down to detail |
-| `/projects/:id` | ProjectDetail | Header, entity chips, observations, suggestions, memories, enrichment, momentum |
+| `/suggestions` | Suggestions | Filter tabs (status + kind), pagination, accept/dismiss with reason, scores, bulk actions |
+| `/observations` | Observations | Filter by status/severity, pagination, votes, ack/resolve/reopen, deep links |
+| `/repos` | Repos | Repo profile cards with correction panel |
+| `/projects` | Projects | Clickable cards with counters, drill-down to detail |
+| `/projects/:id` | ProjectDetail | Entity chips, observations, suggestions, memories, enrichment, context |
 | `/team` | Team | Contacts management |
 | `/systems` | Systems | Clickable cards, drill-down to detail |
 | `/systems/:id` | SystemDetail | Operational info, related projects, observations, memories |
+| `/workspace` | Workspace | Runs: execute/session/discard/PR, worktree info, pipeline visualization |
+| `/activity` | Activity | Unified jobs+runs timeline, SSE live status, schedule ribbon |
 | `/usage` | Usage | Token usage by period and model |
-| `/jobs` | Jobs | Job history with type/status filtering, pagination |
-| `/runs` | Runs | Filter tabs (to review default), execute/session/discard/manual, worktree info, markdown results |
-| `/digests` | Digests | Generated digests by kind |
+| `/digests` | Digests | Daily/weekly/brag with navigation, regenerate |
 | `/events` | Events | Pending event queue |
-| `/guide` | Guide | Modular reference: overview, concepts, CLI, MCP tools, status line, config |
+| `/guide` | Guide | Tabbed reference: overview, concepts, CLI, MCP tools, jobs, status line, config |
 
 ## Database Schema
 
-**19 tables** (SQLite, WAL mode, busy_timeout=5000ms for concurrency):
+**19 tables + virtual tables** (SQLite, WAL mode, busy_timeout=5000ms for concurrency):
 
 | Table | Purpose | Key columns |
 |-------|---------|-------------|
@@ -191,13 +233,15 @@ New entities go through `checkDuplicate()` before creation:
 - Decision: **skip** (>0.85), **update** existing (>0.70), or **create** new
 - Thresholds calibrated per entity type. Suggestions also check against dismissed (>0.75 = blocked).
 
-## MCP Tools (52 total)
+## MCP Tools (53 total)
+
+Tools split across `src/mcp/tools/`: status.ts, memory.ts, observations.ts, suggestions.ts, entities.ts, profile.ts, data.ts.
 
 ### Read-only (25, no trust gate)
 `shadow_check_in`, `shadow_status`, `shadow_repos`, `shadow_projects`, `shadow_active_projects`, `shadow_project_detail`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_search`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`, `shadow_daily_summary`, `shadow_feedback`, `shadow_soul`, `shadow_digests`, `shadow_digest`, `shadow_enrichment_config`, `shadow_enrichment_query`
 
-### Write (26, trust >= 1)
-`shadow_repo_add`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`, `shadow_relation_add`, `shadow_relation_list`, `shadow_relation_remove`
+### Write (27, trust >= 1)
+`shadow_repo_add`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_correct`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`, `shadow_relation_add`, `shadow_relation_list`, `shadow_relation_remove`
 
 ### Write (1, trust >= 2)
 `shadow_observe`
@@ -360,38 +404,19 @@ Observation kinds: `improvement`, `risk`, `opportunity`, `pattern`, `infrastruct
 
 Source: `sourceKind: 'llm'` (not `'repo'`)
 
-## Current State (as of 2026-04-04)
+## Current State (as of 2026-04-06)
 
-- **52 MCP tools** (25 read + 26 write L1 + 1 write L2) — includes projects, project-aware queries, enrichment, unified search
+- **53 MCP tools** (25 read + 27 write L1 + 1 write L2) — split across `src/mcp/tools/` (7 modules)
 - **4 hooks** (SessionStart, PostToolUse, UserPromptSubmit, Stop)
-- **Ghost mascot** `{•‿•}` in status line — 15 states × 3 variants, 9 ANSI colors (incl. mint/teal, pink)
-- **Active project** in status line — `📋 project-name` shows daemon-detected active project
-- **Job system** — typed jobs: heartbeat (30min), suggest (reactive), consolidate (6h), reflect (24h), remote-sync (30min), context-enrich (2h). Schedule visible in dashboard.
-- **Observe-cleanup phase** — MCP-powered cleanup of obsolete/duplicate observations before generating new ones
-- **Reflect job** — daily soul reflection with Opus. Synthesizes feedback + memories into coherent developer understanding
-- **Daemon** — launchd, graceful shutdown, stale job detector (every tick, 10min threshold), graceful drain (60s)
-- **Dashboard** — React at localhost:3700, sidebar badges, markdown rendering, deep linking, job schedule header with countdowns
-- **Feedback loop** — unified feedback table. 👍/👎 toggle with persistence. Reason on dismiss/resolve/discard. All fed to LLM prompts.
-- **Observation lifecycle** — semantic dedup, single canonical expiration by severity (active: info=7d, warning=14d, high=never; acknowledged: 2x TTL), severity-aware cap per repo (max 10, high excluded), `last_seen_at` touch on query/ack/reopen/heartbeat, consolidation via embeddings, LLM cleanup (>5 active, severity-protective), status (active/acknowledged/resolved/expired)
-- **Suggestion pipeline** — semantic dedup vs pending+dismissed+accepted, accept creates Run, plan by Claude with MCP + filesystem, execute/session/discard/executed-manual/retry states
-- **Runner with MCP delegation** — briefing-only prompt, Claude reads files + searches memories. `--allowedTools "mcp__shadow__*"`. Execution runs also get `Edit,Write,Bash`.
-- **Trust L3 complete** — confidence gate (Sonnet high) + auto-execute if no doubts + draft PR button. Schema v21 (confidence, doubts_json) + v22 (pr_url). L4+ designed in docs/plan-trust-levels.md.
-- **Project-aware analyze** — detects active projects before heartbeat, injects project context (repos, systems, observations) into extract/observe/suggest prompts. Cross-project observations auto-linked via entities_json.
-- **Smart analyze** — 3 LLM calls: extract (memories + mood) + observe-cleanup (MCP resolve) + observe (new observations, incl. cross_project kind). Soul reflection injected.
-- **Smart suggest** — separate job, project-aware, no operational suggestions, dedup, learns from feedback patterns
-- **MCP Enrichment** — 2-phase: planning (Sonnet) → execution (Opus, `mcp__*` access to all user MCPs). Content hash dedup, 24h TTL. Configurable interval. Results fed into heartbeat context.
-- **Project detection** — `detectActiveProjects()` scores projects by file interactions (×2), conversation mentions (×1), linked observations (×0.5). Top 3 with threshold ≥ 3. `computeProjectMomentum()` for 7-day trend.
-- **Remote sync** — periodic `git ls-remote` detects remote changes, selective fetch. Results injected as sensor data into heartbeat.
-- **CLI adapter** — async spawn, prompt via stdin (avoids ARG_MAX), effort levels per phase, stderr on failure, `activeChild` tracking for graceful SIGTERM
-- **Morning page** — daily brief with active projects (MorningProjects), enrichment items (MorningEnrichment), yesterday's digest, 2-column grid, recent jobs, memories, runs, suggestions, observations.
-- **Project/System detail pages** — `/projects/:id` with entity chips, counts, observations, suggestions, memories, enrichment. `/systems/:id` with operational info, related projects. Clickable cards on list pages.
-- **Dashboard UX overhaul** — RunsPage: status borders + pipeline + action hierarchy + collapsible details. SuggestionsPage: expandable cards + inline dismiss + ScoreBar. ObservationsPage: severity borders + prominent actions + severity filter. DashboardPage: clickable MetricCards with href + trend arrows. MorningPage: 2-column grid + daily digest.
-- **New components** — ConfidenceIndicator (3-dot ●●●/●●○/●○○), RunPipeline (plan→exec→PR), ScoreBar (impact/confidence/risk), MorningDigest. FilterTabs: optional dotColor + activeClass. MetricCard: optional href + trend.
-- **Dashboard filters** — `useFilterParams` hook syncs all filters with URL search params. Server-side filtering + pagination (`offset`/`limit`) on all list endpoints. `Pagination` component on Suggestions, Observations, Memories, Runs, Jobs pages. Colored FilterTabs per status.
-- **Feedback optimization** — `getThumbsState()` dedicated query with index. Feedback state inlined in suggestions/observations API responses (single request, no separate fetch).
-- **Job timeout with killActiveChild** — `runJobType` has integrated timeout (8min). Kills LLM child process on timeout. `cancelled` flag prevents background promise from overwriting status. No more 50min heartbeats.
-- **Auto-sync remoteUrl** — `collectRepoContext` detects `git remote get-url origin` and updates DB on every heartbeat. Enables draft PR button without manual setup.
-- **Draft PR endpoint** — `POST /api/runs/:id/draft-pr`. Validates branch exists, pushes to remote, creates GitHub draft PR via `gh`. Saves `prUrl` to run.
+- **13 job types** — heartbeat, suggest, suggest-deep, suggest-project, consolidate, reflect, remote-sync, context-enrich, repo-profile, project-profile, digest-daily, digest-weekly, digest-brag. Parallel execution via JobQueue (maxConcurrentJobs=3 LLM + IO unlimited).
+- **Ghost mascot** `{•‿•}` in status line — 15 states × 3 variants, 9 ANSI colors. Thoughts system generates LLM status line phrases.
+- **Daemon** — launchd, JobQueue with 8min timeout per job, per-job adapter tracking via AsyncLocalStorage, stale job detector, graceful drain (60s), repo watcher (FS events + debounce).
+- **Dashboard** — React at localhost:3700. Activity page (unified timeline + SSE), Workspace (runs), Morning brief, Profile (settings sections), Guide (tabbed reference). Sidebar grouped by intention.
+- **Corrections system** — `kind: 'correction'` memories, consumed by consolidate. `shadow_correct` MCP tool + CorrectionPanel in dashboard.
+- **Suggest v3** — 3 specialized jobs: `suggest` (incremental, reactive), `suggest-deep` (full codebase review), `suggest-project` (cross-repo analysis).
+- **Runner** — worktree isolation for execution runs, confidence evaluation (Sonnet), draft PR via `gh`, auto-cleanup on completion.
+- **API validation** — Zod schemas on POST endpoints, `clampLimit`/`clampOffset` on all pagination, SSE event bus for real-time updates.
+- **JSONL rotation** — atomic rename-then-append pattern to prevent data loss from concurrent hook writes.
 
 ## Backlog
 
@@ -408,11 +433,11 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Prompt via stdin** — all LLM calls pass prompt via stdin pipe, not CLI args (avoids ARG_MAX).
 - **`--allowedTools "mcp__shadow__*"`** on all CLI spawns — Claude can use Shadow's own tools without permission. Execution runs also get `Edit,Write,Bash` for code changes.
 - **Confidence evaluation** — L3 runner evaluates plan with Sonnet (effort high) before auto-executing. JSON response: `{ confidence: 'high'|'medium'|'low', doubts: string[] }`. Safe fallback to low confidence on any failure.
-- **Job timeout** — integrated in `runJobType` with `killActiveChild()`. `cancelled` flag prevents background promise from overwriting job status. Max 8min per job. Eliminated all external `Promise.race` wrappers.
+- **Job timeout** — integrated in `JobQueue` with `killJobAdapters(jobId)`. Per-job adapter tracking via `AsyncLocalStorage`. `cancelled` flag prevents background promise from overwriting job status. Max 8min per job.
 - **Soul reflection** injected into extract/observe prompts. Runner mentions it in briefing.
 - **Feedback** from dismiss/resolve/thumbs fed into extract + observe + suggest prompts.
 - **Models + effort configurable per phase** from dashboard /profile. `getModel(ctx, phase)` + `getEffort(ctx, phase)`.
-- **Rotation**: conversations.jsonl and interactions.jsonl rotated (keep last 2h) after each analyze.
+- **Rotation**: conversations.jsonl and interactions.jsonl rotated (keep last 2h) after each analyze. Uses atomic rename-then-append to prevent data loss from concurrent hook writes.
 - **Semantic dedup**: all three knowledge systems (memories, observations, suggestions) use embeddings-based dedup via `checkDuplicate()`. Thresholds: skip >= 0.85, update >= 0.70 (calibrated per type). Suggestions also check against dismissed (>= 0.75 = blocked).
 - **Hybrid search**: `shadow_search` MCP tool combines FTS5 BM25 + vector cosine via Reciprocal Rank Fusion (k=60). Searches across all three systems.
 - **Projects**: first-class entity grouping repos + systems + contacts. Long-term, sprint, or task. CLI + MCP + dashboard.
@@ -422,8 +447,13 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Core capacity**: max 30, protected kinds (soul_reflection, taught, knowledge_summary). Eviction by lowest relevanceScore*accessCount.
 - **Access count honesty**: heartbeat internal lookups use `touch=false`, only MCP searches increment access counts.
 - **Stale job detector** runs every daemon tick (10min threshold). Graceful drain on shutdown (60s). On startup, `cleanOrphanedJobsOnStartup()` fails ALL running jobs/runs immediately (no age threshold).
-- **Child process cleanup** — `killActiveChild()` sends SIGTERM to spawned `claude` process on shutdown. `pkill` in daemon stop/restart kills orphaned claude processes matching `--allowedTools.*mcp__shadow`.
-- **Pagination** — DB `count*` methods for all entities. API returns `{ items, total }`. Migration v12 (feedback thumbs index) + v13 (suggestions kind, observations status, jobs type indexes).
+- **Child process cleanup** — `killJobAdapters(jobId)` sends SIGTERM to spawned `claude` processes per job. `killAllActiveChildren()` on shutdown. `pkill` in daemon stop/restart kills orphaned claude processes matching `--allowedTools.*mcp__shadow`.
+- **JobQueue** — `src/daemon/job-queue.ts`. Concurrent execution with same-type mutual exclusion. LLM jobs capped by `maxConcurrentJobs`, IO jobs unlimited. Per-job timeout (8min) via `Promise.race` + `killJobAdapters`. SSE events on start/phase/complete.
+- **Job handlers** — `src/daemon/job-handlers.ts`. 13 handlers registered by type. Category: `llm` (heartbeat, suggest*, consolidate, reflect, digest*, repo-profile, project-profile) or `io` (remote-sync, context-enrich).
+- **Worktree cleanup** — Runner creates git worktrees for execution runs, removes them after completion (success or failure). Branch kept for draft PR.
+- **Corrections** — `shadow_correct` MCP tool + `/api/corrections` endpoint. Creates `kind: 'correction'` memory in core layer. `enforceCorrections()` in consolidate job processes corrections against existing memories (archive/edit). CorrectionPanel in dashboard.
+- **Thoughts** — `src/daemon/thought.ts`. Decorative LLM-generated status line phrases. Configurable interval + duration. Non-fatal (never crashes daemon).
+- **Pagination** — DB `count*` methods for all entities. API returns `{ items, total }`. `clampLimit` (max 200) + `clampOffset` (min 0) on all endpoints. Zod validation on POST bodies via `parseBody`/`parseOptionalBody` helpers.
 - **Draft PR** — endpoint validates branch exists → `git push` → `gh pr create --draft`. Schema v22 (pr_url). Button disabled without GitHub remote.
 - **Severity filter** — ObservationsPage supports server-side severity filtering (high/warning/info). DB `listObservations` + `countObservations` accept `severity` param.
 - **MCP discovery** — `discoverMcpServerNames()` reads `~/.claude/settings.json` → mcpServers keys, excludes 'shadow'. Used by enrichment planner.

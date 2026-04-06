@@ -601,6 +601,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       state.pendingEventCount = pendingCount;
       state.lastActivityAt = lastActivityAt;
       state.pendingActivityCount = pendingActivityCount;
+      pendingActivityCount = 0;
       state.watchedRepoCount = repoWatcher.watchedCount;
       state.activeJobCount = jobQueue.activeCount;
       state.activeJobs = jobQueue.activeJobs;

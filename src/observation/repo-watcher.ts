@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { watch, type FSWatcher } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { relative } from 'node:path';
 
 import type { ShadowConfig } from '../config/schema.js';
@@ -63,7 +63,7 @@ export class RepoWatcher extends EventEmitter {
 
     // Cache current HEAD
     try {
-      const head = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8', timeout: 5_000 }).trim();
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoPath, encoding: 'utf-8', timeout: 5_000 }).trim();
       this.headCache.set(repoId, head);
     } catch { /* not a git repo or no commits */ }
 
@@ -182,15 +182,15 @@ export class RepoWatcher extends EventEmitter {
 
   private checkGitEvents(repoId: string, repoName: string, repoPath: string): void {
     try {
-      const head = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8', timeout: 5_000 }).trim();
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoPath, encoding: 'utf-8', timeout: 5_000 }).trim();
       const previousHead = this.headCache.get(repoId);
 
       if (previousHead && head !== previousHead) {
         // HEAD changed — could be commit or branch switch
         let type: GitEvent['type'] = 'commit';
         try {
-          const branch = execSync('git branch --show-current', { cwd: repoPath, encoding: 'utf-8', timeout: 5_000 }).trim();
-          const prevBranch = execSync(`git branch --contains ${previousHead} --format='%(refname:short)'`, {
+          const branch = execFileSync('git', ['branch', '--show-current'], { cwd: repoPath, encoding: 'utf-8', timeout: 5_000 }).trim();
+          const prevBranch = execFileSync('git', ['branch', '--contains', previousHead, '--format=%(refname:short)'], {
             cwd: repoPath, encoding: 'utf-8', timeout: 5_000,
           }).trim().split('\n')[0];
           if (branch !== prevBranch) type = 'branch-switch';
