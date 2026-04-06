@@ -1308,21 +1308,36 @@ daemon
     const { execSync } = await import('node:child_process');
     const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
 
-    // Stop everything
-    if (existsSync(plistPath)) {
-      try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
+    // Step 1: Graceful stop — SIGTERM lets daemon drain active jobs
+    const { stopDaemon, isDaemonRunning } = await import('./daemon/runtime.js');
+    const wasStopped = stopDaemon(config);
+
+    if (wasStopped) {
+      // Wait for drain (up to 30s — daemon has 60s drain internally)
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline && isDaemonRunning(config)) {
+        await new Promise(r => setTimeout(r, 500));
+      }
     }
-    try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
-    try { execSync('pkill -f "claude.*--allowedTools.*mcp__shadow"', { stdio: 'pipe' }); } catch { /* ok */ }
-    try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
 
-    const { stopDaemon } = await import('./daemon/runtime.js');
-    stopDaemon(config);
+    // Step 2: Force kill if still alive after graceful wait
+    if (isDaemonRunning(config)) {
+      if (existsSync(plistPath)) {
+        try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
+      }
+      try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
+      try { execSync('pkill -f "claude.*--allowedTools.*mcp__shadow"', { stdio: 'pipe' }); } catch { /* ok */ }
+      try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
+      await new Promise(r => setTimeout(r, 1500));
+    } else {
+      // Graceful stop worked — just bootout launchd
+      if (existsSync(plistPath)) {
+        try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
 
-    // Wait for port to free
-    await new Promise(r => setTimeout(r, 1500));
-
-    // Start
+    // Step 3: Start
     if (existsSync(plistPath)) {
       try {
         execSync(`launchctl bootstrap gui/$(id -u) ${plistPath} 2>/dev/null || launchctl kickstart gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
