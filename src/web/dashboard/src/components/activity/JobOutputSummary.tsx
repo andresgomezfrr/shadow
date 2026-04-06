@@ -33,6 +33,8 @@ function items(result: Record<string, unknown>, key: string): Array<{ id: string
 }
 
 export function JobOutputSummary({ entry }: Props) {
+  if (entry.status === 'queued') return <span className="text-orange text-xs">queued</span>;
+
   const r = entry.result ?? {};
   const type = entry.type;
 

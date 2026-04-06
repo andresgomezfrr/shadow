@@ -474,6 +474,7 @@ type Props = {
 export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
+  const isQueued = entry.status === 'queued';
   const isRunning = entry.status === 'running';
   const isFailed = entry.status === 'failed';
   const skip = isSkip(entry);
@@ -485,6 +486,19 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
     : isFailed
     ? 'border-l-red'
     : 'border-l-transparent';
+
+  // Queued state: orange left border
+  if (isQueued) {
+    return (
+      <div className="bg-card border border-l-[3px] border-l-orange border-border rounded-lg px-4 py-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge className={typeColor}>{entry.type}</Badge>
+          <span className="text-xs text-orange">queued</span>
+          {entry.startedAt && <span className="text-xs text-text-muted ml-auto">{timeAgo(entry.startedAt)}</span>}
+        </div>
+      </div>
+    );
+  }
 
   // Skip rows: dimmed, collapsed
   if (skip && !expanded) {
