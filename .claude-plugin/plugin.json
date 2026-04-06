@@ -6,6 +6,11 @@
     "name": "andresgomezfrr"
   },
   "keywords": ["mcp", "companion", "engineering", "memory", "observation", "heartbeat"],
-  "mcpServers": "./mcp.json",
-  "hooks": "../hooks/hooks.json"
+  "mcpServers": {
+    "shadow": {
+      "type": "http",
+      "url": "http://localhost:3700/api/mcp"
+    }
+  },
+  "hooks": "./hooks/hooks.json"
 }
