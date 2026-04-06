@@ -81,6 +81,10 @@ export class JobQueue {
     const startMs = Date.now();
     let cancelled = false;
 
+    // Save original params before handler overwrites result (needed for retry)
+    const originalParams: Record<string, unknown> = { ...(job.result as Record<string, unknown>) };
+    delete originalParams.error;
+
     const activeEntry: ActiveJob = {
       jobId: job.id,
       type: job.type,
@@ -134,7 +138,7 @@ export class JobQueue {
       } catch (err) {
         if (cancelled) return;
         const errorMsg = err instanceof Error ? err.message : String(err);
-        const retryCount = ((job.result as Record<string, unknown>)?.retryCount as number) ?? 0;
+        const retryCount = (originalParams.retryCount as number) ?? 0;
         this.db.updateJob(job.id, {
           status: 'failed',
           result: { error: errorMsg, retryCount },
@@ -151,7 +155,7 @@ export class JobQueue {
         const MAX_RETRIES = 2;
         const retryableSources = new Set(['reactive', 'backfill', 'first-scan']);
         if (retryCount < MAX_RETRIES && retryableSources.has(job.triggerSource)) {
-          const params = { ...(job.result as Record<string, unknown>), retryCount: retryCount + 1 };
+          const params = { ...originalParams, retryCount: retryCount + 1 };
           this.db.enqueueJob(job.type, {
             priority: job.priority,
             triggerSource: job.triggerSource,
