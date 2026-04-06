@@ -49,3 +49,21 @@ export const SuggestValidateResponseSchema = z.object({
     reason: z.string(),
   })).default([]),
 });
+
+// ---------------------------------------------------------------------------
+// Prompt format specs — co-located with schemas to prevent drift
+// ---------------------------------------------------------------------------
+
+export const EXTRACT_FORMAT = [
+  '{ "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core"|"warm", "scope": "personal"|"repo"|"cross-repo" }],',
+  '  "profileUpdates": { "moodHint": string, "energyLevel": string } }',
+].join('\n');
+
+export const OBSERVE_FORMAT =
+  '{ "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure"|"cross_project", "title": string, "detail": string, "severity": "info"|"warning"|"high", "files": string[], "projectNames": string[] }] }';
+
+export const SUGGEST_FORMAT =
+  '{ "suggestions": [{ "kind": string, "title": string, "summaryMd": string, "reasoningMd": string, "impactScore": 1-5, "confidenceScore": 0-100, "riskScore": 1-5, "effort": "small"|"medium"|"large", "repoId": string|null }] }';
+
+export const SUGGEST_VALIDATE_FORMAT =
+  '{ "verdicts": [{ "title": string, "keep": true/false, "reason": string }] }';

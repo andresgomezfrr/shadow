@@ -15,7 +15,7 @@ import { selectAdapter } from '../backend/index.js';
 import { applyTrustDelta } from '../profile/trust.js';
 
 import type { HeartbeatContext } from './state-machine.js';
-import { ExtractResponseSchema, ObserveResponseSchema, SuggestResponseSchema } from './schemas.js';
+import { ExtractResponseSchema, ObserveResponseSchema, SuggestResponseSchema, EXTRACT_FORMAT, OBSERVE_FORMAT, SUGGEST_FORMAT, SUGGEST_VALIDATE_FORMAT } from './schemas.js';
 import { safeParseJson } from '../backend/json-repair.js';
 
 // --- Entity auto-linking ---
@@ -378,8 +378,7 @@ export async function activityAnalyze(
       'Ask: "would I want to know this in 3 months? Can it be derived from reading the code or git log?"',
       '',
       'Return JSON:',
-      '{ "insights": [{ "kind": string, "title": string, "bodyMd": string, "confidence": number, "tags": string[], "layer": "hot"|"core", "scope": "personal"|"repo"|"cross-repo" }],',
-      '  "profileUpdates": { "moodHint": "neutral"|"happy"|"focused"|"tired"|"frustrated"|"excited"|"concerned", "energyLevel": "low"|"normal"|"high" } }',
+      EXTRACT_FORMAT,
       '',
       'Kinds: tech_stack, design_decision, workflow, problem_solved, team_knowledge, preference, convention, dependency',
       '- convention = how we do X in this repo/org (naming patterns, processes, rules)',
@@ -535,7 +534,7 @@ export async function activityAnalyze(
       'Generate ACTIONABLE OBSERVATIONS about the developer\'s work.',
       '',
       'Return JSON:',
-      '{ "observations": [{ "kind": "improvement"|"risk"|"opportunity"|"pattern"|"infrastructure"|"cross_project", "title": string, "detail": string, "severity": "info"|"warning"|"high", "files": string[], "projectNames": string[] }] }',
+      OBSERVE_FORMAT,
       activeProjects.length > 0 ? `\nActive projects: ${activeProjects.map(ap => ap.projectName).join(', ')}. Prioritize observations about these. Use kind "cross_project" for observations spanning multiple projects.` : '',
       '',
       'Rules:',
@@ -745,7 +744,7 @@ export async function activitySuggest(
       'Suggestion kinds: refactor, bug, improvement, feature.',
       '',
       'Return structured JSON:',
-      '{ "suggestions": [{ "kind": string, "title": string, "summaryMd": string, "reasoningMd": string, "impactScore": 1-5, "confidenceScore": 0-100, "riskScore": 1-5, "effort": "small"|"medium"|"large", "repoId": string|null }] }',
+      SUGGEST_FORMAT,
       '',
       repoContextSection,
       `## Recent Observations (${repo.name})\n${observationSummaries}\n`,
@@ -811,7 +810,7 @@ export async function activitySuggest(
       '5. Judge: Given this repo\'s context, is this worth doing?',
       '',
       'Respond with JSON:',
-      '{ "verdicts": [{ "title": "...", "keep": true/false, "reason": "brief explanation" }] }',
+      SUGGEST_VALIDATE_FORMAT,
     ].join('\n');
 
     try {
