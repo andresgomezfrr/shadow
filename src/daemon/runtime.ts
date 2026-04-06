@@ -401,6 +401,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         if (capped > 0) console.error(`[daemon] Capped ${capped} excess observations`);
       } catch { /* ignore */ }
 
+      // Sync shared state from job handlers BEFORE enqueue decisions
+      lastHeartbeatAt = daemonShared.lastHeartbeatAt ?? lastHeartbeatAt;
+      nextHeartbeatAt = daemonShared.nextHeartbeatAt ?? nextHeartbeatAt;
+      lastConsolidationAt = daemonShared.lastConsolidationAt ?? lastConsolidationAt;
+
       // === Phase 1: Enqueue scheduled jobs ===
 
       // Time-based heartbeat scheduling (watcher events do NOT trigger heartbeats)
@@ -504,10 +509,6 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         consecutiveIdleTicks,
       );
 
-      // Sync shared state back from job handlers
-      lastHeartbeatAt = daemonShared.lastHeartbeatAt ?? lastHeartbeatAt;
-      nextHeartbeatAt = daemonShared.nextHeartbeatAt ?? nextHeartbeatAt;
-      lastConsolidationAt = daemonShared.lastConsolidationAt ?? lastConsolidationAt;
       daemonShared.consecutiveIdleTicks = consecutiveIdleTicks;
 
       // Update and persist daemon state
