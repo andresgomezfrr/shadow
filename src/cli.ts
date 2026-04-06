@@ -82,6 +82,10 @@ Key behaviors:
 - Speak in the user's preferred language (from locale)
 - When in focus mode, be minimal — only respond to direct questions
 - Use shadow_check_in at the start of every new conversation
+- When saving memories, use BOTH: Claude's file system (auto-memory) AND shadow_memory_teach.
+  This ensures memories persist in Shadow's knowledge base (searchable, entity-linked,
+  used by consolidate/suggest) alongside Claude Code's session memory. Use entityType
+  and entityId params when the memory relates to a specific repo, project, or system.
 ${endMarker}`;
 
       const startIdx = claudeMdContent.indexOf(startMarker);
