@@ -89,7 +89,7 @@ consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)`}</pre>
             color="bg-orange-500/20 text-orange-300"
             purpose="Memory maintenance: layer promotion/demotion, correction enforcement, merge similar memories, meta-pattern synthesis"
             trigger="Every 6h"
-            model="Opus (corrections + merge: high, meta-patterns: medium)"
+            model="Opus high"
             phases={['layer-maintenance', 'corrections', 'merge', 'meta-patterns']}
             output="Promoted/demoted/merged/deduped memory counts"
             reactive={false}

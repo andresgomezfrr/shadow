@@ -21,7 +21,7 @@ export const ModelsSchema = z.object({
 export const EffortsSchema = z.object({
   analyze: z.string().default('medium'),
   suggest: z.string().default('high'),
-  consolidate: z.string().default('medium'),
+  consolidate: z.string().default('high'),
   runner: z.string().default('high'),
   suggestDeep: z.string().default('high'),
   suggestProject: z.string().default('high'),
@@ -64,7 +64,7 @@ export const ConfigSchema = z.object({
   efforts: EffortsSchema.default({
     analyze: 'medium',
     suggest: 'high',
-    consolidate: 'medium',
+    consolidate: 'high',
     runner: 'high',
     suggestDeep: 'high',
     suggestProject: 'high',
