@@ -489,8 +489,8 @@ fi
       // Add MCP server
       const mcpServers = (settings.mcpServers ?? {}) as Record<string, unknown>;
       mcpServers.shadow = {
-        command: 'npx',
-        args: ['tsx', resolve(shadowSrcDir, 'cli.ts'), 'mcp', 'serve'],
+        type: 'http',
+        url: 'http://localhost:3700/api/mcp',
       };
       settings.mcpServers = mcpServers;
 

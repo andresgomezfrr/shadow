@@ -3,6 +3,7 @@ import type { ShadowConfig } from '../config/load-config.js';
 import type { UserProfileRecord } from '../storage/models.js';
 
 import type { McpTool, ToolContext } from './tools/types.js';
+import type { DaemonSharedState } from '../daemon/job-handlers.js';
 export type { McpTool } from './tools/types.js';
 
 import { statusTools } from './tools/status.js';
@@ -17,7 +18,7 @@ import { dataTools } from './tools/data.js';
 // Tool assembly
 // ---------------------------------------------------------------------------
 
-export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpTool[] {
+export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: { daemonState?: DaemonSharedState }): McpTool[] {
   function getTrustLevel(): number {
     const profile = db.getProfile('default');
     return profile?.trustLevel ?? 0;
@@ -63,7 +64,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig): McpToo
     1: 'observer', 2: 'advisor', 3: 'assistant', 4: 'partner', 5: 'shadow',
   };
 
-  const ctx: ToolContext = { db, config, getTrustLevel, trustGate, deriveMood, deriveGreeting, trustNames };
+  const ctx: ToolContext = { db, config, getTrustLevel, trustGate, deriveMood, deriveGreeting, trustNames, daemonState: opts?.daemonState };
 
   return [
     ...statusTools(ctx),

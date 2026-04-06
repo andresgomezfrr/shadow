@@ -8,6 +8,8 @@ import { z } from 'zod';
 import { ProfileUpdateSchema } from '../config/schema.js';
 import { DIGEST_SCHEDULES, nextScheduledAt } from '../daemon/schedules.js';
 import type { EventBus } from './event-bus.js';
+import type { DaemonSharedState } from '../daemon/job-handlers.js';
+import { createMcpTools, handleJsonRpcRequest, type McpTool } from '../mcp/server.js';
 
 function json(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, {
@@ -86,6 +88,20 @@ const FeedbackSchema = z.object({ targetKind: z.string().min(1), targetId: z.str
 const CorrectionSchema = z.object({ body: z.string().min(1), scope: z.string().min(1), title: z.string().max(200).optional(), entityType: z.enum(['repo', 'project', 'system']).optional(), entityId: z.string().optional() });
 const DigestTriggerSchema = z.object({ periodStart: z.string().optional() });
 
+const MUTATING_TOOLS = new Set([
+  'shadow_memory_teach', 'shadow_memory_forget', 'shadow_memory_update', 'shadow_correct',
+  'shadow_observe',
+  'shadow_suggest_accept', 'shadow_suggest_dismiss', 'shadow_suggest_snooze',
+  'shadow_observation_ack', 'shadow_observation_resolve', 'shadow_observation_reopen',
+  'shadow_profile_set', 'shadow_focus', 'shadow_available', 'shadow_soul_update',
+  'shadow_repo_add', 'shadow_repo_remove',
+  'shadow_project_add', 'shadow_project_remove', 'shadow_project_update',
+  'shadow_contact_add', 'shadow_contact_remove',
+  'shadow_system_add', 'shadow_system_remove',
+  'shadow_relation_add', 'shadow_relation_remove',
+  'shadow_events_ack', 'shadow_feedback',
+]);
+
 function parseUrl(req: IncomingMessage): { pathname: string; params: URLSearchParams } {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   return { pathname: url.pathname, params: url.searchParams };
@@ -97,19 +113,13 @@ async function handleApi(
   pathname: string,
   params: URLSearchParams,
   db: ShadowDatabase,
+  daemonState?: DaemonSharedState,
 ): Promise<void> {
   // --- GET routes ---
   if (req.method === 'GET') {
     if (pathname === '/api/status') {
       const config = loadConfig();
-      let nextHeartbeatAt: string | null = null;
-      try {
-        const statePath = resolve(config.resolvedDataDir, 'daemon.json');
-        if (existsSync(statePath)) {
-          const raw = JSON.parse(readFileSync(statePath, 'utf-8'));
-          nextHeartbeatAt = raw.nextHeartbeatAt ?? null;
-        }
-      } catch { /* ignore */ }
+      const nextHeartbeatAt: string | null = daemonState?.nextHeartbeatAt ?? null;
       const profile = db.ensureProfile();
       const memoriesCount = db.countMemories({ archived: false });
       const pendingSuggestions = db.countPendingSuggestions();
@@ -1165,10 +1175,13 @@ const MIME_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-export async function startWebServer(port: number = 3700, _existingDb?: ShadowDatabase, eventBus?: EventBus): Promise<{ close: () => void }> {
+export async function startWebServer(port: number = 3700, _existingDb?: ShadowDatabase, eventBus?: EventBus, daemonState?: DaemonSharedState): Promise<{ close: () => void }> {
   const config = loadConfig();
   // Always create own DB connection — sharing with daemon causes "database is not open" errors
   const db = createDatabase(config);
+
+  // MCP tools — lazy-initialized on first /api/mcp request
+  let mcpTools: McpTool[] | null = null;
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1186,6 +1199,64 @@ export async function startWebServer(port: number = 3700, _existingDb?: ShadowDa
     try {
       const { pathname, params } = parseUrl(req);
 
+      // MCP JSON-RPC endpoint (Streamable HTTP transport)
+      if (pathname === '/api/mcp' && req.method === 'POST') {
+        const raw = await readBody(req);
+        if (!raw) return json(res, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Empty body' } });
+
+        let parsed: unknown;
+        try { parsed = JSON.parse(raw); } catch {
+          return json(res, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Invalid JSON' } });
+        }
+
+        const p = parsed as { method?: string; id?: unknown };
+
+        // MCP initialize handshake
+        if (p.method === 'initialize') {
+          return json(res, {
+            jsonrpc: '2.0', id: p.id ?? null,
+            result: {
+              protocolVersion: '2024-11-05',
+              capabilities: { tools: {} },
+              serverInfo: { name: 'shadow-mcp', version: '0.1.0' },
+            },
+          });
+        }
+
+        // Notification — no response needed
+        if (p.method === 'notifications/initialized') {
+          return json(res, {});
+        }
+
+        // Lazy-init MCP tools
+        if (!mcpTools) {
+          mcpTools = createMcpTools(db, config, { daemonState });
+        }
+
+        // Delegate to JSON-RPC handler (tools/list, tools/call)
+        const response = await handleJsonRpcRequest(mcpTools, parsed);
+
+        // Emit SSE for mutating tool calls
+        if (eventBus && p.method === 'tools/call') {
+          const toolName = (parsed as { params?: { name?: string } }).params?.name;
+          if (toolName && MUTATING_TOOLS.has(toolName)) {
+            eventBus.emit({ type: 'mcp:tool_call', data: { tool: toolName, ts: new Date().toISOString() } });
+          }
+        }
+
+        return json(res, response);
+      }
+
+      // CORS preflight for MCP endpoint
+      if (pathname === '/api/mcp' && req.method === 'OPTIONS') {
+        res.writeHead(204, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        });
+        return void res.end();
+      }
+
       // SSE event stream — must be before handleApi (doesn't end the response)
       if (pathname === '/api/events/stream' && eventBus) {
         res.writeHead(200, {
@@ -1202,7 +1273,7 @@ export async function startWebServer(port: number = 3700, _existingDb?: ShadowDa
       }
 
       if (pathname.startsWith('/api/')) {
-        await handleApi(req, res, pathname, params, db);
+        await handleApi(req, res, pathname, params, db, daemonState);
         return;
       }
 

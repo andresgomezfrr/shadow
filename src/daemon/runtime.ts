@@ -203,21 +203,33 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     // Step 3: Load profile (ensure it exists)
     db.ensureProfile();
 
-    // Step 3b: Start EventBus + web server
+    // Step 3b: Initialize shared state arrays + DaemonSharedState (needed by web server)
+    const pendingGitEvents: Array<{ repoId: string; repoName: string; type: string; ts: string }> = [];
+    let pendingRemoteSyncResults: Array<{ repoId: string; repoName: string; newRemoteCommits: number; behindBranches: Array<{ branch: string; behind: number; ahead: number }>; newCommitMessages: string[] }> = [];
+
+    const daemonShared: DaemonSharedState = {
+      lastHeartbeatAt: null,
+      nextHeartbeatAt: new Date(Date.now() + config.activityHeartbeatMaxIntervalMs).toISOString(),
+      lastConsolidationAt: null,
+      pendingGitEvents,
+      pendingRemoteSyncResults,
+      activeProjects: [],
+      consecutiveIdleTicks: 0,
+    };
+
+    // Step 3c: Start EventBus + web server (receives daemonShared for MCP + /api/status)
     const eventBus = new EventBus();
     try {
       const { startWebServer } = await import('../web/server.js');
-      webServer = await startWebServer(3700, db, eventBus);
+      webServer = await startWebServer(3700, db, eventBus, daemonShared);
     } catch {
       // web module not available — continue without it
     }
 
-    // Step 3c: Start filesystem watcher
+    // Step 3d: Start filesystem watcher
     const repoWatcher = new RepoWatcher(config, db);
     let pendingActivityCount = 0; // display-only counter for dashboard
     let lastActivityAt: string | null = null;
-    const pendingGitEvents: Array<{ repoId: string; repoName: string; type: string; ts: string }> = [];
-    let pendingRemoteSyncResults: Array<{ repoId: string; repoName: string; newRemoteCommits: number; behindBranches: Array<{ branch: string; behind: number; ahead: number }>; newCommitMessages: string[] }> = [];
 
     // Wake function — interrupts the sleep to process runs/events sooner
     let wakeLoop: (() => void) | null = null;
@@ -247,9 +259,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     let consecutiveIdleTicks = 0;
     let lastHeartbeatAt: string | null = null;
     let lastConsolidationAt: string | null = null;
-    let nextHeartbeatAt: string = new Date(
-      Date.now() + config.activityHeartbeatMaxIntervalMs,
-    ).toISOString();
+    let nextHeartbeatAt: string = daemonShared.nextHeartbeatAt!;
 
     const state: DaemonState = {
       pid: process.pid,
@@ -281,21 +291,14 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     // Seed timestamps from last completed jobs (avoids immediate re-enqueue on restart)
     lastHeartbeatAt = _db.getLastJob('heartbeat')?.startedAt ?? null;
     lastConsolidationAt = _db.getLastJob('consolidate')?.startedAt ?? null;
+    daemonShared.lastHeartbeatAt = lastHeartbeatAt;
+    daemonShared.lastConsolidationAt = lastConsolidationAt;
 
     // Step 4b: Create concurrent run queue (after _db is assigned)
     const runQueue = new RunQueue(config, _db);
     runQueueRef = runQueue;
 
-    // Step 4c: Create parallel job queue
-    const daemonShared: DaemonSharedState = {
-      lastHeartbeatAt,
-      nextHeartbeatAt: nextHeartbeatAt,
-      lastConsolidationAt: null,
-      pendingGitEvents,
-      pendingRemoteSyncResults,
-      activeProjects: [],
-      consecutiveIdleTicks: 0,
-    };
+    // Step 4c: Create parallel job queue (reuses daemonShared created in step 3b)
     const jobHandlers = buildHandlerRegistry();
     const jobQueue = new JobQueue(config, _db, eventBus, jobHandlers, daemonShared);
     jobQueueRef = jobQueue;
