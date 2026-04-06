@@ -96,6 +96,9 @@ export function MemoriesPage() {
                   {m.sourceMemoryIds?.length > 0 && (
                     <Badge className="text-orange bg-orange/15">from {m.sourceMemoryIds.length}</Badge>
                   )}
+                  {m.entities?.map((e: { type: string }, i: number) => (
+                    <Badge key={i} className="text-blue bg-blue/10">{e.type}</Badge>
+                  ))}
                   <span className="font-medium text-sm flex-1 truncate">{m.title}</span>
                   {m.rank != null && (
                     <span className="text-xs text-text-muted">rank: {m.rank.toFixed(2)}</span>
