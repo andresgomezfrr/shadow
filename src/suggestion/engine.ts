@@ -245,17 +245,27 @@ export function reactivateSnoozed(db: ShadowDatabase): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Expire all pending suggestions older than 7 days.
+ * Impact-tiered TTL: high-impact suggestions live longer.
+ */
+function getStaleDays(impactScore: number): number {
+  if (impactScore >= 4) return 60;  // high impact: 60 days
+  if (impactScore >= 3) return 30;  // medium: 30 days
+  return 14;                         // low impact: 14 days
+}
+
+/**
+ * Expire pending suggestions based on impact-tiered TTLs.
  * Returns the count of expired suggestions.
  */
 export function expireStale(db: ShadowDatabase): number {
-  const cutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const pending = db.listSuggestions({ status: 'pending' });
   const now = new Date().toISOString();
 
   let expiredCount = 0;
 
   for (const suggestion of pending) {
+    const staleDays = getStaleDays(suggestion.impactScore);
+    const cutoff = new Date(Date.now() - staleDays * 86400000).toISOString();
     if (suggestion.createdAt < cutoff) {
       db.updateSuggestion(suggestion.id, {
         status: 'expired',
@@ -285,15 +295,15 @@ export function expireStale(db: ShadowDatabase): number {
  * Only notifies once per suggestion (checks if event already exists).
  */
 export function notifyExpiringSoon(db: ShadowDatabase): number {
-  const warningDays = STALE_DAYS - 3;
-  const cutoff = new Date(Date.now() - warningDays * 24 * 60 * 60 * 1000).toISOString();
-  const expiryCutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const pending = db.listSuggestions({ status: 'pending' });
 
   let count = 0;
   for (const s of pending) {
-    // Between warning and expiry cutoff, and not snoozed
-    if (s.createdAt < cutoff && s.createdAt >= expiryCutoff && !s.expiresAt) {
+    if (s.expiresAt) continue; // snoozed, skip
+    const staleDays = getStaleDays(s.impactScore);
+    const warningCutoff = new Date(Date.now() - (staleDays - 3) * 86400000).toISOString();
+    const expiryCutoff = new Date(Date.now() - staleDays * 86400000).toISOString();
+    if (s.createdAt < warningCutoff && s.createdAt >= expiryCutoff) {
       db.createEvent({
         kind: 'suggestion_expiring',
         priority: 3,
