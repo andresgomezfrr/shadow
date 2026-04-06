@@ -198,6 +198,13 @@ export const dismissSuggestion = (id: string, note?: string, category?: string) 
     body: (note || category) ? JSON.stringify({ note, category }) : undefined,
   });
 
+export const bulkSuggestionAction = (action: 'accept' | 'dismiss' | 'snooze', ids: string[], opts?: { category?: string; note?: string; hours?: number }) =>
+  api<{ processed: number; total: number }>('/api/suggestions/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ids, ...opts }),
+  });
+
 export const snoozeSuggestion = (id: string, hours: number) =>
   api<Suggestion>(`/api/suggestions/${id}/snooze`, {
     method: 'POST',

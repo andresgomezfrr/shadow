@@ -630,6 +630,42 @@ async function handleApi(
 
   // --- POST routes ---
   if (req.method === 'POST') {
+    // Bulk suggestion actions
+    if (pathname === '/api/suggestions/bulk') {
+      const body = JSON.parse(await readBody(req)) as {
+        action: 'accept' | 'dismiss' | 'snooze';
+        ids: string[];
+        category?: string;
+        note?: string;
+        hours?: number;
+      };
+      if (!body.action || !Array.isArray(body.ids) || body.ids.length === 0) {
+        return json(res, { error: 'Missing action or ids' }, 400);
+      }
+      let processed = 0;
+      if (body.action === 'dismiss') {
+        const { dismissSuggestion } = await import('../suggestion/engine.js');
+        for (const id of body.ids) {
+          const result = await dismissSuggestion(db, id, body.note, body.category);
+          if (result.ok) processed++;
+        }
+      } else if (body.action === 'accept') {
+        const { acceptSuggestion } = await import('../suggestion/engine.js');
+        for (const id of body.ids) {
+          const result = acceptSuggestion(db, id, body.category);
+          if (result.ok) processed++;
+        }
+      } else if (body.action === 'snooze') {
+        const { snoozeSuggestion } = await import('../suggestion/engine.js');
+        const until = new Date(Date.now() + (body.hours ?? 72) * 3600000).toISOString();
+        for (const id of body.ids) {
+          const result = snoozeSuggestion(db, id, until);
+          if (result.ok) processed++;
+        }
+      }
+      return json(res, { processed, total: body.ids.length });
+    }
+
     const match = pathname.match(/^\/api\/suggestions\/([^/]+)\/(accept|dismiss|snooze)$/);
     if (match) {
       const [, id, action] = match;

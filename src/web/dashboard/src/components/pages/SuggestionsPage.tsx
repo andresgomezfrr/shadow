@@ -3,7 +3,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchSuggestions, fetchRepos, fetchRuns, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
+import { fetchSuggestions, fetchRepos, fetchRuns, acceptSuggestion, dismissSuggestion, snoozeSuggestion, bulkSuggestionAction } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { FilterTabs } from '../common/FilterTabs';
 import { Pagination } from '../common/Pagination';
@@ -121,6 +121,8 @@ export function SuggestionsPage() {
   const [dismissOpen, setDismissOpen] = useState<string | null>(null);
   const [dismissNote, setDismissNote] = useState('');
   const [acceptOpen, setAcceptOpen] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDismissOpen, setBulkDismissOpen] = useState(false);
 
   const toggle = (id: string) => {
     setExpanded((s) => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -149,11 +151,35 @@ export function SuggestionsPage() {
     refresh();
   }, [refresh]);
 
+  const handleBulkAccept = useCallback(async (category: string) => {
+    await bulkSuggestionAction('accept', [...selected], { category });
+    setSelected(new Set());
+    refresh();
+  }, [selected, refresh]);
+
+  const handleBulkDismiss = useCallback(async (category: string) => {
+    await bulkSuggestionAction('dismiss', [...selected], { category });
+    setSelected(new Set());
+    setBulkDismissOpen(false);
+    refresh();
+  }, [selected, refresh]);
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-2 flex-wrap">
         <h1 className="text-xl font-semibold">Suggestions</h1>
-        <FilterTabs options={STATUSES} active={params.status} onChange={(v) => setParam('status', v)} />
+        <FilterTabs options={STATUSES} active={params.status} onChange={(v) => { setParam('status', v); setSelected(new Set()); }} />
+        {params.status === 'pending' && data && data.length > 0 && (
+          <label className="flex items-center gap-1.5 text-xs text-text-dim cursor-pointer ml-auto">
+            <input
+              type="checkbox"
+              checked={data.length > 0 && selected.size === data.length}
+              onChange={() => setSelected(s => s.size === data.length ? new Set() : new Set(data.map(x => x.id)))}
+              className="accent-accent"
+            />
+            Select all
+          </label>
+        )}
       </div>
       {kinds.length > 1 && (
         <div className="flex items-center gap-2 mb-4">
@@ -194,6 +220,18 @@ export function SuggestionsPage() {
               >
                 {/* Collapsed row */}
                 <div className="flex items-center gap-2.5 flex-wrap">
+                  {params.status === 'pending' && (
+                    <input
+                      type="checkbox"
+                      checked={selected.has(s.id)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        setSelected(prev => { const next = new Set(prev); next.has(s.id) ? next.delete(s.id) : next.add(s.id); return next; });
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="accent-accent shrink-0"
+                    />
+                  )}
                   <span className="font-medium text-sm flex-1 min-w-0 truncate">{s.title}</span>
                   <Badge className={SUG_KIND_COLORS[s.kind] ?? 'text-text-dim bg-border'}>{s.kind}</Badge>
                   {repo && <Badge className="text-text-dim bg-border">{repo}</Badge>}
@@ -319,6 +357,32 @@ export function SuggestionsPage() {
         </div>
       )}
       <Pagination total={total} offset={Number(params.offset) || 0} limit={PAGE_SIZE} onChange={(o) => setParam('offset', String(o))} />
+
+      {/* Bulk action toolbar */}
+      {selected.size > 0 && (
+        <div className="sticky bottom-4 mx-auto w-fit bg-card border border-accent/30 rounded-xl px-5 py-2.5 shadow-lg flex items-center gap-3 z-50 mt-4">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <span className="text-border">|</span>
+          <button onClick={() => handleBulkAccept('manual')} className="text-xs text-green hover:underline bg-transparent border-none cursor-pointer">Accept (manual)</button>
+          <button onClick={() => handleBulkAccept('planned')} className="text-xs text-purple hover:underline bg-transparent border-none cursor-pointer">Backlog</button>
+          <div className="relative">
+            <button onClick={() => setBulkDismissOpen(!bulkDismissOpen)} className="text-xs text-red hover:underline bg-transparent border-none cursor-pointer">Dismiss</button>
+            {bulkDismissOpen && (
+              <div className="absolute bottom-full left-0 mb-1 bg-card border border-border rounded-lg shadow-lg z-10 p-1 min-w-40">
+                {DISMISS_CATEGORIES.map((dc) => (
+                  <button
+                    key={dc.category}
+                    onClick={() => handleBulkDismiss(dc.category)}
+                    className="block w-full px-3 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer rounded border-none bg-transparent"
+                  >{dc.label}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <span className="text-border">|</span>
+          <button onClick={() => setSelected(new Set())} className="text-xs text-text-muted hover:text-text bg-transparent border-none cursor-pointer">Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
