@@ -134,9 +134,10 @@ export class JobQueue {
       } catch (err) {
         if (cancelled) return;
         const errorMsg = err instanceof Error ? err.message : String(err);
+        const retryCount = ((job.result as Record<string, unknown>)?.retryCount as number) ?? 0;
         this.db.updateJob(job.id, {
           status: 'failed',
-          result: { error: errorMsg },
+          result: { error: errorMsg, retryCount },
           durationMs: Date.now() - startMs,
           finishedAt: new Date().toISOString(),
         });
@@ -145,6 +146,19 @@ export class JobQueue {
           data: { jobId: job.id, type: job.type, status: 'failed', durationMs: Date.now() - startMs, error: errorMsg },
         });
         console.error(`[job-queue] Job ${job.type}/${job.id.slice(0, 8)} failed:`, errorMsg);
+
+        // Auto-retry for reactive/backfill/first-scan jobs (max 2 retries)
+        const MAX_RETRIES = 2;
+        const retryableSources = new Set(['reactive', 'backfill', 'first-scan']);
+        if (retryCount < MAX_RETRIES && retryableSources.has(job.triggerSource)) {
+          const params = { ...(job.result as Record<string, unknown>), retryCount: retryCount + 1 };
+          this.db.enqueueJob(job.type, {
+            priority: job.priority,
+            triggerSource: job.triggerSource,
+            params,
+          });
+          console.error(`[job-queue] Auto-retry ${job.type}/${job.id.slice(0, 8)} (attempt ${retryCount + 2}/${MAX_RETRIES + 1})`);
+        }
       } finally {
         setPhase(null);
         this.active.delete(job.id);

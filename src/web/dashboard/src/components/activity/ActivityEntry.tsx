@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { timeAgo, formatTokens } from '../../utils/format';
 import { Badge } from '../common/Badge';
 import { ConfidenceIndicator } from '../common/ConfidenceIndicator';
 import { JobOutputSummary } from './JobOutputSummary';
+import { triggerJobWithParams } from '../../api/client';
 import type { ActivityEntry as ActivityEntryType } from '../../api/types';
 
 const TYPE_COLORS: Record<string, string> = {
@@ -582,14 +583,58 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
             </div>
           )}
 
-          {/* Timestamps */}
-          <div className="text-text-muted">
+          {/* Failed: error + retry */}
+          {isFailed && entry.result?.error && (
+            <div className="pt-1 border-t border-border/30 mt-2">
+              <span className="text-red text-xs">{String(entry.result.error)}</span>
+              {num(entry.result, 'retryCount') > 0 && (
+                <span className="text-text-muted text-xs ml-2">
+                  (attempt {num(entry.result, 'retryCount') + 1})
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Timestamps + retry button */}
+          <div className="text-text-muted flex items-center">
             {entry.startedAt && <span>{new Date(entry.startedAt).toLocaleString()}</span>}
             {entry.finishedAt && <span> → {new Date(entry.finishedAt).toLocaleTimeString()}</span>}
             <span className="ml-2 text-text-muted/50">{entry.id.slice(0, 8)}</span>
+            {isFailed && entry.source === 'job' && <RetryButton entry={entry} />}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+// --- Retry button for failed jobs ---
+
+function RetryButton({ entry }: { entry: ActivityEntryType }) {
+  const [triggered, setTriggered] = useState(false);
+
+  const handleRetry = useCallback(() => {
+    if (triggered) return;
+    setTriggered(true);
+
+    // Extract original params from the job result (repoId, projectId, periodStart, etc.)
+    const r = entry.result ?? {};
+    const params: Record<string, string> = {};
+    if (r.repoId) params.repoId = String(r.repoId);
+    if (r.projectId) params.projectId = String(r.projectId);
+    if (r.periodStart) params.periodStart = String(r.periodStart);
+
+    triggerJobWithParams(entry.type, Object.keys(params).length > 0 ? params : undefined);
+    setTimeout(() => setTriggered(false), 15_000);
+  }, [triggered, entry]);
+
+  return (
+    <button
+      onClick={handleRetry}
+      disabled={triggered}
+      className="ml-auto px-2 py-0.5 rounded text-[10px] bg-red/15 text-red hover:bg-red/25 border-none cursor-pointer transition-colors disabled:opacity-50"
+    >
+      {triggered ? 'Retrying...' : 'Retry'}
+    </button>
   );
 }
