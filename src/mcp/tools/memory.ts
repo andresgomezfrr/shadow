@@ -17,6 +17,8 @@ const MemoryTeachSchema = z.object({
   scope: z.string().describe('Memory scope (default: global)').optional(),
   kind: z.string().describe('Memory kind: taught, tech_stack, design_decision, workflow, problem_solved, team_knowledge, preference (default: taught)').optional(),
   tags: z.array(z.string()).describe('Tags for searchability').optional(),
+  entityType: z.enum(['repo', 'project', 'system']).describe('Type of entity this memory relates to').optional(),
+  entityId: z.string().describe('ID of entity this memory relates to').optional(),
 });
 
 const MemoryForgetSchema = z.object({
@@ -82,7 +84,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
         const gate = trustGate(1);
         if (!gate.ok) return gate.error;
 
-        const { title, body, layer, scope, kind, tags } = MemoryTeachSchema.parse(params);
+        const { title, body, layer, scope, kind, tags, entityType, entityId } = MemoryTeachSchema.parse(params);
 
         const { applyTrustDelta } = await import('../../profile/trust.js');
         const memory = db.createMemory({
@@ -94,9 +96,17 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
           tags: tags ?? [],
           sourceType: 'mcp',
         });
+
+        // Link to entity if provided
+        if (entityType && entityId) {
+          db.updateMemory(memory.id, { entities: [{ type: entityType, id: entityId }] });
+        } else if (params.entityType || params.entityId) {
+          console.error(`[mcp:teach] Entity params received but not parsed: entityType=${params.entityType} entityId=${params.entityId}`);
+        }
+
         // Trust: teaching increases trust
         try { applyTrustDelta(db, 'memory_taught'); } catch { /* ignore */ }
-        return memory;
+        return entityType && entityId ? (db.getMemory(memory.id) ?? memory) : memory;
       },
     },
 

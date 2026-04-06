@@ -773,11 +773,14 @@ export class ShadowDatabase {
     return results;
   }
 
-  updateMemory(id: string, updates: Partial<Pick<MemoryRecord, 'layer' | 'scope' | 'kind' | 'title' | 'bodyMd' | 'tags' | 'confidenceScore' | 'relevanceScore' | 'accessCount' | 'lastAccessedAt' | 'promotedFrom' | 'demotedTo' | 'archivedAt'>>): void {
+  updateMemory(id: string, updates: Partial<Pick<MemoryRecord, 'layer' | 'scope' | 'kind' | 'title' | 'bodyMd' | 'tags' | 'confidenceScore' | 'relevanceScore' | 'accessCount' | 'lastAccessedAt' | 'promotedFrom' | 'demotedTo' | 'archivedAt'>> & { entities?: Array<{ type: string; id: string }> }): void {
     const sets: string[] = [];
     const values: SQLValue[] = [];
     for (const [key, value] of Object.entries(updates)) {
-      if (key === 'tags') {
+      if (key === 'entities') {
+        sets.push('entities_json = ?');
+        values.push(JSON.stringify(value));
+      } else if (key === 'tags') {
         sets.push('tags_json = ?');
         values.push(JSON.stringify(value));
       } else if (key === 'bodyMd') {
