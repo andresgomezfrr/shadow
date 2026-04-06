@@ -291,11 +291,37 @@ export async function mergeRelatedMemories(
 
   if (candidates.length < 2) return { merged: 0, archived: 0 };
 
+  // Step 0: Trivial dedup — archive exact duplicates (same title + same kind) keeping the newest
+  let archived = 0;
+  const byTitleKind = new Map<string, typeof candidates>();
+  for (const m of candidates) {
+    const key = `${m.kind}::${m.title.trim().toLowerCase()}`;
+    const group = byTitleKind.get(key) ?? [];
+    group.push(m);
+    byTitleKind.set(key, group);
+  }
+  const dedupArchived = new Set<string>();
+  for (const group of byTitleKind.values()) {
+    if (group.length < 2) continue;
+    // Keep the newest, archive the rest
+    const sorted = group.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    for (let i = 1; i < sorted.length; i++) {
+      db.updateMemory(sorted[i].id, { archivedAt: new Date().toISOString() });
+      db.createFeedback({ targetKind: 'memory', targetId: sorted[i].id, action: 'deduped', note: `Exact duplicate of ${sorted[0].id}` });
+      dedupArchived.add(sorted[i].id);
+      archived++;
+    }
+  }
+  if (archived > 0) console.error(`[memory-merge] Deduped ${archived} exact duplicates`);
+
+  // Filter out just-archived duplicates from candidates
+  const dedupedCandidates = candidates.filter(m => !dedupArchived.has(m.id));
+
   // Build merge clusters via vector search
   const processed = new Set<string>();
   const clusters: Array<Array<{ id: string; title: string; bodyMd: string; kind: string; layer: string; scope: string; entities: Array<{ type: string; id: string }> }>> = [];
 
-  for (const mem of candidates) {
+  for (const mem of dedupedCandidates) {
     if (processed.has(mem.id)) continue;
 
     // Search for similar memories
@@ -339,7 +365,6 @@ export async function mergeRelatedMemories(
   const totalMemories = db.countMemories({ archived: false });
   const maxArchived = Math.max(10, Math.floor(totalMemories * 0.2));
   let merged = 0;
-  let archived = 0;
 
   const adapter = selectAdapter(config);
 
