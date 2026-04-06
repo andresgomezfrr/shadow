@@ -278,13 +278,17 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     // db is guaranteed non-null at this point (created in Step 2)
     const _db = db!;
 
+    // Seed timestamps from last completed jobs (avoids immediate re-enqueue on restart)
+    lastHeartbeatAt = _db.getLastJob('heartbeat')?.startedAt ?? null;
+    lastConsolidationAt = _db.getLastJob('consolidate')?.startedAt ?? null;
+
     // Step 4b: Create concurrent run queue (after _db is assigned)
     const runQueue = new RunQueue(config, _db);
     runQueueRef = runQueue;
 
     // Step 4c: Create parallel job queue
     const daemonShared: DaemonSharedState = {
-      lastHeartbeatAt: null,
+      lastHeartbeatAt,
       nextHeartbeatAt: nextHeartbeatAt,
       lastConsolidationAt: null,
       pendingGitEvents,
