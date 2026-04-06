@@ -322,14 +322,32 @@ function renderExpandedDetail(entry: ActivityEntryType) {
   if (type.startsWith('digest-')) {
     const words = num(r, 'wordCount');
     const digestId = str(r, 'digestId');
+    const ps = str(r, 'periodStart');
+    const kind = type.replace('digest-', '');
+
+    let periodFull = '';
+    if (ps) {
+      if (kind === 'brag') {
+        const year = ps.slice(0, 4);
+        const q = Math.ceil(parseInt(ps.slice(5, 7)) / 3);
+        periodFull = `Q${q} ${year}`;
+      } else if (kind === 'weekly') {
+        const start = new Date(ps);
+        const end = new Date(start); end.setDate(end.getDate() + 6);
+        periodFull = `${start.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+      } else {
+        periodFull = new Date(ps).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      }
+    }
+
     return (
       <>
         <PhasePipeline phases={entry.phases} />
         <div>
-          <span className="text-accent">{type.replace('digest-', '')} digest</span>
+          <span className="text-accent">{kind} digest{periodFull ? ` for ${periodFull}` : ''}</span>
           {words > 0 && <span className="text-text-dim">, {words} words</span>}
           {digestId && (
-            <a href={`/digests?highlight=${digestId}`} className="text-accent hover:underline ml-2" onClick={e => e.stopPropagation()}>
+            <a href={`/digests?kind=${kind}`} className="text-accent hover:underline ml-2" onClick={e => e.stopPropagation()}>
               view digest
             </a>
           )}

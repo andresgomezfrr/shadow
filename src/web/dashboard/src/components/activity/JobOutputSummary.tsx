@@ -124,8 +124,27 @@ export function JobOutputSummary({ entry }: Props) {
 
   if (type.startsWith('digest-')) {
     const words = num(r, 'wordCount');
-    if (words === 0) return <span className="text-text-muted text-xs">--</span>;
-    return chip(`digest, ${words} words`, 'text-cyan bg-cyan/15');
+    const ps = str(r, 'periodStart');
+    if (words === 0 && !ps) return <span className="text-text-muted text-xs">--</span>;
+
+    const kind = type.replace('digest-', '');
+    let periodLabel = '';
+    if (ps) {
+      if (kind === 'brag') {
+        const year = ps.slice(0, 4);
+        const q = Math.ceil(parseInt(ps.slice(5, 7)) / 3);
+        periodLabel = `Q${q} ${year}`;
+      } else if (kind === 'weekly') {
+        const start = new Date(ps);
+        const end = new Date(start); end.setDate(end.getDate() + 6);
+        periodLabel = `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}–${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+      } else {
+        periodLabel = new Date(ps).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+    }
+
+    const label = `${kind}${periodLabel ? ` ${periodLabel}` : ''}${words > 0 ? `, ${words} words` : ''}`;
+    return chip(label, 'text-cyan bg-cyan/15');
   }
 
   if (type === 'run:plan' || type === 'run:execution') {
