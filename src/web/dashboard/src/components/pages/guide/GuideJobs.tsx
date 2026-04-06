@@ -89,10 +89,11 @@ consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)`}</pre>
             color="bg-orange-500/20 text-orange-300"
             purpose="Memory maintenance: layer promotion/demotion, correction enforcement, merge similar memories, meta-pattern synthesis"
             trigger="Every 6h"
-            model="Opus high"
+            model="Opus (corrections + merge: high, meta-patterns: medium)"
             phases={['layer-maintenance', 'corrections', 'merge', 'meta-patterns']}
             output="Promoted/demoted/merged/deduped memory counts"
             reactive={false}
+            note="Corrections are consumed here: contradicting memories archived/edited, corrections promoted to taught"
           />
 
           <JobCard
@@ -193,17 +194,41 @@ consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)`}</pre>
       {/* Section 4: Configuration */}
       <section>
         <h2 className="text-lg font-semibold mb-3">Configuration</h2>
+        <div className="bg-card border border-border rounded-lg p-5 text-sm text-text-dim space-y-3">
+          <div>
+            <p className="mb-1"><strong className="text-text">Models & effort levels</strong> — adjustable in <strong className="text-text">Settings → LLM Models</strong>.</p>
+            <p className="text-xs text-text-muted">Or via env vars: SHADOW_MODEL_ANALYZE, SHADOW_MODEL_SUGGEST, SHADOW_MODEL_CONSOLIDATE, SHADOW_MODEL_RUNNER + corresponding SHADOW_EFFORT_* vars.</p>
+          </div>
+          <div>
+            <p className="mb-1"><strong className="text-text">Environment variables</strong> (set in shell or .env):</p>
+            <ul className="list-disc list-inside space-y-1 text-xs font-mono">
+              <li>SHADOW_HEARTBEAT_INTERVAL_MS — heartbeat interval (default: 30min)</li>
+              <li>SHADOW_PROACTIVITY_LEVEL — event delivery threshold 1-10 (default: 5)</li>
+              <li>SHADOW_PERSONALITY_LEVEL — personality tone 1-5 (default: 4)</li>
+            </ul>
+          </div>
+          <div>
+            <p className="mb-1"><strong className="text-text">Internal config</strong> (code defaults, not yet env-mapped):</p>
+            <ul className="list-disc list-inside space-y-1 text-xs font-mono text-text-muted">
+              <li>suggestReactiveThreshold: 1 — any observation triggers suggest</li>
+              <li>suggestReactiveMinGapMs: 1h — min gap between suggests</li>
+              <li>suggestDeepMinCommits: 20 — commits before deep scan</li>
+              <li>suggestDeepActiveIntervalDays: 7 — deep scan for active repos</li>
+              <li>suggestDeepDormantIntervalDays: 30 — deep scan for dormant repos</li>
+              <li>projectProfileMinGapMs: 4h — min gap between project profiles</li>
+            </ul>
+          </div>
+          <p>All jobs can be manually triggered from the <strong className="text-text">Activity</strong> page schedule ribbon. Jobs that operate per-repo or per-project show an entity selector on trigger.</p>
+        </div>
+      </section>
+
+      {/* Section 5: Corrections */}
+      <section>
+        <h2 className="text-lg font-semibold mb-3">Corrections</h2>
         <div className="bg-card border border-border rounded-lg p-5 text-sm text-text-dim space-y-2">
-          <p>Job models and effort levels can be adjusted in <strong className="text-text">Settings</strong>.</p>
-          <p>Intervals and thresholds are configured via environment variables:</p>
-          <ul className="list-disc list-inside space-y-1 text-xs font-mono">
-            <li>SHADOW_HEARTBEAT_INTERVAL_MS — heartbeat interval (default: 30min)</li>
-            <li>SHADOW_SUGGEST_REACTIVE_THRESHOLD — observations needed to trigger suggest (default: 1)</li>
-            <li>SHADOW_SUGGEST_DEEP_MIN_COMMITS — commits before deep scan (default: 20)</li>
-            <li>SHADOW_SUGGEST_DEEP_ACTIVE_INTERVAL_DAYS — deep scan interval for active repos (default: 7)</li>
-            <li>SHADOW_SUGGEST_DEEP_DORMANT_INTERVAL_DAYS — deep scan interval for dormant repos (default: 30)</li>
-          </ul>
-          <p className="mt-2">All jobs can be manually triggered from the <strong className="text-text">Activity</strong> page schedule ribbon.</p>
+          <p>When Shadow learns something wrong, you can create a <strong className="text-text">correction</strong> — a temporary override that fixes the knowledge base.</p>
+          <p>Corrections flow: <strong className="text-text">created</strong> (injected in extract + repo-profile prompts) → <strong className="text-text">consolidate processes it</strong> (archives/edits contradicting memories) → <strong className="text-text">promoted to taught</strong> (permanent knowledge, no longer injected as override).</p>
+          <p>Create corrections via: the <strong className="text-text">✏️ Correct Shadow</strong> button in the sidebar, the <strong className="text-text">Correct</strong> button on repo cards, or the <strong className="text-text">shadow_correct</strong> MCP tool.</p>
         </div>
       </section>
     </div>
