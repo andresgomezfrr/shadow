@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { fetchMemories } from '../../api/client';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { fetchMemories, fetchRepos, fetchProjects, fetchSystems } from '../../api/client';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { useHighlight } from '../../hooks/useHighlight';
 import { LAYER_COLORS } from '../../api/types';
@@ -31,6 +31,19 @@ export function MemoriesPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Entity name resolver
+  const [entityNames, setEntityNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    (async () => {
+      const names: Record<string, string> = {};
+      const [repos, projects, systems] = await Promise.all([fetchRepos(), fetchProjects(), fetchSystems()]);
+      for (const r of repos ?? []) names[r.id] = r.name;
+      for (const p of projects ?? []) names[p.id] = p.name;
+      for (const s of systems ?? []) names[s.id] = s.name;
+      setEntityNames(names);
+    })();
+  }, []);
 
   // Debounce search input → URL param
   useEffect(() => {
@@ -111,6 +124,16 @@ export function MemoriesPage() {
                       <div className="flex gap-1 flex-wrap">
                         {m.tags.map((t) => (
                           <Badge key={t} className="text-text-muted bg-border">{t}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    {m.entities?.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs text-text-muted">Linked to:</span>
+                        {m.entities.map((e: { type: string; id: string }, i: number) => (
+                          <Badge key={i} className="text-blue bg-blue/10">
+                            {e.type}: {entityNames[e.id] ?? e.id.slice(0, 8)}
+                          </Badge>
                         ))}
                       </div>
                     )}
