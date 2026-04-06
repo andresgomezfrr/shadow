@@ -1,264 +1,28 @@
-// Mirrors src/storage/models.ts — kept in sync manually
+// Entity types — single source of truth from backend models
+export type {
+  EntityLink,
+  ProjectRecord as Project,
+  RepoRecord as Repo,
+  SystemRecord as System,
+  ContactRecord as Contact,
+  UserProfileRecord as UserProfile,
+  MemoryRecord as Memory,
+  ObservationRecord as Observation,
+  SuggestionRecord as Suggestion,
+  HeartbeatRecord as Heartbeat,
+  EventRecord,
+  RunRecord as Run,
+  JobRecord as Job,
+  DigestRecord as Digest,
+  EntityRelationRecord as EntityRelation,
+  FeedbackRecord,
+  LlmUsageRecord,
+  EnrichmentCacheRecord,
+} from '@shadow/models';
 
-export type EntityRelation = {
-  id: string;
-  sourceType: string;
-  sourceId: string;
-  relation: string;
-  targetType: string;
-  targetId: string;
-  confidence: number;
-  sourceOrigin: string;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type UserProfile = {
-  id: string;
-  displayName: string | null;
-  timezone: string | null;
-  locale: string;
-  workHours: Record<string, unknown>;
-  commitPatterns: Record<string, unknown>;
-  verbosity: string;
-  proactiveLevel: string;
-  proactivityLevel: number;
-  personalityLevel: number;
-  focusMode: string | null;
-  focusUntil: string | null;
-  energyLevel: string | null;
-  moodHint: string | null;
-  trustLevel: number;
-  trustScore: number;
-  bondLevel: number;
-  totalInteractions: number;
-  preferences: Record<string, unknown>;
-  dislikes: unknown[];
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type Repo = {
-  id: string;
-  name: string;
-  path: string;
-  remoteUrl: string | null;
-  defaultBranch: string;
-  languageHint: string | null;
-  testCommand: string | null;
-  lintCommand: string | null;
-  buildCommand: string | null;
-  lastObservedAt: string | null;
-  lastFetchedAt: string | null;
-  contextMd: string | null;
-  contextUpdatedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type Memory = {
-  id: string;
-  repoId: string | null;
-  contactId: string | null;
-  systemId: string | null;
-  layer: string;
-  scope: string;
-  kind: string;
-  title: string;
-  bodyMd: string;
-  tags: string[];
-  sourceType: string;
-  sourceId: string | null;
-  confidenceScore: number;
-  relevanceScore: number;
-  accessCount: number;
-  lastAccessedAt: string | null;
-  promotedFrom: string | null;
-  demotedTo: string | null;
-  memoryType: 'episodic' | 'semantic' | 'unclassified';
-  validFrom: string | null;
-  validUntil: string | null;
-  sourceMemoryIds: string[];
-  expiresAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  archivedAt: string | null;
-  // search-only fields
-  rank?: number;
-  snippet?: string;
-};
-
-export type Observation = {
-  id: string;
-  repoId: string;
-  sourceKind: string;
-  sourceId: string | null;
-  kind: string;
-  severity: string;
-  title: string;
-  detail: Record<string, unknown>;
-  context: Record<string, unknown>;
-  votes: number;
-  status: string;
-  firstSeenAt: string;
-  lastSeenAt: string;
-  processed: boolean;
-  suggestionId: string | null;
-  createdAt: string;
-};
-
-export type Suggestion = {
-  id: string;
-  repoId: string | null;
-  repoIds: string[];
-  sourceObservationId: string | null;
-  kind: string;
-  title: string;
-  summaryMd: string;
-  reasoningMd: string | null;
-  impactScore: number;
-  confidenceScore: number;
-  riskScore: number;
-  requiredTrustLevel: number;
-  status: string;
-  feedbackNote: string | null;
-  shownAt: string | null;
-  resolvedAt: string | null;
-  createdAt: string;
-  expiresAt: string | null;
-};
-
-export type Heartbeat = {
-  id: string;
-  phase: string;
-  phases: string[];
-  activity: string | null;
-  reposObserved: string[];
-  observationsCreated: number;
-  suggestionsCreated: number;
-  llmCalls: number;
-  tokensUsed: number;
-  eventsQueued: number;
-  memoriesPromoted: number;
-  memoriesDemoted: number;
-  durationMs: number | null;
-  startedAt: string;
-  finishedAt: string | null;
-};
-
-export type Contact = {
-  id: string;
-  name: string;
-  role: string | null;
-  team: string | null;
-  email: string | null;
-  slackId: string | null;
-  githubHandle: string | null;
-  notesMd: string | null;
-  preferredChannel: string | null;
-  lastMentionedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type Project = {
-  id: string;
-  name: string;
-  description: string | null;
-  kind: string;
-  status: string;
-  repoIds: string[];
-  systemIds: string[];
-  contactIds: string[];
-  startDate: string | null;
-  endDate: string | null;
-  notesMd: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type Digest = {
-  id: string;
-  kind: string;
-  periodStart: string;
-  periodEnd: string;
-  contentMd: string;
-  model: string;
-  tokensUsed: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type System = {
-  id: string;
-  name: string;
-  kind: string;
-  url: string | null;
-  description: string | null;
-  accessMethod: string | null;
-  config: Record<string, unknown>;
-  healthCheck: string | null;
-  lastCheckedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type EventRecord = {
-  id: string;
-  kind: string;
-  priority: number;
-  payload: Record<string, unknown>;
-  delivered: boolean;
-  deliveredAt: string | null;
-  createdAt: string;
-};
-
-export type Run = {
-  id: string;
-  repoId: string;
-  repoIds: string[];
-  suggestionId: string | null;
-  parentRunId: string | null;
-  kind: string;
-  status: string;
-  prompt: string;
-  resultSummaryMd: string | null;
-  errorSummary: string | null;
-  artifactDir: string | null;
-  sessionId: string | null;
-  worktreePath: string | null;
-  confidence: string | null;
-  doubts: string[];
-  prUrl: string | null;
-  snapshotRef: string | null;
-  resultRef: string | null;
-  diffStat: string | null;
-  verification: Record<string, { passed: boolean; output: string; durationMs: number }>;
-  verified: 'verified' | 'needs_review' | 'unverified' | null;
-  archived: boolean;
-  startedAt: string | null;
-  finishedAt: string | null;
-  createdAt: string;
-};
-
-export type Job = {
-  id: string;
-  type: string;
-  phase: string;
-  phases: string[];
-  activity: string | null;
-  status: string;
-  priority: number;
-  triggerSource: string;
-  llmCalls: number;
-  tokensUsed: number;
-  result: Record<string, unknown>;
-  durationMs: number | null;
-  startedAt: string;
-  finishedAt: string | null;
-  createdAt: string;
-};
+// ---------------------------------------------------------------------------
+// Dashboard-only composite types (API responses, not in backend models)
+// ---------------------------------------------------------------------------
 
 export type ActivityEntry = {
   id: string;
@@ -300,7 +64,7 @@ export type UsageSummary = {
 };
 
 export type StatusResponse = {
-  profile: UserProfile;
+  profile: import('@shadow/models').UserProfileRecord;
   counts: {
     memories: number;
     pendingSuggestions: number;
@@ -311,29 +75,8 @@ export type StatusResponse = {
     systems: number;
   };
   usage: UsageSummary;
-  lastHeartbeat: Heartbeat | null;
+  lastHeartbeat: import('@shadow/models').HeartbeatRecord | null;
   nextHeartbeatAt: string | null;
-};
-
-export type DailySummary = {
-  date: string;
-  profile: UserProfile;
-  activity: {
-    observationsToday: number;
-    memoriesCreatedToday: number;
-    pendingSuggestions: number;
-    runsToReview: number;
-    pendingEvents: number;
-  };
-  topObservations: Observation[];
-  recentMemories: { id: string; title: string; kind: string; layer: string; createdAt: string }[];
-  runsToReview: Run[];
-  pendingSuggestions: Suggestion[];
-  repos: { id: string; name: string; path: string; lastObservedAt: string | null }[];
-  tokens: { input: number; output: number; calls: number };
-  recentJobs: Job[];
-  activeProjects?: ActiveProjectSummary[];
-  recentEnrichment?: EnrichmentItem[];
 };
 
 export type ActiveProjectSummary = {
@@ -355,7 +98,28 @@ export type EnrichmentItem = {
   createdAt: string;
 };
 
-export type ProjectDetail = Project & {
+export type DailySummary = {
+  date: string;
+  profile: import('@shadow/models').UserProfileRecord;
+  activity: {
+    observationsToday: number;
+    memoriesCreatedToday: number;
+    pendingSuggestions: number;
+    runsToReview: number;
+    pendingEvents: number;
+  };
+  topObservations: import('@shadow/models').ObservationRecord[];
+  recentMemories: { id: string; title: string; kind: string; layer: string; createdAt: string }[];
+  runsToReview: import('@shadow/models').RunRecord[];
+  pendingSuggestions: import('@shadow/models').SuggestionRecord[];
+  repos: { id: string; name: string; path: string; lastObservedAt: string | null }[];
+  tokens: { input: number; output: number; calls: number };
+  recentJobs: import('@shadow/models').JobRecord[];
+  activeProjects?: ActiveProjectSummary[];
+  recentEnrichment?: EnrichmentItem[];
+};
+
+export type ProjectDetail = import('@shadow/models').ProjectRecord & {
   repos: { id: string; name: string; path: string; lastObservedAt: string | null }[];
   systems: { id: string; name: string; kind: string }[];
   contacts: { id: string; name: string; role: string | null; team: string | null }[];
@@ -366,12 +130,16 @@ export type ProjectDetail = Project & {
   counts: { observations: number; suggestions: number; memories: number };
 };
 
-export type SystemDetail = System & {
+export type SystemDetail = import('@shadow/models').SystemRecord & {
   observations: { id: string; kind: string; severity: string; title: string; createdAt: string }[];
   memories: { id: string; kind: string; title: string; createdAt: string }[];
   projects: { id: string; name: string; kind: string }[];
   counts: { observations: number; memories: number; projects: number };
 };
+
+// ---------------------------------------------------------------------------
+// UI constants
+// ---------------------------------------------------------------------------
 
 export const TRUST_NAMES: Record<number, string> = {
   1: 'Observer',

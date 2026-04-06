@@ -4,6 +4,11 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@shadow/models': new URL('../../../storage/models.ts', import.meta.url).pathname,
+    },
+  },
   server: {
     port: 5173,
     proxy: {

@@ -10,7 +10,10 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@shadow/models": ["../../../storage/models.ts"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "../../../storage/models.ts"]
 }
