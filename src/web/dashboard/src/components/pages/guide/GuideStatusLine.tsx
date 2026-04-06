@@ -19,25 +19,38 @@ export function GuideStatusLine() {
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-4">Ghost Mascot</h2>
         <p className="text-sm text-text-dim mb-3">Shadow&apos;s face in the status line. Changes expression based on state, with random micro-variations between refreshes. Color indicates activity type.</p>
+        <p className="text-xs text-text-muted mb-3 italic">Grouped by: job activity → idle states → mood states → system states</p>
         <GhostTable rows={[
-          ['purple', '{•\u203F•}', '{•_•}', '{•\u203F•}\u266A', 'ready (neutral)', 'Idle, waiting'],
-          ['green', '{•\u1D57•}', '{•\u1D57•}\uD83C\uDFB6', '{•\u203F•}\uD83C\uDFD3', 'ready (happy)', 'Idle, good mood'],
-          ['cyan', '{•\u203F•}', '{•.•}', '{•_•}.', 'watching', 'Few recent interactions'],
-          ['cyan', '{°_°}\uD83D\uDCDA', '{°\u203F°}\u270F\uFE0F', '{°_°}\uD83D\uDCD6', 'learning', 'Many interactions, absorbing'],
-          ['cyan', '{•\u203F•}\uD83D\uDC41\uFE0F', '{•.•}\uD83D\uDC40', '{•_•}\uD83D\uDD0E', 'observing', 'Heartbeat: scanning repos'],
-          ['yellow', '{•_•}\uD83E\uDDF9', '{•\u203F•}\u267B\uFE0F', '{•_•}\uD83D\uDDD1\uFE0F', 'cleaning', 'Heartbeat: observation cleanup'],
-          ['yellow', '{°_°}..', '{°_°}...', '{°.°}\uD83D\uDD0E', 'analyzing', 'Heartbeat: extract + observe'],
-          ['green', '{•\u1D57•}\uD83D\uDCA1', '{•\u203F•}\uD83D\uDCA1', '{•\u1D57•}!', 'suggesting', 'Heartbeat: generating ideas'],
-          ['yellow', '{•_•}\u2699', '{•\u203F•}\u2699', '{•_•}~', 'consolidating', 'Heartbeat: memory maintenance'],
-          ['blue', '{-_-}~', '{-\u203F-}~', '{-_-}\uD83D\uDCAD', 'reflecting', 'Daily soul reflection'],
-          ['teal', '{•_•}\uD83D\uDD17', '{•\u203F•}\uD83D\uDCE1', '{•_•}\uD83C\uDF10', 'enriching', 'MCP context enrichment'],
-          ['pink', '{•_•}\uD83D\uDD04', '{•\u203F•}\u2B07\uFE0F', '{•_•}\uD83D\uDCE5', 'syncing', 'Git remote sync'],
-          ['purple', '{•\u0300_•\u0301}', '{•\u0300\u203F•\u0301}', '{•\u0300_•\u0301}\u25B8', 'focus', 'Focus mode active'],
-          ['dim', '{-_-}z', '{-_-}zz', '{-\u203F-}zzZ', 'sleeping', 'Daemon off'],
-          ['dim', '{-_-}', '{-_-}.', '{-\u203F-}', 'tired', 'Mood: tired'],
-          ['red', '{>_<}', '{>_<}!', '{>.<}', 'frustrated', 'Mood: frustrated'],
-          ['yellow', '{•~•}', '{•~•}?', '{•_•}?', 'concerned', 'Mood: concerned'],
-          ['green', '{•\u1D57•}!', '{•\u1D57•}!!', '{•\u1D57•}\u266A', 'excited', 'Mood: excited'],
+          // --- Job activity states ---
+          ['yellow', '{°_°}', '{°.°}', '{°_°}.', 'observing', 'Heartbeat: scanning git + conversations for changes'],
+          ['yellow', '{•_•}\uD83E\uDDF9', '{•\u203F•}\u267B\uFE0F', '{•_•}\uD83D\uDDD1\uFE0F', 'cleaning', 'Heartbeat: resolving obsolete observations via MCP'],
+          ['yellow', '{°_°}..', '{°_°}...', '{°.°}\uD83D\uDD0E', 'analyzing', 'Heartbeat: extracting memories + generating observations'],
+          ['green', '{•\u1D57•}\uD83D\uDCA1', '{•\u203F•}\uD83D\uDCA1', '{•\u1D57•}!', 'suggesting', 'Suggest job: incremental suggestions for active repos'],
+          ['green', '{°.°}\uD83D\uDD2C', '{°_°}\uD83D\uDD0D', '{°\u203F°}\uD83E\uDDEC', 'deep-scan', 'Suggest-deep: full codebase review with tool access'],
+          ['green', '{•\u1D57•}\uD83D\uDD17', '{•\u203F•}\uD83C\uDF10', '{•\u1D57•}\uD83D\uDD78\uFE0F', 'cross-repo', 'Suggest-project: cross-repo analysis for a project'],
+          ['green', '{°.°}\u2713', '{°\u203F°}\u2611\uFE0F', '{°_°}\uD83C\uDFAF', 'validating', 'Suggest validation phase: verifying suggestions against code'],
+          ['yellow', '{•_•}\u2699', '{•\u203F•}\u2699', '{•_•}~', 'consolidating', 'Consolidate: memory layer maintenance (every 6h)'],
+          ['yellow', '{•\u0300_•\u0301}\u270F\uFE0F', '{•\u0300\u203F•\u0301}\uD83D\uDCDD', '{•\u0300_•\u0301}\uD83D\uDD27', 'correcting', 'Consolidate: enforcing user corrections on memories'],
+          ['yellow', '{•~•}\uD83E\uDDE9', '{•\u203F•}\uD83D\uDD00', '{•~•}\uD83E\uDEC2', 'merging', 'Consolidate: combining similar memories via LLM'],
+          ['blue', '{-_-}~', '{-\u203F-}~', '{-_-}\uD83D\uDCAD', 'reflecting', 'Reflect job: daily soul reflection (Opus)'],
+          ['teal', '{•_•}\uD83D\uDD17', '{•\u203F•}\uD83D\uDCE1', '{•_•}\uD83C\uDF10', 'enriching', 'Context-enrich: querying external MCP servers (every 2h)'],
+          ['pink', '{•_•}\uD83D\uDD04', '{•\u203F•}\u2B07\uFE0F', '{•_•}\uD83D\uDCE5', 'syncing', 'Remote-sync: git ls-remote to detect new commits (every 30m)'],
+          ['teal', '{•_•}\uD83D\uDCCB', '{•\u203F•}\uD83D\uDCCB', '{•_•}\uD83D\uDD0D', 'profiling', 'Repo-profile: LLM analysis of repo context (reactive)'],
+          ['teal', '{°_°}\uD83D\uDCD0', '{°\u203F°}\uD83D\uDCCA', '{°.°}\uD83D\uDDFA\uFE0F', 'mapping', 'Project-profile: cross-repo project context (reactive)'],
+          ['cyan', '{-\u203F-}\uD83D\uDCDD', '{-_-}\u270D\uFE0F', '{-\u203F-}\uD83D\uDCC4', 'writing', 'Digest jobs: generating standup / weekly / brag doc'],
+          // --- Idle states ---
+          ['purple', '{•\u203F•}', '{•_•}', '{•\u203F•}\u266A', 'ready', 'Daemon idle, no jobs running'],
+          ['cyan', '{•\u203F•}', '{•.•}', '{•_•}.', 'watching', 'Idle with few recent interactions'],
+          ['cyan', '{°_°}\uD83D\uDCDA', '{°\u203F°}\u270F\uFE0F', '{°_°}\uD83D\uDCD6', 'learning', 'Idle with many recent interactions (absorbing)'],
+          // --- Mood states (idle only) ---
+          ['green', '{•\u1D57•}', '{•\u1D57•}\uD83C\uDFB6', '{•\u203F•}\uD83C\uDFD3', 'happy', 'Mood: positive tone detected in conversations'],
+          ['green', '{•\u1D57•}!', '{•\u1D57•}!!', '{•\u1D57•}\u266A', 'excited', 'Mood: enthusiastic about new features/ideas'],
+          ['yellow', '{•~•}', '{•~•}?', '{•_•}?', 'concerned', 'Mood: discussing risks or problems'],
+          ['dim', '{-_-}', '{-_-}.', '{-\u203F-}', 'tired', 'Mood: late-night work or low activity'],
+          ['red', '{>_<}', '{>_<}!', '{>.<}', 'frustrated', 'Mood: complaining about bugs/issues'],
+          // --- System states ---
+          ['purple', '{•\u0300_•\u0301}', '{•\u0300\u203F•\u0301}', '{•\u0300_•\u0301}\u25B8', 'focus', 'Focus mode active (minimal interruptions)'],
+          ['dim', '{-_-}z', '{-_-}zz', '{-\u203F-}zzZ', 'sleeping', 'Daemon not running'],
         ]} />
       </section>
 
