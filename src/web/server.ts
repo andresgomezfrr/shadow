@@ -155,7 +155,10 @@ async function handleApi(
       if (status === 'pending' && items.length > 0) {
         const profile = db.ensureProfile();
         const { computeRankScore } = await import('../suggestion/ranking.js');
-        items.sort((a, b) => computeRankScore(b, profile) - computeRankScore(a, profile));
+        const { computeProjectMomentum } = await import('../heartbeat/project-detection.js');
+        const projects = db.listProjects();
+        const projectMomentum = new Map(projects.map(p => [p.id, computeProjectMomentum(db, p.id, 7)]));
+        items.sort((a, b) => computeRankScore(b, profile, { projectMomentum }) - computeRankScore(a, profile, { projectMomentum }));
       }
       const total = db.countSuggestions({ status, kind });
       const fbState = db.getThumbsState('suggestion');
