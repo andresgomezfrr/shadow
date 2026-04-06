@@ -1,5 +1,7 @@
 import type { ShadowDatabase } from '../storage/database.js';
 import type { SuggestionRecord } from '../storage/models.js';
+import { checkMemoryDuplicate } from '../memory/dedup.js';
+import { generateAndStoreEmbedding } from '../memory/lifecycle.js';
 
 export type SuggestionAction = 'accept' | 'dismiss' | 'snooze' | 'expire';
 
@@ -80,12 +82,12 @@ export function acceptSuggestion(
  * Applies trust delta (-0.5). If 3 consecutive dismissals occur, applies
  * an additional penalty (-3.0).
  */
-export function dismissSuggestion(
+export async function dismissSuggestion(
   db: ShadowDatabase,
   suggestionId: string,
   note?: string,
   category?: string,
-): { ok: boolean } {
+): Promise<{ ok: boolean }> {
   const suggestion = db.getSuggestion(suggestionId);
   if (!suggestion || suggestion.status !== 'pending') {
     return { ok: false };
@@ -118,6 +120,55 @@ export function dismissSuggestion(
     targetId: suggestionId,
     detail: { note: note ?? null, streak, trustDelta: totalDelta },
   });
+
+  // Auto-create preference memory from dismissal feedback
+  if (note || category) {
+    try {
+      const prefTitle = `Preference: avoid ${suggestion.kind} — ${category ?? 'user choice'}`;
+      const bodyParts = [`Dismissed: "${suggestion.title}"`];
+      if (category) bodyParts.push(`Category: ${category}`);
+      if (note) bodyParts.push(`Reason: ${note}`);
+      bodyParts.push(`Context: ${suggestion.summaryMd.slice(0, 300)}`);
+      const prefBody = bodyParts.join('\n\n');
+
+      const dedup = await checkMemoryDuplicate(db, {
+        kind: 'preference', title: prefTitle, bodyMd: prefBody,
+      });
+
+      if (dedup.action === 'create') {
+        const mem = db.createMemory({
+          repoId: suggestion.repoId,
+          layer: 'warm',
+          scope: suggestion.repoId ? 'repo' : 'personal',
+          kind: 'preference',
+          title: prefTitle,
+          bodyMd: prefBody,
+          tags: [suggestion.kind, category, 'dismiss_feedback'].filter((t): t is string => Boolean(t)),
+          sourceType: 'dismiss_feedback',
+          sourceId: suggestionId,
+          confidenceScore: 75,
+          relevanceScore: 0.6,
+          memoryType: 'semantic',
+        });
+        if (suggestion.entities?.length > 0) {
+          db.rawDb.prepare('UPDATE memories SET entities_json = ? WHERE id = ?')
+            .run(JSON.stringify(suggestion.entities), mem.id);
+        }
+        await generateAndStoreEmbedding(db, 'memory', mem.id, {
+          kind: 'preference', title: prefTitle, bodyMd: prefBody,
+        });
+      } else if (dedup.action === 'update') {
+        const existing = db.getMemory(dedup.existingId);
+        if (existing) {
+          const appendix = `\n\n---\nAlso dismissed: "${suggestion.title}"${note ? ` — ${note}` : ''}`;
+          db.updateMemory(dedup.existingId, { bodyMd: existing.bodyMd + appendix });
+          await generateAndStoreEmbedding(db, 'memory', dedup.existingId, {
+            kind: existing.kind, title: existing.title, bodyMd: existing.bodyMd + appendix,
+          });
+        }
+      }
+    } catch { /* never break dismiss flow */ }
+  }
 
   return { ok: true };
 }

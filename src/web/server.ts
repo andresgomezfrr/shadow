@@ -640,7 +640,7 @@ async function handleApi(
         let note: string | undefined;
         let category: string | undefined;
         try { const body = JSON.parse(await readBody(req)); note = body.note; category = body.category; } catch { /* no body is ok */ }
-        dismissSuggestion(db, id, note, category);
+        await dismissSuggestion(db, id, note, category);
         const updated = db.getSuggestion(id);
         return json(res, updated);
       } else if (action === 'snooze') {

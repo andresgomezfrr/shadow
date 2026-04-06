@@ -99,7 +99,7 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
         }
 
         const { dismissSuggestion } = await import('../../suggestion/engine.js');
-        const result = dismissSuggestion(db, suggestionId, note, category);
+        const result = await dismissSuggestion(db, suggestionId, note, category);
         if (!result.ok) return { isError: true, message: 'Cannot dismiss — suggestion not pending' };
 
         return { dismissed: true, suggestionId };
