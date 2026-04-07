@@ -82,7 +82,7 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
             Shadow TV — {ghost.label}
           </span>
         </button>
-        <SpeechBubble text={ghost.moodPhrase ?? ''} visible={showBubble} onDone={handleBubbleDone} />
+        <SpeechBubble text={ghost.moodPhrase ?? ''} visible={showBubble} onDone={handleBubbleDone} mood={ghost.mood} />
       </div>
 
       {NAV.map((entry, i) => {

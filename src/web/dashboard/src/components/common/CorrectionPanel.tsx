@@ -80,7 +80,10 @@ export function CorrectionPanel({ open, onClose, defaultScope, defaultEntityType
           </div>
         ) : (
           <>
-            <div className="text-sm font-semibold mb-3">Correct Shadow</div>
+            <div className="text-sm font-semibold mb-2">Correct Shadow</div>
+            <div className="flex justify-center mb-3">
+              <img src="/ghost/correct.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+            </div>
 
             {/* Scope selector */}
             <div className="mb-3">
