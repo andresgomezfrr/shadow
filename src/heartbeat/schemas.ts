@@ -11,8 +11,8 @@ export const ExtractResponseSchema = z.object({
     scope: z.enum(['personal', 'repo', 'cross-repo']).default('personal'),
   })).default([]),
   profileUpdates: z.object({
-    moodHint: z.string().optional(),
-    energyLevel: z.string().optional(),
+    moodHint: z.enum(['neutral', 'happy', 'excited', 'focused', 'frustrated', 'tired', 'concerned']).optional(),
+    energyLevel: z.enum(['low', 'normal', 'high']).optional(),
   }).optional(),
 });
 

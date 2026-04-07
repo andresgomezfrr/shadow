@@ -34,12 +34,12 @@ export function SpeechBubble({ text, visible, onDone, durationMs = 6000 }: Props
 
   return (
     <div
-      className={`absolute bottom-[52px] left-[64px] z-[70] max-w-[200px] ${exiting ? 'animate-bubble-out' : 'animate-bubble-in'}`}
+      className={`absolute top-0 left-[52px] z-[70] max-w-[200px] ${exiting ? 'animate-bubble-out' : 'animate-bubble-in'}`}
     >
       <div className="bg-card border border-border rounded-lg px-3 py-2 text-[11px] text-text-dim italic leading-relaxed shadow-lg relative">
         {`"${text}"`}
-        {/* Speech bubble tail */}
-        <div className="absolute -bottom-[6px] left-3 w-3 h-3 bg-card border-b border-r border-border rotate-45" />
+        {/* Speech bubble tail pointing left */}
+        <div className="absolute top-3 -left-[6px] w-3 h-3 bg-card border-l border-b border-border rotate-45" />
       </div>
     </div>
   );

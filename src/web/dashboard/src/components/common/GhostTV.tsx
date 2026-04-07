@@ -24,9 +24,16 @@ type Props = {
   isActive: boolean;
   mood: string;
   moodPhrase: string | null;
+  energy: string;
 };
 
-export function GhostTV({ open, onClose, imagePath, label, phase, isActive, mood, moodPhrase }: Props) {
+const ENERGY_BARS: Record<string, { blocks: number; label: string }> = {
+  low: { blocks: 1, label: 'low' },
+  normal: { blocks: 3, label: 'normal' },
+  high: { blocks: 5, label: 'high' },
+};
+
+export function GhostTV({ open, onClose, imagePath, label, phase, isActive, mood, moodPhrase, energy }: Props) {
   const [imgError, setImgError] = useState(false);
   const [prevImage, setPrevImage] = useState(imagePath);
   const [transitioning, setTransitioning] = useState(false);
@@ -62,8 +69,9 @@ export function GhostTV({ open, onClose, imagePath, label, phase, isActive, mood
   return (
     <div className="fixed inset-0 z-[60]" onClick={onClose}>
       <div
-        className={`absolute bottom-16 left-[68px] w-[220px] rounded-xl overflow-hidden animate-fade-in ghost-glow`}
+        className={`absolute top-2 left-[68px] w-[220px] rounded-xl overflow-hidden animate-fade-in ghost-glow`}
         data-mood={mood}
+        data-energy={energy}
         onClick={e => e.stopPropagation()}
       >
         {/* Close button */}
@@ -102,7 +110,7 @@ export function GhostTV({ open, onClose, imagePath, label, phase, isActive, mood
           )}
         </div>
 
-        {/* Phase label + mood phrase */}
+        {/* Phase label + mood phrase + energy */}
         <div className="text-center py-1.5 px-3 bg-card/90">
           <div className="text-xs text-accent/80 tracking-wide">{label}</div>
           {moodPhrase && (
@@ -110,6 +118,22 @@ export function GhostTV({ open, onClose, imagePath, label, phase, isActive, mood
               &ldquo;{moodPhrase}&rdquo;
             </div>
           )}
+          <div className="flex items-center justify-center gap-1.5 mt-1.5">
+            <span className="text-[10px] text-text-muted">⚡</span>
+            <div className="flex gap-[2px]">
+              {Array.from({ length: 5 }, (_, i) => (
+                <div
+                  key={i}
+                  className={`w-[14px] h-[4px] rounded-sm transition-colors ${
+                    i < (ENERGY_BARS[energy]?.blocks ?? 3)
+                      ? 'bg-accent/70'
+                      : 'bg-border/40'
+                  }`}
+                />
+              ))}
+            </div>
+            <span className="text-[10px] text-text-muted">{ENERGY_BARS[energy]?.label ?? 'normal'}</span>
+          </div>
         </div>
       </div>
     </div>

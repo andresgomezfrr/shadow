@@ -46,6 +46,7 @@ export type GhostPhase = {
   mood: string;
   moodPhrase: string | null;
   moodPhraseChanged: boolean;
+  energy: string;
 };
 
 export function useGhostPhase(): GhostPhase {
@@ -56,8 +57,9 @@ export function useGhostPhase(): GhostPhase {
   const focusModeRef = useRef(false);
   const prevPhaseRef = useRef('idle');
 
-  // Mood state
+  // Mood + energy state
   const [mood, setMood] = useState('neutral');
+  const [energy, setEnergy] = useState('normal');
   const [moodPhrase, setMoodPhrase] = useState<string | null>(null);
   const [moodPhraseChanged, setMoodPhraseChanged] = useState(false);
   const prevMoodPhraseRef = useRef<string | null>(null);
@@ -121,9 +123,10 @@ export function useGhostPhase(): GhostPhase {
     const profile = (status as Record<string, unknown>).profile as Record<string, unknown> | undefined;
     focusModeRef.current = !!profile?.focusMode;
 
-    // Update mood
+    // Update mood + energy
     const newMood = (profile?.moodHint as string) || 'neutral';
     setMood(newMood);
+    setEnergy((profile?.energyLevel as string) || 'normal');
 
     // Update mood phrase — detect changes
     const newPhrase = (profile?.moodPhrase as string) || null;
@@ -193,5 +196,6 @@ export function useGhostPhase(): GhostPhase {
     mood,
     moodPhrase,
     moodPhraseChanged,
+    energy,
   };
 }

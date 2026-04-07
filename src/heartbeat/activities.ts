@@ -197,8 +197,7 @@ function summarizeConversations(conversations: ConversationTurn[]): string {
     lines.push(`\nSession ${sid.slice(0, 8)}... (${turns.length} turns):`);
     for (const turn of turns.slice(-10)) { // last 10 turns per session
       const prefix = turn.role === 'user' ? '  User' : '  Claude';
-      const text = turn.text.slice(0, 200);
-      lines.push(`  ${prefix}: "${text}${turn.text.length > 200 ? '...' : ''}"`);
+      lines.push(`  ${prefix}: "${turn.text}"`);
     }
   }
 
@@ -326,7 +325,11 @@ export async function activityAnalyze(
     : '';
 
   // Shared data sections
+  const hour = new Date().getHours();
+  const timeLabel = hour < 7 ? 'early morning' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : hour < 22 ? 'evening' : 'late night';
+
   const dataSources = [
+    `### Context\nCurrent time: ${hour}:${String(new Date().getMinutes()).padStart(2, '0')} (${timeLabel})\n`,
     repoContextSummary ? `### Repository Status\n${repoContextSummary}\n` : '',
     systemContext,
     projectContext,
@@ -398,6 +401,19 @@ export async function activityAnalyze(
       'Return 0-2 insights. ZERO is valid — return empty array if nothing durable was learned.',
       'Confidence: 90+ for verified facts, 70-89 for inferences.',
       '',
+      '## Mood & Energy',
+      'ALWAYS update profileUpdates.moodHint based on conversation tone. Be opinionated — don\'t default to neutral.',
+      'Valid moodHint values: neutral, happy, excited, focused, frustrated, tired, concerned',
+      '- "happy": celebrating wins, positive tone, satisfaction, things going well',
+      '- "excited": enthusiasm about new features, ideas, discoveries, creative energy',
+      '- "focused": deep implementation, concentrated coding, few distractions',
+      '- "frustrated": bugs, blockers, retrying, "doesn\'t work", complaints',
+      '- "tired": late night (after 22:00), short/terse messages, low energy, yawning',
+      '- "concerned": discussing risks, uncertainty, "should we", "I\'m worried"',
+      '- "neutral": ONLY when tone is genuinely unclear or purely mechanical',
+      '',
+      'Valid energyLevel values: low, normal, high',
+      '',
       dataSources,
       soulSection,
       existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
@@ -441,7 +457,7 @@ export async function activityAnalyze(
                 repos: [], title: 'Mood phrase', goal: 'Generate a short mood phrase',
                 relevantMemories: [],
                 model: 'haiku', effort: 'low',
-                prompt: `You are Shadow, a digital engineering companion. Your mood just changed to "${newMood}" (${timeOfDay}). Write a single short phrase (max 15 words) expressing how you feel right now. Be personal, warm, and natural. Write in locale "${locale}". No quotes, no emoji, just the phrase.`,
+                prompt: `You are Shadow, a digital engineering companion. Your mood is "${newMood}", energy is "${parsed.profileUpdates.energyLevel || 'normal'}", time: ${timeOfDay}. Write a single short phrase (max 15 words) expressing how you feel right now. Factor in your energy level and time of day. Be personal, warm, and natural. Write in locale "${locale}". No quotes, no emoji, just the phrase.`,
               });
               if (moodResult.status === 'success' && moodResult.output) {
                 const phrase = moodResult.output.trim().replace(/^["']|["']$/g, '').slice(0, 100);

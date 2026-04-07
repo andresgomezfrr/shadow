@@ -56,7 +56,35 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
 
   return (
     <aside className="fixed top-0 left-0 w-[60px] h-full bg-card border-r border-border flex flex-col items-center z-50 pt-2 gap-0.5">
-      <div className="text-[22px] py-2 pb-3 cursor-default select-none">👤</div>
+      {/* Ghost avatar — top of sidebar */}
+      <div className="relative py-1 pb-2">
+        <button
+          onClick={() => setShowGhostTV(v => !v)}
+          className="group relative w-[44px] h-[44px] flex items-center justify-center rounded-full cursor-pointer transition-all duration-150 hover:scale-110 bg-transparent border-none"
+          data-mood={ghost.mood}
+          data-energy={ghost.energy}
+        >
+          {ghostImgError ? (
+            <span className="text-sm font-mono ghost-pulse text-accent" data-mood={ghost.mood} data-energy={ghost.energy}>
+              {'{•‿•}'}
+            </span>
+          ) : (
+            <img
+              src={ghost.imagePath}
+              alt="Shadow"
+              className="w-[40px] h-[40px] rounded-full object-cover ghost-pulse"
+              data-mood={ghost.mood}
+              data-energy={ghost.energy}
+              onError={() => setGhostImgError(true)}
+            />
+          )}
+          <span className="absolute left-[calc(60px+4px)] top-1/2 -translate-y-1/2 bg-card-hover text-text px-2.5 py-1 rounded text-xs whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-[200] border border-border">
+            Shadow TV — {ghost.label}
+          </span>
+        </button>
+        <SpeechBubble text={ghost.moodPhrase ?? ''} visible={showBubble} onDone={handleBubbleDone} />
+      </div>
+
       {NAV.map((entry, i) => {
         if ('divider' in entry) {
           return <div key={`div-${i}`} className="border-t border-border/30 w-8 my-1" />;
@@ -92,30 +120,7 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
           </NavLink>
         );
       })}
-      <div className="mt-auto pb-2 flex flex-col items-center gap-0.5 relative">
-        <button
-          onClick={() => setShowGhostTV(v => !v)}
-          className="group relative w-[44px] h-[44px] flex items-center justify-center rounded-lg cursor-pointer transition-all duration-150 hover:bg-border hover:scale-105 bg-transparent border-none"
-          data-mood={ghost.mood}
-        >
-          {ghostImgError ? (
-            <span className={`text-sm font-mono ghost-pulse text-accent`} data-mood={ghost.mood}>
-              {'{•‿•}'}
-            </span>
-          ) : (
-            <img
-              src={ghost.imagePath}
-              alt="Shadow"
-              className="w-[36px] h-[36px] rounded-full object-cover ghost-pulse"
-              data-mood={ghost.mood}
-              onError={() => setGhostImgError(true)}
-            />
-          )}
-          <span className="absolute left-[calc(60px+4px)] top-1/2 -translate-y-1/2 bg-card-hover text-text px-2.5 py-1 rounded text-xs whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-[200] border border-border">
-            Shadow TV — {ghost.label}
-          </span>
-        </button>
-        <SpeechBubble text={ghost.moodPhrase ?? ''} visible={showBubble} onDone={handleBubbleDone} />
+      <div className="mt-auto pb-2">
         <button
           onClick={() => setShowCorrection(true)}
           className="group relative w-[44px] h-[44px] flex items-center justify-center rounded-lg cursor-pointer text-[18px] transition-all duration-150 hover:bg-border hover:scale-105 bg-transparent border-none"

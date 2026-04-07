@@ -70,6 +70,12 @@ html, body, #root {
 .ghost-glow { animation: ghostGlow 3s ease-in-out infinite; }
 .ghost-pulse { animation: ghostPulse 2s ease-in-out infinite; }
 
+/* Energy affects animation speed */
+[data-energy="high"] .ghost-pulse, .ghost-pulse[data-energy="high"] { animation-duration: 1.2s; }
+[data-energy="low"] .ghost-pulse, .ghost-pulse[data-energy="low"] { animation-duration: 4s; }
+[data-energy="high"] .ghost-glow, .ghost-glow[data-energy="high"] { animation-duration: 1.8s; }
+[data-energy="low"] .ghost-glow, .ghost-glow[data-energy="low"] { animation-duration: 5s; }
+
 /* Speech bubble animation */
 @keyframes bubbleIn {
   from { opacity: 0; transform: translateY(8px) scale(0.95); }
