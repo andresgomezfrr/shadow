@@ -112,7 +112,7 @@ export function GhostTV({ open, onClose, imagePath, label, phase, isActive, mood
 
         {/* Phase label + mood phrase + energy */}
         <div className="text-center py-1.5 px-3 bg-card/90">
-          <div className="text-xs text-accent/80 tracking-wide">{label}</div>
+          <div className="text-xs text-accent/80 tracking-wide">{label} · {mood}</div>
           {moodPhrase && (
             <div className="text-[11px] text-text-dim italic mt-0.5 leading-relaxed">
               &ldquo;{moodPhrase}&rdquo;

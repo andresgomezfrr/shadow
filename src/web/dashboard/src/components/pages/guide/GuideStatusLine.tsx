@@ -70,16 +70,8 @@ export function GuideStatusLine() {
       {/* Mood */}
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-4">Mood</h2>
-        <p className="text-sm text-text-dim mb-3">Auto-inferred from your conversations by the heartbeat. Also affects ghost expression.</p>
-        <Table rows={[
-          ['\uD83D\uDE10', 'neutral', 'Default / unclear mood'],
-          ['\uD83D\uDE0A', 'happy', 'Positive tone, celebrating wins'],
-          ['\uD83C\uDFAF', 'focused', 'Deep in implementation, concentrated'],
-          ['\uD83D\uDE34', 'tired', 'Late-night work, short messages'],
-          ['\uD83D\uDE24', 'frustrated', 'Complaining about bugs/issues'],
-          ['\uD83E\uDD29', 'excited', 'Enthusiastic about new features/ideas'],
-          ['\uD83E\uDD14', 'concerned', 'Discussing risks or problems'],
-        ]} />
+        <p className="text-sm text-text-dim mb-3">Auto-inferred from your conversations by the heartbeat. Affects ghost glow color, energy animation speed, and mood phrase generation.</p>
+        <MoodTable />
       </section>
 
       {/* Energy */}
@@ -156,6 +148,46 @@ const COLOR_CLASSES: Record<string, string> = {
   teal: 'text-cyan',
   pink: 'text-pink-400',
 };
+
+const MOOD_COLORS: [string, string, string, string][] = [
+  ['#bc8cff', '😐', 'neutral', 'Default / unclear mood'],
+  ['#3fb950', '😊', 'happy', 'Positive tone, celebrating wins'],
+  ['#d2ad22', '🤩', 'excited', 'Enthusiastic about new features/ideas'],
+  ['#56d4dd', '🎯', 'focused', 'Deep in implementation, concentrated'],
+  ['#f85149', '😤', 'frustrated', 'Complaining about bugs/issues'],
+  ['#58a6ff', '😴', 'tired', 'Late-night work, short messages'],
+  ['#d29922', '🤔', 'concerned', 'Discussing risks or problems'],
+  ['#f85149', '💤', 'offline', 'Daemon not running (SSE disconnected)'],
+];
+
+function MoodTable() {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-bg">
+            <th className="text-left px-4 py-2 text-text-dim font-medium w-16">Glow</th>
+            <th className="text-left px-4 py-2 text-text-dim font-medium w-12">Emoji</th>
+            <th className="text-left px-4 py-2 text-text-dim font-medium w-32">Name</th>
+            <th className="text-left px-4 py-2 text-text-dim font-medium">Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          {MOOD_COLORS.map(([hex, emoji, name, meaning], i) => (
+            <tr key={i} className="border-t border-border hover:bg-card-hover transition-colors">
+              <td className="px-4 py-2.5">
+                <span className="inline-block w-4 h-4 rounded-full" style={{ backgroundColor: hex, boxShadow: `0 0 8px ${hex}80` }} />
+              </td>
+              <td className="px-4 py-2.5 text-lg">{emoji}</td>
+              <td className="px-4 py-2.5 font-mono text-text">{name}</td>
+              <td className="px-4 py-2.5 text-text-dim">{meaning}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function GhostTable({ rows }: { rows: [string, string, string, string, string, string][] }) {
   return (
