@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { UserProfile } from '../../../api/types';
 import { SaveIndicator } from '../../common/SettingsField';
-import { PERSONALITY_LABELS } from './settings-data';
 
 type Props = {
   profile: UserProfile;
@@ -13,52 +12,33 @@ type Props = {
 
 const SELECT_CLASS = 'bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm outline-none focus:border-accent transition-colors cursor-pointer';
 
-function SliderField({
-  label,
-  description,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string;
-  description?: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <label className="text-sm font-medium">{label}</label>
-        <span className="text-sm text-accent font-semibold">{value}</span>
-      </div>
-      {description && <p className="text-xs text-text-muted mb-2">{description}</p>}
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-[var(--color-accent)] h-1.5 bg-border rounded-full appearance-none cursor-pointer"
-      />
-      <div className="flex justify-between text-[10px] text-text-muted mt-0.5">
-        <span>{min}</span>
-        <span>{max}</span>
-      </div>
-    </div>
-  );
+const PROACTIVITY_TIERS = [
+  { value: 1, label: 'Silent', description: 'Only critical alerts' },
+  { value: 4, label: 'Low', description: 'Important stuff only' },
+  { value: 6, label: 'Normal', description: 'Balanced' },
+  { value: 9, label: 'High', description: 'Show me everything' },
+] as const;
+
+function proactivityToTier(level: number): number {
+  if (level <= 3) return 1;
+  if (level <= 5) return 4;
+  if (level <= 7) return 6;
+  return 9;
 }
 
-export function SectionBehavior({ profile, saved, onSave, onDebouncedSave, visible }: Props) {
+export function tierLabel(level: number): string {
+  if (level <= 3) return 'Silent';
+  if (level <= 5) return 'Low';
+  if (level <= 7) return 'Normal';
+  return 'High';
+}
+
+export function SectionBehavior({ profile, saved, onSave, visible }: Props) {
   const [localProactivity, setLocalProactivity] = useState(profile.proactivityLevel);
-  const [localPersonality, setLocalPersonality] = useState(profile.personalityLevel);
 
   useEffect(() => {
     setLocalProactivity(profile.proactivityLevel);
-    setLocalPersonality(profile.personalityLevel);
-  }, [profile.proactivityLevel, profile.personalityLevel]);
+  }, [profile.proactivityLevel]);
 
   return (
     <section
@@ -70,32 +50,27 @@ export function SectionBehavior({ profile, saved, onSave, onDebouncedSave, visib
       <h2 className="text-base font-semibold mb-4">Behavior</h2>
       <div className="space-y-6">
         <div>
-          <SliderField
-            label="Proactivity"
-            description="How proactive Shadow is when sharing observations and suggestions"
-            value={localProactivity}
-            min={1}
-            max={10}
-            onChange={(v) => {
-              setLocalProactivity(v);
-              onDebouncedSave('proactivityLevel', v);
-            }}
-          />
-          <SaveIndicator show={saved === 'proactivityLevel'} />
-        </div>
-        <div>
-          <SliderField
-            label="Personality"
-            description={PERSONALITY_LABELS[localPersonality] ?? ''}
-            value={localPersonality}
-            min={1}
-            max={5}
-            onChange={(v) => {
-              setLocalPersonality(v);
-              onDebouncedSave('personalityLevel', v);
-            }}
-          />
-          <SaveIndicator show={saved === 'personalityLevel'} />
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-sm font-medium">Proactivity</label>
+            <SaveIndicator show={saved === 'proactivityLevel'} />
+          </div>
+          <p className="text-xs text-text-muted mb-2">How much Shadow shares with you proactively</p>
+          <div className="flex gap-1.5">
+            {PROACTIVITY_TIERS.map((tier) => (
+              <button
+                key={tier.value}
+                onClick={() => { setLocalProactivity(tier.value); onSave('proactivityLevel', tier.value); }}
+                className={`flex-1 px-2 py-2 rounded-lg text-xs border-none cursor-pointer transition-colors text-center ${
+                  proactivityToTier(localProactivity) === tier.value
+                    ? 'bg-accent-soft text-accent'
+                    : 'bg-border/50 text-text-muted hover:text-text'
+                }`}
+              >
+                <div className="font-medium">{tier.label}</div>
+                <div className="text-[10px] mt-0.5 opacity-70">{tier.description}</div>
+              </button>
+            ))}
+          </div>
         </div>
         <div>
           <label className="text-sm font-medium block mb-1">

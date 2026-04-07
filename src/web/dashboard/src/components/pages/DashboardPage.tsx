@@ -28,10 +28,6 @@ export function DashboardPage() {
 
         <MetricCard label="Trust Score" value={profile.trustScore.toFixed(1)} href="/profile" />
 
-        <MetricCard label="Personality" value={`Level ${profile.personalityLevel}`} href="/profile">
-          <ProgressBar value={profile.personalityLevel} max={5} />
-        </MetricCard>
-
         <MetricCard label="Proactivity" value={tierLabel(profile.proactivityLevel)} href="/profile" />
 
         <MetricCard label="Mood" value={`${moodEmoji} ${mood}`} />

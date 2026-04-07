@@ -10,7 +10,6 @@ import { useSettingsSearch } from './settings/useSettingsSearch';
 import { SettingsSidebar } from './settings/SettingsSidebar';
 import { SectionTrustLevel } from './settings/SectionTrustLevel';
 import { SectionIdentity } from './settings/SectionIdentity';
-import { SectionStatus } from './settings/SectionStatus';
 import { SectionBehavior } from './settings/SectionBehavior';
 import { SectionLLMModels } from './settings/SectionLLMModels';
 import { SectionThoughts } from './settings/SectionThoughts';
@@ -111,10 +110,10 @@ export function ProfilePage() {
         {/* General */}
         <SectionTrustLevel profile={profile} visible={isSectionVisible('trust')} />
         <SectionIdentity profile={profile} saved={saved} onSave={saveField} visible={isSectionVisible('identity')} />
-        <SectionStatus profile={profile} saved={saved} onSave={saveField} visible={isSectionVisible('status')} />
 
         {/* Behavior */}
         <SectionBehavior profile={profile} saved={saved} onSave={saveField} onDebouncedSave={debouncedSave} visible={isSectionVisible('behavior')} />
+
         <SectionLLMModels profile={profile} saved={saved} onSavePreference={savePreference} visible={isSectionVisible('models')} />
 
         {/* Features */}

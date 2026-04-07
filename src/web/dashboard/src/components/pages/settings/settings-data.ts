@@ -12,7 +12,6 @@ export const SETTINGS_GROUPS = [
 export const SETTINGS_SECTIONS = [
   { id: 'trust', label: 'Trust Level', group: 'general', keywords: ['trust', 'level', 'score', 'interactions', 'observer', 'advisor', 'partner', 'shadow'] },
   { id: 'identity', label: 'Identity', group: 'general', keywords: ['name', 'displayName', 'locale', 'timezone', 'language', 'identity'] },
-  { id: 'status', label: 'Status', group: 'general', keywords: ['mood', 'energy', 'happy', 'tired', 'focused', 'excited', 'concerned'] },
   { id: 'behavior', label: 'Behavior', group: 'behavior', keywords: ['proactivity', 'personality', 'verbosity', 'concise', 'verbose', 'minimal', 'companion'] },
   { id: 'models', label: 'LLM Models', group: 'behavior', keywords: ['llm', 'model', 'analyze', 'suggest', 'consolidate', 'runner', 'haiku', 'sonnet', 'opus'] },
   { id: 'thoughts', label: 'Thoughts', group: 'features', keywords: ['thought', 'ambient', 'status line', 'frequency', 'duration'] },
@@ -25,14 +24,6 @@ export const SETTINGS_SECTIONS = [
 export type SectionId = (typeof SETTINGS_SECTIONS)[number]['id'];
 
 // --- Labels & options ---
-
-export const PERSONALITY_LABELS: Record<number, string> = {
-  1: 'Minimal — only responds to direct questions',
-  2: 'Informative — shares relevant data',
-  3: 'Collaborative — suggests and gives opinions',
-  4: 'Companion — close tone, subtle humor',
-  5: 'Shadow — fully integrated, proactive',
-};
 
 export const FOCUS_DURATIONS = [
   { label: '30m', value: '30m' },
