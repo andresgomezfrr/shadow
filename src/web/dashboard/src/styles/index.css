@@ -56,6 +56,7 @@ html, body, #root {
 [data-mood="tired"] { --glow-r: 88; --glow-g: 166; --glow-b: 255; }
 [data-mood="concerned"] { --glow-r: 210; --glow-g: 153; --glow-b: 34; }
 [data-mood="focused"] { --glow-r: 86; --glow-g: 212; --glow-b: 221; }
+[data-mood="offline"] { --glow-r: 248; --glow-g: 81; --glow-b: 73; }
 
 @keyframes ghostGlow {
   0%, 100% { box-shadow: 0 0 15px 3px rgba(var(--glow-r),var(--glow-g),var(--glow-b),0.4), 0 0 30px 6px rgba(var(--glow-r),var(--glow-g),var(--glow-b),0.15); }

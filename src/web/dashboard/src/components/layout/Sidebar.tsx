@@ -5,6 +5,7 @@ import { CorrectionPanel } from '../common/CorrectionPanel';
 import { GhostTV } from '../common/GhostTV';
 import { SpeechBubble } from '../common/SpeechBubble';
 import { useGhostPhase } from '../../hooks/useGhostPhase';
+import { useSSEConnected } from '../../hooks/useEventStream';
 
 type Counts = StatusResponse['counts'];
 
@@ -43,7 +44,26 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
   const [showGhostTV, setShowGhostTV] = useState(false);
   const [showBubble, setShowBubble] = useState(false);
   const ghost = useGhostPhase();
+  const sseConnected = useSSEConnected();
+  const isOffline = !sseConnected;
   const [ghostImgError, setGhostImgError] = useState(false);
+
+  // Preload offline image as blob URL so it works without server
+  const [offlineBlobUrl, setOfflineBlobUrl] = useState<string | null>(null);
+  useEffect(() => {
+    fetch('/ghost/offline.png')
+      .then(r => r.blob())
+      .then(blob => setOfflineBlobUrl(URL.createObjectURL(blob)))
+      .catch(() => {});
+  }, []);
+
+  // Reset image error when source changes
+  useEffect(() => { setGhostImgError(false); }, [isOffline, ghost.imagePath]);
+
+  // Offline overrides
+  const ghostImage = isOffline ? (offlineBlobUrl ?? '/ghost/offline.png') : ghost.imagePath;
+  const ghostMood = isOffline ? 'offline' : ghost.mood;
+  const ghostLabel = isOffline ? 'offline' : ghost.label;
 
   // Show speech bubble when mood phrase changes
   useEffect(() => {
@@ -61,25 +81,25 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
         <button
           onClick={() => setShowGhostTV(v => !v)}
           className="group relative w-[44px] h-[44px] flex items-center justify-center rounded-full cursor-pointer transition-all duration-150 hover:scale-110 bg-transparent border-none"
-          data-mood={ghost.mood}
+          data-mood={ghostMood}
           data-energy={ghost.energy}
         >
           {ghostImgError ? (
-            <span className="text-sm font-mono ghost-pulse text-accent" data-mood={ghost.mood} data-energy={ghost.energy}>
-              {'{•‿•}'}
+            <span className="text-sm font-mono ghost-pulse text-accent" data-mood={ghostMood} data-energy={ghost.energy}>
+              {isOffline ? '{-_-}z' : '{•‿•}'}
             </span>
           ) : (
             <img
-              src={ghost.imagePath}
+              src={ghostImage}
               alt="Shadow"
               className="w-[40px] h-[40px] rounded-full object-cover ghost-pulse"
-              data-mood={ghost.mood}
+              data-mood={ghostMood}
               data-energy={ghost.energy}
               onError={() => setGhostImgError(true)}
             />
           )}
           <span className="absolute left-[calc(60px+4px)] top-1/2 -translate-y-1/2 bg-card-hover text-text px-2.5 py-1 rounded text-xs whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-[200] border border-border">
-            Shadow TV — {ghost.label}
+            Shadow TV — {ghostLabel}
           </span>
         </button>
         <SpeechBubble text={ghost.moodPhrase ?? ''} visible={showBubble} onDone={handleBubbleDone} mood={ghost.mood} />
@@ -132,7 +152,7 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
         </button>
       </div>
       <CorrectionPanel open={showCorrection} onClose={() => setShowCorrection(false)} />
-      <GhostTV open={showGhostTV} onClose={() => setShowGhostTV(false)} {...ghost} />
+      <GhostTV open={showGhostTV} onClose={() => setShowGhostTV(false)} {...ghost} imagePath={ghostImage} mood={ghostMood} label={ghostLabel} />
     </aside>
   );
 }

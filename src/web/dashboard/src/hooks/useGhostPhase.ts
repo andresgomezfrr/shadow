@@ -73,16 +73,16 @@ export function useGhostPhase(): GhostPhase {
     setPhase(newPhase);
   }, []);
 
-  // Preload all ghost images on mount
+  // Preload all ghost images on mount (including offline)
   useEffect(() => {
     const seen = new Set<string>();
-    for (const { images } of Object.values(PHASE_MAP)) {
-      for (const src of images) {
-        if (!seen.has(src)) {
-          seen.add(src);
-          const img = new Image();
-          img.src = src;
-        }
+    const allSources = Object.values(PHASE_MAP).flatMap(p => p.images);
+    allSources.push('/ghost/offline.png');
+    for (const src of allSources) {
+      if (!seen.has(src)) {
+        seen.add(src);
+        const img = new Image();
+        img.src = src;
       }
     }
   }, []);
