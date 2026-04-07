@@ -72,21 +72,6 @@ export function SectionBehavior({ profile, saved, onSave, visible }: Props) {
             ))}
           </div>
         </div>
-        <div>
-          <label className="text-sm font-medium block mb-1">
-            Verbosity
-            <SaveIndicator show={saved === 'verbosity'} />
-          </label>
-          <select
-            defaultValue={profile.verbosity}
-            onChange={(e) => onSave('verbosity', e.target.value)}
-            className={SELECT_CLASS}
-          >
-            <option value="concise">Concise</option>
-            <option value="normal">Normal</option>
-            <option value="verbose">Verbose</option>
-          </select>
-        </div>
       </div>
     </section>
   );
