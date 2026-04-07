@@ -90,7 +90,7 @@ export function MemoriesPage() {
       {loading ? (
         <div className="text-text-dim">Loading...</div>
       ) : memories.length === 0 ? (
-        <EmptyState icon="🧠" title="No memories" description={params.q ? 'No results found' : 'Shadow has no saved memories yet'} />
+        <EmptyState title="No memories" description={params.q ? 'No results found' : 'Shadow has no saved memories yet'} />
       ) : (
         <div className="flex flex-col gap-2">
           {memories.map((m) => {

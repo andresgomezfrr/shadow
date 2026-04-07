@@ -13,7 +13,7 @@ export function TeamPage() {
       {!data ? (
         <div className="text-text-dim">Loading...</div>
       ) : data.length === 0 ? (
-        <EmptyState icon="👥" title="No contacts" description="Add contacts with: shadow contact add <name>" />
+        <EmptyState title="No contacts" description="Add contacts with: shadow contact add <name>" />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {data.map((c) => (

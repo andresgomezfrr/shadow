@@ -299,7 +299,6 @@ export function ReposPage() {
         <div className="text-text-dim">Loading...</div>
       ) : data.length === 0 ? (
         <EmptyState
-          icon="📁"
           title="No repos registered"
           description="Use: shadow repo add <path>"
         />

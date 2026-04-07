@@ -185,7 +185,6 @@ export function RunsPage() {
         <div className="text-text-dim">Loading...</div>
       ) : topLevelRuns.length === 0 ? (
         <EmptyState
-          icon={params.status === 'completed' ? '✓' : '🏃'}
           title={params.status === 'completed' ? 'All caught up' : 'No runs'}
           description={params.status === 'completed' ? 'No runs waiting for review' : 'Accept a suggestion to create a run'}
         />

@@ -136,7 +136,6 @@ export function ActivityPage() {
         <div className="text-text-dim">Loading...</div>
       ) : items.length === 0 ? (
         <EmptyState
-          icon="⚙️"
           title="No activity"
           description={params.type === '_running' ? 'Nothing running right now' : 'No matching activity in this period'}
         />

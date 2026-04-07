@@ -13,7 +13,7 @@ export function EventsPage() {
       {!data ? (
         <div className="text-text-dim">Loading...</div>
       ) : data.length === 0 ? (
-        <EmptyState icon="📬" title="No pending events" description="Event queue is empty" />
+        <EmptyState title="No pending events" description="Event queue is empty" />
       ) : (
         <div className="flex flex-col gap-2">
           {data.map((e) => (

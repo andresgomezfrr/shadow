@@ -95,7 +95,7 @@ export function MorningSuggestions({
         {suggestions.length > 0 && <Badge>{suggestions.length}</Badge>}
       </h2>
       {suggestions.length === 0 ? (
-        <EmptyState icon="✓" title="All caught up" description="No pending suggestions to review" />
+        <EmptyState title="All caught up" description="No pending suggestions to review" />
       ) : (
         <div className="flex flex-col gap-2">
           {suggestions.map((s) => (

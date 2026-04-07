@@ -215,7 +215,6 @@ export function DigestsPage() {
         <div className="text-text-dim py-16 text-center">Loading...</div>
       ) : !currentDigest ? (
         <EmptyState
-          icon="📝"
           title={`No ${KIND_LABELS[kind] ?? kind} digests yet`}
           description="Click Generate above to create the first one"
         />

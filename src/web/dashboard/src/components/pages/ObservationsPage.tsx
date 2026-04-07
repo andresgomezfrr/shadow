@@ -87,7 +87,6 @@ export function ObservationsPage() {
         <div className="text-text-dim">Loading...</div>
       ) : data.length === 0 ? (
         <EmptyState
-          icon={params.status === 'active' ? '✓' : '👀'}
           title={params.status === 'active' ? 'All clear' : 'No observations'}
           description={params.status === 'active' ? 'No active observations' : `No ${params.status === 'all' ? '' : params.status + ' '}observations found`}
         />

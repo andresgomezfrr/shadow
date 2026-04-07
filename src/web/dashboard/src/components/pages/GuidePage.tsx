@@ -24,6 +24,7 @@ export function GuidePage() {
   return (
     <div className="max-w-4xl">
       <div className="flex items-center gap-3 mb-6 flex-wrap">
+        <img src="/ghost/guide.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
         <h1 className="text-xl font-semibold">Shadow Guide</h1>
         <FilterTabs options={SECTIONS} active={params.section} onChange={(v) => setParam('section', v)} />
       </div>

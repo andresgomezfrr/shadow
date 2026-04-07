@@ -14,7 +14,7 @@ export function SystemsPage() {
       {!data ? (
         <div className="text-text-dim">Loading...</div>
       ) : data.length === 0 ? (
-        <EmptyState icon="🔧" title="No systems" description="Register systems with: shadow system add <name>" />
+        <EmptyState title="No systems" description="Register systems with: shadow system add <name>" />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {data.map((s) => (

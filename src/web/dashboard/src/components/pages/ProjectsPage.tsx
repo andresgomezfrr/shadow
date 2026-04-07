@@ -40,7 +40,6 @@ export function ProjectsPage() {
         <div className="text-text-dim">Loading...</div>
       ) : projects.length === 0 ? (
         <EmptyState
-          icon="📁"
           title="No projects"
           description="Create a project with: shadow project add <name> --repos repo1,repo2"
         />

@@ -198,7 +198,6 @@ export function SuggestionsPage() {
         <div className="text-text-dim">Loading...</div>
       ) : data.length === 0 ? (
         <EmptyState
-          icon={params.status === 'pending' ? '✓' : '💡'}
           title={params.status === 'pending' ? 'All caught up' : 'No suggestions'}
           description={params.status === 'pending' ? 'No pending suggestions to review' : 'Shadow has no suggestions in this category'}
         />
