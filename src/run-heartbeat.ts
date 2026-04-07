@@ -1,6 +1,6 @@
 import { loadConfig } from './config/load-config.js';
 import { createDatabase } from './storage/database.js';
-import { runHeartbeat } from './heartbeat/state-machine.js';
+import { runHeartbeat } from './analysis/state-machine.js';
 
 const config = loadConfig();
 const db = createDatabase(config);

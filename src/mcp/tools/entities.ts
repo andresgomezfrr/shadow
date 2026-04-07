@@ -352,7 +352,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(z.object({})),
       handler: async () => {
         const { readFileSync } = await import('node:fs');
-        const { detectActiveProjects, computeProjectMomentum } = await import('../../heartbeat/project-detection.js');
+        const { detectActiveProjects, computeProjectMomentum } = await import('../../analysis/project-detection.js');
 
         // Load recent interactions (last 2h)
         const sinceMs = Date.now() - 2 * 60 * 60 * 1000;
@@ -421,7 +421,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         // Compute momentum
         let momentum = 0;
         try {
-          const { computeProjectMomentum } = await import('../../heartbeat/project-detection.js');
+          const { computeProjectMomentum } = await import('../../analysis/project-detection.js');
           momentum = computeProjectMomentum(db, project.id, 7);
         } catch { /* */ }
 

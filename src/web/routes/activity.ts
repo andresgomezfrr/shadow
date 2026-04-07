@@ -166,9 +166,8 @@ export async function handleActivityRoutes(
       periodDate = d.toISOString();
     }
 
-    // Fetch generous limit and filter in JS
-    const allJobs = db.listJobs({ limit: 500 }).filter(j => j.startedAt && j.startedAt >= periodDate);
-    const allRuns = db.listRuns({ limit: 500 }).filter(r => (r.startedAt ?? r.createdAt) >= periodDate);
+    const allJobs = db.listJobs({ startedAfter: periodDate, limit: 1000 });
+    const allRuns = db.listRuns({ startedAfter: periodDate, limit: 1000 });
 
     let llmCalls = 0;
     let tokensUsed = 0;

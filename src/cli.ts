@@ -1055,7 +1055,7 @@ digest
   .action(() =>
     withDb(async (db) => {
       const config = (await import('./config/load-config.js')).loadConfig();
-      const { activityDailyDigest } = await import('./heartbeat/digests.js');
+      const { activityDailyDigest } = await import('./analysis/digests.js');
       const result = await activityDailyDigest(db, config);
       return result.contentMd;
     }),
@@ -1067,7 +1067,7 @@ digest
   .action(() =>
     withDb(async (db) => {
       const config = (await import('./config/load-config.js')).loadConfig();
-      const { activityWeeklyDigest } = await import('./heartbeat/digests.js');
+      const { activityWeeklyDigest } = await import('./analysis/digests.js');
       const result = await activityWeeklyDigest(db, config);
       return result.contentMd;
     }),
@@ -1079,7 +1079,7 @@ digest
   .action(() =>
     withDb(async (db) => {
       const config = (await import('./config/load-config.js')).loadConfig();
-      const { activityBragDoc } = await import('./heartbeat/digests.js');
+      const { activityBragDoc } = await import('./analysis/digests.js');
       const result = await activityBragDoc(db, config);
       return result.contentMd;
     }),

@@ -73,7 +73,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
   // Detect active projects from recent interactions + conversations
   let detectedProjects: Array<{ projectId: string; projectName: string; score: number }> = [];
   try {
-    const { detectActiveProjects } = await import('../heartbeat/project-detection.js');
+    const { detectActiveProjects } = await import('../analysis/project-detection.js');
     const sinceIso = previousHeartbeat?.startedAt
       ? previousHeartbeat.startedAt
       : new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
@@ -119,13 +119,13 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
   // Build enrichment context from cached MCP data
   let enrichmentCtx: string | undefined;
   try {
-    const { buildEnrichmentContext } = await import('../heartbeat/enrichment.js');
+    const { buildEnrichmentContext } = await import('../analysis/enrichment.js');
     enrichmentCtx = buildEnrichmentContext(db);
   } catch { /* enrichment not available */ }
 
   ctx.setPhase('analyze');
 
-  const { runHeartbeat } = await import('../heartbeat/state-machine.js');
+  const { runHeartbeat } = await import('../analysis/state-machine.js');
 
   // Drain sensor data for heartbeat context
   const gitEvents = shared.pendingGitEvents.splice(0);
@@ -192,7 +192,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
 }
 
 async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> {
-  const { activitySuggest, activityNotify } = await import('../heartbeat/activities.js');
+  const { activitySuggest, activityNotify } = await import('../analysis/activities.js');
   const jobStart = new Date().toISOString();
 
   ctx.setPhase('suggest');
@@ -231,7 +231,7 @@ async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> {
 }
 
 async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
-  const { activityConsolidate } = await import('../heartbeat/activities.js');
+  const { activityConsolidate } = await import('../analysis/activities.js');
 
   // Phase 1: Layer maintenance + meta-patterns
   ctx.setPhase('layer-maintenance');
@@ -292,7 +292,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
 }
 
 async function handleReflect(ctx: JobContext): Promise<JobHandlerResult> {
-  const { activityReflect } = await import('../heartbeat/activities.js');
+  const { activityReflect } = await import('../analysis/activities.js');
 
   ctx.setPhase('reflect');
 
@@ -332,7 +332,7 @@ function createDigestHandler(digestType: string): (ctx: JobContext, shared: Daem
     const jobRecord = ctx.db.getJob(ctx.jobId);
     const periodStart = jobRecord?.result?.periodStart as string | undefined;
 
-    const { activityDailyDigest, activityWeeklyDigest, activityBragDoc } = await import('../heartbeat/digests.js');
+    const { activityDailyDigest, activityWeeklyDigest, activityBragDoc } = await import('../analysis/digests.js');
     const activities: Record<string, () => Promise<{ contentMd: string; tokensUsed: number }>> = {
       'digest-daily': () => activityDailyDigest(ctx.db, ctx.config, periodStart),
       'digest-weekly': () => activityWeeklyDigest(ctx.db, ctx.config, periodStart),
@@ -451,7 +451,7 @@ async function handleContextEnrich(ctx: JobContext): Promise<JobHandlerResult> {
   ctx.setPhase('enrich');
   const jobStart = new Date().toISOString();
 
-  const { activityEnrich } = await import('../heartbeat/enrichment.js');
+  const { activityEnrich } = await import('../analysis/enrichment.js');
   const result = await activityEnrich(ctx.db, ctx.config);
 
   // Get recently cached enrichment items

@@ -1,0 +1,460 @@
+import type { ObservationRecord } from '../storage/models.js';
+
+import { collectActiveRepoContexts, summarizeRepoContexts } from '../observation/watcher.js';
+import { findRelevantMemories } from '../memory/retrieval.js';
+import { checkMemoryDuplicate } from '../memory/dedup.js';
+import { generateAndStoreEmbedding } from '../memory/lifecycle.js';
+import { selectAdapter } from '../backend/index.js';
+import { applyTrustDelta } from '../profile/trust.js';
+import { safeParseJson } from '../backend/json-repair.js';
+
+import type { HeartbeatContext } from './state-machine.js';
+import { ExtractResponseSchema, ObserveResponseSchema, EXTRACT_FORMAT, OBSERVE_FORMAT } from './schemas.js';
+import {
+  loadEntityNameCache,
+  buildEntityLinks,
+  persistEntityLinks,
+  loadRecentInteractions,
+  summarizeInteractions,
+  loadRecentConversations,
+  summarizeConversations,
+  rotateInteractionsLog,
+  rotateConversationsLog,
+  getModel,
+  getEffort,
+} from './shared.js';
+
+export async function activityAnalyze(
+  ctx: HeartbeatContext,
+  observations: ObservationRecord[],
+  heartbeatId?: string,
+): Promise<{ patternsDetected: number; memoriesCreated: number; llmCalls: number; tokensUsed: number; observationsCreated: number }> {
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const recentInteractions = loadRecentInteractions(ctx.config, twoHoursAgo);
+  const interactionSummary = summarizeInteractions(recentInteractions);
+  const recentConversations = loadRecentConversations(ctx.config, twoHoursAgo);
+  const conversationSummary = summarizeConversations(recentConversations);
+  const repoContexts = collectActiveRepoContexts(ctx.db);
+  const repoContextSummary = summarizeRepoContexts(repoContexts);
+
+  // Cache entity names once for this entire analyze phase (avoids 6-12 full table scans)
+  const entityCache = loadEntityNameCache(ctx.db);
+
+  if (observations.length === 0 && recentInteractions.length === 0 && recentConversations.length === 0) {
+    return { patternsDetected: 0, memoriesCreated: 0, llmCalls: 0, tokensUsed: 0, observationsCreated: 0 };
+  }
+
+  const filePaths: string[] = [];
+  const topics: string[] = [];
+  const repoIds = new Set<string>();
+  for (const obs of observations) {
+    repoIds.add(obs.repoId);
+    topics.push(obs.kind);
+    if (obs.title) topics.push(obs.title);
+    const detail = obs.detail as Record<string, unknown>;
+    if (typeof detail.file === 'string') filePaths.push(detail.file);
+  }
+  for (const i of recentInteractions) {
+    if (i.file) filePaths.push(i.file);
+  }
+
+  const relevantMemories = findRelevantMemories(ctx.db, {
+    filePaths: [...new Set(filePaths)].slice(0, 20),
+    topics: [...new Set(topics)],
+    repoId: repoIds.size === 1 ? [...repoIds][0] : undefined,
+  }, 10, false); // touch=false: internal heartbeat lookup, don't inflate access counts
+
+  // System context for prompts
+  const systems = ctx.db.listSystems();
+  const systemContext = systems.length > 0
+    ? `### Registered Systems\n${systems.map(s => {
+        const parts = [`- ${s.name} (${s.kind})`];
+        if (s.description) parts.push(s.description);
+        if (s.url) parts.push(`url: ${s.url}`);
+        if (s.logsLocation) parts.push(`logs: ${s.logsLocation}`);
+        if (s.deployMethod) parts.push(`deploy: ${s.deployMethod}`);
+        return parts.join(' — ');
+      }).join('\n')}\n`
+    : '';
+
+  // Sensor data from daemon (git events, remote sync, enrichment)
+  const gitEventsSummary = ctx.pendingGitEvents?.length
+    ? `### Recent Git Events\n${ctx.pendingGitEvents.map(e => `- ${e.repoName}: ${e.type} at ${e.ts}`).join('\n')}\n`
+    : '';
+
+  const remoteSyncSummary = ctx.remoteSyncResults?.length
+    ? `### Remote Changes Detected\n${ctx.remoteSyncResults.map(r =>
+        `- ${r.repoName}: ${r.newRemoteCommits} new remote commits` +
+        (r.newCommitMessages?.length ? `\n  Recent: ${r.newCommitMessages.slice(0, 5).join(', ')}` : '') +
+        (r.behindBranches?.length ? `\n  ${r.behindBranches.map(b => `${b.branch}: ${b.behind} behind, ${b.ahead} ahead`).join('; ')}` : '')
+      ).join('\n')}\n`
+    : '';
+
+  const enrichmentSummary = ctx.enrichmentContext
+    ? `### External Context (from MCP tools)\n${ctx.enrichmentContext}\n`
+    : '';
+
+  // Active project context (from daemon-level detection or fallback)
+  const activeProjects = ctx.activeProjects ?? [];
+  const projectContext = activeProjects.length > 0
+    ? `### Active Projects\n${activeProjects.map(ap => {
+        const project = ctx.db.getProject(ap.projectId);
+        if (!project) return '';
+        const projRepos = project.repoIds.map(id => ctx.db.getRepo(id)?.name).filter(Boolean);
+        const projSystems = project.systemIds.map(id => ctx.db.getSystem(id)?.name).filter(Boolean);
+        const projObs = ctx.db.listObservations({ status: 'active', limit: 5 })
+          .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
+        return `- **${project.name}** (${project.kind}, score=${ap.score.toFixed(0)}): repos=[${projRepos.join(', ')}], systems=[${projSystems.join(', ')}]\n  Active observations: ${projObs.map(o => o.title).join('; ') || 'none'}`;
+      }).filter(Boolean).join('\n')}\n`
+    : '';
+
+  // Shared data sections
+  const hour = new Date().getHours();
+  const timeLabel = hour < 7 ? 'early morning' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : hour < 22 ? 'evening' : 'late night';
+
+  const dataSources = [
+    `### Context\nCurrent time: ${hour}:${String(new Date().getMinutes()).padStart(2, '0')} (${timeLabel})\n`,
+    repoContextSummary ? `### Repository Status\n${repoContextSummary}\n` : '',
+    systemContext,
+    projectContext,
+    interactionSummary ? `### Tool Usage\n${interactionSummary}\n` : '',
+    conversationSummary ? `### Conversations\n${conversationSummary}\n` : '',
+    gitEventsSummary,
+    remoteSyncSummary,
+    enrichmentSummary,
+  ].filter(Boolean).join('\n');
+
+  const adapter = selectAdapter(ctx.config);
+  const model = getModel(ctx, 'analyze');
+  const effort = getEffort(ctx, 'analyze');
+
+  // Load soul reflection for context in extract/observe prompts
+  const soulReflection = ctx.db.listMemories({ archived: false })
+    .find(m => m.kind === 'soul_reflection')?.bodyMd ?? '';
+  const soulSection = soulReflection ? `### Shadow's understanding of the developer\n${soulReflection}\n` : '';
+
+  let llmCalls = 0;
+  let tokensUsed = 0;
+  let patternsDetected = 0;
+  let memoriesCreated = 0;
+  let observationsCreated = 0;
+
+  // ========== CALL 1: Extract (memories + mood) ==========
+  try {
+    const existingMemories = ctx.db.listMemories({ archived: false, layers: ['core', 'hot'] })
+      .map(m => `- [${m.layer}] ${m.title}`)
+      .join('\n');
+
+    // Load pending corrections for repos being analyzed
+    const { loadPendingCorrections } = await import('../memory/retrieval.js');
+    const repoEntities = [...repoIds].map(id => ({ type: 'repo' as const, id }));
+    const correctionsSection = loadPendingCorrections(ctx.db, repoEntities);
+
+    const extractPrompt = [
+      'Extract DURABLE KNOWLEDGE from this engineering session.',
+      'Ask: "would I want to know this in 3 months? Can it be derived from reading the code or git log?"',
+      '',
+      'Return JSON:',
+      EXTRACT_FORMAT,
+      '',
+      'Kinds: tech_stack, design_decision, workflow, problem_solved, team_knowledge, preference, convention, dependency',
+      '- convention = how we do X in this repo/org (naming patterns, processes, rules)',
+      '- dependency = relationship between repos, systems, or services',
+      '- preference = user preferences about tools, workflows, or approaches',
+      'Prefer: preference, workflow, convention, tech_stack. design_decision should be < 40% of your output.',
+      '',
+      'ENTITY LINKING:',
+      'When an insight is about a registered system or project, include the system/project name in the tags.',
+      'This helps Shadow link knowledge to the right entity for future retrieval.',
+      activeProjects.length > 0 ? `\nPrioritize insights related to active projects: ${activeProjects.map(ap => ap.projectName).join(', ')}.` : '',
+      '',
+      'LAYER RULES:',
+      '"core" requires ALL of: (a) needed if rewriting from scratch, (b) stable for 6+ months, (c) NOT derivable from code.',
+      'Default to "hot". Bug fixes, implementation details, feature descriptions → "hot".',
+      'Only "core" for: fundamental tech stack choices, strong user preferences, architectural truths.',
+      '',
+      'BAD memories (NEVER CREATE):',
+      '- Session summaries ("today we worked on X", "this session focused on Y")',
+      '- File edit counts ("file.ts was edited 39 times")',
+      '- Commit/rename pending state ("rename pending", "not yet committed")',
+      '- UI style details derivable from reading the code (colors, CSS, layout)',
+      '- Obvious facts anyone can see in git log or git status',
+      '- Activity logs or tool usage stats',
+      '- What-was-worked-on descriptions',
+      '',
+      'Return 0-2 insights. ZERO is valid — return empty array if nothing durable was learned.',
+      'Confidence: 90+ for verified facts, 70-89 for inferences.',
+      '',
+      '## Mood & Energy',
+      'ALWAYS update profileUpdates.moodHint based on conversation tone. Be opinionated — don\'t default to neutral.',
+      'Valid moodHint values: neutral, happy, excited, focused, frustrated, tired, concerned',
+      '- "happy": celebrating wins, positive tone, satisfaction, things going well',
+      '- "excited": enthusiasm about new features, ideas, discoveries, creative energy',
+      '- "focused": deep implementation, concentrated coding, few distractions',
+      '- "frustrated": bugs, blockers, retrying, "doesn\'t work", complaints',
+      '- "tired": late night (after 22:00), short/terse messages, low energy, yawning',
+      '- "concerned": discussing risks, uncertainty, "should we", "I\'m worried"',
+      '- "neutral": ONLY when tone is genuinely unclear or purely mechanical',
+      '',
+      'Valid energyLevel values: low, normal, high',
+      '',
+      dataSources,
+      soulSection,
+      existingMemories ? `### Already Known (DO NOT duplicate)\n${existingMemories}\n` : '',
+      correctionsSection,
+      'Respond with JSON only.',
+    ].join('\n');
+
+    const result = await adapter.execute({
+      repos: [], title: 'Heartbeat Extract', goal: 'Extract knowledge + mood', prompt: extractPrompt,
+      relevantMemories, model, effort,
+    });
+    llmCalls++;
+    tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    console.error(`[shadow:extract] status=${result.status} tokens=${(result.inputTokens ?? 0) + (result.outputTokens ?? 0)}`);
+    ctx.db.recordLlmUsage({ source: 'heartbeat_extract', sourceId: heartbeatId ?? null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+
+    if (result.status === 'success' && result.output) {
+      const parseResult = safeParseJson(result.output, ExtractResponseSchema, 'extract');
+      if (!parseResult.success) {
+        console.error(`[shadow:extract] ${parseResult.error}`);
+        console.error(`[shadow:extract] Raw (500): ${result.output.slice(0, 500)}`);
+      } else {
+        const parsed = parseResult.data;
+        console.error(`[shadow:extract] ${parsed.insights.length} insights, profile: ${JSON.stringify(parsed.profileUpdates ?? {})}${parseResult.repaired ? ' (repaired)' : ''}`);
+
+        if (parsed.profileUpdates) {
+          const pu: Record<string, unknown> = {};
+          if (parsed.profileUpdates.moodHint) pu.moodHint = parsed.profileUpdates.moodHint;
+          if (parsed.profileUpdates.energyLevel) pu.energyLevel = parsed.profileUpdates.energyLevel;
+          if (Object.keys(pu).length > 0) ctx.db.updateProfile(ctx.profile.id, pu);
+
+          // Generate mood phrase via Haiku when mood changes
+          const newMood = parsed.profileUpdates.moodHint;
+          if (newMood && (newMood !== ctx.profile.moodHint || !ctx.profile.moodPhrase)) {
+            try {
+              const locale = ctx.profile.locale || 'es';
+              const hour = new Date().getHours();
+              const timeOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+              const moodAdapter = selectAdapter(ctx.config);
+              const moodResult = await moodAdapter.execute({
+                repos: [], title: 'Mood phrase', goal: 'Generate a short mood phrase',
+                relevantMemories: [],
+                model: 'haiku', effort: 'low',
+                prompt: `You are Shadow, a digital engineering companion. Your mood is "${newMood}", energy is "${parsed.profileUpdates.energyLevel || 'normal'}", time: ${timeOfDay}. Write a single short phrase (max 15 words) expressing how you feel right now. Factor in your energy level and time of day. Be personal, warm, and natural. Write in locale "${locale}". No quotes, no emoji, just the phrase.`,
+              });
+              if (moodResult.status === 'success' && moodResult.output) {
+                const phrase = moodResult.output.trim().replace(/^["']|["']$/g, '').slice(0, 100);
+                ctx.db.updateProfile(ctx.profile.id, { moodPhrase: phrase });
+                console.error(`[shadow:extract] Mood phrase: "${phrase}"`);
+              }
+              ctx.db.recordLlmUsage({ source: 'mood_phrase', sourceId: heartbeatId ?? null, model: 'haiku', inputTokens: moodResult.inputTokens ?? 0, outputTokens: moodResult.outputTokens ?? 0 });
+            } catch (e) {
+              console.error(`[shadow:extract] Mood phrase generation failed:`, e);
+            }
+          }
+        }
+        for (const insight of parsed.insights) {
+          // Semantic dedup: check if similar memory exists before creating
+          const decision = await checkMemoryDuplicate(ctx.db, {
+            kind: insight.kind, title: insight.title, bodyMd: insight.bodyMd,
+          });
+
+          switch (decision.action) {
+            case 'skip':
+              console.error(`[shadow:extract] Skip duplicate (${(decision.similarity * 100).toFixed(0)}%): ${insight.title}`);
+              break;
+            case 'update':
+              console.error(`[shadow:extract] Update existing (${(decision.similarity * 100).toFixed(0)}%): ${insight.title}`);
+              ctx.db.mergeMemoryBody(decision.existingId, insight.bodyMd, insight.tags);
+              // Regenerate embedding for the updated memory
+              const updated = ctx.db.getMemory(decision.existingId);
+              if (updated) {
+                await generateAndStoreEmbedding(ctx.db, 'memory', updated.id, { kind: updated.kind, title: updated.title, bodyMd: updated.bodyMd });
+              }
+              break;
+            case 'create': {
+              const primaryRepoId = repoIds.size === 1 ? [...repoIds][0] : null;
+              const mem = ctx.db.createMemory({
+                repoId: primaryRepoId,
+                layer: insight.layer, scope: insight.scope, kind: insight.kind, title: insight.title, bodyMd: insight.bodyMd,
+                tags: insight.tags, sourceType: 'heartbeat', sourceId: heartbeatId ?? null,
+                confidenceScore: insight.confidence, relevanceScore: 0.6,
+              });
+              // Auto-link to projects + systems
+              const entities = buildEntityLinks(ctx.db, primaryRepoId, `${insight.title} ${insight.bodyMd}`, entityCache);
+              if (entities.length > 0) persistEntityLinks(ctx.db, 'memories', mem.id, entities);
+              // Store embedding for new memory
+              await generateAndStoreEmbedding(ctx.db, 'memory', mem.id, { kind: mem.kind, title: mem.title, bodyMd: mem.bodyMd });
+              memoriesCreated++;
+              if (insight.kind === 'pattern') patternsDetected++;
+              break;
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[shadow:extract] LLM failed:', e instanceof Error ? e.message : e);
+  }
+
+  // ========== CALL 2: Observe-cleanup (MCP — resolve obsolete/duplicate observations) ==========
+  try {
+    const preCleanupObs = ctx.db.listObservations({ status: 'active', limit: 30 });
+    if (preCleanupObs.length > 5) {
+      const cleanupPrompt = [
+        'You are Shadow\'s observation cleanup phase.',
+        '',
+        'Review the active observations below. For each one, decide if it should stay active or be resolved.',
+        '',
+        'RESOLVE an observation if:',
+        '- The condition no longer applies (file was committed, issue was fixed, feature was implemented)',
+        '- It\'s a duplicate of another observation about the same file or topic — keep the most recent, resolve older ones',
+        '- It\'s an activity log, not an actionable insight ("X ediciones en Y" without a clear action)',
+        '- It was about something that happened during active development and is no longer relevant',
+        '',
+        'DO NOT resolve observations with severity "high" unless you have strong evidence the condition is fully resolved.',
+        'Err on the side of keeping observations active — automated expiration handles stale ones over time.',
+        '',
+        'Use shadow_observations to see the full list, then use shadow_observation_resolve for each one you want to resolve.',
+        'Provide a reason when resolving.',
+        '',
+        dataSources,
+      ].join('\n');
+
+      const cleanupResult = await adapter.execute({
+        repos: [], title: 'Observe Cleanup', goal: 'Resolve obsolete observations',
+        prompt: cleanupPrompt, relevantMemories: [], model, effort,
+        systemPrompt: null, // MCP access — Claude calls shadow_observation_resolve directly
+      });
+      llmCalls++;
+      tokensUsed += (cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0);
+      ctx.db.recordLlmUsage({ source: 'heartbeat_cleanup', sourceId: heartbeatId ?? null, model, inputTokens: cleanupResult.inputTokens ?? 0, outputTokens: cleanupResult.outputTokens ?? 0 });
+      console.error(`[shadow:cleanup] Completed. Tokens: ${(cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0)}`);
+    }
+  } catch (e) {
+    console.error('[shadow:cleanup] Failed:', e instanceof Error ? e.message : e);
+  }
+
+  // ========== CALL 3: Observe (generate new observations — JSON-only) ==========
+  try {
+    const activeObservations = ctx.db.listObservations({ status: 'active', limit: 20 });
+    // Touch last_seen_at — observations still relevant to heartbeat stay alive longer
+    ctx.db.touchObservationsLastSeen(activeObservations.map(o => o.id));
+    const activeObsSummary = activeObservations.map(o => `- [${o.severity}/${o.kind}] ${o.title} (${o.votes}x, ${o.createdAt.slice(0, 10)})`).join('\n');
+    const dismissFeedback = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10)
+      .filter(s => s.feedbackNote).map(s => `- "${s.title}" — dismissed: ${s.feedbackNote}`).join('\n');
+
+    const observePrompt = [
+      'Generate ACTIONABLE OBSERVATIONS about the developer\'s work.',
+      '',
+      'Return JSON:',
+      OBSERVE_FORMAT,
+      activeProjects.length > 0 ? `\nActive projects: ${activeProjects.map(ap => ap.projectName).join(', ')}. Prioritize observations about these. Use kind "cross_project" for observations spanning multiple projects.` : '',
+      '',
+      'Rules:',
+      '- Return up to 3 observations. ZERO is valid — return empty array if nothing actionable.',
+      '- Consolidate related issues into ONE observation (e.g., all "missing validation in X" → one observation).',
+      '- If a pattern applies to multiple repos, mention all affected repos in the detail.',
+      '- Each observation must be: actionable, specific, and non-obvious.',
+      '- Observations can be about repos OR systems/infrastructure. For system observations, use kind "infrastructure".',
+      '- Include up to 5 file paths per observation (for repo observations).',
+      '',
+      'NEVER create observations about:',
+      '- File edit counts or number of changes ("file.ts edited 20 times")',
+      '- Lists of uncommitted files (that\'s what git status is for)',
+      '- Session activity descriptions ("the developer worked on X")',
+      '- Things obvious from git status or git log',
+      '',
+      dataSources,
+      soulSection,
+      activeObsSummary ? `### Active Observations (DO NOT recreate these — they already exist)\n${activeObsSummary}\n` : '',
+      dismissFeedback ? `### User Feedback (learn from this)\n${dismissFeedback}\n` : '',
+      (() => {
+        const of = ctx.db.listFeedback('observation', 10).filter(f => f.note);
+        return of.length > 0 ? `### Observation feedback (learn what's not useful)\n${of.map(f => `- ${f.action}: ${f.note}`).join('\n')}\n` : '';
+      })(),
+      'Respond with JSON only.',
+    ].join('\n');
+
+    const result = await adapter.execute({
+      repos: [], title: 'Heartbeat Observe', goal: 'Generate observations', prompt: observePrompt,
+      relevantMemories: [], model, effort,
+    });
+    llmCalls++;
+    tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    ctx.db.recordLlmUsage({ source: 'heartbeat_observe', sourceId: heartbeatId ?? null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+
+    if (result.status === 'success' && result.output) {
+      const parseResult = safeParseJson(result.output, ObserveResponseSchema, 'observe');
+      if (!parseResult.success) {
+        console.error(`[shadow:observe] ${parseResult.error}`);
+        console.error(`[shadow:observe] Raw (500): ${result.output.slice(0, 500)}`);
+      } else {
+        const parsed = parseResult.data;
+        console.error(`[shadow:observe] ${parsed.observations.length} new observations${parseResult.repaired ? ' (repaired)' : ''}`);
+
+        for (const obs of parsed.observations) {
+          const firstRepoId = repoIds.size > 0 ? [...repoIds][0] : (repoContexts.length > 0 ? repoContexts[0].repoId : null);
+          if (!firstRepoId) continue;
+
+          // Semantic dedup before creating observation
+          const { checkObservationDuplicate } = await import('../memory/dedup.js');
+          const decision = await checkObservationDuplicate(ctx.db, {
+            kind: obs.kind, title: obs.title, detail: { description: obs.detail },
+          });
+
+          if (decision.action === 'skip') {
+            console.error(`[shadow:observe] Skip duplicate obs (${(decision.similarity * 100).toFixed(0)}%): ${obs.title}`);
+            continue;
+          }
+          if (decision.action === 'update') {
+            console.error(`[shadow:observe] Merge into existing obs (${(decision.similarity * 100).toFixed(0)}%): ${obs.title}`);
+            // Increment votes on existing observation (dedup in DB will handle context merge)
+            continue;
+          }
+
+          const repo = repoContexts.find((rc) => rc.repoId === firstRepoId);
+          const context: Record<string, unknown> = {
+            repoName: repo?.repoName ?? 'unknown', branch: repo?.currentBranch ?? 'unknown',
+            files: obs.files.slice(0, 5),
+          };
+          const sessionIds = [...new Set(recentConversations.map((c) => c.session).filter(Boolean))];
+          if (sessionIds.length > 0) context.sessionIds = sessionIds;
+          const created = ctx.db.createObservation({
+            repoId: firstRepoId, sourceKind: 'llm', sourceId: null,
+            kind: obs.kind, severity: obs.severity,
+            title: obs.title, detail: { description: obs.detail }, context,
+          });
+          // Auto-link to projects + systems (repo-based + name detection)
+          const obsEntities = buildEntityLinks(ctx.db, firstRepoId, `${obs.title} ${obs.detail}`, entityCache);
+          // Resolve explicit projectNames from LLM response
+          if (obs.projectNames.length > 0) {
+            const allProjects = ctx.db.listProjects();
+            for (const pName of obs.projectNames) {
+              const match = allProjects.find(p => p.name.toLowerCase() === pName.toLowerCase());
+              if (match && !obsEntities.some(e => e.type === 'project' && e.id === match.id)) {
+                obsEntities.push({ type: 'project', id: match.id });
+              }
+            }
+          }
+          if (obsEntities.length > 0) persistEntityLinks(ctx.db, 'observations', created.id, obsEntities);
+          // Store embedding for new observation
+          await generateAndStoreEmbedding(ctx.db, 'observation', created.id, { kind: created.kind, title: created.title, detail: created.detail });
+          observationsCreated++;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[shadow:observe] LLM failed:', e instanceof Error ? e.message : e);
+  }
+
+  // Post-processing
+  for (const obs of observations) ctx.db.markObservationProcessed(obs.id);
+  if (llmCalls > 0) { try { applyTrustDelta(ctx.db, 'heartbeat_completed'); } catch { /* */ } }
+  if (recentInteractions.length >= 10) { try { applyTrustDelta(ctx.db, 'interaction_logged'); } catch { /* */ } }
+  rotateInteractionsLog(ctx.config, new Date().toISOString());
+  rotateConversationsLog(ctx.config);
+
+  return { patternsDetected, memoriesCreated, llmCalls, tokensUsed, observationsCreated };
+}

@@ -218,7 +218,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         if (!gate.ok) return gate.error;
 
         const { kind } = DigestSchema.parse(params);
-        const { activityDailyDigest, activityWeeklyDigest, activityBragDoc } = await import('../../heartbeat/digests.js');
+        const { activityDailyDigest, activityWeeklyDigest, activityBragDoc } = await import('../../analysis/digests.js');
         let result: { contentMd: string; tokensUsed: number };
         if (kind === 'daily') result = await activityDailyDigest(db, config);
         else if (kind === 'weekly') result = await activityWeeklyDigest(db, config);
