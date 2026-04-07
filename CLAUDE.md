@@ -45,15 +45,32 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 ```
 shadow/
 ├── src/
-│   ├── cli.ts                    # Main CLI entry (25+ commands)
-│   ├── cli/output.ts             # Human-readable output formatter
+│   ├── cli.ts                    # CLI dispatcher (~56 lines, registers command modules)
+│   ├── cli/
+│   │   ├── output.ts             # Human-readable output formatter
+│   │   ├── types.ts              # Shared WithDb type
+│   │   ├── cmd-init.ts           # init command (hooks, SOUL.md, launchd)
+│   │   ├── cmd-entities.ts       # repo, contact, project, system CRUD
+│   │   ├── cmd-knowledge.ts      # memory, suggest, digest, observe
+│   │   ├── cmd-daemon.ts         # daemon start/stop/restart/status, heartbeat, reflect
+│   │   ├── cmd-profile.ts        # status, doctor, profile, focus, available
+│   │   └── cmd-misc.ts           # events, run, usage, summary, web, mcp, ask, teach
 │   ├── run-heartbeat.ts          # Standalone heartbeat runner
 │   ├── config/
 │   │   ├── schema.ts             # Zod config schema (backend, models, proactivity, personality)
 │   │   └── load-config.ts        # SHADOW_* env var mapping
 │   ├── storage/
-│   │   ├── database.ts           # ShadowDatabase class (all CRUD + FTS5 + hybrid search)
-│   │   ├── migrations.ts         # Schema v1-v32 (19 tables, FTS5, triggers, vec0)
+│   │   ├── database.ts           # ShadowDatabase façade (~372 lines, delegates to stores)
+│   │   ├── mappers.ts            # 19 row mappers + utility helpers (r, str, num, jsonParse, toSnake)
+│   │   ├── stores/
+│   │   │   ├── entities.ts       # repos, systems, projects, contacts (29 methods)
+│   │   │   ├── knowledge.ts      # memories, observations, suggestions, embeddings (28 methods)
+│   │   │   ├── execution.ts      # runs, jobs (15 methods)
+│   │   │   ├── tracking.ts       # interactions, events, feedback, audit, llm-usage (19 methods)
+│   │   │   ├── profile.ts        # user profile (3 methods)
+│   │   │   ├── enrichment.ts     # enrichment cache, digests (12 methods)
+│   │   │   └── relations.ts      # entity relations (6 methods)
+│   │   ├── migrations.ts         # Schema v1-v33 (19 tables, FTS5, triggers, vec0)
 │   │   ├── models.ts             # Record types for all tables
 │   │   └── index.ts              # Re-exports
 │   ├── observation/
@@ -71,9 +88,15 @@ shadow/
 │   │   ├── embeddings.ts         # all-MiniLM-L6-v2 embedding generation + cosine similarity
 │   │   ├── lifecycle.ts          # Embedding generation + backfill for all entity types
 │   │   └── index.ts              # Re-exports
-│   ├── heartbeat/
+│   ├── analysis/                  # (renamed from heartbeat/)
 │   │   ├── state-machine.ts      # wake→cleanup→analyze→notify→idle
-│   │   ├── activities.ts         # Phase implementations (LLM prompts, memory creation)
+│   │   ├── activities.ts         # Barrel re-exports (5 lines)
+│   │   ├── shared.ts             # Entity linking, data loaders, log rotation, getModel/getEffort
+│   │   ├── extract.ts            # activityAnalyze — 3 LLM calls (extract + cleanup + observe)
+│   │   ├── suggest.ts            # activitySuggest — 2 LLM calls (generate + validate)
+│   │   ├── consolidate.ts        # activityConsolidate — layer maintenance + meta-patterns
+│   │   ├── notify.ts             # activityNotify — event queue
+│   │   ├── reflect.ts            # activityReflect — 2 LLM calls (deltas + soul)
 │   │   ├── schemas.ts            # Zod schemas for LLM output validation
 │   │   ├── digests.ts            # Daily/weekly/brag digest generation
 │   │   ├── project-detection.ts  # Active project detection + momentum scoring
@@ -119,7 +142,17 @@ shadow/
 │   │       ├── profile.ts        # profile, profile_set, focus, feedback, soul
 │   │       └── data.ts           # events, search, runs, usage, digests, enrichment
 │   └── web/
-│       ├── server.ts             # HTTP API server (30+ endpoints, Zod validation)
+│       ├── server.ts             # HTTP server dispatcher, static files, SSE, MCP (~203 lines)
+│       ├── helpers.ts            # json, readBody, parseBody, Zod schemas, pagination
+│       ├── routes/
+│       │   ├── suggestions.ts    # list, bulk, accept/dismiss/snooze
+│       │   ├── observations.ts   # list, ack/resolve/reopen
+│       │   ├── runs.ts           # list, archive/verify/rollback/retry/execute/session/discard/draft-pr
+│       │   ├── activity.ts       # timeline, summary, daily-summary
+│       │   ├── jobs.ts           # list, heartbeats, triggers
+│       │   ├── entities.ts       # projects, systems, contacts, repos, entity-graph
+│       │   ├── knowledge.ts      # memories, digests, enrichment, soul, corrections
+│       │   └── profile.ts        # status, config, usage, events, feedback, profile, focus
 │       ├── event-bus.ts          # SSE event bus for real-time dashboard updates
 │       └── dashboard/            # React app (see below)
 ├── scripts/                      # Portable hook scripts for plugin
@@ -357,15 +390,15 @@ SHADOW_DATA_DIR=~/.shadow        # Data directory
 
 ## Key Patterns
 
-**Adding a new MCP tool**: Add to the `tools` array in `src/mcp/server.ts`. Follow existing pattern: inputSchema + async handler. Use `trustGate(level)` for write tools.
+**Adding a new MCP tool**: Add to the appropriate file in `src/mcp/tools/`. Follow existing pattern: inputSchema + async handler. Use `trustGate(level)` for write tools. Register in `src/mcp/server.ts` tool assembly.
 
-**Adding a new CLI command**: Add to `src/cli.ts` using `program.command()`. Use `withDb()` wrapper for DB access.
+**Adding a new CLI command**: Create or extend the appropriate `src/cli/cmd-*.ts` module. Export a register function, call it from `src/cli.ts`. Use `withDb()` wrapper for DB access.
 
-**Adding a new observation kind**: Add detection function in `src/observation/watcher.ts`. Use `hasRecentObservation()` for dedup. Call `db.createObservation()`.
+**Adding a new DB method**: Add to the appropriate store in `src/storage/stores/`. Add delegation one-liner in `src/storage/database.ts`. Add mapper in `mappers.ts` if needed.
 
-**Adding a dashboard page**: Create `src/web/dashboard/src/pages/NewPage.tsx`. Add route in `App.tsx`. Add nav item in `Sidebar.tsx`. Add API endpoint in `src/web/server.ts` if needed.
+**Adding a new API endpoint**: Add route handler in the appropriate `src/web/routes/*.ts` module. Import helpers from `src/web/helpers.ts`.
 
-**Adding a new API endpoint**: Add route handler in `src/web/server.ts` `handleApi()` function.
+**Adding a dashboard page**: Create component in `src/web/dashboard/src/components/pages/`. Add route in `App.tsx`. Add nav item in `Sidebar.tsx`.
 
 ## Data Flow
 
