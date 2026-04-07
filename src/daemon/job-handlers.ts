@@ -23,6 +23,7 @@ export type JobContext = {
 };
 
 export type DaemonSharedState = {
+  draining: boolean;
   lastHeartbeatAt: string | null;
   nextHeartbeatAt: string | null;
   lastConsolidationAt: string | null;

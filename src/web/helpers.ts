@@ -54,12 +54,18 @@ export async function parseBody<T>(req: IncomingMessage, res: ServerResponse, sc
   return result.data;
 }
 
-export async function parseOptionalBody<T>(req: IncomingMessage, schema: z.ZodType<T>): Promise<T> {
-  try {
-    const raw = await readBody(req);
-    if (!raw) return schema.parse({});
-    return schema.parse(JSON.parse(raw));
-  } catch { return schema.parse({}); }
+export async function parseOptionalBody<T>(req: IncomingMessage, res: ServerResponse, schema: z.ZodType<T>): Promise<T | null> {
+  let raw: string;
+  try { raw = await readBody(req); } catch { return schema.parse({}); }
+  if (!raw) return schema.parse({});
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return json(res, { error: 'Invalid JSON' }, 400), null; }
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    const issues = result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`);
+    return json(res, { error: 'Validation failed', issues }, 400), null;
+  }
+  return result.data;
 }
 
 export function parseUrl(req: IncomingMessage): { pathname: string; params: URLSearchParams } {

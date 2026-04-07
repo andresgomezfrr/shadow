@@ -155,7 +155,8 @@ export async function enforceCorrections(
   db: ShadowDatabase,
   config: ShadowConfig,
 ): Promise<{ processed: number; archived: number; edited: number }> {
-  const corrections = db.listMemories({ kind: 'correction', archived: false, limit: 50 });
+  // Process oldest corrections first so later refinements prevail
+  const corrections = db.listMemories({ kind: 'correction', archived: false, limit: 50 }).reverse();
   if (corrections.length === 0) return { processed: 0, archived: 0, edited: 0 };
 
   let archived = 0;

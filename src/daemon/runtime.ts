@@ -175,12 +175,14 @@ export function stopDaemon(config: ShadowConfig): boolean {
 
 export async function startDaemon(config: ShadowConfig): Promise<void> {
   let running = true;
+  let draining = false;
   let db: ShadowDatabase | null = null;
   let webServer: { close: () => void } | null = null;
   let sleepReject: (() => void) | null = null;
 
   const shutdown = () => {
     running = false;
+    draining = true;
     stopThoughtLoop();
     if (sleepReject) sleepReject();
   };
@@ -208,6 +210,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     let pendingRemoteSyncResults: Array<{ repoId: string; repoName: string; newRemoteCommits: number; behindBranches: Array<{ branch: string; behind: number; ahead: number }>; newCommitMessages: string[] }> = [];
 
     const daemonShared: DaemonSharedState = {
+      get draining() { return draining; },
+      set draining(v: boolean) { draining = v; },
       lastHeartbeatAt: null,
       nextHeartbeatAt: new Date(Date.now() + config.activityHeartbeatMaxIntervalMs).toISOString(),
       lastConsolidationAt: null,
