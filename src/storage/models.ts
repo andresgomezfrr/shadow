@@ -189,25 +189,6 @@ export type SuggestionRecord = {
   expiresAt: string | null;
 };
 
-// --- Heartbeats ---
-
-export type HeartbeatRecord = {
-  id: string;
-  phase: string;
-  phases: string[];
-  activity: string | null;
-  reposObserved: string[];
-  observationsCreated: number;
-  suggestionsCreated: number;
-  llmCalls: number;
-  tokensUsed: number;
-  eventsQueued: number;
-  memoriesPromoted: number;
-  memoriesDemoted: number;
-  durationMs: number | null;
-  startedAt: string;
-  finishedAt: string | null;
-};
 
 // --- Interactions ---
 

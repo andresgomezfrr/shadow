@@ -4,23 +4,10 @@ Actualizado 2026-04-07. Items completados en [COMPLETED.md](COMPLETED.md).
 
 ---
 
-## Prioridad media — Refactoring
-
-### Extraer route handlers de web/server.ts
-handleApi() monolítico ~400 líneas. Dividir en módulos por dominio (routes/suggestions.ts, routes/runs.ts, etc.)
-
-### Extraer fases de activities.ts en módulos
-activities.ts tiene extract, suggest, consolidate, reflect, cleanup. Cada fase en su propio módulo bajo heartbeat/.
-
-### Middleware error handling + body parsing en web server
-parseJsonBody con Zod validation. Consistencia en try/catch.
-
----
-
 ## Prioridad media — Tests
 
-### Tests MCP trust gating
-Verificar que los 20+ write tools respetan trust gates.
+### Tests MCP tools
+53 tools, 0 tests. La interfaz principal de Shadow con Claude.
 
 ### Tests WorkspacePage filtros + lifecycle
 Renderizado por filtro, transiciones de estado. (Renamed from RunsPage)
@@ -72,8 +59,8 @@ Tras N fallos consecutivos, abrir circuito y saltar calls por cooldown.
 ### Scoring de señal en conversaciones
 Ponderar conversaciones por densidad antes del prompt de analyze.
 
-### Validar completitud env vars → config en startup
-Detectar campos del schema Zod sin mapeo a SHADOW_* env var.
+### Seguridad: CSP headers + rate limiting
+Dashboard sin Content-Security-Policy. Sin rate limiting en API/MCP. Bajo riesgo (localhost only).
 
 ### Generar BACKLOG.md desde DB con `shadow backlog`
 Comando CLI que genera backlog desde sugerencias pending + observaciones activas.

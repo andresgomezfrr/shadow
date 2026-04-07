@@ -4,6 +4,7 @@ import { fetchStatus } from '../../api/client';
 import { TRUST_NAMES, MOOD_EMOJIS } from '../../api/types';
 import { MetricCard } from '../common/MetricCard';
 import { ProgressBar } from '../common/ProgressBar';
+import { tierLabel } from './settings/SectionBehavior';
 
 
 export function DashboardPage() {
@@ -31,9 +32,7 @@ export function DashboardPage() {
           <ProgressBar value={profile.personalityLevel} max={5} />
         </MetricCard>
 
-        <MetricCard label="Proactivity" value={`${profile.proactivityLevel}/10`} href="/profile">
-          <ProgressBar value={profile.proactivityLevel} max={10} />
-        </MetricCard>
+        <MetricCard label="Proactivity" value={tierLabel(profile.proactivityLevel)} href="/profile" />
 
         <MetricCard label="Mood" value={`${moodEmoji} ${mood}`} />
 
@@ -61,13 +60,16 @@ export function DashboardPage() {
 
         <MetricCard label="LLM calls" value={usage.totalCalls} href="/usage" />
 
-        {lastHeartbeat && (
-          <MetricCard label="Last heartbeat" value={lastHeartbeat.phase} href="/heartbeats">
-            <div className="text-xs text-text-muted mt-1">
-              {lastHeartbeat.observationsCreated} obs &middot; {lastHeartbeat.suggestionsCreated} sug
-            </div>
-          </MetricCard>
-        )}
+        {lastHeartbeat && (() => {
+          const r = (lastHeartbeat.result ?? {}) as Record<string, unknown>;
+          return (
+            <MetricCard label="Last heartbeat" value={lastHeartbeat.status} href="/activity">
+              <div className="text-xs text-text-muted mt-1">
+                {r.observationsCreated ?? 0} obs &middot; {r.suggestionsCreated ?? 0} sug
+              </div>
+            </MetricCard>
+          );
+        })()}
       </div>
 
       {Object.keys(usage.byModel).length > 0 && (

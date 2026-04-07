@@ -22,7 +22,6 @@ export type {
   MemorySearchResult,
   ObservationRecord,
   SuggestionRecord,
-  HeartbeatRecord,
   InteractionRecord,
   EventRecord,
   RunRecord,

@@ -9,7 +9,6 @@ export type {
   MemoryRecord as Memory,
   ObservationRecord as Observation,
   SuggestionRecord as Suggestion,
-  HeartbeatRecord as Heartbeat,
   EventRecord,
   RunRecord as Run,
   JobRecord as Job,
@@ -75,7 +74,7 @@ export type StatusResponse = {
     systems: number;
   };
   usage: UsageSummary;
-  lastHeartbeat: import('@shadow/models').HeartbeatRecord | null;
+  lastHeartbeat: import('@shadow/models').JobRecord | null;
   nextHeartbeatAt: string | null;
   recentActivity?: number;
 };

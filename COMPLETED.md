@@ -4,6 +4,58 @@ Historical record of completed backlog items.
 
 ---
 
+## Audit 2026-04-06/07 (comprehensive codebase audit)
+
+Full audit report: [`AUDIT-2026-04-06.md`](AUDIT-2026-04-06.md). ~100 findings, all actionable items resolved.
+
+**P0 fixes (data loss prevention):**
+- JSONL rotation: atomic rename-then-append pattern (no more lost hook writes)
+- Runner worktree cleanup after completion (was leaking disk indefinitely)
+
+**P1 bug fixes (20):**
+- Migrations sorted by version before applying
+- pendingActivityCount resets each daemon tick
+- detectWorkHours uses Intl.DateTimeFormat with user timezone
+- MCP pagination: native DB filters for kind/projectId (was post-filter JS with limit:100)
+- Trust gate error properly typed
+- listObservations LIMIT/OFFSET wrapped in Number()
+- Thought loop retries on DB error (was dying silently)
+- remote-sync lastFetchedAt only on success
+- execSync → execFileSync in repo-watcher (no shell spawning)
+- Focus mode: single canonical isFocusModeActive() (was 3 divergent checks)
+- drainAll kills remaining jobs after timeout
+- Agent SDK passes pack.allowedTools (was hardcoded [])
+- schedules.ts: Intl.DateTimeFormat timezone (was fragile toLocaleString anti-pattern)
+- N+1 in project detail: native projectId filters for observations/suggestions
+- HeartbeatRecord → JobRecord migration completed (dashboard type mismatch fixed)
+- repo_add validates path is directory + git repo
+
+**Dead code removed:**
+- observeAllRepos, activityObserve, killActiveChild, llmActive variable, legacy layer constants, heartbeat DB methods + mapper, cosineSimilarity re-export, discoverMcpServers unexported
+
+**API hardening:**
+- Zod validation on 10 POST endpoints (parseBody/parseOptionalBody helpers)
+- clampLimit (max 200) + clampOffset (min 0) on all pagination
+- activity/summary uses native startedAfter DB filter (was limit:500 + JS filter)
+
+**Config completeness:**
+- 18 config fields + 10 models + 3 efforts mapped to SHADOW_* env vars
+- SQLite PRAGMAs: synchronous=NORMAL, temp_store=MEMORY
+
+**God class refactors (4):**
+- server.ts 1316 → 203 lines + 8 route modules (`web/routes/*.ts`) + helpers.ts
+- activities.ts 1278 → 5 lines barrel + 6 phase modules (`analysis/*.ts`) + shared.ts; directory renamed heartbeat/ → analysis/
+- database.ts 2145 → 372 lines façade + 7 domain stores (`storage/stores/*.ts`) + mappers.ts
+- cli.ts 1807 → 56 lines dispatcher + 6 command modules (`cli/cmd-*.ts`)
+
+**Documentation:**
+- CLAUDE.md fully updated with new project structure, 53 tools, dashboard routes, analysis/ directory, storage/stores/, web/routes/, cli/cmd-*
+- AUDIT-2026-04-06.md: full audit report
+
+**FTS5 dedup:** sanitizeFtsQuery extracted to memory/search.ts, reused from database.ts
+**removeEntityReferences:** wrapped in transaction (was N+1)
+**ORDER BY tiebreakers:** id ASC added to paginated queries
+
 ## Session 2026-04-07 (MCP centralization + plugin)
 
 - **Centralize MCP server in daemon** — MCP tools now execute inside the daemon via `POST /api/mcp` (Streamable HTTP transport). Eliminates the ephemeral `npx tsx mcp serve` process: no more dual-writer SQLite, tsx cache bugs, or startup overhead. DaemonSharedState passed to ToolContext for live access (replaces daemon.json disk reads). SSE `mcp:tool_call` events emitted on mutating tool calls for real-time dashboard updates. `mcp serve` kept as stdio fallback.

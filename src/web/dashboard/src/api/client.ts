@@ -13,7 +13,6 @@ import type {
   SystemDetail,
   EnrichmentItem,
   UsageSummary,
-  Heartbeat,
   Job,
   EventRecord,
   Run,
@@ -103,7 +102,7 @@ export const fetchEnrichment = (params?: { source?: string; limit?: number; offs
 export const fetchUsage = (period: 'day' | 'week' | 'month' = 'week') =>
   api<UsageSummary>(`/api/usage?period=${period}`);
 
-export const fetchHeartbeats = () => api<Heartbeat[]>('/api/heartbeats');
+export const fetchHeartbeats = () => api<Job[]>('/api/heartbeats');
 
 export const fetchJobs = (params?: { type?: string; typePrefix?: string; limit?: number; offset?: number }) =>
   api<{ items: Job[]; total: number }>(`/api/jobs${qs({ type: params?.type, typePrefix: params?.typePrefix, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
