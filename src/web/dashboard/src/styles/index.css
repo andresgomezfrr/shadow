@@ -47,3 +47,18 @@ html, body, #root {
 
 .animate-fade-in { animation: fadeIn 0.25s ease both; }
 .animate-slide-out { animation: slideOut 0.35s ease forwards; }
+
+/* Ghost TV holographic glow — purple/cyan pulse */
+@keyframes ghostGlow {
+  0%, 100% { box-shadow: 0 0 15px 3px rgba(188,140,255,0.4), 0 0 30px 6px rgba(188,140,255,0.15); }
+  50% { box-shadow: 0 0 15px 3px rgba(86,212,221,0.4), 0 0 30px 6px rgba(86,212,221,0.15); }
+}
+
+/* Thumbnail pulse when daemon is active */
+@keyframes ghostPulse {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(188,140,255,0.6)); }
+  50% { filter: drop-shadow(0 0 8px rgba(86,212,221,0.6)); }
+}
+
+.ghost-glow { animation: ghostGlow 3s ease-in-out infinite; }
+.ghost-pulse { animation: ghostPulse 2s ease-in-out infinite; }

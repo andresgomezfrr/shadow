@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 import { json, readBody, parseBody, FocusSchema, FeedbackSchema } from '../helpers.js';
@@ -96,6 +98,17 @@ export async function handleProfileRoutes(
             return [type, { schedule: sched.label, nextAt: nextScheduledAt(sched, tz) }];
           })),
         },
+        recentActivity: (() => {
+          try {
+            const interactionsPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
+            const lines = readFileSync(interactionsPath, 'utf8').trim().split('\n').filter(Boolean);
+            const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+            return lines.filter(line => {
+              try { return new Date((JSON.parse(line) as { ts: string }).ts).getTime() > fiveMinAgo; }
+              catch { return false; }
+            }).length;
+          } catch { return 0; }
+        })(),
       }), true;
     }
 

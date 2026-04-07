@@ -74,7 +74,7 @@ function getOrCreateSource(): EventSource {
     'connected', 'heartbeat:phase', 'heartbeat:complete',
     'observation:new', 'suggestion:new', 'memory:new',
     'run:status', 'activity:detected', 'git:event',
-    'job:enqueued', 'job:complete', 'thought:update',
+    'job:enqueued', 'job:started', 'job:phase', 'job:complete', 'thought:update',
     'status:update',
   ];
   for (const t of EVENT_TYPES) proxyEvent(t);

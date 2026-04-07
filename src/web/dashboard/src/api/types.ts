@@ -77,6 +77,7 @@ export type StatusResponse = {
   usage: UsageSummary;
   lastHeartbeat: import('@shadow/models').HeartbeatRecord | null;
   nextHeartbeatAt: string | null;
+  recentActivity?: number;
 };
 
 export type ActiveProjectSummary = {
