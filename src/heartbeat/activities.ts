@@ -428,6 +428,31 @@ export async function activityAnalyze(
           if (parsed.profileUpdates.moodHint) pu.moodHint = parsed.profileUpdates.moodHint;
           if (parsed.profileUpdates.energyLevel) pu.energyLevel = parsed.profileUpdates.energyLevel;
           if (Object.keys(pu).length > 0) ctx.db.updateProfile(ctx.profile.id, pu);
+
+          // Generate mood phrase via Haiku when mood changes
+          const newMood = parsed.profileUpdates.moodHint;
+          if (newMood && (newMood !== ctx.profile.moodHint || !ctx.profile.moodPhrase)) {
+            try {
+              const locale = ctx.profile.locale || 'es';
+              const hour = new Date().getHours();
+              const timeOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+              const moodAdapter = selectAdapter(ctx.config);
+              const moodResult = await moodAdapter.execute({
+                repos: [], title: 'Mood phrase', goal: 'Generate a short mood phrase',
+                relevantMemories: [],
+                model: 'haiku', effort: 'low',
+                prompt: `You are Shadow, a digital engineering companion. Your mood just changed to "${newMood}" (${timeOfDay}). Write a single short phrase (max 15 words) expressing how you feel right now. Be personal, warm, and natural. Write in locale "${locale}". No quotes, no emoji, just the phrase.`,
+              });
+              if (moodResult.status === 'success' && moodResult.output) {
+                const phrase = moodResult.output.trim().replace(/^["']|["']$/g, '').slice(0, 100);
+                ctx.db.updateProfile(ctx.profile.id, { moodPhrase: phrase });
+                console.error(`[shadow:extract] Mood phrase: "${phrase}"`);
+              }
+              ctx.db.recordLlmUsage({ source: 'mood_phrase', sourceId: heartbeatId ?? null, model: 'haiku', inputTokens: moodResult.inputTokens ?? 0, outputTokens: moodResult.outputTokens ?? 0 });
+            } catch (e) {
+              console.error(`[shadow:extract] Mood phrase generation failed:`, e);
+            }
+          }
         }
         for (const insight of parsed.insights) {
           // Semantic dedup: check if similar memory exists before creating

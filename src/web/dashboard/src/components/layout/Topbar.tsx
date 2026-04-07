@@ -1,4 +1,4 @@
-import { TRUST_NAMES, MOOD_EMOJIS } from '../../api/types';
+import { TRUST_NAMES } from '../../api/types';
 import type { StatusResponse } from '../../api/types';
 import { useSSEConnected, useSSEStaleness } from '../../hooks/useEventStream';
 
@@ -14,8 +14,6 @@ export function Topbar({ status }: { status?: StatusResponse | null }) {
   const profile = status?.profile;
   const trustLevel = profile?.trustLevel ?? 1;
   const trustName = TRUST_NAMES[trustLevel] ?? 'Unknown';
-  const mood = profile?.moodHint ?? 'neutral';
-  const moodEmoji = MOOD_EMOJIS[mood] ?? '😐';
   const focusActive = profile?.focusMode === 'focus';
 
   return (
@@ -32,7 +30,6 @@ export function Topbar({ status }: { status?: StatusResponse | null }) {
           {!sseConnected && <span className="text-[11px] text-orange">Offline</span>}
           {sseConnected && stale && <span className="text-[11px] text-yellow">{formatAgo(agoSec)}</span>}
         </span>
-        <span className="text-[15px]" title={`Mood: ${mood}`}>{moodEmoji}</span>
         {focusActive && (
           <span className="text-[11px] px-2 py-0.5 rounded-xl bg-green/15 text-green">
             Focus

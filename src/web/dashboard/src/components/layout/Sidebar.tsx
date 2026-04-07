@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { StatusResponse } from '../../api/types';
 import { CorrectionPanel } from '../common/CorrectionPanel';
 import { GhostTV } from '../common/GhostTV';
+import { SpeechBubble } from '../common/SpeechBubble';
 import { useGhostPhase } from '../../hooks/useGhostPhase';
 
 type Counts = StatusResponse['counts'];
@@ -40,8 +41,18 @@ const NAV: NavEntry[] = [
 export function Sidebar({ counts }: { counts?: Counts | null }) {
   const [showCorrection, setShowCorrection] = useState(false);
   const [showGhostTV, setShowGhostTV] = useState(false);
+  const [showBubble, setShowBubble] = useState(false);
   const ghost = useGhostPhase();
   const [ghostImgError, setGhostImgError] = useState(false);
+
+  // Show speech bubble when mood phrase changes
+  useEffect(() => {
+    if (ghost.moodPhraseChanged && ghost.moodPhrase) {
+      setShowBubble(true);
+    }
+  }, [ghost.moodPhraseChanged, ghost.moodPhrase]);
+
+  const handleBubbleDone = useCallback(() => setShowBubble(false), []);
 
   return (
     <aside className="fixed top-0 left-0 w-[60px] h-full bg-card border-r border-border flex flex-col items-center z-50 pt-2 gap-0.5">
@@ -81,20 +92,22 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
           </NavLink>
         );
       })}
-      <div className="mt-auto pb-2 flex flex-col items-center gap-0.5">
+      <div className="mt-auto pb-2 flex flex-col items-center gap-0.5 relative">
         <button
           onClick={() => setShowGhostTV(v => !v)}
           className="group relative w-[44px] h-[44px] flex items-center justify-center rounded-lg cursor-pointer transition-all duration-150 hover:bg-border hover:scale-105 bg-transparent border-none"
+          data-mood={ghost.mood}
         >
           {ghostImgError ? (
-            <span className={`text-sm font-mono ${ghost.isActive ? 'ghost-pulse text-accent' : 'text-text-muted'}`}>
+            <span className={`text-sm font-mono ghost-pulse text-accent`} data-mood={ghost.mood}>
               {'{•‿•}'}
             </span>
           ) : (
             <img
               src={ghost.imagePath}
               alt="Shadow"
-              className={`w-[36px] h-[36px] rounded-full object-cover ${ghost.isActive ? 'ghost-pulse' : ''}`}
+              className="w-[36px] h-[36px] rounded-full object-cover ghost-pulse"
+              data-mood={ghost.mood}
               onError={() => setGhostImgError(true)}
             />
           )}
@@ -102,6 +115,7 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
             Shadow TV — {ghost.label}
           </span>
         </button>
+        <SpeechBubble text={ghost.moodPhrase ?? ''} visible={showBubble} onDone={handleBubbleDone} />
         <button
           onClick={() => setShowCorrection(true)}
           className="group relative w-[44px] h-[44px] flex items-center justify-center rounded-lg cursor-pointer text-[18px] transition-all duration-150 hover:bg-border hover:scale-105 bg-transparent border-none"

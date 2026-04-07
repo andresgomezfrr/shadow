@@ -22,9 +22,11 @@ type Props = {
   label: string;
   phase: string;
   isActive: boolean;
+  mood: string;
+  moodPhrase: string | null;
 };
 
-export function GhostTV({ open, onClose, imagePath, label, phase, isActive }: Props) {
+export function GhostTV({ open, onClose, imagePath, label, phase, isActive, mood, moodPhrase }: Props) {
   const [imgError, setImgError] = useState(false);
   const [prevImage, setPrevImage] = useState(imagePath);
   const [transitioning, setTransitioning] = useState(false);
@@ -60,7 +62,8 @@ export function GhostTV({ open, onClose, imagePath, label, phase, isActive }: Pr
   return (
     <div className="fixed inset-0 z-[60]" onClick={onClose}>
       <div
-        className={`absolute bottom-16 left-[68px] w-[220px] rounded-xl overflow-hidden animate-fade-in ${isActive ? 'ghost-glow' : ''}`}
+        className={`absolute bottom-16 left-[68px] w-[220px] rounded-xl overflow-hidden animate-fade-in ghost-glow`}
+        data-mood={mood}
         onClick={e => e.stopPropagation()}
       >
         {/* Close button */}
@@ -99,9 +102,14 @@ export function GhostTV({ open, onClose, imagePath, label, phase, isActive }: Pr
           )}
         </div>
 
-        {/* Phase label */}
-        <div className="text-center py-1.5 text-xs text-accent/80 tracking-wide bg-card/90">
-          {label}
+        {/* Phase label + mood phrase */}
+        <div className="text-center py-1.5 px-3 bg-card/90">
+          <div className="text-xs text-accent/80 tracking-wide">{label}</div>
+          {moodPhrase && (
+            <div className="text-[11px] text-text-dim italic mt-0.5 leading-relaxed">
+              &ldquo;{moodPhrase}&rdquo;
+            </div>
+          )}
         </div>
       </div>
     </div>

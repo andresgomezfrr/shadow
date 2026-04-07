@@ -155,8 +155,9 @@ export const MOOD_EMOJIS: Record<string, string> = {
   happy: '😊',
   focused: '🎯',
   tired: '😴',
-  excited: '🚀',
-  concerned: '😟',
+  excited: '🤩',
+  concerned: '🤔',
+  frustrated: '😤',
 };
 
 export const LAYER_COLORS: Record<string, string> = {

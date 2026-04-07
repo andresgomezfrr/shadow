@@ -706,6 +706,13 @@ export const migrations: Migration[] = [
       ALTER TABLE projects ADD COLUMN context_updated_at TEXT;
     `,
   },
+  {
+    version: 33,
+    name: 'mood_phrase',
+    sql: `
+      ALTER TABLE user_profile ADD COLUMN mood_phrase TEXT;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

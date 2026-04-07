@@ -43,6 +43,9 @@ export type GhostPhase = {
   imagePath: string;
   label: string;
   isActive: boolean;
+  mood: string;
+  moodPhrase: string | null;
+  moodPhraseChanged: boolean;
 };
 
 export function useGhostPhase(): GhostPhase {
@@ -52,6 +55,12 @@ export function useGhostPhase(): GhostPhase {
   const recentActivityRef = useRef(0);
   const focusModeRef = useRef(false);
   const prevPhaseRef = useRef('idle');
+
+  // Mood state
+  const [mood, setMood] = useState('neutral');
+  const [moodPhrase, setMoodPhrase] = useState<string | null>(null);
+  const [moodPhraseChanged, setMoodPhraseChanged] = useState(false);
+  const prevMoodPhraseRef = useRef<string | null>(null);
 
   // Pick a new random idle image each time we enter idle
   const [currentIdleImage, setCurrentIdleImage] = useState(idleImage);
@@ -103,7 +112,7 @@ export function useGhostPhase(): GhostPhase {
     updatePhase('idle');
   }, [updatePhase]);
 
-  // Poll status for recentActivity (ambient state)
+  // Poll status for recentActivity + mood (ambient state)
   const { data: status } = useApi(fetchStatus, [], 15_000);
 
   useEffect(() => {
@@ -111,8 +120,32 @@ export function useGhostPhase(): GhostPhase {
     recentActivityRef.current = (status as Record<string, unknown>).recentActivity as number ?? 0;
     const profile = (status as Record<string, unknown>).profile as Record<string, unknown> | undefined;
     focusModeRef.current = !!profile?.focusMode;
+
+    // Update mood
+    const newMood = (profile?.moodHint as string) || 'neutral';
+    setMood(newMood);
+
+    // Update mood phrase — detect changes
+    const newPhrase = (profile?.moodPhrase as string) || null;
+    if (newPhrase && newPhrase !== prevMoodPhraseRef.current) {
+      setMoodPhrase(newPhrase);
+      // Only trigger "changed" if we had a previous phrase (skip initial load)
+      if (prevMoodPhraseRef.current !== null) {
+        setMoodPhraseChanged(true);
+      }
+    }
+    prevMoodPhraseRef.current = newPhrase;
+
     derivePhase();
   }, [status, derivePhase]);
+
+  // Auto-reset moodPhraseChanged after consumer reads it
+  useEffect(() => {
+    if (moodPhraseChanged) {
+      const t = setTimeout(() => setMoodPhraseChanged(false), 100);
+      return () => clearTimeout(t);
+    }
+  }, [moodPhraseChanged]);
 
   // Poll running jobs as fallback (same pattern as LiveStatusBar)
   const { data: polled } = useApi(
@@ -157,5 +190,8 @@ export function useGhostPhase(): GhostPhase {
     imagePath: phase === 'idle' ? currentIdleImage : info.image,
     label: info.label,
     isActive: phase !== 'idle',
+    mood,
+    moodPhrase,
+    moodPhraseChanged,
   };
 }

@@ -1853,6 +1853,7 @@ function mapProfile(row: unknown): UserProfileRecord {
     focusUntil: strOrNull(d.focus_until),
     energyLevel: strOrNull(d.energy_level),
     moodHint: strOrNull(d.mood_hint),
+    moodPhrase: strOrNull(d.mood_phrase),
     trustLevel: num(d.trust_level),
     trustScore: num(d.trust_score),
     bondLevel: num(d.bond_level),

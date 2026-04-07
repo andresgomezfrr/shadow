@@ -48,17 +48,36 @@ html, body, #root {
 .animate-fade-in { animation: fadeIn 0.25s ease both; }
 .animate-slide-out { animation: slideOut 0.35s ease forwards; }
 
-/* Ghost TV holographic glow — purple/cyan pulse */
+/* Ghost TV — mood-colored glow via CSS custom properties */
+.ghost-glow, .ghost-pulse { --glow-r: 188; --glow-g: 140; --glow-b: 255; }
+[data-mood="happy"] { --glow-r: 63; --glow-g: 185; --glow-b: 80; }
+[data-mood="excited"] { --glow-r: 210; --glow-g: 173; --glow-b: 34; }
+[data-mood="frustrated"] { --glow-r: 248; --glow-g: 81; --glow-b: 73; }
+[data-mood="tired"] { --glow-r: 88; --glow-g: 166; --glow-b: 255; }
+[data-mood="concerned"] { --glow-r: 210; --glow-g: 153; --glow-b: 34; }
+[data-mood="focused"] { --glow-r: 86; --glow-g: 212; --glow-b: 221; }
+
 @keyframes ghostGlow {
-  0%, 100% { box-shadow: 0 0 15px 3px rgba(188,140,255,0.4), 0 0 30px 6px rgba(188,140,255,0.15); }
-  50% { box-shadow: 0 0 15px 3px rgba(86,212,221,0.4), 0 0 30px 6px rgba(86,212,221,0.15); }
+  0%, 100% { box-shadow: 0 0 15px 3px rgba(var(--glow-r),var(--glow-g),var(--glow-b),0.4), 0 0 30px 6px rgba(var(--glow-r),var(--glow-g),var(--glow-b),0.15); }
+  50% { box-shadow: 0 0 20px 5px rgba(var(--glow-r),var(--glow-g),var(--glow-b),0.5), 0 0 35px 8px rgba(var(--glow-r),var(--glow-g),var(--glow-b),0.2); }
 }
 
-/* Thumbnail pulse when daemon is active */
 @keyframes ghostPulse {
-  0%, 100% { filter: drop-shadow(0 0 4px rgba(188,140,255,0.6)); }
-  50% { filter: drop-shadow(0 0 8px rgba(86,212,221,0.6)); }
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(var(--glow-r),var(--glow-g),var(--glow-b),0.6)); }
+  50% { filter: drop-shadow(0 0 8px rgba(var(--glow-r),var(--glow-g),var(--glow-b),0.8)); }
 }
 
 .ghost-glow { animation: ghostGlow 3s ease-in-out infinite; }
 .ghost-pulse { animation: ghostPulse 2s ease-in-out infinite; }
+
+/* Speech bubble animation */
+@keyframes bubbleIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes bubbleOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-4px) scale(0.95); }
+}
+.animate-bubble-in { animation: bubbleIn 0.3s ease both; }
+.animate-bubble-out { animation: bubbleOut 0.3s ease both; }

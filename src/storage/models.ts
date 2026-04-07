@@ -99,6 +99,7 @@ export type UserProfileRecord = {
   focusUntil: string | null;
   energyLevel: string | null;
   moodHint: string | null;
+  moodPhrase: string | null;
   trustLevel: number;
   trustScore: number;
   bondLevel: number;
