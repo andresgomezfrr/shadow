@@ -2,6 +2,8 @@ import type { Command } from 'commander';
 import type { ShadowConfig } from '../config/load-config.js';
 import type { WithDb } from './types.js';
 import { basename, resolve } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 export function registerEntityCommands(program: Command, _config: ShadowConfig, withDb: WithDb): void {
   // --- repo ---
@@ -17,6 +19,18 @@ export function registerEntityCommands(program: Command, _config: ShadowConfig, 
     .option('--language <lang>', 'language hint (typescript, python, etc.)')
     .action((repoPath: string, options: { name?: string; remoteUrl?: string; defaultBranch: string; language?: string }) => {
       const resolvedPath = resolve(repoPath);
+      if (!existsSync(resolvedPath) || !statSync(resolvedPath).isDirectory()) {
+        console.error(`Error: Path does not exist or is not a directory: ${resolvedPath}`);
+        process.exitCode = 1;
+        return;
+      }
+      try {
+        execFileSync('git', ['rev-parse', '--git-dir'], { cwd: resolvedPath, stdio: 'pipe', timeout: 5_000 });
+      } catch {
+        console.error(`Error: Not a git repository: ${resolvedPath}`);
+        process.exitCode = 1;
+        return;
+      }
       return withDb((db) =>
         db.createRepo({
           path: resolvedPath,

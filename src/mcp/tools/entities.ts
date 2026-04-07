@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { resolve, basename } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 import { mcpSchema, type McpTool, type ToolContext } from './types.js';
 
@@ -152,6 +154,19 @@ export function entityTools(ctx: ToolContext): McpTool[] {
 
         const { path: rawPath, name, defaultBranch, languageHint } = RepoAddSchema.parse(params);
         const repoPath = resolve(rawPath);
+
+        // Validate path is a directory
+        if (!existsSync(repoPath) || !statSync(repoPath).isDirectory()) {
+          return { isError: true, message: `Path does not exist or is not a directory: ${repoPath}` };
+        }
+
+        // Validate it's a git repository
+        try {
+          execFileSync('git', ['rev-parse', '--git-dir'], { cwd: repoPath, stdio: 'pipe', timeout: 5_000 });
+        } catch {
+          return { isError: true, message: `Not a git repository: ${repoPath}` };
+        }
+
         const repoName = name ?? (basename(repoPath) || repoPath);
 
         const existing = db.findRepoByPath(repoPath);
