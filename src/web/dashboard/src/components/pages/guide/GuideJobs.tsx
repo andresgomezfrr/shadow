@@ -16,12 +16,14 @@ export function GuideJobs() {
         <h2 className="text-lg font-semibold mb-3">Job Chain</h2>
         <div className="bg-card border border-border rounded-lg p-5 text-sm">
           <pre className="text-text-dim font-mono text-xs whitespace-pre leading-relaxed">{`remote-sync (30min, IO)
-  \u2193 commits detected
+  \u2193 remote commits detected
 repo-profile (reactive, 2h gap)
   \u2193 repo re-profiled
 project-profile (reactive, 4h gap, 2+ repos)
 
 heartbeat (30min, LLM)
+  \u2193 local activity detected
+  \u2193 \u2192 repo-profile (if new local commits, 2h gap)
   \u2193 observations + activity
 suggest (reactive, 1h gap)
 
@@ -46,6 +48,7 @@ consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)`}</pre>
             phases={['observe', 'cleanup', 'analyze', 'notify']}
             output="Memories, observations, mood/energy updates"
             reactive={false}
+            note="Also triggers suggest (if observations created) and repo-profile (if repos have new local commits, 2h gap)"
           />
 
           <JobCard
@@ -123,12 +126,12 @@ consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)`}</pre>
             name="repo-profile"
             color="bg-teal-400/20 text-teal-300"
             purpose="LLM analysis of repo context: stack, phase, team, CI, valuable/avoid suggestions. Used by suggest pipeline."
-            trigger="Reactive after remote-sync detects new commits (2h min gap). Manual trigger available."
+            trigger="Reactive after remote-sync (remote changes) or heartbeat (local commits). 2h min gap."
             model="Sonnet low"
             phases={['repo-profile']}
             output="Updated contextMd on repo record"
             reactive={true}
-            reactiveSource="remote-sync"
+            reactiveSource="remote-sync + heartbeat"
             note="Triggers suggest-deep first-time scan for new repos, and project-profile for multi-repo projects"
           />
 
