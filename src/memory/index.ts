@@ -1,4 +1,4 @@
-export { embed, embeddingText, cosineSimilarity } from './embeddings.js';
+export { embed, embeddingText } from './embeddings.js';
 export { hybridSearch, vectorSearch } from './search.js';
 export { searchMemories, findRelevantMemories, touchMemories, loadPendingCorrections, enforceCorrections, mergeRelatedMemories } from './retrieval.js';
 export { generateAndStoreEmbedding, backfillEmbeddings } from './lifecycle.js';

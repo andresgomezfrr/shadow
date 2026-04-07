@@ -42,14 +42,12 @@ export async function handleEntityRoutes(
     if (!project) return json(res, { error: 'Project not found' }, 404), true;
 
     const repos = project.repoIds.map(id => db.getRepo(id)).filter(Boolean);
-    const systems = project.systemIds.map(id => db.getSystem(id)).filter(Boolean);
+    const systems = project.systemIds.length > 0 ? db.getSystemsByIds(project.systemIds) : [];
     const contacts = project.contactIds.map(id => db.getContact(id)).filter(Boolean);
 
-    const observations = db.listObservations({ status: 'active', limit: 50 })
-      .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
-    const suggestions = db.listSuggestions({ status: 'pending' })
-      .filter(s => (s.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
-    const memories = db.listMemories({ archived: false })
+    const observations = db.listObservations({ status: 'active', projectId: project.id, limit: 50 });
+    const suggestions = db.listSuggestions({ status: 'pending', projectId: project.id, limit: 50 });
+    const memories = db.listMemories({ archived: false, limit: 500 })
       .filter(m => (m.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
 
     let enrichment: unknown[] = [];
@@ -68,8 +66,8 @@ export async function handleEntityRoutes(
       memories: memories.slice(0, 10).map(m => ({ id: m.id, kind: m.kind, layer: m.layer, title: m.title, createdAt: m.createdAt })),
       enrichment,
       counts: {
-        observations: observations.length,
-        suggestions: suggestions.length,
+        observations: db.countObservations({ status: 'active', projectId: project.id }),
+        suggestions: db.countSuggestions({ status: 'pending', projectId: project.id }),
         memories: memories.length,
       },
     }), true;

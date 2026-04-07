@@ -12,7 +12,7 @@ export type McpServerInfo = {
  * Discover available MCP servers from Claude's settings.json.
  * Excludes 'shadow' (our own server) from the list.
  */
-export function discoverMcpServers(): McpServerInfo[] {
+function discoverMcpServers(): McpServerInfo[] {
   const settingsPath = resolve(homedir(), '.claude', 'settings.json');
   try {
     const raw = readFileSync(settingsPath, 'utf8');

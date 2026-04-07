@@ -42,9 +42,6 @@ export class JobQueue {
     // Compute types to exclude (same-type mutual exclusion)
     const excludeTypes = [...new Set([...this.active.values()].map(a => a.type))];
 
-    // Compute LLM capacity (IO jobs don't count)
-    const llmActive = [...this.active.values()].filter(a => a.category === 'llm').length;
-
     // Claim loop
     while (this.active.size < this.config.maxConcurrentJobs + this.ioActiveCount()) {
       // LLM capacity check
