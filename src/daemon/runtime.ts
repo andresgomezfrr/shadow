@@ -221,7 +221,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     const eventBus = new EventBus();
     try {
       const { startWebServer } = await import('../web/server.js');
-      webServer = await startWebServer(3700, db, eventBus, daemonShared);
+      webServer = await startWebServer(3700, config.webBindHost, db, eventBus, daemonShared);
     } catch {
       // web module not available — continue without it
     }

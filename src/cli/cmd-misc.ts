@@ -283,7 +283,7 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
     .action(async (options: { port: string }) => {
       const { startWebServer } = await import('../web/server.js');
       const port = parseInt(options.port, 10);
-      await startWebServer(port);
+      await startWebServer(port, '127.0.0.1');
 
       // Open browser
       const { exec } = await import('node:child_process');

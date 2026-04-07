@@ -61,6 +61,7 @@ export function loadConfig(): ShadowConfig {
     activityHeartbeatMinIntervalMs: process.env.SHADOW_ACTIVITY_HEARTBEAT_MIN_INTERVAL_MS,
     activityHeartbeatMaxIntervalMs: process.env.SHADOW_ACTIVITY_HEARTBEAT_MAX_INTERVAL_MS,
     activityTriggerThreshold: process.env.SHADOW_ACTIVITY_TRIGGER_THRESHOLD,
+    webBindHost: process.env.SHADOW_WEB_BIND_HOST,
     maxConcurrentRuns: process.env.SHADOW_MAX_CONCURRENT_RUNS,
     maxConcurrentJobs: process.env.SHADOW_MAX_CONCURRENT_JOBS,
     maxWatchedRepos: process.env.SHADOW_MAX_WATCHED_REPOS,

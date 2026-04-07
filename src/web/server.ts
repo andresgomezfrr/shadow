@@ -43,7 +43,7 @@ const MIME_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-export async function startWebServer(port: number = 3700, _existingDb?: ShadowDatabase, eventBus?: EventBus, daemonState?: DaemonSharedState): Promise<{ close: () => void }> {
+export async function startWebServer(port: number = 3700, host: string = '127.0.0.1', _existingDb?: ShadowDatabase, eventBus?: EventBus, daemonState?: DaemonSharedState): Promise<{ close: () => void }> {
   const config = loadConfig();
   // Always create own DB connection — sharing with daemon causes "database is not open" errors
   const db = createDatabase(config);
@@ -193,8 +193,8 @@ export async function startWebServer(port: number = 3700, _existingDb?: ShadowDa
   });
 
   return new Promise<{ close: () => void }>((resolve) => {
-    server.listen(port, () => {
-      console.log(`Shadow dashboard: http://localhost:${port}`);
+    server.listen(port, host, () => {
+      console.log(`Shadow dashboard: http://${host}:${port}`);
       resolve({
         close: () => { try { server.close(); db.close(); } catch { /* best-effort */ } },
       });

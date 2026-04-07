@@ -77,6 +77,7 @@ export const ConfigSchema = z.object({
   activityHeartbeatMinIntervalMs: z.coerce.number().int().positive().default(3 * 60 * 1000),
   activityHeartbeatMaxIntervalMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
   activityTriggerThreshold: z.coerce.number().int().positive().default(3),
+  webBindHost: z.string().default('127.0.0.1'),
   maxConcurrentRuns: z.coerce.number().int().min(1).max(8).default(2),
   maxConcurrentJobs: z.coerce.number().int().min(1).max(8).default(3),
   maxWatchedRepos: z.coerce.number().int().min(1).max(100).default(30),
