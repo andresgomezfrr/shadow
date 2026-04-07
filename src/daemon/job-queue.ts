@@ -42,20 +42,25 @@ export class JobQueue {
     // Compute types to exclude (same-type mutual exclusion)
     const excludeTypes = [...new Set([...this.active.values()].map(a => a.type))];
 
-    // Claim loop
-    while (this.active.size < this.config.maxConcurrentJobs + this.ioActiveCount()) {
-      // LLM capacity check
+    // Claim loop: LLM jobs capped by maxConcurrentJobs, IO jobs unlimited
+    while (true) {
       const currentLlm = [...this.active.values()].filter(a => a.category === 'llm').length;
-      if (currentLlm >= this.config.maxConcurrentJobs) break;
+
+      // When LLM slots are full, exclude all LLM types so only IO jobs get claimed
+      const exclude = [...excludeTypes];
+      if (currentLlm >= this.config.maxConcurrentJobs) {
+        for (const [type, entry] of this.handlers) {
+          if (entry.category === 'llm' && !exclude.includes(type)) exclude.push(type);
+        }
+      }
 
       const claimed = this.db.claimNextJob(
-        excludeTypes.length > 0 ? { excludeTypes } : undefined,
+        exclude.length > 0 ? { excludeTypes: exclude } : undefined,
       );
       if (!claimed) break;
 
       const entry = this.handlers.get(claimed.type);
       if (!entry) {
-        // Unknown job type — mark as failed
         this.db.updateJob(claimed.id, {
           status: 'failed',
           result: { error: `unknown job type: ${claimed.type}` },
@@ -64,11 +69,8 @@ export class JobQueue {
         continue;
       }
 
-      // IO jobs bypass LLM capacity limit but still respect same-type exclusion
-      if (entry.category === 'llm' && currentLlm >= this.config.maxConcurrentJobs) break;
-
       this.startJob(claimed, entry);
-      excludeTypes.push(claimed.type); // prevent claiming another of same type
+      excludeTypes.push(claimed.type); // same-type mutual exclusion
     }
 
     return this.active.size > 0;
@@ -191,9 +193,6 @@ export class JobQueue {
     this.active.set(job.id, activeEntry);
   }
 
-  private ioActiveCount(): number {
-    return [...this.active.values()].filter(a => a.category === 'io').length;
-  }
 
   async drainAll(timeoutMs = 60_000): Promise<void> {
     if (this.active.size === 0) return;
