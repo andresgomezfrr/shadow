@@ -3,29 +3,28 @@ import { useEventStream } from './useEventStream';
 import { useApi } from './useApi';
 import { fetchActivity, fetchStatus } from '../api/client';
 
-type PhaseInfo = { image: string; label: string };
+type PhaseInfo = { images: string[]; label: string };
 
-const IDLE_IMAGES = ['/ghost/idle-1.png', '/ghost/idle-2.png', '/ghost/idle-3.png', '/ghost/idle-4.png'];
-const randomIdle = () => IDLE_IMAGES[Math.floor(Math.random() * IDLE_IMAGES.length)];
+const randomFrom = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
 const PHASE_MAP: Record<string, PhaseInfo> = {
-  idle:              { image: '',                          label: 'idle' }, // resolved dynamically
-  focus:             { image: '/ghost/focus.png',          label: 'focus mode' },
-  watching:          { image: '/ghost/watching.png',       label: 'watching' },
-  learning:          { image: '/ghost/learning.png',       label: 'learning' },
-  heartbeat:         { image: '/ghost/analyzing.png',     label: 'analyzing...' },
-  suggest:           { image: '/ghost/suggesting.png',    label: 'suggesting...' },
-  'suggest-deep':    { image: '/ghost/suggesting.png',    label: 'deep suggesting...' },
-  'suggest-project': { image: '/ghost/suggesting.png',    label: 'project suggestions...' },
-  consolidate:       { image: '/ghost/consolidating.png', label: 'consolidating...' },
-  reflect:           { image: '/ghost/reflecting.png',    label: 'reflecting...' },
-  'context-enrich':  { image: '/ghost/enriching.png',     label: 'enriching...' },
-  'remote-sync':     { image: '/ghost/syncing.png',       label: 'syncing...' },
-  'repo-profile':    { image: '/ghost/analyzing.png',     label: 'profiling...' },
-  'project-profile': { image: '/ghost/analyzing.png',     label: 'profiling...' },
-  'digest-daily':    { image: '/ghost/reflecting.png',    label: 'writing digest...' },
-  'digest-weekly':   { image: '/ghost/reflecting.png',    label: 'writing digest...' },
-  'digest-brag':     { image: '/ghost/reflecting.png',    label: 'writing digest...' },
+  idle:              { images: ['/ghost/idle-1.png', '/ghost/idle-2.png', '/ghost/idle-3.png', '/ghost/idle-4.png', '/ghost/idle-5.png', '/ghost/idle-6.png', '/ghost/idle-7.png', '/ghost/idle-8.png', '/ghost/idle-9.png'], label: 'idle' },
+  focus:             { images: ['/ghost/focus.png'],          label: 'focus mode' },
+  watching:          { images: ['/ghost/watching-1.png', '/ghost/watching-2.png', '/ghost/watching-3.png'], label: 'watching' },
+  learning:          { images: ['/ghost/learning-1.png', '/ghost/learning-2.png'], label: 'learning' },
+  heartbeat:         { images: ['/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png', '/ghost/analyzing-5.png'], label: 'analyzing...' },
+  suggest:           { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'suggesting...' },
+  'suggest-deep':    { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'deep suggesting...' },
+  'suggest-project': { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'project suggestions...' },
+  consolidate:       { images: ['/ghost/consolidating-1.png', '/ghost/consolidating-2.png'], label: 'consolidating...' },
+  reflect:           { images: ['/ghost/reflecting.png'],     label: 'reflecting...' },
+  'context-enrich':  { images: ['/ghost/enriching.png'],      label: 'enriching...' },
+  'remote-sync':     { images: ['/ghost/syncing.png'],        label: 'syncing...' },
+  'repo-profile':    { images: ['/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png', '/ghost/analyzing-5.png'], label: 'profiling...' },
+  'project-profile': { images: ['/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png', '/ghost/analyzing-5.png'], label: 'profiling...' },
+  'digest-daily':    { images: ['/ghost/reflecting.png'],     label: 'writing digest...' },
+  'digest-weekly':   { images: ['/ghost/reflecting.png'],     label: 'writing digest...' },
+  'digest-brag':     { images: ['/ghost/reflecting.png'],     label: 'writing digest...' },
 };
 
 // Higher index = higher priority for display
@@ -51,7 +50,7 @@ export type GhostPhase = {
 
 export function useGhostPhase(): GhostPhase {
   const [phase, setPhase] = useState('idle');
-  const [idleImage] = useState(() => randomIdle());
+  const [currentImage, setCurrentImage] = useState(() => randomFrom(PHASE_MAP.idle.images));
   const runningJobs = useRef(new Map<string, string>());
   const recentActivityRef = useRef(0);
   const focusModeRef = useRef(false);
@@ -64,11 +63,11 @@ export function useGhostPhase(): GhostPhase {
   const [moodPhraseChanged, setMoodPhraseChanged] = useState(false);
   const prevMoodPhraseRef = useRef<string | null>(null);
 
-  // Pick a new random idle image each time we enter idle
-  const [currentIdleImage, setCurrentIdleImage] = useState(idleImage);
+  // Pick a new random image each time phase changes
   const updatePhase = useCallback((newPhase: string) => {
-    if (newPhase === 'idle' && prevPhaseRef.current !== 'idle') {
-      setCurrentIdleImage(randomIdle());
+    if (newPhase !== prevPhaseRef.current) {
+      const info = PHASE_MAP[newPhase] ?? PHASE_MAP.idle;
+      setCurrentImage(randomFrom(info.images));
     }
     prevPhaseRef.current = newPhase;
     setPhase(newPhase);
@@ -77,16 +76,14 @@ export function useGhostPhase(): GhostPhase {
   // Preload all ghost images on mount
   useEffect(() => {
     const seen = new Set<string>();
-    for (const { image } of Object.values(PHASE_MAP)) {
-      if (image && !seen.has(image)) {
-        seen.add(image);
-        const img = new Image();
-        img.src = image;
+    for (const { images } of Object.values(PHASE_MAP)) {
+      for (const src of images) {
+        if (!seen.has(src)) {
+          seen.add(src);
+          const img = new Image();
+          img.src = src;
+        }
       }
-    }
-    for (const src of IDLE_IMAGES) {
-      const img = new Image();
-      img.src = src;
     }
   }, []);
 
@@ -190,7 +187,7 @@ export function useGhostPhase(): GhostPhase {
   const info = PHASE_MAP[phase] ?? PHASE_MAP.idle;
   return {
     phase,
-    imagePath: phase === 'idle' ? currentIdleImage : info.image,
+    imagePath: currentImage,
     label: info.label,
     isActive: phase !== 'idle',
     mood,
