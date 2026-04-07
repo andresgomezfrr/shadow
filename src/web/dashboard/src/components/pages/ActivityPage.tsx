@@ -84,7 +84,10 @@ export function ActivityPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-3">Activity</h1>
+      <div className="flex items-center gap-3 mb-3">
+        <img src="/ghost/activity.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+        <h1 className="text-xl font-semibold">Activity</h1>
+      </div>
 
       {/* Live status bar */}
       <div className="mb-4">

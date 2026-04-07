@@ -20,6 +20,7 @@ import { ActivityPage } from './components/pages/ActivityPage';
 import { EventsPage } from './components/pages/EventsPage';
 import { DigestsPage } from './components/pages/DigestsPage';
 import { GuidePage } from './components/pages/GuidePage';
+import { NotFoundPage } from './components/pages/NotFoundPage';
 
 export function App() {
   return (
@@ -47,6 +48,7 @@ export function App() {
         <Route path="/events" element={<EventsPage />} />
         <Route path="/guide" element={<GuidePage />} />
         <Route path="/emoji-guide" element={<Navigate to="/guide?section=status-line" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </AppShell>
   );

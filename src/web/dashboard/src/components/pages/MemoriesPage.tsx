@@ -80,6 +80,7 @@ export function MemoriesPage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <img src="/ghost/memories.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
         <h1 className="text-xl font-semibold">Memories</h1>
         <FilterTabs options={LAYERS} active={params.layer} onChange={(v) => setParam('layer', v)} />
       </div>

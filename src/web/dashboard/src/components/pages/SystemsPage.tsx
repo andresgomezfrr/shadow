@@ -9,7 +9,10 @@ export function SystemsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-4">Systems</h1>
+      <div className="flex items-center gap-3 mb-4">
+        <img src="/ghost/systems.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+        <h1 className="text-xl font-semibold">Systems</h1>
+      </div>
 
       {!data ? (
         <div className="text-text-dim">Loading...</div>

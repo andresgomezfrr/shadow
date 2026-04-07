@@ -168,6 +168,7 @@ export function WorkspacePage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <img src="/ghost/workspace.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
         <h1 className="text-xl font-semibold">Workspace</h1>
         <FilterTabs options={STATUS_FILTERS} active={params.status} onChange={(v) => setParam('status', v)} />
       </div>

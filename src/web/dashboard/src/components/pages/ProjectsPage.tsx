@@ -34,7 +34,10 @@ export function ProjectsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-4">Projects</h1>
+      <div className="flex items-center gap-3 mb-4">
+        <img src="/ghost/projects.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+        <h1 className="text-xl font-semibold">Projects</h1>
+      </div>
 
       {!projects ? (
         <div className="text-text-dim">Loading...</div>

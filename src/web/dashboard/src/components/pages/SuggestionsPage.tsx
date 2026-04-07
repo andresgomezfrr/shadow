@@ -167,6 +167,7 @@ export function SuggestionsPage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <img src="/ghost/suggestions-header.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
         <h1 className="text-xl font-semibold">Suggestions</h1>
         <FilterTabs options={STATUSES} active={params.status} onChange={(v) => { setParam('status', v); setSelected(new Set()); }} />
         {params.status === 'pending' && data && data.length > 0 && (

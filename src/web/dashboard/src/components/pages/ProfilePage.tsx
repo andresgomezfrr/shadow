@@ -103,7 +103,10 @@ export function ProfilePage() {
           <FilterTabs options={MOBILE_GROUPS} active={activeGroup} onChange={scrollToGroup} />
         </div>
 
-        <h1 className="text-xl font-semibold mb-6">Shadow Settings</h1>
+        <div className="flex items-center gap-3 mb-6">
+          <img src="/ghost/settings.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+          <h1 className="text-xl font-semibold">Shadow Settings</h1>
+        </div>
 
         {/* General */}
         <SectionTrustLevel profile={profile} visible={isSectionVisible('trust')} />
