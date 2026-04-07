@@ -35,9 +35,6 @@ export function Topbar({ status }: { status?: StatusResponse | null }) {
             Focus
           </span>
         )}
-        {profile?.displayName && (
-          <span className="text-text-dim">{profile.displayName}</span>
-        )}
       </div>
     </header>
   );
