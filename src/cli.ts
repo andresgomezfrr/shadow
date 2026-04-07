@@ -235,7 +235,7 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
       MCOLOR="$CY"; ACTIVITY_TEXT="analyzing" ;;
     *suggest-deep*|*scan*)
       case $V in 0) MASCOT="{°.°}🔬" ;; 1) MASCOT="{°_°}🔍" ;; *) MASCOT="{°‿°}🧬" ;; esac
-      MCOLOR="$CG"; ACTIVITY_TEXT="deep-scan" ;;
+      MCOLOR="$CG"; ACTIVITY_TEXT="scanning" ;;
     *suggest-project*|*cross-repo*)
       case $V in 0) MASCOT="{•ᴗ•}🔗" ;; 1) MASCOT="{•‿•}🌐" ;; *) MASCOT="{•ᴗ•}🕸️" ;; esac
       MCOLOR="$CG"; ACTIVITY_TEXT="cross-repo" ;;
