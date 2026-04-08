@@ -23,6 +23,29 @@ function parseLatestSemver(tagOutput: string): string | null {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Detect if running from compiled dist/ or source src/ and return the right daemon command */
+function resolveDaemonRunner(): { command: string; args: string[]; cwd: string } {
+  const shadowSrcDir = resolve(__dirname, '..');
+  const projectRoot = resolve(shadowSrcDir, '..');
+  const runtimeTs = join(shadowSrcDir, 'daemon', 'runtime.ts');
+  const runtimeJs = join(shadowSrcDir, 'daemon', 'runtime.js');
+
+  if (existsSync(runtimeTs) && !__dirname.includes('/dist/')) {
+    // Dev mode: run .ts via tsx
+    return {
+      command: resolve(projectRoot, 'node_modules', '.bin', 'tsx'),
+      args: [runtimeTs],
+      cwd: projectRoot,
+    };
+  }
+  // Production: run compiled .js via node
+  return {
+    command: process.execPath,
+    args: [runtimeJs],
+    cwd: projectRoot,
+  };
+}
+
 export function registerDaemonCommands(program: Command, config: ShadowConfig, withDb: WithDb): void {
   // --- daemon ---
 
@@ -57,15 +80,15 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       }
 
       const { spawn } = await import('node:child_process');
-      const shadowSrcDir = resolve(__dirname, '..');
+      const runner = resolveDaemonRunner();
       const child = spawn(
-        'npx',
-        ['tsx', join(shadowSrcDir, 'daemon', 'runtime.ts')],
+        runner.command,
+        runner.args,
         {
           detached: true,
           stdio: 'ignore',
           env: { ...process.env },
-          cwd: resolve(shadowSrcDir, '..'),
+          cwd: runner.cwd,
         },
       );
       child.unref();

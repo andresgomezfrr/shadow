@@ -8,6 +8,29 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Detect if running from compiled dist/ or source src/ and return the right daemon command */
+function resolveDaemonRunner(): { command: string; args: string[]; cwd: string } {
+  const shadowSrcDir = resolve(__dirname, '..');
+  const projectRoot = resolve(shadowSrcDir, '..');
+  const runtimeTs = join(shadowSrcDir, 'daemon', 'runtime.ts');
+  const runtimeJs = join(shadowSrcDir, 'daemon', 'runtime.js');
+
+  if (existsSync(runtimeTs) && !__dirname.includes('/dist/')) {
+    // Dev mode: run .ts via tsx
+    return {
+      command: resolve(projectRoot, 'node_modules', '.bin', 'tsx'),
+      args: [runtimeTs],
+      cwd: projectRoot,
+    };
+  }
+  // Production: run compiled .js via node
+  return {
+    command: process.execPath,
+    args: [runtimeJs],
+    cwd: projectRoot,
+  };
+}
+
 const SOUL_MD_CONTENT = `# Shadow — Soul
 
 Personality definitions by level. Edit this file to customize Shadow's voice.
@@ -95,13 +118,16 @@ ${endMarker}`;
           if (existingBlock === shadowSection) {
             console.error('[init] CLAUDE.md Shadow section already up to date');
           } else {
-            // Content differs — ask for confirmation
-            const { createInterface } = await import('node:readline');
-            const rl = createInterface({ input: process.stdin, output: process.stdout });
-            const answer = await new Promise<string>(resolve => {
-              rl.question('Shadow section in ~/.claude/CLAUDE.md has changed. Update? [Y/n] ', resolve);
-            });
-            rl.close();
+            // Content differs — ask for confirmation (auto-accept in non-interactive mode)
+            let answer = '';
+            if (process.stdin.isTTY === true) {
+              const { createInterface } = await import('node:readline');
+              const rl = createInterface({ input: process.stdin, output: process.stdout });
+              answer = await new Promise<string>(resolve => {
+                rl.question('Shadow section in ~/.claude/CLAUDE.md has changed. Update? [Y/n] ', resolve);
+              });
+              rl.close();
+            }
             if (answer.toLowerCase() !== 'n') {
               claudeMdContent =
                 claudeMdContent.slice(0, startIdx) +
@@ -134,11 +160,16 @@ ${endMarker}`;
 # Shows Shadow's current state with emojis — alive and expressive
 
 SHADOW_DIR="${projectRoot}"
-# Use project-relative paths so it survives node version changes
-SHADOW_CLI="$SHADOW_DIR/node_modules/.bin/tsx $SHADOW_DIR/src/cli.ts"
-# Fallback: if tsx not found (e.g. after npm rebuild), try npx
-if [ ! -x "$SHADOW_DIR/node_modules/.bin/tsx" ]; then
-  SHADOW_CLI="npx --prefix $SHADOW_DIR tsx $SHADOW_DIR/src/cli.ts"
+# Use the shadow CLI wrapper (resolves correct Node version automatically)
+SHADOW_BIN="${resolve(config.resolvedDataDir, 'bin', 'shadow')}"
+if [ -x "$SHADOW_BIN" ]; then
+  SHADOW_CLI="$SHADOW_BIN"
+else
+  # Dev fallback: use tsx directly from project
+  SHADOW_CLI="$SHADOW_DIR/node_modules/.bin/tsx $SHADOW_DIR/src/cli.ts"
+  if [ ! -x "$SHADOW_DIR/node_modules/.bin/tsx" ]; then
+    SHADOW_CLI="npx --prefix $SHADOW_DIR tsx $SHADOW_DIR/src/cli.ts"
+  fi
 fi
 CACHE_FILE="${config.resolvedDataDir}/statusline-cache.txt"
 CACHE_TTL=15
@@ -381,12 +412,18 @@ echo -e "$OUTPUT" > "$CACHE_FILE"
 `, 'utf8');
 
         // Session start hook script
+        const sessionBinPath = resolve(config.resolvedDataDir, 'bin', 'shadow');
         writeFileSync(sessionStartPath, `#!/bin/bash
 # Shadow SessionStart hook — injects personality and context
-SHADOW_DIR="${projectRoot}"
-TSX="$SHADOW_DIR/node_modules/.bin/tsx"
-if [ ! -x "$TSX" ]; then TSX="npx --prefix $SHADOW_DIR tsx"; fi
-exec $TSX "$SHADOW_DIR/src/cli.ts" mcp-context 2>/dev/null
+SHADOW_BIN="${sessionBinPath}"
+if [ -x "$SHADOW_BIN" ]; then
+  exec "$SHADOW_BIN" mcp-context 2>/dev/null
+else
+  SHADOW_DIR="${projectRoot}"
+  TSX="$SHADOW_DIR/node_modules/.bin/tsx"
+  if [ ! -x "$TSX" ]; then TSX="npx --prefix $SHADOW_DIR tsx"; fi
+  exec $TSX "$SHADOW_DIR/src/cli.ts" mcp-context 2>/dev/null
+fi
 `, 'utf8');
 
         // Post-tool-use hook script (auto-learning)
@@ -504,22 +541,34 @@ fi
         if (alreadyInstalled) {
           daemonResult = { launchd: 'already installed', plist: plistPath };
         } else if (process.platform === 'darwin') {
-          // Ask user for permission via interactive prompt
-          const { createInterface } = await import('node:readline');
-          const rl = createInterface({ input: process.stdin, output: process.stdout });
+          // Non-interactive mode (piped stdin): auto-accept
+          const isInteractive = process.stdin.isTTY === true;
+          let answer = '';
 
-          const answer = await new Promise<string>((resolve) => {
-            rl.question(
-              '\n🌑 Install Shadow daemon as a system service?\n' +
-              '  This keeps Shadow running in the background permanently.\n' +
-              '  It will auto-start on login and restart if it crashes.\n' +
-              '  Install to ~/Library/LaunchAgents/com.shadow.daemon.plist? [Y/n] ',
-              (ans) => { rl.close(); resolve(ans); },
-            );
-          });
+          if (isInteractive) {
+            const { createInterface } = await import('node:readline');
+            const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+            answer = await new Promise<string>((resolve) => {
+              rl.question(
+                '\n🌑 Install Shadow daemon as a system service?\n' +
+                '  This keeps Shadow running in the background permanently.\n' +
+                '  It will auto-start on login and restart if it crashes.\n' +
+                '  Install to ~/Library/LaunchAgents/com.shadow.daemon.plist? [Y/n] ',
+                (ans) => { rl.close(); resolve(ans); },
+              );
+            });
+          }
 
           if (answer === '' || answer.toLowerCase().startsWith('y')) {
             mkdirSync(launchAgentDir, { recursive: true });
+
+            const runner = resolveDaemonRunner();
+            // Build PATH that includes the directory of the resolved node binary
+            const nodeBinDir = dirname(runner.command);
+            const envPath = [nodeBinDir, `${homedir()}/.local/bin`, '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', '/bin']
+              .filter((v, i, a) => a.indexOf(v) === i)  // dedupe
+              .join(':');
 
             const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -529,11 +578,11 @@ fi
   <string>com.shadow.daemon</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${resolve(projectRoot, 'node_modules', '.bin', 'tsx')}</string>
-    <string>${resolve(shadowSrcDir, 'daemon', 'runtime.ts')}</string>
+    <string>${runner.command}</string>
+${runner.args.map(a => `    <string>${a}</string>`).join('\n')}
   </array>
   <key>WorkingDirectory</key>
-  <string>${projectRoot}</string>
+  <string>${runner.cwd}</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -548,7 +597,7 @@ fi
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>${homedir()}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <string>${envPath}</string>
     <key>SHADOW_DATA_DIR</key>
     <string>${config.resolvedDataDir}</string>
   </dict>
@@ -570,10 +619,11 @@ fi
             daemonResult = { launchd: 'skipped by user' };
             // Fallback: start daemon manually
             const { spawn } = await import('node:child_process');
+            const runner = resolveDaemonRunner();
             const child = spawn(
-              'npx',
-              ['tsx', join(shadowSrcDir, 'daemon', 'runtime.ts')],
-              { detached: true, stdio: 'ignore', env: { ...process.env }, cwd: projectRoot },
+              runner.command,
+              runner.args,
+              { detached: true, stdio: 'ignore', env: { ...process.env }, cwd: runner.cwd },
             );
             child.unref();
             daemonResult.fallback = { pid: child.pid };
@@ -581,10 +631,11 @@ fi
         } else {
           // Non-macOS: fallback to manual daemon start
           const { spawn } = await import('node:child_process');
+          const runner = resolveDaemonRunner();
           const child = spawn(
-            'npx',
-            ['tsx', join(shadowSrcDir, 'daemon', 'runtime.ts')],
-            { detached: true, stdio: 'ignore', env: { ...process.env }, cwd: projectRoot },
+            runner.command,
+            runner.args,
+            { detached: true, stdio: 'ignore', env: { ...process.env }, cwd: runner.cwd },
           );
           child.unref();
           daemonResult = { launchd: 'not available (not macOS)', fallback: { pid: child.pid } };
