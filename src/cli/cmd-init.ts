@@ -522,12 +522,12 @@ fi
 
         settings.hooks = hooks;
 
-        // Add MCP server
+        // Clean up legacy MCP entry from settings.json (was incorrectly placed here before)
         const mcpServers = (settings.mcpServers ?? {}) as Record<string, unknown>;
-        mcpServers.shadow = {
-          type: 'http',
-          url: 'http://localhost:3700/api/mcp',
-        };
+        if ('shadow' in mcpServers) {
+          delete mcpServers.shadow;
+          console.error('[init] Removed legacy MCP entry from settings.json');
+        }
         settings.mcpServers = mcpServers;
 
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
@@ -641,9 +641,40 @@ ${runner.args.map(a => `    <string>${a}</string>`).join('\n')}
           daemonResult = { launchd: 'not available (not macOS)', fallback: { pid: child.pid } };
         }
 
+        // Register MCP server via `claude mcp add` (the correct way for Claude Code)
+        let mcpResult: Record<string, unknown> = {};
+        const claudeBin = config.claudeBin || 'claude';
+        try {
+          const { execSync } = await import('node:child_process');
+          // Check if already registered
+          const existing = execSync(`${claudeBin} mcp get shadow 2>&1`, { encoding: 'utf8', timeout: 10000 }).trim();
+          if (existing.includes('Status:')) {
+            mcpResult = { mcp: 'already registered' };
+            console.error('[init] MCP server shadow already registered');
+          } else {
+            throw new Error('not found');
+          }
+        } catch {
+          // Not registered yet — add it
+          try {
+            const { execSync } = await import('node:child_process');
+            execSync(
+              `${claudeBin} mcp add --transport http -s user shadow http://localhost:3700/api/mcp`,
+              { encoding: 'utf8', timeout: 10000 },
+            );
+            mcpResult = { mcp: 'registered via claude mcp add' };
+            console.error('[init] MCP server shadow registered via claude mcp add');
+          } catch (e) {
+            mcpResult = { mcp: 'failed to register', error: String(e) };
+            console.error('[init] Failed to register MCP server — Claude CLI may not be installed');
+            console.error('[init] Run manually: claude mcp add --transport http -s user shadow http://localhost:3700/api/mcp');
+          }
+        }
+
         return {
           ok: true,
           daemon: daemonResult,
+          mcp: mcpResult,
           home: config.resolvedDataDir,
           databasePath: config.resolvedDatabasePath,
           artifactsDir: config.resolvedArtifactsDir,
@@ -660,7 +691,6 @@ ${runner.args.map(a => `    <string>${a}</string>`).join('\n')}
           proactivityLevel: config.proactivityLevel,
           personalityLevel: config.personalityLevel,
           nextSteps: [
-            'Run: claude mcp add shadow --scope user -- npx tsx ' + resolve(shadowSrcDir, 'cli.ts') + ' mcp serve',
             'Restart Claude Code',
             'Say "Shadow, que tal?"',
           ],
