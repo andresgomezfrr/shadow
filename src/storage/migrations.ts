@@ -713,6 +713,13 @@ export const migrations: Migration[] = [
       ALTER TABLE user_profile ADD COLUMN mood_phrase TEXT;
     `,
   },
+  {
+    version: 34,
+    name: 'repo_last_remote_head',
+    sql: `
+      ALTER TABLE repos ADD COLUMN last_remote_head TEXT;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

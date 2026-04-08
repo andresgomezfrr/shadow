@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
-import { fetchProjectDetail, triggerJobWithParams } from '../../api/client';
+import { fetchProjectDetail, fetchProjectEnrichment, triggerJobWithParams } from '../../api/client';
 import { Badge } from '../common/Badge';
+import { Pagination } from '../common/Pagination';
 import { Markdown } from '../common/Markdown';
 import { ScoreBar } from '../common/ScoreBar';
 import { SEVERITY_COLORS, LAYER_COLORS } from '../../api/types';
@@ -33,6 +34,15 @@ export function ProjectDetailPage() {
   const { data, refresh } = useApi(() => fetchProjectDetail(id!), [id], 30_000);
   const [analyzeTriggered, setAnalyzeTriggered] = useState(false);
   const [profileTriggered, setProfileTriggered] = useState(false);
+
+  // Enrichment pagination (independent fetch)
+  const ENRICH_LIMIT = 10;
+  const [enrichOffset, setEnrichOffset] = useState(0);
+  const { data: enrichData } = useApi(
+    () => id ? fetchProjectEnrichment(id, { limit: ENRICH_LIMIT, offset: enrichOffset }) : Promise.resolve(null),
+    [id, enrichOffset],
+    30_000,
+  );
 
   const handleAnalyze = useCallback(() => {
     if (analyzeTriggered || !id) return;
@@ -293,11 +303,14 @@ export function ProjectDetailPage() {
       </div>
 
       {/* Enrichment */}
-      {data.enrichment.length > 0 && (
+      {enrichData && enrichData.total > 0 && (
         <div className="mb-6">
-          <h2 className="text-lg font-medium mb-3">External Context</h2>
+          <h2 className="text-lg font-medium mb-3">
+            External Context
+            <span className="text-sm text-text-muted font-normal ml-2">({enrichData.total})</span>
+          </h2>
           <div className="space-y-2">
-            {data.enrichment.map((e) => (
+            {enrichData.items.map((e) => (
               <div key={e.id} className="bg-card border border-border rounded p-3">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge className="text-cyan bg-cyan/15">{e.source}</Badge>
@@ -307,6 +320,12 @@ export function ProjectDetailPage() {
               </div>
             ))}
           </div>
+          <Pagination
+            total={enrichData.total}
+            offset={enrichOffset}
+            limit={ENRICH_LIMIT}
+            onChange={setEnrichOffset}
+          />
         </div>
       )}
 

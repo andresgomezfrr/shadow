@@ -80,27 +80,47 @@ export function remoteSyncRepos(db: ShadowDatabase, batchSize: number, repoId?: 
     }
 
     // Step 2: Selective fetch — remote has changes
+    const defaultBranch = repo.defaultBranch || 'main';
+    const oldRemoteHead = repo.lastRemoteHead;
+
     const fetchResult = gitExec('git fetch --prune', repo.path, 30_000);
     if (fetchResult === null) {
       // Fetch failed — don't update timestamp so we retry next cycle
       continue;
     }
 
-    // Step 3: Count behind commits + get messages
-    const defaultBranch = repo.defaultBranch || 'main';
+    // Step 2b: Fast-forward local branch if possible (safe — fails if diverged)
+    gitExec(`git merge --ff-only origin/${defaultBranch}`, repo.path, 10_000);
+
+    // Step 3: Count NEW remote commits since last sync (delta, not total behind)
+    const newRemoteHead = gitExec(`git rev-parse origin/${defaultBranch}`, repo.path);
+
+    let newRemoteCommits = 0;
+    let commitMessages: string[] = [];
+
+    if (oldRemoteHead && newRemoteHead && oldRemoteHead !== newRemoteHead) {
+      // Delta: commits between last known remote head and current remote head
+      const countStr = gitExec(`git rev-list --count ${oldRemoteHead}..origin/${defaultBranch}`, repo.path);
+      newRemoteCommits = countStr ? parseInt(countStr, 10) : 0;
+      const msgs = gitExec(`git log ${oldRemoteHead}..origin/${defaultBranch} --format="%h %s" -n 10`, repo.path);
+      commitMessages = msgs ? msgs.split('\n').filter(Boolean) : [];
+    } else if (!oldRemoteHead) {
+      // First sync for this repo — count behind as initial baseline
+      const countStr = gitExec(`git rev-list --count HEAD..origin/${defaultBranch}`, repo.path);
+      newRemoteCommits = countStr ? parseInt(countStr, 10) : 0;
+      const msgs = gitExec(`git log HEAD..origin/${defaultBranch} --format="%h %s" -n 10`, repo.path);
+      commitMessages = msgs ? msgs.split('\n').filter(Boolean) : [];
+    }
+    // else: oldRemoteHead === newRemoteHead → 0 new commits
+
+    // Current local divergence (for observations)
     const behindCount = gitExec(`git rev-list --count HEAD..origin/${defaultBranch}`, repo.path);
     const aheadCount = gitExec(`git rev-list --count origin/${defaultBranch}..HEAD`, repo.path);
-    const newMessages = gitExec(`git log HEAD..origin/${defaultBranch} --format="%h %s" -n 10`, repo.path);
-
     const behind = behindCount ? parseInt(behindCount, 10) : 0;
     const ahead = aheadCount ? parseInt(aheadCount, 10) : 0;
 
     const behindBranches = behind > 0 || ahead > 0
       ? [{ branch: defaultBranch, behind, ahead }]
-      : [];
-
-    const commitMessages = newMessages
-      ? newMessages.split('\n').filter(Boolean)
       : [];
 
     // Step 4: Find affected entities via relationship graph
@@ -109,12 +129,12 @@ export function remoteSyncRepos(db: ShadowDatabase, batchSize: number, repoId?: 
       affectedEntities = db.getRelatedEntities('repo', repo.id, { direction: 'both', maxDepth: 1 });
     } catch { /* graph not available */ }
 
-    db.updateRepo(repo.id, { lastFetchedAt: now });
+    db.updateRepo(repo.id, { lastFetchedAt: now, lastRemoteHead: newRemoteHead ?? undefined });
 
     results.push({
       repoId: repo.id,
       repoName: repo.name,
-      newRemoteCommits: behind,
+      newRemoteCommits,
       behindBranches,
       newCommitMessages: commitMessages,
       affectedEntities,

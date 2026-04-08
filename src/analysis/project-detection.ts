@@ -21,6 +21,7 @@ type Signal = {
  * 1. File paths in interactions → repos → projects (weight 2)
  * 2. Conversation keyword mentions of project names (weight 1)
  * 3. Active observations linked to projects (weight 0.5)
+ * 4. Repos with recent remote commits → projects (weight 1)
  *
  * Returns top 3 projects with score >= threshold.
  */
@@ -28,6 +29,7 @@ export function detectActiveProjects(
   db: ShadowDatabase,
   interactions: Array<{ file: string; tool: string; ts: string }>,
   conversations: Array<{ text: string }>,
+  remoteSyncResults?: Array<{ repoId: string; newRemoteCommits: number }>,
 ): ActiveProject[] {
   const projects = db.listProjects({ status: 'active' });
   if (projects.length === 0) return [];
@@ -90,6 +92,19 @@ export function detectActiveProjects(
     const projectLinks = (obs.entities ?? []).filter(e => e.type === 'project');
     for (const link of projectLinks) {
       signals.push({ projectId: link.id, weight: 0.5 });
+    }
+  }
+
+  // Signal 4: Repos with recent remote commits → projects (weight 1)
+  if (remoteSyncResults) {
+    for (const rs of remoteSyncResults) {
+      if (rs.newRemoteCommits <= 0) continue;
+      const linked = repoToProjects.get(rs.repoId);
+      if (linked) {
+        for (const project of linked) {
+          signals.push({ projectId: project.id, weight: 1 });
+        }
+      }
     }
   }
 

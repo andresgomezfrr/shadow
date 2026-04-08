@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 import type { ShadowConfig } from '../config/load-config.js';
 import type { ShadowDatabase } from '../storage/database.js';
 import { selectAdapter } from '../backend/index.js';
@@ -7,209 +5,290 @@ import { discoverMcpServerNames } from '../observation/mcp-discovery.js';
 
 // --- Types ---
 
-type EnrichmentPlan = {
-  queries: Array<{
-    mcpServer: string;
-    intent: string;
-    entityType?: string;
-    entityName?: string;
-  }>;
+type ActiveProjectInput = { projectId: string; projectName: string; score: number };
+
+type PerProjectResult = {
+  projectId: string;
+  projectName: string;
+  itemsCollected: number;
+  sources: string[];
+  findings: Array<{ source: string; summary: string }>;
+  error?: string;
 };
 
-type EnrichmentResult = {
-  items: Array<{
-    source: string;
-    entityType?: string;
-    entityName?: string;
-    summary: string;
-    detail?: Record<string, unknown>;
-  }>;
+type EnrichResult = {
+  itemsCollected: number;
+  llmCalls: number;
+  tokensUsed: number;
+  projectResults?: PerProjectResult[];
 };
 
 // --- Helpers ---
 
-function contentHash(source: string, summary: string): string {
-  return createHash('sha256').update(`${source}:${summary}`).digest('hex').slice(0, 16);
+function buildServerDescriptions(db: ShadowDatabase, enabledServers: string[]): string {
+  const descriptions = db.listEnrichment({ source: 'mcp-discover' });
+  if (descriptions.length === 0) return 'No server descriptions available.';
+  // Only include enabled servers
+  const enabled = descriptions.filter(d => d.entityName && enabledServers.includes(d.entityName));
+  if (enabled.length === 0) return 'No enabled servers with descriptions.';
+  return enabled.map(d => {
+    const detail = d.detail as Record<string, unknown> | undefined;
+    const toolCount = detail?.toolCount as number | undefined;
+    const ttl = detail?.defaultTtl as string | undefined;
+    const hint = detail?.enrichmentHint as string | undefined;
+    let line = `- **${d.entityName}**${toolCount ? ` (${toolCount} tools` : ''}${ttl ? `, TTL: ${ttl}` : ''}${toolCount ? ')' : ''}: ${d.summary}`;
+    if (hint) line += `\n  → Enrichment: ${hint}`;
+    return line;
+  }).join('\n');
+}
+
+function buildEnrichPrompt(
+  projectName: string,
+  repoNames: string[],
+  systemNames: string[],
+  serverDescriptions: string,
+  projectId: string,
+): string {
+  return [
+    `You are Shadow's enrichment agent for project: ${projectName}`,
+    '',
+    '## Project',
+    `ID: ${projectId}`,
+    repoNames.length > 0 ? `Repos: ${repoNames.join(', ')}` : 'Repos: none',
+    systemNames.length > 0 ? `Systems: ${systemNames.join(', ')}` : '',
+    '',
+    '## Available MCP servers',
+    serverDescriptions,
+    '',
+    '## Tool usage',
+    '- **shadow_*** tools: read Shadow\'s knowledge (memories, project details) and write results (shadow_enrichment_write).',
+    '- **All other tools** (listed above with enrichment hints): query external live data. Read-only.',
+    '',
+    '## Instructions',
+    '1. Use shadow_memory_search to find memories about this project —',
+    '   tool configurations, service identifiers, channel names, workflows.',
+    '2. You MUST query at least one external MCP server (non-shadow).',
+    '   Use the enrichment hints above and what you learned from memories to make precise queries.',
+    '3. For each useful finding, call shadow_enrichment_write with:',
+    '   - projectId: the project ID shown above',
+    '   - source: the name of the external MCP server you queried',
+    '   - summary: a concise 1-2 sentence finding',
+    '4. Skip external servers that are not relevant to this project.',
+  ].filter(Boolean).join('\n');
+}
+
+function buildPostEnrichPrompt(findingSummaries: string): string {
+  return [
+    'You are Shadow\'s memory analyst. Review these enrichment findings and decide',
+    'which contain STABLE KNOWLEDGE worth remembering across sessions.',
+    '',
+    '## Findings',
+    findingSummaries,
+    '',
+    '## What to promote to memory',
+    '- Facts that won\'t change soon: missing SLOs, architecture patterns, runbook locations,',
+    '  service configurations, team conventions, deployment tools, infrastructure details',
+    '- Use shadow_memory_teach with appropriate kind (workflow, team_knowledge, tech_stack)',
+    '  and layer (core for permanent, warm for weeks, hot for days)',
+    '- Link to the relevant project using entityType and entityId if applicable',
+    '',
+    '## What NOT to promote',
+    '- Transient state: current alert status, today\'s deployments, active incidents, PR counts',
+    '- Information already in existing memories (use shadow_memory_search to check first)',
+    '',
+    'Only call shadow_memory_teach if you find genuinely stable knowledge.',
+    'If nothing is worth remembering, do nothing.',
+  ].join('\n');
 }
 
 // --- Main ---
 
 /**
- * 2-phase enrichment:
- * 1. Planning: ask LLM what external data would be useful (Sonnet, JSON-only)
- * 2. Execution: LLM uses MCP tools to gather the data
+ * Agent-based enrichment: single Opus call per active project.
  *
- * Results are stored in enrichment_cache with content_hash dedup.
+ * The LLM uses Shadow's MCP tools (memory search, project detail) to learn
+ * domain context, then queries external MCP servers and writes findings
+ * directly to the DB via shadow_enrichment_write.
+ *
+ * No JSON parsing needed — data flows through tool calls end-to-end.
  */
 export async function activityEnrich(
   db: ShadowDatabase,
   config: ShadowConfig,
-): Promise<{ itemsCollected: number; llmCalls: number; tokensUsed: number }> {
-  const mcpServers = discoverMcpServerNames();
+  activeProjects?: ActiveProjectInput[],
+): Promise<EnrichResult> {
+  const enrichStartTime = new Date().toISOString();
+  const allServers = discoverMcpServerNames();
+  const profile = db.ensureProfile();
+  const prefs = profile.preferences as Record<string, unknown> | undefined;
+  const disabledServers = (prefs?.enrichmentDisabledServers as string[] | undefined) ?? [];
+  const mcpServers = allServers.filter(s => !disabledServers.includes(s));
+
   if (mcpServers.length === 0) {
-    console.error('[shadow:enrich] No external MCP servers found — skipping');
+    console.error(`[shadow:enrich] No enabled MCP servers (${allServers.length} discovered, ${disabledServers.length} disabled) — skipping`);
     return { itemsCollected: 0, llmCalls: 0, tokensUsed: 0 };
   }
 
   const adapter = selectAdapter(config);
-  let llmCalls = 0;
-  let tokensUsed = 0;
-  let itemsCollected = 0;
+  const prefModels = (prefs?.models ?? {}) as Record<string, string>;
+  const model = prefModels.enrich ?? config.models.enrich;
+  const prefEfforts = (prefs?.efforts ?? {}) as Record<string, string>;
+  const effort = prefEfforts.enrich ?? config.efforts.enrich;
+  const serverDescriptions = buildServerDescriptions(db, mcpServers);
 
-  // Context for planning
+  // Build per-server allowedTools wildcards (mcp__* alone doesn't grant tool-call permission)
+  const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_]/g, '_');
+  const mcpToolWildcards = mcpServers.map(s => `mcp__${sanitize(s)}__*`);
+
+  let totalItems = 0;
+  let totalLlmCalls = 0;
+  let totalTokens = 0;
+
+  // ========== PROJECT-SCOPED ENRICHMENT ==========
+  if (activeProjects && activeProjects.length > 0) {
+    const projectResults: PerProjectResult[] = [];
+
+    for (const ap of activeProjects) {
+      const pr: PerProjectResult = {
+        projectId: ap.projectId, projectName: ap.projectName,
+        itemsCollected: 0, sources: [], findings: [],
+      };
+      const phaseStart = new Date().toISOString();
+
+      try {
+        const project = db.getProject(ap.projectId);
+        if (!project) { pr.error = 'project not found'; projectResults.push(pr); continue; }
+
+        const repoNames = (project.repoIds ?? []).map(id => db.getRepo(id)?.name).filter(Boolean) as string[];
+        const systemNames = (project.systemIds ?? []).map(id => db.getSystem(id)).filter(Boolean).map(s => `${s!.name} (${s!.kind})`) as string[];
+
+        const prompt = buildEnrichPrompt(project.name, repoNames, systemNames, serverDescriptions, project.id);
+
+        console.error(`[shadow:enrich] Starting enrichment for ${project.name} (${repoNames.length} repos)`);
+
+        const result = await adapter.execute({
+          repos: [],
+          title: `Enrich: ${project.name}`,
+          goal: `Gather external context for ${project.name} via MCP servers`,
+          prompt,
+          relevantMemories: [],
+          model,
+          effort,
+          systemPrompt: null,       // LLM uses tools freely
+          allowedTools: mcpToolWildcards, // Per-server wildcards for tool-call permission
+        });
+        totalLlmCalls++;
+        totalTokens += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+        db.recordLlmUsage({
+          source: 'enrichment', sourceId: project.id, model,
+          inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0,
+        });
+
+        // Count items written via shadow_enrichment_write during this execution
+        const newItems = db.listEnrichment({ entityId: project.id, createdSince: phaseStart, limit: 50 });
+        pr.itemsCollected = newItems.length;
+        pr.sources = [...new Set(newItems.map(i => i.source))];
+        pr.findings = newItems.map(i => ({ source: i.source, summary: i.summary }));
+        totalItems += pr.itemsCollected;
+
+        console.error(`[shadow:enrich] ${project.name}: ${pr.itemsCollected} items from ${pr.sources.join(', ') || 'no sources'}`);
+      } catch (e) {
+        pr.error = e instanceof Error ? e.message : String(e);
+        console.error(`[shadow:enrich] Project ${ap.projectName} failed:`, pr.error);
+      }
+
+      projectResults.push(pr);
+    }
+
+    // ========== POST-ENRICHMENT: promote stable findings to memory ==========
+    if (totalItems > 0) {
+      try {
+        const allNewFindings = db.listEnrichment({ createdSince: enrichStartTime, limit: 50 });
+        const findingSummaries = allNewFindings
+          .map(f => `[${f.source}] (${f.entityName}): ${f.summary}`)
+          .join('\n');
+
+        if (findingSummaries) {
+          console.error(`[shadow:enrich] Post-analysis: reviewing ${allNewFindings.length} findings for stable knowledge`);
+          const postResult = await adapter.execute({
+            repos: [],
+            title: 'Enrichment: memory analysis',
+            goal: 'Promote stable findings to long-term memory',
+            prompt: buildPostEnrichPrompt(findingSummaries),
+            relevantMemories: [],
+            model,
+            effort,
+            systemPrompt: null,
+            allowedTools: ['mcp__shadow__*'],
+          });
+          totalLlmCalls++;
+          totalTokens += (postResult.inputTokens ?? 0) + (postResult.outputTokens ?? 0);
+          db.recordLlmUsage({
+            source: 'enrichment_post', sourceId: null, model,
+            inputTokens: postResult.inputTokens ?? 0, outputTokens: postResult.outputTokens ?? 0,
+          });
+        }
+      } catch (e) {
+        console.error('[shadow:enrich] Post-analysis failed:', e instanceof Error ? e.message : e);
+      }
+    }
+
+    db.expireStaleEnrichment();
+    return { itemsCollected: totalItems, llmCalls: totalLlmCalls, tokensUsed: totalTokens, projectResults };
+  }
+
+  // ========== GENERIC ENRICHMENT (fallback — no active projects) ==========
   const projects = db.listProjects({ status: 'active' });
-  const systems = db.listSystems();
   const repos = db.listRepos();
-  const recentObs = db.listObservations({ status: 'active', limit: 10 });
 
-  const contextSummary = [
-    projects.length > 0 ? `Active projects: ${projects.map(p => p.name).join(', ')}` : '',
-    systems.length > 0 ? `Systems: ${systems.map(s => `${s.name} (${s.kind})`).join(', ')}` : '',
-    `Repos: ${repos.slice(0, 10).map(r => r.name).join(', ')}`,
-    recentObs.length > 0 ? `Recent observations: ${recentObs.slice(0, 5).map(o => o.title).join('; ')}` : '',
+  const allRepoNames = repos.slice(0, 10).map(r => r.name);
+  const allProjectNames = projects.map(p => p.name);
+
+  const prompt = [
+    'You are Shadow\'s enrichment agent.',
+    '',
+    '## Context',
+    allProjectNames.length > 0 ? `Projects: ${allProjectNames.join(', ')}` : '',
+    `Repos: ${allRepoNames.join(', ')}`,
+    '',
+    '## Available MCP servers',
+    serverDescriptions,
+    '',
+    '## Instructions',
+    '1. Use shadow_memory_search to find memories about tools, workflows, JIRA projects.',
+    '2. Decide which MCP servers are relevant and query them.',
+    '3. For each useful finding, call shadow_enrichment_write with the relevant projectId.',
+    '   Use shadow_projects to find project IDs if needed.',
+    '4. Skip MCP servers that are not relevant.',
+    '',
+    'Focus on external context you cannot learn from the codebase.',
+    'Do NOT read local files or code — only use MCP tools.',
   ].filter(Boolean).join('\n');
 
-  // Already cached (don't re-fetch)
-  const recentCache = db.listEnrichment({ limit: 20 });
-  const cachedSummaries = recentCache.map(c => `- [${c.source}] ${c.summary}`).join('\n');
-
-  // ========== PHASE 1: Plan what to query ==========
-  const planPrompt = [
-    'You are Shadow\'s enrichment planner. The developer has these MCP servers available:',
-    mcpServers.map(s => `- ${s}`).join('\n'),
-    '',
-    '## Developer context',
-    contextSummary,
-    '',
-    cachedSummaries ? `## Already cached (DO NOT re-query)\n${cachedSummaries}\n` : '',
-    '',
-    'Plan up to 3 enrichment queries that would provide useful EXTERNAL context.',
-    'Focus on: deployment status, monitoring alerts, CI/CD pipeline state, calendar events, open PRs, ticket status.',
-    'Only suggest queries for MCP servers that are actually available above.',
-    '',
-    'Return JSON:',
-    '{ "queries": [{ "mcpServer": string, "intent": string, "entityType": "project"|"system"|"repo"|null, "entityName": string|null }] }',
-    '',
-    'Return { "queries": [] } if no useful enrichment is needed right now.',
-    'Respond with JSON only.',
-  ].join('\n');
-
-  // Resolve configurable models
-  const profile = db.ensureProfile();
-  const prefs = profile.preferences as Record<string, unknown> | undefined;
-  const prefModels = prefs?.models as Record<string, string> | undefined;
-  const planModel = prefModels?.enrichPlan ?? config.models.enrichPlan;
-  const execModel = prefModels?.enrichExecute ?? config.models.enrichExecute;
-
-  let plan: EnrichmentPlan = { queries: [] };
+  const phaseStart = new Date().toISOString();
 
   try {
-    const planResult = await adapter.execute({
-      repos: [], title: 'Enrichment Plan', goal: 'Plan external data queries',
-      prompt: planPrompt, relevantMemories: [], model: planModel, effort: 'low',
+    const result = await adapter.execute({
+      repos: [], title: 'Enrichment', goal: 'Gather external context via MCP servers',
+      prompt, relevantMemories: [], model, effort,
+      systemPrompt: null, allowedTools: ['mcp__*'],
     });
-    llmCalls++;
-    tokensUsed += (planResult.inputTokens ?? 0) + (planResult.outputTokens ?? 0);
-    db.recordLlmUsage({ source: 'enrichment_plan', sourceId: null, model: planModel, inputTokens: planResult.inputTokens ?? 0, outputTokens: planResult.outputTokens ?? 0 });
-
-    if (planResult.status === 'success' && planResult.output) {
-      try {
-        const parsed = JSON.parse(planResult.output) as EnrichmentPlan;
-        if (parsed.queries && Array.isArray(parsed.queries)) {
-          plan = parsed;
-        }
-      } catch {
-        console.error('[shadow:enrich] Failed to parse plan');
-      }
-    }
-  } catch (e) {
-    console.error('[shadow:enrich] Planning failed:', e instanceof Error ? e.message : e);
-    return { itemsCollected: 0, llmCalls, tokensUsed };
-  }
-
-  if (plan.queries.length === 0) {
-    console.error('[shadow:enrich] No enrichment queries planned');
-    return { itemsCollected: 0, llmCalls, tokensUsed };
-  }
-
-  console.error(`[shadow:enrich] Planned ${plan.queries.length} queries: ${plan.queries.map(q => `${q.mcpServer}:${q.intent.slice(0, 40)}`).join(', ')}`);
-
-  // ========== PHASE 2: Execute queries via MCP ==========
-  const execPrompt = [
-    'Execute the following enrichment queries using the available MCP tools.',
-    'For each query, call the appropriate MCP tool and summarize what you learn.',
-    '',
-    '## Queries',
-    ...plan.queries.map((q, i) => `${i + 1}. **${q.mcpServer}**: ${q.intent}${q.entityName ? ` (for ${q.entityType}: ${q.entityName})` : ''}`),
-    '',
-    'Return JSON with your findings:',
-    '{ "items": [{ "source": string, "entityType": string|null, "entityName": string|null, "summary": string, "detail": {} }] }',
-    '',
-    'Each item.source should be the MCP server name.',
-    'summary should be a concise 1-2 sentence finding.',
-    'detail can include structured data (timestamps, counts, URLs).',
-    'If a query fails or returns nothing useful, omit it from items.',
-    'Respond with JSON only.',
-  ].join('\n');
-
-  try {
-    const execResult = await adapter.execute({
-      repos: [], title: 'Enrichment Execute', goal: 'Gather external context via MCP',
-      prompt: execPrompt, relevantMemories: [], model: execModel, effort: 'medium',
-      systemPrompt: null, // MCP access
-      allowedTools: ['mcp__*'], // Access ALL user MCP servers
+    totalLlmCalls++;
+    totalTokens += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    db.recordLlmUsage({
+      source: 'enrichment', sourceId: null, model,
+      inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0,
     });
-    llmCalls++;
-    tokensUsed += (execResult.inputTokens ?? 0) + (execResult.outputTokens ?? 0);
-    db.recordLlmUsage({ source: 'enrichment_execute', sourceId: null, model: execModel, inputTokens: execResult.inputTokens ?? 0, outputTokens: execResult.outputTokens ?? 0 });
 
-    if (execResult.status === 'success' && execResult.output) {
-      try {
-        const parsed = JSON.parse(execResult.output) as EnrichmentResult;
-        if (parsed.items && Array.isArray(parsed.items)) {
-          for (const item of parsed.items) {
-            if (!item.source || !item.summary) continue;
-            const hash = contentHash(item.source, item.summary);
-
-            // Resolve entity ID if entityName provided
-            let entityId: string | undefined;
-            if (item.entityType && item.entityName) {
-              if (item.entityType === 'project') {
-                entityId = db.findProjectByName(item.entityName)?.id;
-              } else if (item.entityType === 'system') {
-                entityId = db.listSystems().find(s => s.name.toLowerCase() === item.entityName!.toLowerCase())?.id;
-              } else if (item.entityType === 'repo') {
-                entityId = db.listRepos().find(r => r.name.toLowerCase() === item.entityName!.toLowerCase())?.id;
-              }
-            }
-
-            db.upsertEnrichment({
-              source: item.source,
-              entityType: item.entityType,
-              entityId,
-              entityName: item.entityName,
-              summary: item.summary,
-              detail: item.detail,
-              contentHash: hash,
-              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h TTL
-            });
-            itemsCollected++;
-          }
-          console.error(`[shadow:enrich] Collected ${itemsCollected} items from ${new Set(parsed.items.map(i => i.source)).size} sources`);
-        }
-      } catch {
-        console.error('[shadow:enrich] Failed to parse execution results');
-      }
-    }
+    const newItems = db.listEnrichment({ createdSince: phaseStart, limit: 50 });
+    totalItems = newItems.length;
+    console.error(`[shadow:enrich] Generic enrichment: ${totalItems} items from ${new Set(newItems.map(i => i.source)).size} sources`);
   } catch (e) {
-    console.error('[shadow:enrich] Execution failed:', e instanceof Error ? e.message : e);
+    console.error('[shadow:enrich] Generic enrichment failed:', e instanceof Error ? e.message : e);
   }
 
-  // Expire stale entries
-  const expired = db.expireStaleEnrichment();
-  if (expired > 0) console.error(`[shadow:enrich] Expired ${expired} stale entries`);
-
-  return { itemsCollected, llmCalls, tokensUsed };
+  db.expireStaleEnrichment();
+  return { itemsCollected: totalItems, llmCalls: totalLlmCalls, tokensUsed: totalTokens };
 }
 
 /**
@@ -225,10 +304,35 @@ export function buildEnrichmentContext(db: ShadowDatabase): string | undefined {
     return `- [${item.source}]${entityLabel}: ${item.summary}`;
   });
 
-  // Mark as reported
   for (const item of newItems) {
     db.markEnrichmentReported(item.id);
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Get enrichment summary for injection into prompts.
+ * Does NOT mark as reported — reusable by multiple consumers.
+ */
+export function getEnrichmentSummary(
+  db: ShadowDatabase,
+  opts?: { projectId?: string; entityType?: string; limit?: number },
+): string | undefined {
+  const items = db.listEnrichment({
+    entityType: opts?.entityType,
+    entityId: opts?.projectId,
+    limit: opts?.limit ?? 10,
+  });
+
+  // Filter out expired items
+  const now = new Date().toISOString();
+  const valid = items.filter(i => !i.expiresAt || i.expiresAt > now);
+
+  if (valid.length === 0) return undefined;
+
+  return valid.map(item => {
+    const entityLabel = item.entityName ? ` (${item.entityType}: ${item.entityName})` : '';
+    return `- [${item.source}]${entityLabel}: ${item.summary}`;
+  }).join('\n');
 }

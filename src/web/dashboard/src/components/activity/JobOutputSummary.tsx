@@ -92,13 +92,76 @@ export function JobOutputSummary({ entry }: Props) {
   }
 
   if (type === 'context-enrich') {
-    const items = num(r, 'itemsCollected');
+    const totalItems = num(r, 'itemsCollected');
+    const projectResults = r.projectResults as Array<{
+      projectName: string; itemsCollected: number; sources: string[]; error?: string;
+    }> | undefined;
+
+    if (totalItems === 0 && !projectResults?.length) {
+      return <span className="text-text-muted text-xs">no active projects to enrich</span>;
+    }
+
+    if (projectResults && projectResults.length > 0) {
+      const errors = projectResults.filter(p => p.error);
+      const withItems = projectResults.filter(p => p.itemsCollected > 0 && !p.error);
+      const withoutItems = projectResults.filter(p => p.itemsCollected === 0 && !p.error);
+
+      // Per-project breakdown: "Batuta: 4 (oliver, atlassian-mcp), Flyte: 0"
+      const detailTooltip = projectResults
+        .map(p => {
+          if (p.error) return `${p.projectName}: error — ${p.error}`;
+          if (p.itemsCollected === 0) return `${p.projectName}: no findings`;
+          return `${p.projectName}: ${p.itemsCollected} finding${p.itemsCollected !== 1 ? 's' : ''}${p.sources.length > 0 ? ` (${p.sources.join(', ')})` : ''}`;
+        }).join('\n');
+
+      return (
+        <span className="inline-flex items-center gap-1.5 flex-wrap">
+          {withItems.map(p => (
+            <Badge key={p.projectName} className="text-amber-400 bg-amber-400/15" title={p.sources.join(', ')} tooltipBelow>
+              {p.projectName}: {p.itemsCollected}
+            </Badge>
+          ))}
+          {withoutItems.length > 0 && (
+            <span className="text-xs text-text-muted" title={detailTooltip}>
+              {withoutItems.map(p => p.projectName).join(', ')}: no findings
+            </span>
+          )}
+          {errors.length > 0 && (
+            <Badge
+              className="text-red bg-red/15"
+              title={errors.map(p => `${p.projectName}: ${p.error}`).join('\n')}
+              tooltipBelow
+            >
+              {errors.length} error{errors.length !== 1 ? 's' : ''}
+            </Badge>
+          )}
+        </span>
+      );
+    }
+
+    // Fallback: generic enrichment (no project breakdown)
+    if (totalItems === 0) return <span className="text-text-muted text-xs">no findings</span>;
     const sources = arr(r, 'sources');
-    if (items === 0) return <span className="text-text-muted text-xs">no MCP servers to query</span>;
     return (
       <span className="inline-flex items-center gap-1.5">
-        <Badge className="text-amber-400 bg-amber-400/15">{items} item{items !== 1 ? 's' : ''}</Badge>
+        <Badge className="text-amber-400 bg-amber-400/15">{totalItems} finding{totalItems !== 1 ? 's' : ''}</Badge>
         {sources.length > 0 && <span className="text-xs text-text-dim truncate max-w-48">{sources.join(', ')}</span>}
+      </span>
+    );
+  }
+
+  if (type === 'mcp-discover') {
+    const described = num(r, 'serversDescribed');
+    const total = num(r, 'serversTotal');
+    const names = arr(r, 'serverNames');
+    if (described === 0 && total === 0) return <span className="text-text-muted text-xs">no servers</span>;
+    if (described === 0) return <span className="text-text-muted text-xs">{total} servers up to date</span>;
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <Badge className="text-indigo-300 bg-indigo-500/15">
+          {described}/{total} described
+        </Badge>
+        {names.length > 0 && <span className="text-xs text-text-dim truncate max-w-48">{names.slice(0, 4).join(', ')}{names.length > 4 ? '...' : ''}</span>}
       </span>
     );
   }

@@ -83,6 +83,7 @@ export function mapRepo(row: unknown): RepoRecord {
     buildCommand: strOrNull(d.build_command),
     lastObservedAt: strOrNull(d.last_observed_at),
     lastFetchedAt: strOrNull(d.last_fetched_at),
+    lastRemoteHead: strOrNull(d.last_remote_head),
     contextMd: strOrNull(d.context_md),
     contextUpdatedAt: strOrNull(d.context_updated_at),
     createdAt: str(d.created_at),

@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import type { ShadowDatabase } from '../storage/database.js';
 import type { ShadowConfig } from '../config/load-config.js';
 import { selectAdapter } from '../backend/index.js';
+import { getEnrichmentSummary } from './enrichment.js';
 
 // --- Helpers ---
 
@@ -89,6 +90,11 @@ export async function activityDailyDigest(
     '',
     sugAccepted.length > 0 ? `## Suggestions Accepted\n${sugAccepted.map(s => `- ${s.title}`).join('\n')}` : '',
     '',
+    (() => {
+      const es = getEnrichmentSummary(db);
+      return es ? `## External Context (from MCP enrichment)\n${es}\nOnly include external context if it relates to what the developer worked on or was involved in.` : '';
+    })(),
+    '',
     'Respond with markdown only. No JSON wrapping.',
   ].filter(Boolean).join('\n');
 
@@ -162,6 +168,11 @@ export async function activityWeeklyDigest(
     '',
     sugAccepted.length > 0 ? `## Suggestions Accepted\n${sugAccepted.map(s => `- ${s.title}`).join('\n')}` : '',
     highObs.length > 0 ? `## Active Risks\n${highObs.map(o => `- [${o.severity}] ${o.title}`).join('\n')}` : '',
+    '',
+    (() => {
+      const es = getEnrichmentSummary(db);
+      return es ? `## External Context (from MCP enrichment)\n${es}\nOnly include external context if it relates to the developer's work or involvement.` : '';
+    })(),
     '',
     'Respond with markdown only.',
   ].filter(Boolean).join('\n');

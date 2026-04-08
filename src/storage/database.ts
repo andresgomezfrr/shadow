@@ -196,7 +196,7 @@ export class ShadowDatabase {
   findRepoByPath(path: string): RepoRecord | null { return entities.findRepoByPath(this.database, path); }
   listRepos(): RepoRecord[] { return entities.listRepos(this.database); }
   countRepos(): number { return entities.countRepos(this.database); }
-  updateRepo(id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt' | 'lastFetchedAt' | 'contextMd' | 'contextUpdatedAt'>>): void { return entities.updateRepo(this.database, id, updates); }
+  updateRepo(id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt' | 'lastFetchedAt' | 'lastRemoteHead' | 'contextMd' | 'contextUpdatedAt'>>): void { return entities.updateRepo(this.database, id, updates); }
   deleteRepo(id: string): void {
     entities.deleteRepo(this.database, id);
     knowledge.removeEntityReferences(this.database, 'repo', id);
@@ -361,8 +361,8 @@ export class ShadowDatabase {
   upsertEnrichment(input: { source: string; entityType?: string; entityId?: string; entityName?: string; summary: string; detail?: Record<string, unknown>; contentHash: string; expiresAt?: string }): EnrichmentCacheRecord { return enrichmentStore.upsertEnrichment(this.database, input); }
   getEnrichment(id: string): EnrichmentCacheRecord | null { return enrichmentStore.getEnrichment(this.database, id); }
   listNewEnrichment(limit = 20): EnrichmentCacheRecord[] { return enrichmentStore.listNewEnrichment(this.database, limit); }
-  listEnrichment(filters?: { source?: string; reported?: boolean; limit?: number; offset?: number }): EnrichmentCacheRecord[] { return enrichmentStore.listEnrichment(this.database, filters); }
-  countEnrichment(filters?: { source?: string; reported?: boolean }): number { return enrichmentStore.countEnrichment(this.database, filters); }
+  listEnrichment(filters?: { source?: string; entityType?: string; entityId?: string; reported?: boolean; createdSince?: string; limit?: number; offset?: number }): EnrichmentCacheRecord[] { return enrichmentStore.listEnrichment(this.database, filters); }
+  countEnrichment(filters?: { source?: string; entityType?: string; entityId?: string; reported?: boolean }): number { return enrichmentStore.countEnrichment(this.database, filters); }
   markEnrichmentReported(id: string): void { return enrichmentStore.markEnrichmentReported(this.database, id); }
   expireStaleEnrichment(): number { return enrichmentStore.expireStaleEnrichment(this.database); }
 

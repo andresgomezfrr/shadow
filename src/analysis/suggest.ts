@@ -82,6 +82,14 @@ export async function activitySuggest(
       ? `## Repository Context\n${repo.contextMd}\n`
       : '';
 
+    // External context from enrichment
+    const { getEnrichmentSummary } = await import('./enrichment.js');
+    const enrichProjectIds = ctx.activeProjects?.map(ap => ap.projectId) ?? [];
+    const enrichSummaries = enrichProjectIds.map(pid => getEnrichmentSummary(ctx.db, { projectId: pid })).filter(Boolean);
+    const enrichmentSection = enrichSummaries.length > 0
+      ? `## External Context (from MCP enrichment)\n${enrichSummaries.join('\n')}\n`
+      : '';
+
     // Active projects
     const suggestActiveProjects = ctx.activeProjects ?? [];
     const projectContext = suggestActiveProjects.length > 0
@@ -116,6 +124,7 @@ export async function activitySuggest(
       SUGGEST_FORMAT,
       '',
       repoContextSection,
+      enrichmentSection,
       `## Recent Observations (${repo.name})\n${observationSummaries}\n`,
       projectContext ? `## Active Projects\n${projectContext}\n` : '',
       relevantMemories.length > 0 ? `## Relevant Memories\n${memorySummaries}\n` : '',

@@ -18,6 +18,7 @@ const TYPE_COLORS: Record<string, string> = {
   'suggest-project': 'bg-emerald-400/20 text-emerald-300',
   'project-profile': 'bg-emerald-400/20 text-emerald-300',
   'context-enrich': 'bg-amber-400/20 text-amber-300',
+  'mcp-discover': 'bg-indigo-400/20 text-indigo-300',
   'digest-daily': 'bg-cyan-500/20 text-cyan-300',
   'digest-weekly': 'bg-cyan-500/20 text-cyan-300',
   'digest-brag': 'bg-cyan-500/20 text-cyan-300',
@@ -50,6 +51,7 @@ const PHASE_DOT: Record<string, string> = {
   'reflect-delta': 'bg-blue',
   'reflect-evolve': 'bg-purple',
   enrich: 'bg-amber-400',
+  discover: 'bg-indigo-400',
   'remote-sync': 'bg-pink-400',
   'repo-profile': 'bg-teal-400',
   scan: 'bg-green-600',
@@ -72,6 +74,7 @@ const PHASE_TEXT: Record<string, string> = {
   'reflect-delta': 'text-blue',
   'reflect-evolve': 'text-purple',
   enrich: 'text-amber-400',
+  discover: 'text-indigo-400',
   'remote-sync': 'text-pink-400',
   'repo-profile': 'text-teal-400',
   scan: 'text-green-600',
@@ -90,6 +93,7 @@ const JOB_PHASES: Record<string, string[]> = {
   'suggest-project': ['analyze', 'validate'],
   'project-profile': ['profile'],
   'context-enrich': ['enrich'],
+  'mcp-discover': ['discover'],
   'digest-daily': ['digest-daily'],
   'digest-weekly': ['digest-weekly'],
   'digest-brag': ['digest-brag'],
@@ -359,17 +363,41 @@ function renderExpandedDetail(entry: ActivityEntryType) {
   }
 
   if (type === 'context-enrich') {
-    const sources = arr(r, 'sources');
-    const entities = arr(r, 'entityNames');
+    const projectResults = r.projectResults as Array<{
+      projectName: string; itemsCollected: number; sources: string[]; error?: string;
+      findings?: Array<{ source: string; summary: string }>;
+    }> | undefined;
     return (
       <>
         <PhasePipeline phases={entry.phases} />
-        <div>
-          <span className="text-accent">{num(r, 'itemsCollected')} items</span>
-          {sources.length > 0 && <span className="text-text-dim"> from: {sources.join(', ')}</span>}
-        </div>
-        {entities.length > 0 && (
-          <div><span className="text-accent">Entities:</span> <span className="text-text-dim">{entities.join(', ')}</span></div>
+        {projectResults && projectResults.length > 0 ? (
+          <div className="space-y-3">
+            {projectResults.map(pr => (
+              <div key={pr.projectName}>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-accent font-medium">{pr.projectName}</span>
+                  {pr.error ? (
+                    <span className="text-red text-[10px]">error: {pr.error}</span>
+                  ) : pr.itemsCollected > 0 ? (
+                    <span className="text-text-muted text-[10px]">{pr.itemsCollected} finding{pr.itemsCollected !== 1 ? 's' : ''} via {pr.sources.join(', ')}</span>
+                  ) : (
+                    <span className="text-text-muted text-[10px]">no findings</span>
+                  )}
+                </div>
+                {pr.findings && pr.findings.length > 0 && (
+                  <ul className="ml-3 space-y-0.5">
+                    {pr.findings.map((f, i) => (
+                      <li key={i} className="text-text-dim text-[11px]">
+                        <span className="text-text-muted">[{f.source}]</span> {f.summary}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-text-muted">{num(r, 'itemsCollected')} items collected</div>
         )}
       </>
     );

@@ -106,7 +106,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
       });
     } catch { /* no file */ }
 
-    detectedProjects = detectActiveProjects(db, recentInteractions, recentConvTexts);
+    detectedProjects = detectActiveProjects(db, recentInteractions, recentConvTexts, shared.pendingRemoteSyncResults);
     if (detectedProjects.length > 0) {
       console.error(`[daemon] Active projects: ${detectedProjects.map(p => `${p.projectName}(${p.score.toFixed(0)})`).join(', ')}`);
     }
@@ -473,23 +473,40 @@ async function handleRepoProfile(ctx: JobContext): Promise<JobHandlerResult> {
   };
 }
 
-async function handleContextEnrich(ctx: JobContext): Promise<JobHandlerResult> {
+async function handleContextEnrich(ctx: JobContext, shared: DaemonSharedState): Promise<JobHandlerResult> {
   ctx.setPhase('enrich');
   const jobStart = new Date().toISOString();
 
   const { activityEnrich } = await import('../analysis/enrichment.js');
-  const result = await activityEnrich(ctx.db, ctx.config);
-
-  // Get recently cached enrichment items
-  const recentItems = ctx.db.listEnrichment?.({ limit: 10 })
-    ?.filter((e: { createdAt: string }) => e.createdAt >= jobStart) ?? [];
-  const sources = [...new Set(recentItems.map((e: { source: string }) => e.source))];
-  const entityNames = recentItems.map((e: { entityName: string | null }) => e.entityName).filter((n): n is string => !!n);
+  const activeProjects = shared.activeProjects.length > 0 ? shared.activeProjects : undefined;
+  const result = await activityEnrich(ctx.db, ctx.config, activeProjects);
 
   return {
     llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
     phases: ['enrich'],
-    result: { itemsCollected: result.itemsCollected, sources, entityNames },
+    result: {
+      itemsCollected: result.itemsCollected,
+      projectResults: result.projectResults,
+    },
+  };
+}
+
+// --- MCP Discover Handler ---
+
+async function handleMcpDiscover(ctx: JobContext): Promise<JobHandlerResult> {
+  ctx.setPhase('discover');
+
+  const { activityMcpDiscover } = await import('../analysis/mcp-discover.js');
+  const result = await activityMcpDiscover(ctx.db, ctx.config);
+
+  return {
+    llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
+    phases: ['discover'],
+    result: {
+      serversDescribed: result.serversDescribed,
+      serversTotal: result.serversTotal,
+      serverNames: result.serverNames,
+    },
   };
 }
 
@@ -516,6 +533,11 @@ async function handleProjectProfile(ctx: JobContext): Promise<JobHandlerResult> 
     .filter(m => m.entities?.some(e => e.type === 'project' && e.id === projectId));
   const systems = (project.systemIds ?? []).map(id => ctx.db.getSystem(id)).filter(Boolean);
 
+  // External context from enrichment
+  const { getEnrichmentSummary: getEnrichForProfile } = await import('../analysis/enrichment.js');
+  const profileEnrichSummary = getEnrichForProfile(ctx.db, { projectId });
+  const profileEnrichSection = profileEnrichSummary ? `## External Context (from MCP enrichment)\n${profileEnrichSummary}` : '';
+
   const prompt = `You are Shadow, analyzing project "${project.name}" to create a cross-repo context profile.
 This profile will be used to calibrate cross-repo suggestions and understand the project holistically.
 
@@ -527,6 +549,8 @@ ${systems.length > 0 ? `## Systems\n${systems.map(s => `- ${s!.name} (${s!.kind}
 ${observations.length > 0 ? `## Active Observations\n${observations.map(o => `- [${o.severity}] ${o.title}`).join('\n')}` : ''}
 
 ${memories.length > 0 ? `## Relevant Memories\n${memories.map(m => `- ${m.title}`).join('\n')}` : ''}
+
+${profileEnrichSection}
 
 Produce a structured project profile in markdown with EXACTLY this format:
 
@@ -608,6 +632,11 @@ async function handleSuggestDeep(ctx: JobContext, _shared: DaemonSharedState): P
   const { loadPendingCorrections } = await import('../memory/retrieval.js');
   const corrections = loadPendingCorrections(ctx.db, [{ type: 'repo', id: repoId }]);
 
+  // External context from enrichment
+  const { getEnrichmentSummary } = await import('../analysis/enrichment.js');
+  const enrichProjectId = projectsForRepo.length > 0 ? projectsForRepo[0].id : undefined;
+  const enrichSection = enrichProjectId ? getEnrichmentSummary(ctx.db, { projectId: enrichProjectId }) : undefined;
+
   const prompt = `You are Shadow doing a deep review of the ${repo.name} repository.
 You have FULL ACCESS to the codebase via tools. Explore freely.
 
@@ -615,6 +644,7 @@ You have FULL ACCESS to the codebase via tools. Explore freely.
 ${repoProfile}
 ${projectContext}
 ${corrections}
+${enrichSection ? `\n## External Context (from MCP enrichment)\n${enrichSection}` : ''}
 
 ${observations.length > 0 ? `## Active Observations\n${observations.map(o => `- [${o.severity}/${o.kind}] ${o.title}: ${typeof o.detail === 'object' ? JSON.stringify(o.detail).slice(0, 100) : ''}`).join('\n')}` : ''}
 
@@ -782,6 +812,10 @@ async function handleSuggestProject(ctx: JobContext): Promise<JobHandlerResult> 
     .filter(m => m.entities?.some(e => e.type === 'project' && e.id === projectId));
   const dismissPatterns = ctx.db.getDismissPatterns();
 
+  // External context from enrichment
+  const { getEnrichmentSummary } = await import('../analysis/enrichment.js');
+  const enrichSection = getEnrichmentSummary(ctx.db, { projectId });
+
   const prompt = `You are Shadow analyzing project "${project.name}" across ${repos.length} repos.
 You have access to READ all repos. Find cross-repo improvement opportunities.
 
@@ -794,6 +828,8 @@ ${repoProfiles.join('\n\n')}
 ${crossObs.length > 0 ? `## Cross-Project Observations\n${crossObs.map(o => `- [${o.severity}] ${o.title}`).join('\n')}` : ''}
 
 ${memories.length > 0 ? `## Project Memories\n${memories.map(m => `- ${m.title}`).join('\n')}` : ''}
+
+${enrichSection ? `## External Context (from MCP enrichment)\n${enrichSection}` : ''}
 
 ${dismissPatterns.length > 0 ? `## Dismissed Patterns (avoid)\n${dismissPatterns.map(p => `- ${p.category}: ${p.count}x`).join('\n')}` : ''}
 
@@ -1005,6 +1041,7 @@ export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
   registry.set('remote-sync', { category: 'io', fn: handleRemoteSync });
   registry.set('repo-profile', { category: 'llm', fn: handleRepoProfile });
   registry.set('context-enrich', { category: 'llm', fn: handleContextEnrich });
+  registry.set('mcp-discover', { category: 'llm', fn: handleMcpDiscover });
   registry.set('project-profile', { category: 'llm', fn: handleProjectProfile });
   registry.set('suggest-deep', { category: 'llm', fn: handleSuggestDeep });
   registry.set('suggest-project', { category: 'llm', fn: handleSuggestProject });
