@@ -20,6 +20,17 @@ const RepoAddSchema = z.object({
   languageHint: z.string().describe('Primary language hint').optional(),
 });
 
+const RepoUpdateSchema = z.object({
+  repoId: z.string().describe('Repository ID to update'),
+  name: z.string().describe('New display name').optional(),
+  remoteUrl: z.string().describe('Remote URL').optional(),
+  defaultBranch: z.string().describe('Default branch').optional(),
+  languageHint: z.string().describe('Primary language hint').optional(),
+  testCommand: z.string().describe('Command to run tests (e.g., "npm test")').optional(),
+  lintCommand: z.string().describe('Command to run linter (e.g., "npm run lint")').optional(),
+  buildCommand: z.string().describe('Command to build the project (e.g., "npm run build")').optional(),
+});
+
 const RepoRemoveSchema = z.object({
   repoId: z.string().describe('Repository ID to remove'),
 });
@@ -178,6 +189,29 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           defaultBranch: defaultBranch ?? 'main',
           languageHint: languageHint ?? null,
         });
+      },
+    },
+    {
+      name: 'shadow_repo_update',
+      description: 'Update a tracked repository (name, commands, branch, etc). Requires trust level >= 1.',
+      inputSchema: mcpSchema(RepoUpdateSchema),
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const p = RepoUpdateSchema.parse(params);
+        const repo = db.getRepo(p.repoId);
+        if (!repo) return { isError: true, message: `Repo not found: ${p.repoId}` };
+
+        const updates: Record<string, unknown> = {};
+        for (const key of ['name', 'remoteUrl', 'defaultBranch', 'languageHint', 'testCommand', 'lintCommand', 'buildCommand'] as const) {
+          if (p[key] !== undefined) updates[key] = p[key];
+        }
+
+        if (Object.keys(updates).length === 0) return { isError: true, message: 'No fields to update' };
+
+        db.updateRepo(p.repoId, updates as Parameters<typeof db.updateRepo>[1]);
+        return db.getRepo(p.repoId);
       },
     },
     {
