@@ -1,9 +1,3 @@
-import { Badge } from '../components/common/Badge';
-
-export function chip(label: string, className?: string) {
-  return <Badge className={className ?? 'text-text-dim bg-border'}>{label}</Badge>;
-}
-
 export function num(result: Record<string, unknown>, key: string): number {
   const v = result[key];
   return typeof v === 'number' ? v : 0;

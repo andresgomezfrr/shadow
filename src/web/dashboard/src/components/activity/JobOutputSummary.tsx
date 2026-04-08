@@ -1,9 +1,14 @@
+import { Badge } from '../common/Badge';
 import type { ActivityEntry } from '../../api/types';
-import { chip, num, str, arr, items } from '../../utils/job-results.js';
+import { num, str, arr, items } from '../../utils/job-results';
 
 type Props = {
   entry: ActivityEntry;
 };
+
+function chip(label: string, className?: string) {
+  return <Badge className={className ?? 'text-text-dim bg-border'}>{label}</Badge>;
+}
 
 export function JobOutputSummary({ entry }: Props) {
   if (entry.status === 'queued') return <span className="text-orange text-xs">queued</span>;
