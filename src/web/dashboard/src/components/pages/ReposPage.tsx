@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { timeAgo } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
-import { fetchRepos, triggerJob, triggerJobWithParams } from '../../api/client';
+import { useRunningJobs } from '../../hooks/useRunningJobs';
+import { fetchRepos, triggerJobWithParams } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
@@ -129,13 +130,13 @@ function RepoCard({
   repo,
   expanded,
   onToggle,
+  isRunning,
 }: {
   repo: Repo;
   expanded: boolean;
   onToggle: () => void;
+  isRunning: (type: string) => boolean;
 }) {
-  const [reprofileTriggered, setReprofileTriggered] = useState(false);
-  const [deepScanTriggered, setDeepScanTriggered] = useState(false);
   const [showCorrection, setShowCorrection] = useState(false);
 
   const languageHint = repo.languageHint;
@@ -145,23 +146,17 @@ function RepoCard({
   const handleReprofile = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (reprofileTriggered) return;
-      setReprofileTriggered(true);
-      triggerJob('repo-profile');
-      setTimeout(() => setReprofileTriggered(false), 15_000);
+      triggerJobWithParams('repo-profile', { repoId: repo.id });
     },
-    [reprofileTriggered],
+    [repo.id],
   );
 
   const handleDeepScan = useCallback(
     (e?: React.MouseEvent) => {
       e?.stopPropagation();
-      if (deepScanTriggered) return;
-      setDeepScanTriggered(true);
       triggerJobWithParams('suggest-deep', { repoId: repo.id });
-      setTimeout(() => setDeepScanTriggered(false), 15_000);
     },
-    [deepScanTriggered, repo.id],
+    [repo.id],
   );
 
   return (
@@ -245,18 +240,18 @@ function RepoCard({
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); handleDeepScan(e); }}
-              disabled={deepScanTriggered}
+              disabled={isRunning('suggest-deep')}
               className="px-3 py-1 rounded bg-green-600/15 text-green-400 hover:bg-green-600/25 border-none cursor-pointer transition-colors disabled:opacity-50 text-xs"
             >
-              {deepScanTriggered ? 'Triggered' : 'Deep Scan'}
+              {isRunning('suggest-deep') ? 'Running...' : 'Deep Scan'}
             </button>
             <button
               onClick={handleReprofile}
-              disabled={reprofileTriggered}
+              disabled={isRunning('repo-profile')}
               className="ml-auto px-3 py-1 rounded bg-teal-400/15 text-teal-300 hover:bg-teal-400/25 border-none cursor-pointer transition-colors disabled:opacity-50 text-xs"
             >
-              {reprofileTriggered
-                ? 'Triggered'
+              {isRunning('repo-profile')
+                ? 'Running...'
                 : repo.contextMd
                   ? 'Re-profile'
                   : 'Profile now'}
@@ -281,6 +276,7 @@ function RepoCard({
 export function ReposPage() {
   const { data } = useApi(fetchRepos, [], 30_000);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const { isRunning } = useRunningJobs();
 
   const toggle = useCallback((id: string) => {
     setExpanded((prev) => {
@@ -313,6 +309,7 @@ export function ReposPage() {
               repo={r}
               expanded={expanded.has(r.id)}
               onToggle={() => toggle(r.id)}
+              isRunning={isRunning}
             />
           ))}
         </div>

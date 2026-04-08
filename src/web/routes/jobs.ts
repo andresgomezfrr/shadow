@@ -18,6 +18,11 @@ export async function handleJobRoutes(
       return json(res, jobs), true;
     }
 
+    if (pathname === '/api/jobs/running') {
+      const rows = db.rawDb.prepare("SELECT DISTINCT type FROM jobs WHERE status IN ('queued', 'running')").all() as Array<{ type: string }>;
+      return json(res, { types: rows.map(r => r.type) }), true;
+    }
+
     if (pathname === '/api/jobs') {
       const type = params.get('type') ?? undefined;
       const typePrefix = params.get('typePrefix') ?? undefined;

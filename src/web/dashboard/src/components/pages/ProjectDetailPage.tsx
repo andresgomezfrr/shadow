@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
+import { useRunningJobs } from '../../hooks/useRunningJobs';
 import { fetchProjectDetail, fetchProjectEnrichment, triggerJobWithParams } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Pagination } from '../common/Pagination';
@@ -32,8 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data, refresh } = useApi(() => fetchProjectDetail(id!), [id], 30_000);
-  const [analyzeTriggered, setAnalyzeTriggered] = useState(false);
-  const [profileTriggered, setProfileTriggered] = useState(false);
+  const { isRunning } = useRunningJobs();
 
   // Enrichment pagination (independent fetch)
   const ENRICH_LIMIT = 10;
@@ -45,18 +45,14 @@ export function ProjectDetailPage() {
   );
 
   const handleAnalyze = useCallback(() => {
-    if (analyzeTriggered || !id) return;
-    setAnalyzeTriggered(true);
+    if (!id) return;
     triggerJobWithParams('suggest-project', { projectId: id });
-    setTimeout(() => setAnalyzeTriggered(false), 15_000);
-  }, [analyzeTriggered, id]);
+  }, [id]);
 
   const handleProfile = useCallback(() => {
-    if (profileTriggered || !id) return;
-    setProfileTriggered(true);
+    if (!id) return;
     triggerJobWithParams('project-profile', { projectId: id });
-    setTimeout(() => { setProfileTriggered(false); refresh(); }, 15_000);
-  }, [profileTriggered, id, refresh]);
+  }, [id]);
 
   if (!data) return <div className="text-text-dim">Loading...</div>;
   if ('error' in data) return <div className="text-red">Project not found</div>;
@@ -73,17 +69,17 @@ export function ProjectDetailPage() {
           <div className="ml-auto flex gap-2">
             <button
               onClick={handleProfile}
-              disabled={profileTriggered}
+              disabled={isRunning('project-profile')}
               className="px-3 py-1.5 rounded text-xs bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25 border-none cursor-pointer transition-colors disabled:opacity-50"
             >
-              {profileTriggered ? 'Triggered' : data.contextMd ? 'Re-profile' : 'Profile'}
+              {isRunning('project-profile') ? 'Running...' : data.contextMd ? 'Re-profile' : 'Profile'}
             </button>
             <button
               onClick={handleAnalyze}
-              disabled={analyzeTriggered}
+              disabled={isRunning('suggest-project')}
               className="px-3 py-1.5 rounded text-xs bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25 border-none cursor-pointer transition-colors disabled:opacity-50"
             >
-              {analyzeTriggered ? 'Triggered' : 'Suggest cross-repo'}
+              {isRunning('suggest-project') ? 'Running...' : 'Suggest cross-repo'}
             </button>
           </div>
         </div>

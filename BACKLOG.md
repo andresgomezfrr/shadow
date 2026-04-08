@@ -26,11 +26,6 @@ Las sugerencias aceptadas e implementadas quedan en "accepted" para siempre (30+
 ### Evaluar: trust por repo en vez de global *(2026-04-08)*
 Actualmente el trust es un score global. Pero Shadow puede saber mucho de un repo y poco de otro — ¿tiene sentido que el trust sea por repo? Implicaría trust_score en la tabla `repos` en vez de `user_profile`, y gates por repo en los MCP tools. Hablar con Andrés antes de diseñar.
 
-### Botones de trigger deben reflejar estado queued/running del job *(2026-04-08)*
-Al disparar un job desde el dashboard, si ya hay uno encolado o corriendo, el endpoint devuelve 409 pero el botón no lo refleja. Todos los botones que lanzan jobs deben mostrar estado "running" / disabled mientras `hasQueuedOrRunning(type)` sea true. Aplica a: schedule ribbon, botones de ProjectDetailPage (Suggest cross-repo, Profile), ReposPage, y cualquier otro trigger.
-
----
-
 ### Inyectar contexto de proyecto en heartbeat cuando el repo pertenece a uno *(2026-04-08)*
 Al hacer check-in de un repo (heartbeat analyze), si el repo pertenece a un proyecto, incluir el contexto del proyecto (nombre, descripción, repos relacionados, observaciones y sugerencias activas del proyecto) en el prompt de análisis. Actualmente el heartbeat solo ve repos individuales — el contexto de proyecto ayudaría a generar memorias y observaciones más relevantes.
 

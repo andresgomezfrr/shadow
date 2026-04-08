@@ -190,6 +190,9 @@ export const resolveObservation = (id: string, note?: string) =>
 export const reopenObservation = (id: string) =>
   api<Observation>(`/api/observations/${id}/reopen`, { method: 'POST' });
 
+export const fetchRunningJobs = () =>
+  api<{ types: string[] }>('/api/jobs/running');
+
 export const triggerHeartbeat = () =>
   api<{ triggered: boolean }>('/api/heartbeat/trigger', { method: 'POST' });
 
