@@ -79,21 +79,30 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
 
         const p = parsed as { method?: string; id?: unknown };
 
-        // MCP initialize handshake
+        // MCP initialize handshake (Streamable HTTP transport)
         if (p.method === 'initialize') {
-          return json(res, {
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Mcp-Session-Id',
+          });
+          return void res.end(JSON.stringify({
             jsonrpc: '2.0', id: p.id ?? null,
             result: {
-              protocolVersion: '2024-11-05',
+              protocolVersion: '2025-03-26',
               capabilities: { tools: {} },
               serverInfo: { name: 'shadow-mcp', version: '0.1.0' },
             },
-          });
+          }));
         }
 
-        // Notification — no response needed
-        if (p.method === 'notifications/initialized') {
-          return json(res, {});
+        // Notification — 202 Accepted with no body (per Streamable HTTP spec)
+        if (p.method?.startsWith('notifications/')) {
+          res.writeHead(202, {
+            'Access-Control-Allow-Origin': '*',
+          });
+          return void res.end();
         }
 
         // Lazy-init MCP tools
@@ -115,12 +124,30 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
         return json(res, response);
       }
 
+      // MCP GET — server does not offer SSE stream (per Streamable HTTP spec: 405)
+      if (pathname === '/api/mcp' && req.method === 'GET') {
+        res.writeHead(405, {
+          'Allow': 'POST, OPTIONS',
+          'Access-Control-Allow-Origin': '*',
+        });
+        return void res.end();
+      }
+
+      // MCP DELETE — session termination (no-op, stateless server)
+      if (pathname === '/api/mcp' && req.method === 'DELETE') {
+        res.writeHead(405, {
+          'Allow': 'POST, OPTIONS',
+          'Access-Control-Allow-Origin': '*',
+        });
+        return void res.end();
+      }
+
       // CORS preflight for MCP endpoint
       if (pathname === '/api/mcp' && req.method === 'OPTIONS') {
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Headers': 'Content-Type, Mcp-Session-Id',
         });
         return void res.end();
       }

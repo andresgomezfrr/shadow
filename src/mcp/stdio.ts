@@ -61,7 +61,7 @@ export async function startStdioMcpServer(config: ShadowConfig): Promise<void> {
         jsonrpc: '2.0',
         id,
         result: {
-          protocolVersion: '2024-11-05',
+          protocolVersion: '2025-03-26',
           capabilities: {
             tools: {},
           },
