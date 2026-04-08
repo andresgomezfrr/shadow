@@ -23,17 +23,8 @@ Las sugerencias aceptadas e implementadas quedan en "accepted" para siempre (30+
 
 ## Prioridad media — Dashboard UX
 
-### Filtro por repo en Suggestions y Observations pages *(2026-04-08)*
-Añadir selector de repo para filtrar sugerencias y observaciones. Ya existe `repo_ids_json` en ambas tablas. Observations ya soporta `repoId` en el backend — falta el UI. Suggestions necesita backend + UI.
-
-### Proteger trust level/score contra escritura vía MCP *(2026-04-08)*
-Shadow (el LLM) no debería poder cambiarse su propio trust level o score llamando a `shadow_profile_set`. El trust debe crecer orgánicamente con uso, pero nunca por set manual desde el LLM. Excluir `trust_level` y `trust_score` de los campos permitidos en `profile_set`, o añadir un gate específico.
-
 ### Evaluar: trust por repo en vez de global *(2026-04-08)*
 Actualmente el trust es un score global. Pero Shadow puede saber mucho de un repo y poco de otro — ¿tiene sentido que el trust sea por repo? Implicaría trust_score en la tabla `repos` en vez de `user_profile`, y gates por repo en los MCP tools. Hablar con Andrés antes de diseñar.
-
-### Títulos de sugerencias no clickables en suggest-deep y suggest-project *(2026-04-08)*
-En Activity, los jobs `suggest-deep` y `suggest-project` guardan `suggestionTitles` (solo strings) en su resultado, mientras que `suggest` guarda `suggestionItems` (con id + title). Sin el ID, el dashboard no puede generar links a `/suggestions?highlight=<id>`. Fix: que los handlers de suggest-deep y suggest-project devuelvan `suggestionItems` con IDs como hace suggest.
 
 ### Progreso visible en jobs multi-repo/multi-project *(2026-04-08)*
 Jobs como repo-profile, remote-sync o suggest-deep iteran sobre varios repos/proyectos pero solo muestran una fase genérica. Mostrar progreso tipo "repo-profile: 3/6 repos" o "profiling: shadow" mientras corren. Aprovechar `setPhase` o `activity` para comunicar el item actual y el total.
@@ -95,12 +86,6 @@ Agrupación temporal (1-2 semanas) con repos, PRs, docs y tickets.
 
 ### Descripciones de memorias no parsean `\n` correctamente *(2026-04-08)*
 En el dashboard, las descripciones de memorias muestran `\n` literal en vez de saltos de línea. El contenido viene con newlines escapados del JSON y no se renderiza como markdown/texto multilínea.
-
-### Mejorar sistema de contactos: MCP update + dedup + dashboard *(2026-04-08)*
-Tres problemas detectados:
-1. **Falta `shadow_contact_update`** — el DB method `updateContact()` existe pero no hay MCP tool. Al pedir actualizar un contacto, el LLM usa `contact_add` y lo duplica.
-2. **`contact_add` no deduplica** — `createContact()` no comprueba nombre/email existente. Añadir check con `findContactByName()` (ya existe, no se usa).
-3. **TeamPage muestra muy poco** — ContactRecord tiene 11 campos (slackId, notesMd, preferredChannel, lastMentionedAt...) pero la vista solo muestra 4 (name, role, team, email).
 
 ### Evaluar: asegurar entity linking en memorias, observaciones, sugerencias y runs *(2026-04-08)*
 No está claro si siempre estamos asociando `entities_json` (repo, proyecto) cuando la información lo permite. Auditar: ¿los jobs de heartbeat/suggest/teach siempre vinculan al repo/proyecto activo? ¿Los runs guardan su repo? ¿Hay entidades huérfanas sin linking? Importante para que los filtros por repo/proyecto funcionen bien.

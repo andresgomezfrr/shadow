@@ -398,7 +398,9 @@ async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedState): Pro
   const targetRepoId = (job?.result as Record<string, unknown>)?.repoId as string | undefined;
 
   const { remoteSyncRepos } = await import('../observation/remote-sync.js');
-  const results = remoteSyncRepos(ctx.db, ctx.config.remoteSyncBatchSize, targetRepoId);
+  const results = remoteSyncRepos(ctx.db, ctx.config.remoteSyncBatchSize, targetRepoId, (name, i, total) => {
+    ctx.setPhase(`remote-sync: ${name} (${i}/${total})`);
+  });
   const withChanges = results.filter(r => r.newRemoteCommits > 0);
   if (withChanges.length > 0) {
     shared.pendingRemoteSyncResults.push(...withChanges);
@@ -433,7 +435,9 @@ async function handleRepoProfile(ctx: JobContext): Promise<JobHandlerResult> {
   const force = job?.triggerSource === 'manual';
 
   const { profileRepos } = await import('../observation/repo-profile.js');
-  const result = await profileRepos(ctx.db, ctx.config, ctx.config.repoProfileBatchSize, force);
+  const result = await profileRepos(ctx.db, ctx.config, ctx.config.repoProfileBatchSize, force, (name, i, total) => {
+    ctx.setPhase(`repo-profile: ${name} (${i}/${total})`);
+  });
 
   // Get names of recently profiled repos
   const repoNames = ctx.db.listRepos()
@@ -490,7 +494,9 @@ async function handleContextEnrich(ctx: JobContext, shared: DaemonSharedState): 
 
   const { activityEnrich } = await import('../analysis/enrichment.js');
   const activeProjects = shared.activeProjects.length > 0 ? shared.activeProjects : undefined;
-  const result = await activityEnrich(ctx.db, ctx.config, activeProjects);
+  const result = await activityEnrich(ctx.db, ctx.config, activeProjects, (name, i, total) => {
+    ctx.setPhase(`enrich: ${name} (${i}/${total})`);
+  });
 
   return {
     llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
@@ -707,7 +713,7 @@ Generate 1-5 suggestions. Quality over quantity.`;
 
   const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
   let suggestionsCreated = 0;
-  const suggestionTitles: string[] = [];
+  const suggestionItems: Array<{ id: string; title: string }> = [];
 
   if (result.status === 'success' && result.output) {
     ctx.setPhase('validate');
@@ -767,7 +773,7 @@ Generate 1-5 suggestions. Quality over quantity.`;
         } catch { /* best-effort */ }
 
         suggestionsCreated++;
-        suggestionTitles.push(s.title);
+        suggestionItems.push({ id: created.id, title: s.title });
       }
     }
   }
@@ -793,7 +799,7 @@ Generate 1-5 suggestions. Quality over quantity.`;
   return {
     llmCalls: 1, tokensUsed: tokens,
     phases: suggestionsCreated > 0 ? ['scan', 'validate'] : ['scan'],
-    result: { repoName: repo.name, suggestionsCreated, suggestionTitles, repoId },
+    result: { repoName: repo.name, suggestionsCreated, suggestionItems, repoId },
   };
 }
 
@@ -889,7 +895,7 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
 
   const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
   let suggestionsCreated = 0;
-  const suggestionTitles: string[] = [];
+  const suggestionItems: Array<{ id: string; title: string }> = [];
 
   if (result.status === 'success' && result.output) {
     ctx.setPhase('validate');
@@ -956,7 +962,7 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
         } catch { /* best-effort */ }
 
         suggestionsCreated++;
-        suggestionTitles.push(s.title);
+        suggestionItems.push({ id: created.id, title: s.title });
       }
     }
   }
@@ -964,7 +970,7 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
   return {
     llmCalls: 1, tokensUsed: tokens,
     phases: suggestionsCreated > 0 ? ['analyze', 'validate'] : ['analyze'],
-    result: { projectName: project.name, suggestionsCreated, suggestionTitles },
+    result: { projectName: project.name, suggestionsCreated, suggestionItems },
   };
 }
 

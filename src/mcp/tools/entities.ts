@@ -50,6 +50,18 @@ const ContactAddSchema = z.object({
   preferredChannel: z.string().describe('Preferred contact channel: slack, email, github').optional(),
 });
 
+const ContactUpdateSchema = z.object({
+  contactId: z.string().describe('Contact ID to update'),
+  name: z.string().describe('Contact name').optional(),
+  role: z.string().describe('Role').optional(),
+  team: z.string().describe('Team name').optional(),
+  email: z.string().describe('Email address').optional(),
+  slackId: z.string().describe('Slack user ID or handle').optional(),
+  githubHandle: z.string().describe('GitHub username').optional(),
+  notesMd: z.string().describe('Additional notes in markdown').optional(),
+  preferredChannel: z.string().describe('Preferred contact channel: slack, email, github').optional(),
+});
+
 const ContactRemoveSchema = z.object({
   contactId: z.string().describe('Contact ID to remove'),
 });
@@ -250,6 +262,8 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         if (!gate.ok) return gate.error;
 
         const p = ContactAddSchema.parse(params);
+        const existing = db.findContactByName(p.name);
+        if (existing) return { isError: true, message: `Contact "${p.name}" already exists (id: ${existing.id}). Use shadow_contact_update to modify.` };
         return db.createContact({
           name: p.name,
           role: p.role ?? null,
@@ -260,6 +274,25 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           notesMd: p.notesMd ?? null,
           preferredChannel: p.preferredChannel ?? null,
         });
+      },
+    },
+    {
+      name: 'shadow_contact_update',
+      description: 'Update an existing contact. Requires trust level >= 1.',
+      inputSchema: mcpSchema(ContactUpdateSchema),
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const { contactId, ...updates } = ContactUpdateSchema.parse(params);
+        const contact = db.getContact(contactId);
+        if (!contact) return { isError: true, message: `Contact not found: ${contactId}` };
+
+        const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
+        if (Object.keys(cleanUpdates).length === 0) return { isError: true, message: 'No fields to update' };
+
+        db.updateContact(contactId, cleanUpdates);
+        return db.getContact(contactId);
       },
     },
     {
