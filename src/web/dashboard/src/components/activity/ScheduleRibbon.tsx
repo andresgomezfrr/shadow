@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNow, formatCountdown } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
+import { useRunningJobs } from '../../hooks/useRunningJobs';
 import { JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
 import { triggerJob, triggerJobWithParams, fetchRepos, fetchProjects } from '../../api/client';
@@ -77,8 +78,8 @@ const PROJECT_JOBS = new Set(['suggest-project', 'project-profile']);
 export function ScheduleRibbon({ schedule, onTrigger }: Props) {
   const now = useNow();
   const [expanded, setExpanded] = useState(false);
-  const [triggeredSet, setTriggeredSet] = useState<Set<string>>(new Set());
-  const [selectorFor, setSelectorFor] = useState<string | null>(null); // which job type has selector open
+  const [selectorFor, setSelectorFor] = useState<string | null>(null);
+  const { isRunning } = useRunningJobs();
 
   const { data: repos } = useApi(fetchRepos, [], 60_000);
   const { data: projects } = useApi(() => fetchProjects(), [], 60_000);
@@ -88,13 +89,7 @@ export function ScheduleRibbon({ schedule, onTrigger }: Props) {
       ? await triggerJobWithParams(jobType, params)
       : await triggerJob(jobType);
     if (result) {
-      setTriggeredSet(prev => new Set(prev).add(jobType));
       setSelectorFor(null);
-      setTimeout(() => setTriggeredSet(prev => {
-        const next = new Set(prev);
-        next.delete(jobType);
-        return next;
-      }), 15_000);
       onTrigger?.();
     }
   }, [onTrigger]);
@@ -106,8 +101,6 @@ export function ScheduleRibbon({ schedule, onTrigger }: Props) {
       handleTriggerJob(jobType);
     }
   }, [handleTriggerJob]);
-
-  const isTriggered = (key: string) => triggeredSet.has(key);
 
   if (!schedule) return null;
 
@@ -175,10 +168,10 @@ export function ScheduleRibbon({ schedule, onTrigger }: Props) {
                         </span>
                         <button
                           onClick={() => handleTriggerClick(key)}
-                          disabled={isTriggered(key) || entry.enabled === false}
+                          disabled={isRunning(key) || entry.enabled === false}
                           className={`px-2 py-0.5 rounded border-none cursor-pointer transition-colors disabled:opacity-50 text-[10px] ${TRIGGER_COLORS[key] ?? 'bg-accent-soft text-accent hover:bg-accent/25'}`}
                         >
-                          {isTriggered(key) ? 'Triggered' : 'Trigger'}
+                          {isRunning(key) ? 'Running...' : 'Trigger'}
                         </button>
                       </div>
                       {/* Entity selector for repo/project jobs */}
