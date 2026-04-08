@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { timeAgo, formatTokens } from '../../utils/format';
+import { num, str, arr, items } from '../../utils/job-results.js';
 import { Badge } from '../common/Badge';
 import { ConfidenceIndicator } from '../common/ConfidenceIndicator';
 import { JobOutputSummary } from './JobOutputSummary';
@@ -94,24 +95,6 @@ const JOB_PHASES: Record<string, string[]> = {
   'digest-brag': ['digest-brag'],
 };
 
-// --- Helpers ---
-
-function num(r: Record<string, unknown>, key: string): number {
-  const v = r[key]; return typeof v === 'number' ? v : 0;
-}
-function str(r: Record<string, unknown>, key: string): string | undefined {
-  const v = r[key]; return typeof v === 'string' ? v : undefined;
-}
-function arr(r: Record<string, unknown>, key: string): string[] {
-  const v = r[key]; return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
-}
-function items(r: Record<string, unknown>, key: string): Array<{ id: string; title: string }> {
-  const v = r[key];
-  if (!Array.isArray(v)) return [];
-  return v.filter((x): x is { id: string; title: string } =>
-    typeof x === 'object' && x !== null && typeof (x as Record<string, unknown>).id === 'string' && typeof (x as Record<string, unknown>).title === 'string'
-  );
-}
 
 function isSkip(entry: ActivityEntryType): boolean {
   if (entry.status === 'running' || entry.status === 'queued') return false;
@@ -245,8 +228,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
   }
 
   if (type === 'suggest-deep') {
-    const sugItems = items(r, 'suggestionItems') ?? [];
-    const titles = sugItems.length > 0 ? sugItems : arr(r, 'suggestionTitles').map(t => ({ id: '', title: t }));
+    const titles = arr(r, 'suggestionTitles').map(t => ({ id: '', title: t }));
     const repoName = str(r, 'repoName');
     return (
       <>
