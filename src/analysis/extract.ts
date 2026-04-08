@@ -104,7 +104,8 @@ export async function activityAnalyze(
         const projSystems = project.systemIds.map(id => ctx.db.getSystem(id)?.name).filter(Boolean);
         const projObs = ctx.db.listObservations({ status: 'active', limit: 5 })
           .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
-        return `- **${project.name}** (${project.kind}, score=${ap.score.toFixed(0)}): repos=[${projRepos.join(', ')}], systems=[${projSystems.join(', ')}]\n  Active observations: ${projObs.map(o => o.title).join('; ') || 'none'}`;
+        const contextSection = project.contextMd ? `\n  Project profile:\n${project.contextMd.split('\n').map(l => '    ' + l).join('\n')}` : '';
+        return `- **${project.name}** (${project.kind}, score=${ap.score.toFixed(0)}): repos=[${projRepos.join(', ')}], systems=[${projSystems.join(', ')}]\n  Active observations: ${projObs.map(o => o.title).join('; ') || 'none'}${contextSection}`;
       }).filter(Boolean).join('\n')}\n`
     : '';
 
