@@ -116,6 +116,7 @@ export async function activityEnrich(
   db: ShadowDatabase,
   config: ShadowConfig,
   activeProjects?: ActiveProjectInput[],
+  onProgress?: (name: string, index: number, total: number) => void,
 ): Promise<EnrichResult> {
   const enrichStartTime = new Date().toISOString();
   const allServers = discoverMcpServerNames();
@@ -148,7 +149,9 @@ export async function activityEnrich(
   if (activeProjects && activeProjects.length > 0) {
     const projectResults: PerProjectResult[] = [];
 
-    for (const ap of activeProjects) {
+    for (let i = 0; i < activeProjects.length; i++) {
+      const ap = activeProjects[i];
+      onProgress?.(ap.projectName, i + 1, activeProjects.length);
       const pr: PerProjectResult = {
         projectId: ap.projectId, projectName: ap.projectName,
         itemsCollected: 0, sources: [], findings: [],

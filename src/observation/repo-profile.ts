@@ -240,6 +240,7 @@ export async function profileRepos(
   config: ShadowConfig,
   batchSize: number,
   force = false,
+  onProgress?: (name: string, index: number, total: number) => void,
 ): Promise<{ reposProfiled: number; llmCalls: number; tokensUsed: number }> {
   const repos = db.listRepos();
 
@@ -267,7 +268,9 @@ export async function profileRepos(
   let totalLlmCalls = 0;
   let totalTokens = 0;
 
-  for (const repo of candidates) {
+  for (let i = 0; i < candidates.length; i++) {
+    const repo = candidates[i];
+    onProgress?.(repo.name, i + 1, candidates.length);
     console.error(`[shadow:repo-profile] Profiling: ${repo.name}`);
     const signals = gatherRepoSignals(repo);
     const { contextMd, llmCalls, tokensUsed } = await analyzeRepoContext(signals, repo, config, db);
