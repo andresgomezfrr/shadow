@@ -19,6 +19,7 @@ export function useApi<T>(
 
   useEffect(() => {
     let mounted = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
     const load = async () => {
       const result = await fetcherRef.current();
       if (mounted) {
@@ -26,13 +27,25 @@ export function useApi<T>(
         setLoading(false);
       }
     };
+    const startPolling = () => {
+      if (timer) clearInterval(timer);
+      timer = setInterval(() => { if (mounted) load(); }, intervalMs);
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (timer) { clearInterval(timer); timer = null; }
+      } else {
+        load();
+        startPolling();
+      }
+    };
     load();
-    const timer = setInterval(() => {
-      if (mounted) load();
-    }, intervalMs);
+    startPolling();
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       mounted = false;
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);

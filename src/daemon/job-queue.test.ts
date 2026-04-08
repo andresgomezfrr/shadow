@@ -78,6 +78,7 @@ function createHandlers(): Map<string, JobHandlerEntry> {
 
 function createShared(): DaemonSharedState {
   return {
+    draining: false,
     lastHeartbeatAt: null, nextHeartbeatAt: null, lastConsolidationAt: null,
     pendingGitEvents: [], pendingRemoteSyncResults: [], activeProjects: [],
     consecutiveIdleTicks: 0,

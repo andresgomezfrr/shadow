@@ -66,19 +66,22 @@ export async function handleSuggestionRoutes(
       const [, id, action] = match;
       if (action === 'accept') {
         const { acceptSuggestion } = await import('../../suggestion/engine.js');
-        const body = await parseOptionalBody(req, OptionalCategorySchema);
+        const body = await parseOptionalBody(req, res, OptionalCategorySchema);
+        if (!body) return true;
         const result = acceptSuggestion(db, id, body.category);
         if (!result.ok) return json(res, { error: 'Cannot accept — suggestion not pending' }, 400), true;
         const updated = db.getSuggestion(id);
         return json(res, { ...updated, runId: result.runCreated }), true;
       } else if (action === 'dismiss') {
         const { dismissSuggestion } = await import('../../suggestion/engine.js');
-        const body = await parseOptionalBody(req, DismissCategorySchema);
+        const body = await parseOptionalBody(req, res, DismissCategorySchema);
+        if (!body) return true;
         await dismissSuggestion(db, id, body.note, body.category);
         const updated = db.getSuggestion(id);
         return json(res, updated), true;
       } else if (action === 'snooze') {
-        const body = await parseOptionalBody(req, SnoozeSchema);
+        const body = await parseOptionalBody(req, res, SnoozeSchema);
+        if (!body) return true;
         if (body.hours === 0) {
           // Unsnooze: wake immediately
           db.updateSuggestion(id, { status: 'pending', expiresAt: null });

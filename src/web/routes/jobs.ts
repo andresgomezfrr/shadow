@@ -64,7 +64,8 @@ export async function handleJobRoutes(
       if (db.hasQueuedOrRunning(jobType)) {
         return json(res, { error: `${kind} digest already queued or running` }, 409), true;
       }
-      const body = await parseOptionalBody(req, DigestTriggerSchema);
+      const body = await parseOptionalBody(req, res, DigestTriggerSchema);
+      if (!body) return true;
       const params = body.periodStart ? { periodStart: body.periodStart } : {};
       db.enqueueJob(jobType, { triggerSource: 'manual', params });
       return json(res, { triggered: true, kind, periodStart: body.periodStart ?? null }), true;

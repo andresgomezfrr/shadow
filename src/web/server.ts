@@ -152,6 +152,10 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
           return void res.end();
         }
 
+        if (req.method === 'POST' && daemonState?.draining) {
+          return void json(res, { error: 'Daemon is shutting down' }, 503);
+        }
+
         const handlers = [
           handleSuggestionRoutes, handleObservationRoutes, handleRunRoutes,
           handleActivityRoutes, handleJobRoutes, handleEntityRoutes,

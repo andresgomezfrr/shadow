@@ -197,7 +197,11 @@ export class ShadowDatabase {
   listRepos(): RepoRecord[] { return entities.listRepos(this.database); }
   countRepos(): number { return entities.countRepos(this.database); }
   updateRepo(id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt' | 'lastFetchedAt' | 'contextMd' | 'contextUpdatedAt'>>): void { return entities.updateRepo(this.database, id, updates); }
-  deleteRepo(id: string): void { return entities.deleteRepo(this.database, id); }
+  deleteRepo(id: string): void {
+    entities.deleteRepo(this.database, id);
+    knowledge.removeEntityReferences(this.database, 'repo', id);
+    relations.deleteRelationsFor(this.database, 'repo', id);
+  }
 
   // --- Systems ---
 
@@ -211,6 +215,7 @@ export class ShadowDatabase {
   deleteSystem(id: string): void {
     entities.deleteSystem(this.database, id);
     knowledge.removeEntityReferences(this.database, 'system', id);
+    relations.deleteRelationsFor(this.database, 'system', id);
   }
 
   // --- Projects ---
@@ -223,6 +228,7 @@ export class ShadowDatabase {
   deleteProject(id: string): void {
     entities.deleteProject(this.database, id);
     knowledge.removeEntityReferences(this.database, 'project', id);
+    relations.deleteRelationsFor(this.database, 'project', id);
   }
   findProjectsForRepo(repoId: string): ProjectRecord[] { return entities.findProjectsForRepo(this.database, repoId); }
 
@@ -234,7 +240,11 @@ export class ShadowDatabase {
   listContacts(filters?: { team?: string }): ContactRecord[] { return entities.listContacts(this.database, filters); }
   countContacts(): number { return entities.countContacts(this.database); }
   updateContact(id: string, updates: Partial<Pick<ContactRecord, 'name' | 'role' | 'team' | 'email' | 'slackId' | 'githubHandle' | 'notesMd' | 'preferredChannel' | 'lastMentionedAt'>>): void { return entities.updateContact(this.database, id, updates); }
-  deleteContact(id: string): void { return entities.deleteContact(this.database, id); }
+  deleteContact(id: string): void {
+    entities.deleteContact(this.database, id);
+    knowledge.removeEntityReferences(this.database, 'contact', id);
+    relations.deleteRelationsFor(this.database, 'contact', id);
+  }
 
   // --- User Profile ---
 

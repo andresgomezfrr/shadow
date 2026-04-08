@@ -98,7 +98,8 @@ export async function handleRunRoutes(
 
       if (action === 'discard') {
         try { db.transitionRun(runId, 'discarded'); } catch { return json(res, { error: 'Run must be completed to discard' }, 400), true; }
-        const discardBody = await parseOptionalBody(req, OptionalNoteSchema);
+        const discardBody = await parseOptionalBody(req, res, OptionalNoteSchema);
+        if (!discardBody) return true;
         db.createFeedback({ targetKind: 'run', targetId: runId, action: 'discard', note: discardBody.note });
 
         // Auto-rollback + cleanup worktree on discard

@@ -123,6 +123,8 @@ export function SuggestionsPage() {
   const [acceptOpen, setAcceptOpen] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDismissOpen, setBulkDismissOpen] = useState(false);
+  const [bulkDismissNote, setBulkDismissNote] = useState('');
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
   const toggle = (id: string) => {
     setExpanded((s) => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -152,17 +154,26 @@ export function SuggestionsPage() {
   }, [refresh]);
 
   const handleBulkAccept = useCallback(async (category: string) => {
-    await bulkSuggestionAction('accept', [...selected], { category });
+    const result = await bulkSuggestionAction('accept', [...selected], { category });
+    if (result) {
+      setBulkMessage(`Accepted ${result.processed}/${result.total}`);
+      setTimeout(() => setBulkMessage(null), 4000);
+    }
     setSelected(new Set());
     refresh();
   }, [selected, refresh]);
 
   const handleBulkDismiss = useCallback(async (category: string) => {
-    await bulkSuggestionAction('dismiss', [...selected], { category });
+    const result = await bulkSuggestionAction('dismiss', [...selected], { category, note: bulkDismissNote || undefined });
+    if (result) {
+      setBulkMessage(`Dismissed ${result.processed}/${result.total}`);
+      setTimeout(() => setBulkMessage(null), 4000);
+    }
     setSelected(new Set());
     setBulkDismissOpen(false);
+    setBulkDismissNote('');
     refresh();
-  }, [selected, refresh]);
+  }, [selected, bulkDismissNote, refresh]);
 
   return (
     <div>
@@ -368,7 +379,14 @@ export function SuggestionsPage() {
           <div className="relative">
             <button onClick={() => setBulkDismissOpen(!bulkDismissOpen)} className="text-xs text-red hover:underline bg-transparent border-none cursor-pointer">Dismiss</button>
             {bulkDismissOpen && (
-              <div className="absolute bottom-full left-0 mb-1 bg-card border border-border rounded-lg shadow-lg z-10 p-1 min-w-40">
+              <div className="absolute bottom-full left-0 mb-1 bg-card border border-border rounded-lg shadow-lg z-10 p-2 min-w-52">
+                <textarea
+                  value={bulkDismissNote}
+                  onChange={(e) => setBulkDismissNote(e.target.value)}
+                  placeholder="Shared note (optional)"
+                  rows={2}
+                  className="w-full text-xs bg-bg border border-border rounded p-1.5 mb-1 resize-none"
+                />
                 {DISMISS_CATEGORIES.map((dc) => (
                   <button
                     key={dc.category}
@@ -382,6 +400,9 @@ export function SuggestionsPage() {
           <span className="text-border">|</span>
           <button onClick={() => setSelected(new Set())} className="text-xs text-text-muted hover:text-text bg-transparent border-none cursor-pointer">Cancel</button>
         </div>
+      )}
+      {bulkMessage && (
+        <div className="sticky bottom-4 mx-auto w-fit bg-green/10 border border-green/30 rounded-xl px-4 py-2 text-xs text-green z-50 mt-2">{bulkMessage}</div>
       )}
     </div>
   );
