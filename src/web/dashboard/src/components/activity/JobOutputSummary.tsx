@@ -90,6 +90,7 @@ export function JobOutputSummary({ entry }: Props) {
   if (type === 'reflect') {
     if (r.skipped) return <span className="text-text-muted text-xs">skipped</span>;
     if (r.soulUpdated) return chip('soul updated', 'text-blue bg-blue/15');
+    if (str(r, 'reason')) return chip('rejected', 'text-red bg-red/15');
     return <span className="text-text-muted text-xs">--</span>;
   }
 
