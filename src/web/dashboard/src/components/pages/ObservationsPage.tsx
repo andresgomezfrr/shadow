@@ -6,7 +6,7 @@ import { Pagination } from '../common/Pagination';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
 import { FilterTabs } from '../common/FilterTabs';
-import { OBS_KIND_COLORS, OBS_KIND_COLOR_DEFAULT, OBS_SEVERITY_BORDER, OBS_SEVERITY_ICON, OBS_SEVERITY_ICON_COLOR } from '../../utils/observation-colors';
+import { OBS_KIND_COLORS, OBS_KIND_COLOR_DEFAULT, OBS_KIND_OPTIONS, OBS_SEVERITY_BORDER, OBS_SEVERITY_ICON, OBS_SEVERITY_ICON_COLOR } from '../../utils/observation-colors';
 import { useState, useCallback } from 'react';
 import { useHighlight } from '../../hooks/useHighlight';
 import { timeAgo } from '../../utils/format';
@@ -25,14 +25,6 @@ const SEVERITY_OPTIONS = [
   { label: 'Info', value: 'info', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
 ];
 
-const KIND_OPTIONS = [
-  { label: 'All', value: '' },
-  { label: 'Risk', value: 'risk', dotColor: 'bg-red-400', activeClass: 'bg-red-500/15 text-red-300' },
-  { label: 'Improvement', value: 'improvement', dotColor: 'bg-blue-400', activeClass: 'bg-blue-500/15 text-blue-300' },
-  { label: 'Opportunity', value: 'opportunity', dotColor: 'bg-green-400', activeClass: 'bg-green-500/15 text-green-300' },
-  { label: 'Pattern', value: 'pattern', dotColor: 'bg-purple-400', activeClass: 'bg-purple-500/15 text-purple-300' },
-  { label: 'Infrastructure', value: 'infrastructure', dotColor: 'bg-orange-400', activeClass: 'bg-orange-500/15 text-orange-300' },
-];
 
 const TERMINAL_STATUSES = new Set(['resolved']);
 const PAGE_SIZE = 20;
@@ -75,7 +67,7 @@ export function ObservationsPage() {
       </div>
       <div className="flex items-center gap-2 mb-4">
         <span className="text-xs text-text-muted">Kind:</span>
-        <FilterTabs options={KIND_OPTIONS} active={params.kind} onChange={(v) => setParam('kind', v)} />
+        <FilterTabs options={OBS_KIND_OPTIONS} active={params.kind} onChange={(v) => setParam('kind', v)} />
       </div>
 
       {!data ? (
