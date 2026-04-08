@@ -7,7 +7,7 @@ import type { HeartbeatContext } from './state-machine.js';
 
 export async function activityReflect(
   ctx: HeartbeatContext,
-): Promise<{ llmCalls: number; tokensUsed: number; skipped: boolean; reason?: string }> {
+): Promise<{ llmCalls: number; tokensUsed: number; skipped: boolean; soulUpdated?: boolean; reason?: string }> {
   const lastReflect = ctx.db.getLastJob('reflect');
   const sinceIso = lastReflect?.finishedAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
@@ -145,10 +145,11 @@ export async function activityReflect(
     ctx.db.recordLlmUsage({ source: 'reflect_evolve', sourceId: null, model: 'opus', inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
     if (result.status === 'success' && result.output) {
-      const expectedSections = ['## Developer profile', '## Decision patterns', '## Blind spots', '## What Shadow should watch for'];
+      const expectedSections = ['## Developer profile', '## Decision patterns', '## Blind spots', '## What Shadow should watch for', '## Communication preferences'];
       const missing = expectedSections.filter(s => !result.output!.includes(s));
       if (missing.length > 0) {
-        console.error(`[shadow:reflect] Warning: output missing sections: ${missing.join(', ')}`);
+        console.error(`[shadow:reflect] Rejected: output missing sections: ${missing.join(', ')}`);
+        return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: `malformed output: missing ${missing.join(', ')}` };
       }
 
       // Save snapshot of previous soul before updating
@@ -170,7 +171,7 @@ export async function activityReflect(
         });
       }
       console.error(`[shadow:reflect] Soul reflection saved (2-phase). Tokens: ${tokensUsed}`);
-      return { llmCalls, tokensUsed, skipped: false };
+      return { llmCalls, tokensUsed, skipped: false, soulUpdated: true };
     }
   } catch (e) {
     console.error('[shadow:reflect] Phase 2 failed:', e instanceof Error ? e.message : e);

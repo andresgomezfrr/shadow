@@ -14,6 +14,13 @@ Renderizado por filtro, transiciones de estado. (Renamed from RunsPage)
 
 ---
 
+## Prioridad media — Sugerencias lifecycle
+
+### Estado "resolved" para sugerencias
+Las sugerencias aceptadas e implementadas quedan en "accepted" para siempre (30+ acumuladas). Añadir estado `resolved` para cerrar el ciclo: accepted → implementada → resolved. Actualizar: modelo, engine, MCP tools, dashboard filters, bulk resolve.
+
+---
+
 ## Prioridad media — Job system tuning
 
 ### Evaluar intervalos de jobs con datos reales

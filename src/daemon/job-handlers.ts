@@ -343,7 +343,7 @@ async function handleReflect(ctx: JobContext): Promise<JobHandlerResult> {
     phases: reflectResult.skipped ? ['reflect', 'skip'] : ['reflect-delta', 'reflect-evolve'],
     result: {
       skipped: reflectResult.skipped,
-      soulUpdated: !reflectResult.skipped,
+      soulUpdated: reflectResult.soulUpdated ?? !reflectResult.skipped,
       ...(reflectResult.reason ? { reason: reflectResult.reason } : {}),
       ...(deltaPreview ? { deltaPreview } : {}),
     },

@@ -331,6 +331,8 @@ function renderExpandedDetail(entry: ActivityEntryType) {
         <PhasePipeline phases={entry.phases} />
         {r.skipped ? (
           <div className="text-text-muted">Skipped{str(r, 'reason') ? ` — ${str(r, 'reason')}` : ' — no changes since last reflect'}</div>
+        ) : str(r, 'reason') && !r.soulUpdated ? (
+          <div className="text-red">Rejected — {str(r, 'reason')}</div>
         ) : (
           <div>
             <span className="text-accent">Soul updated</span>
