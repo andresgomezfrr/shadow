@@ -449,7 +449,14 @@ export function getSuggestion(db: DatabaseSync, id: string): SuggestionRecord | 
   return row ? mapSuggestion(row) : null;
 }
 
-export function listSuggestions(db: DatabaseSync, filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; limit?: number; offset?: number }): SuggestionRecord[] {
+const SORT_COLUMNS: Record<string, string> = {
+  date: 'created_at DESC',
+  impact: 'impact_score DESC, created_at DESC',
+  confidence: 'confidence_score DESC, created_at DESC',
+  risk: 'risk_score DESC, created_at DESC',
+};
+
+export function listSuggestions(db: DatabaseSync, filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
 
@@ -471,9 +478,10 @@ export function listSuggestions(db: DatabaseSync, filters?: { status?: string; k
   }
 
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  const orderBy = SORT_COLUMNS[filters?.sortBy ?? ''] ?? 'created_at DESC, id ASC';
   const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
   return db
-    .prepare(`SELECT * FROM suggestions ${where} ORDER BY created_at DESC, id ASC${pagination}`)
+    .prepare(`SELECT * FROM suggestions ${where} ORDER BY ${orderBy}${pagination}`)
     .all(...values)
     .map(mapSuggestion);
 }

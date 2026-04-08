@@ -14,21 +14,28 @@ export async function handleSuggestionRoutes(
     if (pathname === '/api/suggestions') {
       const status = params.get('status') ?? undefined;
       const kind = params.get('kind') ?? undefined;
+      const sortBy = params.get('sort') ?? undefined;
       const limit = clampLimit(params.get('limit'), 30);
       const offset = clampOffset(params.get('offset'));
-      let items = db.listSuggestions({ status, kind, limit, offset });
-      // Sort pending suggestions by rank score (best first)
-      if (status === 'pending' && items.length > 0) {
-        const profile = db.ensureProfile();
-        const { computeRankScore } = await import('../../suggestion/ranking.js');
-        const { computeProjectMomentum } = await import('../../analysis/project-detection.js');
-        const projects = db.listProjects();
-        const projectMomentum = new Map(projects.map(p => [p.id, computeProjectMomentum(db, p.id, 7)]));
-        items.sort((a, b) => computeRankScore(b, profile, { projectMomentum }) - computeRankScore(a, profile, { projectMomentum }));
+      // score sort needs post-query ranking (momentum context), others use SQL ORDER BY
+      const useScoreSort = sortBy === 'score' || (status === 'pending' && !sortBy);
+      let items = db.listSuggestions({ status, kind, sortBy: useScoreSort ? undefined : sortBy, limit: useScoreSort ? undefined : limit, offset: useScoreSort ? undefined : offset });
+      // Compute rank scores
+      const { computeRankScore } = await import('../../suggestion/ranking.js');
+      const { computeProjectMomentum } = await import('../../analysis/project-detection.js');
+      const profile = db.ensureProfile();
+      const projects = db.listProjects();
+      const projectMomentum = new Map(projects.map(p => [p.id, computeProjectMomentum(db, p.id, 7)]));
+      const scoreMap = new Map(items.map(s => [s.id, Math.round(computeRankScore(s, profile, { projectMomentum }) * 10) / 10]));
+      if (useScoreSort) {
+        items.sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0));
+        items = items.slice(offset, offset + limit);
       }
       const total = db.countSuggestions({ status, kind });
       const fbState = db.getThumbsState('suggestion');
-      return json(res, { items, total, feedbackState: fbState }), true;
+      const scores: Record<string, number> = {};
+      for (const s of items) scores[s.id] = scoreMap.get(s.id) ?? 0;
+      return json(res, { items, total, feedbackState: fbState, scores }), true;
     }
   }
 
@@ -57,11 +64,17 @@ export async function handleSuggestionRoutes(
           const result = snoozeSuggestion(db, id, until);
           if (result.ok) processed++;
         }
+      } else if (body.action === 'update') {
+        const { updateSuggestionCategory } = await import('../../suggestion/engine.js');
+        for (const id of body.ids) {
+          const result = updateSuggestionCategory(db, id, body.category ?? 'manual');
+          if (result.ok) processed++;
+        }
       }
       return json(res, { processed, total: body.ids.length }), true;
     }
 
-    const match = pathname.match(/^\/api\/suggestions\/([^/]+)\/(accept|dismiss|snooze)$/);
+    const match = pathname.match(/^\/api\/suggestions\/([^/]+)\/(accept|dismiss|snooze|update)$/);
     if (match) {
       const [, id, action] = match;
       if (action === 'accept') {
@@ -94,6 +107,14 @@ export async function handleSuggestionRoutes(
         if (!result.ok) return json(res, { error: 'Cannot snooze — suggestion not pending' }, 400), true;
         const updated = db.getSuggestion(id);
         return json(res, updated), true;
+      } else if (action === 'update') {
+        const { updateSuggestionCategory } = await import('../../suggestion/engine.js');
+        const body = await parseBody(req, res, OptionalCategorySchema);
+        if (!body) return true;
+        const result = updateSuggestionCategory(db, id, body.category ?? 'manual');
+        if (!result.ok) return json(res, { error: 'Cannot update — suggestion not in backlog or accepted status' }, 400), true;
+        const updated = db.getSuggestion(id);
+        return json(res, { ...updated, runId: result.runCreated }), true;
       }
     }
   }

@@ -4,6 +4,7 @@ export type ShadowEventKind =
   | 'suggestion_ready'
   | 'run_completed'
   | 'run_failed'
+  | 'reflect_failed'
   | 'pattern_detected'
   | 'memory_insight'
   | 'consolidation_complete'
@@ -25,6 +26,7 @@ export type ShadowEventPayload = {
 export const EVENT_PRIORITIES: Record<ShadowEventKind, number> = {
   trust_level_change: 9,
   run_failed: 8,
+  reflect_failed: 7,
   observation_notable: 7,
   suggestion_ready: 6,
   run_completed: 6,

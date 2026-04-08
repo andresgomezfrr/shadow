@@ -74,6 +74,55 @@ export function acceptSuggestion(
 }
 
 // ---------------------------------------------------------------------------
+// Update category (backlog/accepted transitions)
+// ---------------------------------------------------------------------------
+
+export function updateSuggestionCategory(
+  db: ShadowDatabase,
+  suggestionId: string,
+  category: string,
+): { ok: boolean; runCreated?: string } {
+  const suggestion = db.getSuggestion(suggestionId);
+  if (!suggestion || (suggestion.status !== 'backlog' && suggestion.status !== 'accepted')) {
+    return { ok: false };
+  }
+
+  const newStatus = category === 'planned' ? 'backlog' : 'accepted';
+  db.updateSuggestion(suggestionId, {
+    status: newStatus,
+    feedbackNote: category,
+  });
+  db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'update_category', category });
+
+  // Create a Run only when transitioning to 'execute'
+  let runId: string | undefined;
+  if (category === 'execute') {
+    const primaryRepoId = suggestion.repoIds.length > 0
+      ? suggestion.repoIds[0]
+      : suggestion.repoId ?? 'unknown';
+
+    const run = db.createRun({
+      repoId: primaryRepoId,
+      repoIds: suggestion.repoIds.length > 0 ? suggestion.repoIds : (suggestion.repoId ? [suggestion.repoId] : []),
+      suggestionId: suggestion.id,
+      kind: suggestion.kind,
+      prompt: suggestion.summaryMd,
+    });
+    runId = run.id;
+  }
+
+  db.createAuditEvent({
+    interface: 'suggestion-engine',
+    action: 'update-suggestion-category',
+    targetKind: 'suggestion',
+    targetId: suggestionId,
+    detail: { category, previousCategory: suggestion.feedbackNote, runId: runId ?? null },
+  });
+
+  return { ok: true, runCreated: runId };
+}
+
+// ---------------------------------------------------------------------------
 // Dismiss
 // ---------------------------------------------------------------------------
 
@@ -89,7 +138,7 @@ export async function dismissSuggestion(
   category?: string,
 ): Promise<{ ok: boolean }> {
   const suggestion = db.getSuggestion(suggestionId);
-  if (!suggestion || suggestion.status !== 'pending') {
+  if (!suggestion || (suggestion.status !== 'pending' && suggestion.status !== 'backlog')) {
     return { ok: false };
   }
 
