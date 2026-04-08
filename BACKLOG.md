@@ -65,6 +65,9 @@ Con Activity visibility, analizar: ¿consolidate LLM parte se ejecuta? ¿reflect
 ### Consolidate timing: no consumir correcciones antes de que otros jobs las vean
 Si consolidate corre antes que repo-profile, consume la corrección y repo-profile no la ve. Evaluar si necesita coordinación.
 
+### Consolidate: auto-fix de memorias mal clasificadas *(2026-04-08)*
+Si durante consolidate el LLM detecta memorias con metadata incorrecta (repo equivocado, proyecto mal asignado, labels/kind/scope/layer inapropiados, entities_json incompleto), debería corregirlas automáticamente en vez de solo reorganizar layers. Ejemplos: memoria asociada a repo A que claramente habla de repo B, kind "pattern" que es realmente "improvement", scope incorrecto, o entidades faltantes que se pueden inferir del contenido.
+
 ---
 
 ## Prioridad media — Infraestructura de datos
