@@ -4,6 +4,12 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-08/09 (backlog cleanup + suggest lifecycle)
+
+- **Suggestion kind colors extracted to shared module** — `utils/suggestion-colors.ts` with `SUG_KIND_COLORS`, `SUG_KIND_OPTIONS`, `SUG_KIND_COLOR_DEFAULT`. Same pattern as `observation-colors.ts`. SuggestionsPage imports from shared module.
+- **"Analyze cross-repo" → "Suggest cross-repo"** — Button text in ProjectDetailPage corrected to match actual job type (suggest-project).
+- **LiveStatusBar/ActivityEntry color consistency** — Already resolved: both use shared `JOB_TYPE_COLORS` from `job-colors.ts`. Removed from backlog.
+
 ## Audit 2026-04-06/07 (comprehensive codebase audit)
 
 Full audit report: [`AUDIT-2026-04-06.md`](AUDIT-2026-04-06.md). ~100 findings, all actionable items resolved.

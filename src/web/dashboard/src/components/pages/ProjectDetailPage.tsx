@@ -83,7 +83,7 @@ export function ProjectDetailPage() {
               disabled={analyzeTriggered}
               className="px-3 py-1.5 rounded text-xs bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25 border-none cursor-pointer transition-colors disabled:opacity-50"
             >
-              {analyzeTriggered ? 'Triggered' : 'Analyze cross-repo'}
+              {analyzeTriggered ? 'Triggered' : 'Suggest cross-repo'}
             </button>
           </div>
         </div>
