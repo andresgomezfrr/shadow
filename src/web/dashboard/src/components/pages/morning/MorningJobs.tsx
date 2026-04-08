@@ -1,17 +1,7 @@
 import { timeAgo } from '../../../utils/format';
+import { JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../../utils/job-colors';
 import { Badge } from '../../common/Badge';
 import type { Job } from '../../../api/types';
-
-const TYPE_COLORS: Record<string, string> = {
-  heartbeat: 'text-purple bg-purple/15',
-  suggest: 'text-green bg-green/15',
-  consolidate: 'text-orange bg-orange/15',
-  reflect: 'text-blue bg-blue/15',
-  'digest-daily': 'text-cyan bg-cyan/15',
-  'digest-weekly': 'text-cyan bg-cyan/15',
-  'digest-brag': 'text-cyan bg-cyan/15',
-  'context-enrich': 'text-amber-400 bg-amber-400/15',
-};
 
 export function MorningJobs({ jobs }: { jobs: Job[] }) {
   if (jobs.length === 0) return null;
@@ -26,7 +16,7 @@ export function MorningJobs({ jobs }: { jobs: Job[] }) {
           const isRunning = job.status === 'running' || !job.finishedAt;
           return (
             <div key={job.id} className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center gap-2 flex-wrap text-xs">
-              <Badge className={TYPE_COLORS[job.type] ?? 'text-text-dim bg-border'}>{job.type}</Badge>
+              <Badge className={JOB_TYPE_COLORS[job.type] ?? JOB_TYPE_COLOR_DEFAULT}>{job.type}</Badge>
               {isRunning ? <><span className="text-accent animate-pulse">running</span>{job.activity && <span className="text-text-dim">· {job.activity}</span>}</> : phases.length > 0 ? phases.map((p: string, i: number) => (
                 <span key={i} className="text-text-muted">{p}</span>
               )) : <span className="text-text-muted">skip</span>}

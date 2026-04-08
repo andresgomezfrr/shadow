@@ -3,18 +3,9 @@ import { useEventStream } from '../../hooks/useEventStream';
 import { useApi } from '../../hooks/useApi';
 import { fetchActivity, fetchStatus } from '../../api/client';
 import { useNow, formatCountdown } from '../../utils/format';
+import { JOB_TYPE_COLORS } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
 import type { ActivityEntry } from '../../api/types';
-
-const TYPE_COLORS: Record<string, string> = {
-  heartbeat: 'bg-purple-500/20 text-purple-300',
-  suggest: 'bg-green-500/20 text-green-300',
-  consolidate: 'bg-orange-500/20 text-orange-300',
-  reflect: 'bg-blue-500/20 text-blue-300',
-  'remote-sync': 'bg-pink-400/20 text-pink-300',
-  'repo-profile': 'bg-teal-400/20 text-teal-300',
-  'context-enrich': 'bg-cyan-400/20 text-cyan-300',
-};
 
 const SSE_EVENTS = ['job:started', 'job:phase', 'job:complete', 'job:enqueued'];
 
@@ -59,7 +50,7 @@ export function LiveStatusBar() {
           : 0;
         const mins = Math.floor(elapsed / 60);
         const secs = elapsed % 60;
-        const colors = TYPE_COLORS[entry.type] ?? 'bg-border text-text-dim';
+        const colors = JOB_TYPE_COLORS[entry.type] ?? 'bg-border text-text-dim';
         return (
           <div key={entry.id} className="flex items-center gap-2 text-sm">
             <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
