@@ -214,7 +214,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
   }
 
   if (type === 'suggest-deep') {
-    const titles = arr(r, 'suggestionTitles').map(t => ({ id: '', title: t }));
+    const sugItems = items(r, 'suggestionItems');
     const repoName = str(r, 'repoName');
     return (
       <>
@@ -224,9 +224,9 @@ function renderExpandedDetail(entry: ActivityEntryType) {
           <div>
             <span className="text-accent">Suggestions ({num(r, 'suggestionsCreated')}):</span>
             <ul className="ml-3 mt-0.5 space-y-0.5">
-              {titles.map((t, i) => (
-                <li key={i} className="text-text-dim">
-                  {t.id ? <a href={`/suggestions?highlight=${t.id}`} className="hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>- {t.title}</a> : `- ${t.title}`}
+              {sugItems.map((item) => (
+                <li key={item.id}>
+                  <a href={`/suggestions?highlight=${item.id}`} className="text-text-dim hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>- {item.title}</a>
                 </li>
               ))}
             </ul>
@@ -239,7 +239,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
   }
 
   if (type === 'suggest-project') {
-    const titles = arr(r, 'suggestionTitles');
+    const sugItems = items(r, 'suggestionItems');
     const projectName = str(r, 'projectName');
     return (
       <>
@@ -249,7 +249,11 @@ function renderExpandedDetail(entry: ActivityEntryType) {
           <div>
             <span className="text-accent">Cross-repo suggestions ({num(r, 'suggestionsCreated')}):</span>
             <ul className="ml-3 mt-0.5 space-y-0.5">
-              {titles.map((t, i) => <li key={i} className="text-text-dim">- {t}</li>)}
+              {sugItems.map((item) => (
+                <li key={item.id}>
+                  <a href={`/suggestions?highlight=${item.id}`} className="text-text-dim hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>- {item.title}</a>
+                </li>
+              ))}
             </ul>
           </div>
         ) : (
