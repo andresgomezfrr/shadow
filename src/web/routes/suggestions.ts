@@ -15,11 +15,13 @@ export async function handleSuggestionRoutes(
       const status = params.get('status') ?? undefined;
       const kind = params.get('kind') ?? undefined;
       const sortBy = params.get('sort') ?? undefined;
+      const repoId = params.get('repoId') ?? undefined;
+      const projectId = params.get('projectId') ?? undefined;
       const limit = clampLimit(params.get('limit'), 30);
       const offset = clampOffset(params.get('offset'));
       // score sort needs post-query ranking (momentum context), others use SQL ORDER BY
       const useScoreSort = sortBy === 'score' || (status === 'pending' && !sortBy);
-      let items = db.listSuggestions({ status, kind, sortBy: useScoreSort ? undefined : sortBy, limit: useScoreSort ? undefined : limit, offset: useScoreSort ? undefined : offset });
+      let items = db.listSuggestions({ status, kind, repoId, projectId, sortBy: useScoreSort ? undefined : sortBy, limit: useScoreSort ? undefined : limit, offset: useScoreSort ? undefined : offset });
       // Compute rank scores
       const { computeRankScore } = await import('../../suggestion/ranking.js');
       const { computeProjectMomentum } = await import('../../analysis/project-detection.js');
@@ -31,7 +33,7 @@ export async function handleSuggestionRoutes(
         items.sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0));
         items = items.slice(offset, offset + limit);
       }
-      const total = db.countSuggestions({ status, kind });
+      const total = db.countSuggestions({ status, kind, repoId, projectId });
       const fbState = db.getThumbsState('suggestion');
       const scores: Record<string, number> = {};
       for (const s of items) scores[s.id] = scoreMap.get(s.id) ?? 0;

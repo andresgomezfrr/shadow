@@ -3,7 +3,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchSuggestions, fetchRepos, fetchRuns, acceptSuggestion, dismissSuggestion, snoozeSuggestion, updateSuggestionCategory, bulkSuggestionAction } from '../../api/client';
+import { fetchSuggestions, fetchRepos, fetchRuns, fetchProjects, acceptSuggestion, dismissSuggestion, snoozeSuggestion, updateSuggestionCategory, bulkSuggestionAction } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { FilterTabs } from '../common/FilterTabs';
 import { Pagination } from '../common/Pagination';
@@ -81,13 +81,14 @@ export function SuggestionsPage() {
   const scrolledRef = useRef(false);
 
   const PAGE_SIZE = 20;
-  const { params, setParam } = useFilterParams({ status: highlightId ? '' : 'pending', kind: '', sort: 'score', offset: '0' });
+  const { params, setParam } = useFilterParams({ status: highlightId ? '' : 'pending', kind: '', sort: 'score', repoId: '', projectId: '', offset: '0' });
   const { data: rawData, refresh } = useApi(
-    () => fetchSuggestions({ status: params.status || undefined, kind: params.kind || undefined, sort: params.sort || undefined, limit: PAGE_SIZE, offset: Number(params.offset) || 0 }),
-    [params.status, params.kind, params.sort, params.offset],
+    () => fetchSuggestions({ status: params.status || undefined, kind: params.kind || undefined, sort: params.sort || undefined, repoId: params.repoId || undefined, projectId: params.projectId || undefined, limit: PAGE_SIZE, offset: Number(params.offset) || 0 }),
+    [params.status, params.kind, params.sort, params.repoId, params.projectId, params.offset],
     30_000,
   );
   const { data: repos } = useApi(fetchRepos, [], 60_000);
+  const { data: projects } = useApi(() => fetchProjects(), [], 60_000);
   const { data: runs } = useApi(fetchRuns, [], 30_000);
 
   const fbState = rawData?.feedbackState ?? null;
@@ -217,6 +218,21 @@ export function SuggestionsPage() {
         <span className="text-border mx-1">|</span>
         <span className="text-xs text-text-muted">Sort:</span>
         <FilterTabs options={SORT_OPTIONS} active={params.sort} onChange={(v) => setParam('sort', v)} />
+        {(repos && repos.length > 1 || projects && projects.length > 0) && <span className="text-border mx-1">|</span>}
+        {repos && repos.length > 1 && (
+          <select value={params.repoId} onChange={e => setParam('repoId', e.target.value)}
+            className="text-xs bg-bg border border-border rounded px-2 py-1 text-text outline-none focus:border-accent">
+            <option value="">All repos</option>
+            {repos.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        )}
+        {projects && projects.length > 0 && (
+          <select value={params.projectId} onChange={e => setParam('projectId', e.target.value)}
+            className="text-xs bg-bg border border-border rounded px-2 py-1 text-text outline-none focus:border-accent">
+            <option value="">All projects</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        )}
       </div>
 
       {runCreated && (

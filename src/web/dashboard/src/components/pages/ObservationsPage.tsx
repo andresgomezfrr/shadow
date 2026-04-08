@@ -1,6 +1,6 @@
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchObservations, acknowledgeObservation, resolveObservation, reopenObservation } from '../../api/client';
+import { fetchObservations, fetchRepos, fetchProjects, acknowledgeObservation, resolveObservation, reopenObservation } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { Pagination } from '../common/Pagination';
 import { Badge } from '../common/Badge';
@@ -30,12 +30,14 @@ const TERMINAL_STATUSES = new Set(['resolved']);
 const PAGE_SIZE = 20;
 
 export function ObservationsPage() {
-  const { params, setParam } = useFilterParams({ status: 'active', severity: '', kind: '', offset: '0' });
+  const { params, setParam } = useFilterParams({ status: 'active', severity: '', kind: '', repoId: '', projectId: '', offset: '0' });
   const { data: rawData, refresh } = useApi(
-    () => fetchObservations({ limit: PAGE_SIZE, offset: Number(params.offset) || 0, status: params.status, severity: params.severity || undefined, kind: params.kind || undefined }),
-    [params.status, params.severity, params.kind, params.offset],
+    () => fetchObservations({ limit: PAGE_SIZE, offset: Number(params.offset) || 0, status: params.status, severity: params.severity || undefined, kind: params.kind || undefined, repoId: params.repoId || undefined, projectId: params.projectId || undefined }),
+    [params.status, params.severity, params.kind, params.repoId, params.projectId, params.offset],
     30_000,
   );
+  const { data: repos } = useApi(fetchRepos, [], 60_000);
+  const { data: projects } = useApi(() => fetchProjects(), [], 60_000);
   const data = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
   const fbState = rawData?.feedbackState ?? null;
@@ -65,9 +67,24 @@ export function ObservationsPage() {
         <span className="text-xs text-text-muted">Severity:</span>
         <FilterTabs options={SEVERITY_OPTIONS} active={params.severity} onChange={(v) => setParam('severity', v)} />
       </div>
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         <span className="text-xs text-text-muted">Kind:</span>
         <FilterTabs options={OBS_KIND_OPTIONS} active={params.kind} onChange={(v) => setParam('kind', v)} />
+        {(repos && repos.length > 1 || projects && projects.length > 0) && <span className="text-border mx-1">|</span>}
+        {repos && repos.length > 1 && (
+          <select value={params.repoId} onChange={e => setParam('repoId', e.target.value)}
+            className="text-xs bg-bg border border-border rounded px-2 py-1 text-text outline-none focus:border-accent">
+            <option value="">All repos</option>
+            {repos.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        )}
+        {projects && projects.length > 0 && (
+          <select value={params.projectId} onChange={e => setParam('projectId', e.target.value)}
+            className="text-xs bg-bg border border-border rounded px-2 py-1 text-text outline-none focus:border-accent">
+            <option value="">All projects</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        )}
       </div>
 
       {!data ? (
