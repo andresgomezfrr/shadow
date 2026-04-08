@@ -11,29 +11,8 @@ import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
 import { ScoreBar } from '../common/ScoreBar';
+import { SUG_KIND_COLORS, SUG_KIND_COLOR_DEFAULT, SUG_KIND_OPTIONS } from '../../utils/suggestion-colors';
 import type { Repo } from '../../api/types';
-
-// --- Visual config ---
-
-const SUG_KINDS = {
-  refactor:    { badge: 'bg-purple-500/20 text-purple-300', dot: 'bg-purple-400', active: 'bg-purple-500/15 text-purple-300' },
-  bug:         { badge: 'bg-red-500/20 text-red-300',       dot: 'bg-red-400',    active: 'bg-red-500/15 text-red-300' },
-  improvement: { badge: 'bg-blue-500/20 text-blue-300',     dot: 'bg-blue-400',   active: 'bg-blue-500/15 text-blue-300' },
-  feature:     { badge: 'bg-green-500/20 text-green-300',   dot: 'bg-green-400',  active: 'bg-green-500/15 text-green-300' },
-} as const;
-
-const SUG_KIND_COLORS: Record<string, string> =
-  Object.fromEntries(Object.entries(SUG_KINDS).map(([k, v]) => [k, v.badge]));
-
-const SUG_KIND_OPTIONS = [
-  { label: 'All', value: '' },
-  ...Object.entries(SUG_KINDS).map(([k, v]) => ({
-    label: k.charAt(0).toUpperCase() + k.slice(1),
-    value: k,
-    dotColor: v.dot,
-    activeClass: v.active,
-  })),
-];
 
 const STATUS_BORDER: Record<string, string> = {
   pending: 'border-l-orange',
@@ -284,7 +263,7 @@ export function SuggestionsPage() {
                     />
                   )}
                   <span className="font-medium text-sm flex-1 min-w-0 truncate">{s.title}</span>
-                  <Badge className={SUG_KIND_COLORS[s.kind] ?? 'text-text-dim bg-border'}>{s.kind}</Badge>
+                  <Badge className={SUG_KIND_COLORS[s.kind] ?? SUG_KIND_COLOR_DEFAULT}>{s.kind}</Badge>
                   {repo && <Badge className="text-text-dim bg-border">{repo}</Badge>}
                   <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} compact />
                   {scores[s.id] != null && <span className="font-mono text-xs text-accent">{scores[s.id]}</span>}
