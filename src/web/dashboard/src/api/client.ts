@@ -50,8 +50,8 @@ export const fetchMemories = (params?: { q?: string; layer?: string; memoryType?
 export const fetchSuggestions = (params?: { status?: string; kind?: string; limit?: number; offset?: number }) =>
   api<{ items: Suggestion[]; total: number; feedbackState: Record<string, string> }>(`/api/suggestions${qs({ status: params?.status, kind: params?.kind, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
-export const fetchObservations = (params?: { limit?: number; offset?: number; status?: string; severity?: string }) =>
-  api<{ items: Observation[]; total: number; feedbackState: Record<string, string> }>(`/api/observations${qs({ limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined, status: params?.status, severity: params?.severity })}`);
+export const fetchObservations = (params?: { limit?: number; offset?: number; status?: string; severity?: string; kind?: string }) =>
+  api<{ items: Observation[]; total: number; feedbackState: Record<string, string> }>(`/api/observations${qs({ limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined, status: params?.status, severity: params?.severity, kind: params?.kind })}`);
 
 export const fetchRepos = () => api<Repo[]>('/api/repos');
 

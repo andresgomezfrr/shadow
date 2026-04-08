@@ -17,8 +17,9 @@ export async function handleObservationRoutes(
       const status = params.get('status') ?? 'all';
       const repoId = params.get('repoId') ?? undefined;
       const severity = params.get('severity') ?? undefined;
-      const items = db.listObservations({ limit, offset, status, repoId, severity });
-      const total = db.countObservations({ repoId, status, severity });
+      const kind = params.get('kind') ?? undefined;
+      const items = db.listObservations({ limit, offset, status, repoId, severity, kind });
+      const total = db.countObservations({ repoId, status, severity, kind });
       const fbState = db.getThumbsState('observation');
       return json(res, { items, total, feedbackState: fbState }), true;
     }

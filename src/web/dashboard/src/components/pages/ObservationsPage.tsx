@@ -6,29 +6,10 @@ import { Pagination } from '../common/Pagination';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
 import { FilterTabs } from '../common/FilterTabs';
+import { OBS_KIND_COLORS, OBS_KIND_COLOR_DEFAULT, OBS_SEVERITY_BORDER, OBS_SEVERITY_ICON, OBS_SEVERITY_ICON_COLOR } from '../../utils/observation-colors';
 import { useState, useCallback } from 'react';
 import { useHighlight } from '../../hooks/useHighlight';
 import { timeAgo } from '../../utils/format';
-
-// --- Severity visual config ---
-
-const SEVERITY_BORDER: Record<string, string> = {
-  high: 'border-l-red',
-  warning: 'border-l-orange',
-  info: 'border-l-blue',
-};
-
-const SEVERITY_ICON: Record<string, string> = {
-  high: '●',
-  warning: '▲',
-  info: '○',
-};
-
-const SEVERITY_ICON_COLOR: Record<string, string> = {
-  high: 'text-red',
-  warning: 'text-orange',
-  info: 'text-blue',
-};
 
 const STATUS_OPTIONS = [
   { label: 'Active', value: 'active', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
@@ -44,14 +25,23 @@ const SEVERITY_OPTIONS = [
   { label: 'Info', value: 'info', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
 ];
 
+const KIND_OPTIONS = [
+  { label: 'All', value: '' },
+  { label: 'Risk', value: 'risk', dotColor: 'bg-red-400', activeClass: 'bg-red-500/15 text-red-300' },
+  { label: 'Improvement', value: 'improvement', dotColor: 'bg-blue-400', activeClass: 'bg-blue-500/15 text-blue-300' },
+  { label: 'Opportunity', value: 'opportunity', dotColor: 'bg-green-400', activeClass: 'bg-green-500/15 text-green-300' },
+  { label: 'Pattern', value: 'pattern', dotColor: 'bg-purple-400', activeClass: 'bg-purple-500/15 text-purple-300' },
+  { label: 'Infrastructure', value: 'infrastructure', dotColor: 'bg-orange-400', activeClass: 'bg-orange-500/15 text-orange-300' },
+];
+
 const TERMINAL_STATUSES = new Set(['resolved']);
 const PAGE_SIZE = 20;
 
 export function ObservationsPage() {
-  const { params, setParam } = useFilterParams({ status: 'active', severity: '', offset: '0' });
+  const { params, setParam } = useFilterParams({ status: 'active', severity: '', kind: '', offset: '0' });
   const { data: rawData, refresh } = useApi(
-    () => fetchObservations({ limit: PAGE_SIZE, offset: Number(params.offset) || 0, status: params.status, severity: params.severity || undefined }),
-    [params.status, params.severity, params.offset],
+    () => fetchObservations({ limit: PAGE_SIZE, offset: Number(params.offset) || 0, status: params.status, severity: params.severity || undefined, kind: params.kind || undefined }),
+    [params.status, params.severity, params.kind, params.offset],
     30_000,
   );
   const data = rawData?.items ?? null;
@@ -79,9 +69,13 @@ export function ObservationsPage() {
         <h1 className="text-xl font-semibold">Observations</h1>
         <FilterTabs options={STATUS_OPTIONS} active={params.status} onChange={(v) => setParam('status', v)} />
       </div>
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-2">
         <span className="text-xs text-text-muted">Severity:</span>
         <FilterTabs options={SEVERITY_OPTIONS} active={params.severity} onChange={(v) => setParam('severity', v)} />
+      </div>
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-xs text-text-muted">Kind:</span>
+        <FilterTabs options={KIND_OPTIONS} active={params.kind} onChange={(v) => setParam('kind', v)} />
       </div>
 
       {!data ? (
@@ -96,9 +90,9 @@ export function ObservationsPage() {
           {data.map((obs) => {
             const isOpen = expanded.has(obs.id);
             const isTerminal = TERMINAL_STATUSES.has(obs.status);
-            const borderColor = SEVERITY_BORDER[obs.severity] ?? 'border-l-border';
-            const icon = SEVERITY_ICON[obs.severity] ?? '○';
-            const iconColor = SEVERITY_ICON_COLOR[obs.severity] ?? 'text-text-muted';
+            const borderColor = OBS_SEVERITY_BORDER[obs.severity] ?? 'border-l-border';
+            const icon = OBS_SEVERITY_ICON[obs.severity] ?? '○';
+            const iconColor = OBS_SEVERITY_ICON_COLOR[obs.severity] ?? 'text-text-muted';
 
             return (
               <div
@@ -110,6 +104,7 @@ export function ObservationsPage() {
                 {/* Collapsed row */}
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <span className={`text-sm w-4 text-center ${iconColor}`} title={obs.severity}>{icon}</span>
+                  <Badge className={OBS_KIND_COLORS[obs.kind] ?? OBS_KIND_COLOR_DEFAULT}>{obs.kind}</Badge>
                   <span className="text-[13px] flex-1 min-w-0 truncate">{obs.title}</span>
                   {obs.votes > 1 && <Badge title="Times seen" className="text-orange bg-orange/15">{obs.votes}x</Badge>}
 
@@ -158,7 +153,7 @@ export function ObservationsPage() {
 
                     {/* Metadata */}
                     <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
-                      <Badge className="text-text-dim bg-border">{obs.kind}</Badge>
+                      <Badge className={OBS_KIND_COLORS[obs.kind] ?? OBS_KIND_COLOR_DEFAULT}>{obs.kind}</Badge>
                       {obs.votes > 1 && <span>Seen {obs.votes} times</span>}
                       <span>First: {timeAgo(obs.firstSeenAt)}</span>
                       {obs.suggestionId && <a href={`/suggestions?highlight=${obs.suggestionId}`} className="text-accent hover:underline">linked suggestion</a>}
