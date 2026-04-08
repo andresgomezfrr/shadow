@@ -52,6 +52,11 @@ Al disparar un job desde el dashboard, si ya hay uno encolado o corriendo, el en
 
 ---
 
+### Inyectar contexto de proyecto en heartbeat cuando el repo pertenece a uno *(2026-04-08)*
+Al hacer check-in de un repo (heartbeat analyze), si el repo pertenece a un proyecto, incluir el contexto del proyecto (nombre, descripción, repos relacionados, observaciones y sugerencias activas del proyecto) en el prompt de análisis. Actualmente el heartbeat solo ve repos individuales — el contexto de proyecto ayudaría a generar memorias y observaciones más relevantes.
+
+---
+
 ## Prioridad media — Job system tuning
 
 ### Evaluar intervalos de jobs con datos reales
