@@ -120,11 +120,16 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
   // Persist to daemon state
   shared.activeProjects = detectedProjects;
 
-  // Build enrichment context from cached MCP data
+  // Build enrichment context from cached MCP data (mark as reported only after heartbeat succeeds)
   let enrichmentCtx: string | undefined;
+  let enrichmentItemIds: string[] = [];
   try {
     const { buildEnrichmentContext } = await import('../analysis/enrichment.js');
-    enrichmentCtx = buildEnrichmentContext(db);
+    const enrichmentResult = buildEnrichmentContext(db);
+    if (enrichmentResult) {
+      enrichmentCtx = enrichmentResult.context;
+      enrichmentItemIds = enrichmentResult.itemIds;
+    }
   } catch { /* enrichment not available */ }
 
   ctx.setPhase('analyze');
@@ -145,6 +150,9 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
     enrichmentContext: enrichmentCtx,
     activeProjects: detectedProjects.length > 0 ? detectedProjects : undefined,
   });
+
+  // Mark enrichment items as reported only after heartbeat succeeds
+  for (const id of enrichmentItemIds) db.markEnrichmentReported(id);
 
   // Enrich result with titles of what was produced
   // Only query if heartbeat actually created items (avoid capturing parallel job output)

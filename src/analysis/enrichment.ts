@@ -293,9 +293,9 @@ export async function activityEnrich(
 
 /**
  * Build enrichment context string for heartbeat prompts.
- * Marks items as reported after including them.
+ * Returns context + item IDs. Caller must mark as reported after successful use.
  */
-export function buildEnrichmentContext(db: ShadowDatabase): string | undefined {
+export function buildEnrichmentContext(db: ShadowDatabase): { context: string; itemIds: string[] } | undefined {
   const newItems = db.listNewEnrichment(10);
   if (newItems.length === 0) return undefined;
 
@@ -304,11 +304,7 @@ export function buildEnrichmentContext(db: ShadowDatabase): string | undefined {
     return `- [${item.source}]${entityLabel}: ${item.summary}`;
   });
 
-  for (const item of newItems) {
-    db.markEnrichmentReported(item.id);
-  }
-
-  return lines.join('\n');
+  return { context: lines.join('\n'), itemIds: newItems.map(item => item.id) };
 }
 
 /**
