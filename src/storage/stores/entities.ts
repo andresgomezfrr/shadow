@@ -71,7 +71,7 @@ export function countRepos(db: DatabaseSync): number {
   return (db.prepare('SELECT COUNT(*) as total FROM repos').get() as { total: number }).total;
 }
 
-export function updateRepo(db: DatabaseSync, id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt' | 'lastFetchedAt' | 'contextMd' | 'contextUpdatedAt'>>): void {
+export function updateRepo(db: DatabaseSync, id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt' | 'lastFetchedAt' | 'lastRemoteHead' | 'contextMd' | 'contextUpdatedAt'>>): void {
   const sets: string[] = [];
   const values: SQLValue[] = [];
   for (const [key, value] of Object.entries(updates)) {

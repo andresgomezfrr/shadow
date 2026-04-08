@@ -36,11 +36,14 @@ export function listNewEnrichment(db: DatabaseSync, limit = 20): EnrichmentCache
   return db.prepare('SELECT * FROM enrichment_cache WHERE reported = 0 AND stale = 0 ORDER BY created_at DESC LIMIT ?').all(limit).map(mapEnrichment);
 }
 
-export function listEnrichment(db: DatabaseSync, filters?: { source?: string; reported?: boolean; limit?: number; offset?: number }): EnrichmentCacheRecord[] {
+export function listEnrichment(db: DatabaseSync, filters?: { source?: string; entityType?: string; entityId?: string; reported?: boolean; createdSince?: string; limit?: number; offset?: number }): EnrichmentCacheRecord[] {
   const clauses: string[] = ['stale = 0'];
   const values: SQLValue[] = [];
   if (filters?.source) { clauses.push('source = ?'); values.push(filters.source); }
+  if (filters?.entityType) { clauses.push('entity_type = ?'); values.push(filters.entityType); }
+  if (filters?.entityId) { clauses.push('entity_id = ?'); values.push(filters.entityId); }
   if (filters?.reported !== undefined) { clauses.push('reported = ?'); values.push(filters.reported ? 1 : 0); }
+  if (filters?.createdSince) { clauses.push('created_at >= ?'); values.push(filters.createdSince); }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
   const limit = filters?.limit ?? 50;
   const offset = filters?.offset ?? 0;
@@ -48,10 +51,12 @@ export function listEnrichment(db: DatabaseSync, filters?: { source?: string; re
   return db.prepare(`SELECT * FROM enrichment_cache ${where} ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`).all(...values).map(mapEnrichment);
 }
 
-export function countEnrichment(db: DatabaseSync, filters?: { source?: string; reported?: boolean }): number {
+export function countEnrichment(db: DatabaseSync, filters?: { source?: string; entityType?: string; entityId?: string; reported?: boolean }): number {
   const clauses: string[] = ['stale = 0'];
   const values: SQLValue[] = [];
   if (filters?.source) { clauses.push('source = ?'); values.push(filters.source); }
+  if (filters?.entityType) { clauses.push('entity_type = ?'); values.push(filters.entityType); }
+  if (filters?.entityId) { clauses.push('entity_id = ?'); values.push(filters.entityId); }
   if (filters?.reported !== undefined) { clauses.push('reported = ?'); values.push(filters.reported ? 1 : 0); }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
   const row = db.prepare(`SELECT COUNT(*) as cnt FROM enrichment_cache ${where}`).get(...values) as { cnt: number };

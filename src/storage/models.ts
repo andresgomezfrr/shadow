@@ -39,6 +39,7 @@ export type RepoRecord = {
   buildCommand: string | null;
   lastObservedAt: string | null;
   lastFetchedAt: string | null;
+  lastRemoteHead: string | null;
   contextMd: string | null;
   contextUpdatedAt: string | null;
   createdAt: string;
@@ -358,6 +359,13 @@ export type ContextEnrichJobResult = {
   itemsCollected: number;
   sources: string[];
   entityNames: string[];
+  projectResults?: Array<{
+    projectId: string;
+    projectName: string;
+    itemsCollected: number;
+    sources: string[];
+    error?: string;
+  }>;
 };
 
 export type ProjectProfileJobResult = {

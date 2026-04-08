@@ -41,7 +41,7 @@ export async function handleJobRoutes(
     const jobTriggerMatch = pathname.match(/^\/api\/jobs\/trigger\/(.+)$/);
     if (jobTriggerMatch) {
       const type = decodeURIComponent(jobTriggerMatch[1]);
-      const VALID_TYPES = new Set(['heartbeat', 'suggest', 'suggest-deep', 'suggest-project', 'consolidate', 'reflect', 'remote-sync', 'repo-profile', 'project-profile', 'context-enrich', 'digest-daily', 'digest-weekly', 'digest-brag']);
+      const VALID_TYPES = new Set(['heartbeat', 'suggest', 'suggest-deep', 'suggest-project', 'consolidate', 'reflect', 'remote-sync', 'repo-profile', 'project-profile', 'context-enrich', 'mcp-discover', 'digest-daily', 'digest-weekly', 'digest-brag']);
       if (!VALID_TYPES.has(type)) {
         return json(res, { error: `Unknown job type: ${type}` }, 400), true;
       }
@@ -50,7 +50,7 @@ export async function handleJobRoutes(
       }
       const PRIORITIES: Record<string, number> = {
         heartbeat: 10, suggest: 8, 'suggest-deep': 6, 'suggest-project': 5, reflect: 5, 'digest-daily': 5, 'digest-weekly': 5, 'digest-brag': 5,
-        'context-enrich': 4, 'project-profile': 4, consolidate: 3, 'repo-profile': 3, 'remote-sync': 2,
+        'context-enrich': 4, 'project-profile': 4, consolidate: 3, 'repo-profile': 3, 'mcp-discover': 2, 'remote-sync': 2,
       };
       const body = await readBody(req).then(b => b ? JSON.parse(b) : {}).catch(() => ({}));
       db.enqueueJob(type, { priority: PRIORITIES[type] ?? 5, triggerSource: 'manual', params: Object.keys(body).length > 0 ? body : undefined });

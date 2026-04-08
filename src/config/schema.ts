@@ -6,8 +6,7 @@ export const ModelsSchema = z.object({
   consolidate: z.string().default('opus'),
   runner: z.string().default('sonnet'),
   thought: z.string().default('haiku'),
-  enrichPlan: z.string().default('sonnet'),
-  enrichExecute: z.string().default('opus'),
+  enrich: z.string().default('opus'),
   digestDaily: z.string().default('sonnet'),
   digestWeekly: z.string().default('opus'),
   digestBrag: z.string().default('opus'),
@@ -16,6 +15,7 @@ export const ModelsSchema = z.object({
   suggestDeep: z.string().default('opus'),
   suggestProject: z.string().default('opus'),
   projectProfile: z.string().default('opus'),
+  mcpDiscover: z.string().default('sonnet'),
 });
 
 export const EffortsSchema = z.object({
@@ -26,6 +26,7 @@ export const EffortsSchema = z.object({
   suggestDeep: z.string().default('high'),
   suggestProject: z.string().default('high'),
   projectProfile: z.string().default('high'),
+  enrich: z.string().default('high'),
 });
 
 export const ConfigSchema = z.object({
@@ -50,8 +51,7 @@ export const ConfigSchema = z.object({
     consolidate: 'opus',
     runner: 'sonnet',
     thought: 'haiku',
-    enrichPlan: 'sonnet',
-    enrichExecute: 'opus',
+    enrich: 'opus',
     digestDaily: 'sonnet',
     digestWeekly: 'opus',
     digestBrag: 'opus',
@@ -60,6 +60,7 @@ export const ConfigSchema = z.object({
     suggestDeep: 'opus',
     suggestProject: 'opus',
     projectProfile: 'opus',
+    mcpDiscover: 'sonnet',
   }),
   efforts: EffortsSchema.default({
     analyze: 'medium',
@@ -69,6 +70,7 @@ export const ConfigSchema = z.object({
     suggestDeep: 'high',
     suggestProject: 'high',
     projectProfile: 'high',
+    enrich: 'high',
   }),
   locale: z.string().default('es'),
   watcherEnabled: z.coerce.boolean().default(true),

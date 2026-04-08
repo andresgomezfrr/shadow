@@ -96,8 +96,21 @@ export const fetchSoulHistory = () =>
 export const fetchConfig = () =>
   api<{ config: Record<string, unknown> }>('/api/config');
 
+export const fetchProjectEnrichment = (projectId: string, params?: { limit?: number; offset?: number }) =>
+  api<{ items: EnrichmentItem[]; total: number }>(`/api/enrichment${qs({ entityType: 'project', entityId: projectId, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+
 export const fetchEnrichment = (params?: { source?: string; limit?: number; offset?: number }) =>
   api<{ items: EnrichmentItem[]; total: number }>(`/api/enrichment${qs({ source: params?.source, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+
+export const fetchEnrichmentServers = () =>
+  api<{ servers: { name: string; enabled: boolean; description: string | null; toolCount: number | null; defaultTtl: string | null; enrichmentHint: string | null }[] }>('/api/enrichment/servers');
+
+export const toggleEnrichmentServer = (name: string, enabled: boolean) =>
+  api<{ ok: boolean; name: string; enabled: boolean }>('/api/enrichment/servers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, enabled }),
+  });
 
 export const fetchUsage = (period: 'day' | 'week' | 'month' = 'week') =>
   api<UsageSummary>(`/api/usage?period=${period}`);

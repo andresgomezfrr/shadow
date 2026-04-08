@@ -28,6 +28,7 @@ const TYPE_COLORS: Record<string, string> = {
   'repo-profile': 'bg-teal-400/20 text-teal-300',
   'project-profile': 'bg-emerald-400/20 text-emerald-300',
   'context-enrich': 'bg-amber-400/20 text-amber-300',
+  'mcp-discover': 'bg-indigo-400/20 text-indigo-300',
   'digest-daily': 'bg-cyan-500/20 text-cyan-300',
   'digest-weekly': 'bg-cyan-500/20 text-cyan-300',
   'digest-brag': 'bg-cyan-500/20 text-cyan-300',
@@ -44,6 +45,7 @@ const TRIGGER_COLORS: Record<string, string> = {
   'repo-profile': 'bg-teal-400/15 text-teal-300 hover:bg-teal-400/25',
   'project-profile': 'bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25',
   'context-enrich': 'bg-amber-400/15 text-amber-300 hover:bg-amber-400/25',
+  'mcp-discover': 'bg-indigo-400/15 text-indigo-300 hover:bg-indigo-400/25',
   'digest-daily': 'bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25',
   'digest-weekly': 'bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25',
   'digest-brag': 'bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25',
@@ -52,7 +54,7 @@ const TRIGGER_COLORS: Record<string, string> = {
 const JOB_GROUPS: Array<{ label: string; jobs: string[] }> = [
   { label: 'Analysis', jobs: ['heartbeat', 'suggest', 'suggest-deep', 'suggest-project'] },
   { label: 'Knowledge', jobs: ['consolidate', 'reflect'] },
-  { label: 'Sync', jobs: ['remote-sync', 'repo-profile', 'project-profile', 'context-enrich'] },
+  { label: 'Sync', jobs: ['remote-sync', 'repo-profile', 'project-profile', 'context-enrich', 'mcp-discover'] },
   { label: 'Digests', jobs: ['digest-daily', 'digest-weekly', 'digest-brag'] },
 ];
 
@@ -69,6 +71,7 @@ const JOB_DESCRIPTIONS: Record<string, string> = {
   'repo-profile': 'Reactive: re-profiles repos when new commits detected — remote (via sync) or local (via heartbeat)',
   'project-profile': 'Reactive: synthesizes cross-repo project context when repos are re-profiled',
   'context-enrich': 'Queries external MCP servers for deployment, CI/CD, calendar data',
+  'mcp-discover': 'Describes MCP servers from tool schemas (Sonnet, daily)',
   'digest-daily': 'Daily standup summary (3-5 bullets)',
   'digest-weekly': 'Weekly 1:1 summary from daily digests',
   'digest-brag': 'Quarterly brag doc for performance reviews',

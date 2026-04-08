@@ -93,6 +93,13 @@ export async function handleProfileRoutes(
             const nextAt = enabled && lastEnrich ? new Date(new Date(lastEnrich.startedAt).getTime() + intervalMs).toISOString() : null;
             return { intervalMs, nextAt, enabled };
           })(),
+          'mcp-discover': (() => {
+            const prefs = profile.preferences as Record<string, unknown> | undefined;
+            const enabled = (prefs?.enrichmentEnabled as boolean | undefined) ?? config.enrichmentEnabled;
+            const lastDiscover = db.getLastJob('mcp-discover');
+            const nextAt = enabled && lastDiscover ? new Date(new Date(lastDiscover.startedAt).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
+            return { intervalMs: 24 * 60 * 60 * 1000, nextAt, enabled };
+          })(),
           ...Object.fromEntries(Object.entries(DIGEST_SCHEDULES).map(([type, sched]) => {
             const tz = db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
             return [type, { schedule: sched.label, nextAt: nextScheduledAt(sched, tz) }];

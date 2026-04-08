@@ -160,6 +160,18 @@ consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)`}</pre>
           />
 
           <JobCard
+            name="mcp-discover"
+            color="bg-indigo-400/20 text-indigo-300"
+            purpose="Describes each MCP server by introspecting tool schemas visible to Sonnet"
+            trigger="Every 24h (gated on Enrichment enabled)"
+            model="Sonnet"
+            phases={['discover']}
+            output="Server descriptions + tool counts → enrichment cache → dashboard settings"
+            reactive={false}
+            note="Enable Enrichment in Settings. One LLM call, zero tool invocations."
+          />
+
+          <JobCard
             name="digest-daily"
             color="bg-cyan-500/20 text-cyan-300"
             purpose="Daily standup summary (3-5 bullets) from commits, memories, observations, suggestions"

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
-import { json, clampLimit, clampOffset, parseBody, CorrectionSchema } from '../helpers.js';
+import { json, readBody, clampLimit, clampOffset, parseBody, CorrectionSchema } from '../helpers.js';
 
 export async function handleKnowledgeRoutes(
   req: IncomingMessage, res: ServerResponse,
@@ -49,14 +49,42 @@ export async function handleKnowledgeRoutes(
       return json(res, status), true;
     }
 
+    // Enrichment servers: discovered MCP servers with enabled/disabled status + descriptions
+    if (pathname === '/api/enrichment/servers') {
+      const { discoverMcpServerNames } = await import('../../observation/mcp-discovery.js');
+      const discovered = discoverMcpServerNames();
+      const profile = db.ensureProfile();
+      const prefs = profile.preferences as Record<string, unknown> | undefined;
+      const disabled = (prefs?.enrichmentDisabledServers as string[] | undefined) ?? [];
+
+      // Load descriptions from mcp-discover job cache
+      const descriptions = db.listEnrichment({ source: 'mcp-discover' });
+      const descMap = new Map(descriptions.map(d => [d.entityName, d]));
+
+      const servers = discovered.map(name => {
+        const desc = descMap.get(name);
+        return {
+          name,
+          enabled: !disabled.includes(name),
+          description: desc?.summary ?? null,
+          toolCount: (desc?.detail as Record<string, unknown> | undefined)?.toolCount as number ?? null,
+          defaultTtl: (desc?.detail as Record<string, unknown> | undefined)?.defaultTtl as string ?? null,
+          enrichmentHint: (desc?.detail as Record<string, unknown> | undefined)?.enrichmentHint as string ?? null,
+        };
+      });
+      return json(res, { servers }), true;
+    }
+
     // Enrichment cache: /api/enrichment
     if (pathname === '/api/enrichment') {
       const source = params.get('source') ?? undefined;
+      const entityType = params.get('entityType') ?? undefined;
+      const entityId = params.get('entityId') ?? undefined;
       const limit = clampLimit(params.get('limit'), 20);
       const offset = clampOffset(params.get('offset'));
       try {
-        const items = db.listEnrichment({ source, limit, offset });
-        const total = db.countEnrichment({ source });
+        const items = db.listEnrichment({ source, entityType, entityId, limit, offset });
+        const total = db.countEnrichment({ source, entityType, entityId });
         return json(res, { items, total }), true;
       } catch {
         return json(res, { items: [], total: 0 }), true;
@@ -83,6 +111,25 @@ export async function handleKnowledgeRoutes(
   }
 
   if (req.method === 'POST') {
+    // Toggle enrichment server enabled/disabled
+    if (pathname === '/api/enrichment/servers') {
+      let body: { name: string; enabled: boolean };
+      try { body = JSON.parse(await readBody(req)) as { name: string; enabled: boolean }; } catch { return json(res, { error: 'Invalid JSON' }, 400), true; }
+      if (!body.name || typeof body.enabled !== 'boolean') return json(res, { error: 'name and enabled required' }, 400), true;
+
+      const profile = db.ensureProfile();
+      const prefs = { ...(profile.preferences as Record<string, unknown>) };
+      const disabled = new Set((prefs.enrichmentDisabledServers as string[] | undefined) ?? []);
+      if (body.enabled) {
+        disabled.delete(body.name);
+      } else {
+        disabled.add(body.name);
+      }
+      prefs.enrichmentDisabledServers = Array.from(disabled);
+      db.updateProfile('default', { preferencesJson: prefs });
+      return json(res, { ok: true, name: body.name, enabled: body.enabled }), true;
+    }
+
     if (pathname === '/api/corrections') {
       const body = await parseBody(req, res, CorrectionSchema);
       if (!body) return true;

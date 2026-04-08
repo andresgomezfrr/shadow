@@ -460,6 +460,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         _db.enqueueJob('context-enrich', { priority: 4 });
       }
 
+      // MCP server discovery: describe servers from tool schemas (same gate as enrichment)
+      if (enrichEnabled && shouldEnqueue('mcp-discover', 24 * 60 * 60 * 1000)) {
+        _db.enqueueJob('mcp-discover', { priority: 2 });
+      }
+
       // Suggest: reactive only (triggered by heartbeat handler when activity detected)
       // No scheduled timer — activity score determines when to suggest
 

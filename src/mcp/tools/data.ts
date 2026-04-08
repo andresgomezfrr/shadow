@@ -246,17 +246,22 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(EnrichmentConfigSchema),
       handler: async (params) => {
         const { discoverMcpServerNames } = await import('../../observation/mcp-discovery.js');
-        const servers = discoverMcpServerNames();
+        const discovered = discoverMcpServerNames();
         const { includeCache: rawIncludeCache, limit: rawLimit } = EnrichmentConfigSchema.parse(params);
         const includeCache = rawIncludeCache ?? false;
         const limit = rawLimit ?? 10;
+
+        const profile = db.ensureProfile();
+        const prefs = profile.preferences as Record<string, unknown> | undefined;
+        const disabled = (prefs?.enrichmentDisabledServers as string[] | undefined) ?? [];
 
         const result: Record<string, unknown> = {
           enabled: config.enrichmentEnabled,
           intervalMs: config.enrichmentIntervalMs,
           intervalHuman: `${Math.round(config.enrichmentIntervalMs / 60000)}min`,
-          availableMcpServers: servers,
-          serverCount: servers.length,
+          availableMcpServers: discovered.map(name => ({ name, enabled: !disabled.includes(name) })),
+          serverCount: discovered.length,
+          enabledCount: discovered.filter(s => !disabled.includes(s)).length,
         };
 
         if (includeCache) {
@@ -299,6 +304,67 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         } catch {
           return { items: [], total: 0 };
         }
+      },
+    },
+    // ---- Enrichment Write ----
+    {
+      name: 'shadow_enrichment_write',
+      description: 'Store an enrichment finding from an external MCP server query. Used by the enrichment agent to persist discoveries. Requires trust level >= 1.',
+      inputSchema: mcpSchema(z.object({
+        projectId: z.string().describe('Project ID this finding relates to'),
+        source: z.string().describe('MCP server name that provided the data (e.g. oliver, atlassian-mcp)'),
+        summary: z.string().describe('Concise 1-2 sentence finding'),
+        detail: z.record(z.string(), z.unknown()).describe('Optional structured data').optional(),
+      })),
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const parsed = z.object({
+          projectId: z.string(),
+          source: z.string(),
+          summary: z.string(),
+          detail: z.record(z.string(), z.unknown()).optional(),
+        }).parse(params);
+
+        // Resolve project name
+        const project = db.getProject(parsed.projectId);
+        if (!project) return { ok: false, error: `Project not found: ${parsed.projectId}` };
+
+        // Look up TTL from mcp-discover
+        const TTL_MS: Record<string, number> = {
+          volatile: 2 * 60 * 60 * 1000,
+          short: 12 * 60 * 60 * 1000,
+          medium: 48 * 60 * 60 * 1000,
+          long: 7 * 24 * 60 * 60 * 1000,
+          stable: 30 * 24 * 60 * 60 * 1000,
+        };
+        let ttlCategory = 'medium';
+        try {
+          const serverMeta = db.listEnrichment({ source: 'mcp-discover', entityId: parsed.source, limit: 1 });
+          if (serverMeta.length > 0) {
+            const detail = serverMeta[0].detail as Record<string, unknown> | undefined;
+            const discoveredTtl = detail?.defaultTtl as string | undefined;
+            if (discoveredTtl && TTL_MS[discoveredTtl]) ttlCategory = discoveredTtl;
+          }
+        } catch { /* use default */ }
+
+        const { createHash } = await import('node:crypto');
+        const contentHash = createHash('sha256').update(`${parsed.source}:${parsed.summary}`).digest('hex').slice(0, 16);
+        const expiresAt = new Date(Date.now() + (TTL_MS[ttlCategory] ?? TTL_MS.medium)).toISOString();
+
+        db.upsertEnrichment({
+          source: parsed.source,
+          entityType: 'project',
+          entityId: parsed.projectId,
+          entityName: project.name,
+          summary: parsed.summary,
+          detail: parsed.detail,
+          contentHash,
+          expiresAt,
+        });
+
+        return { ok: true, ttl: ttlCategory, expiresAt };
       },
     },
   ];

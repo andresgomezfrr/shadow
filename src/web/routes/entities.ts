@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
-import { json } from '../helpers.js';
+import { json, clampLimit, clampOffset } from '../helpers.js';
 
 export async function handleEntityRoutes(
   req: IncomingMessage, res: ServerResponse,
@@ -50,10 +50,13 @@ export async function handleEntityRoutes(
     const memories = db.listMemories({ archived: false, limit: 500 })
       .filter(m => (m.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
 
+    const enrichLimit = clampLimit(params.get('enrichLimit'), 10);
+    const enrichOffset = clampOffset(params.get('enrichOffset'));
     let enrichment: unknown[] = [];
+    let enrichmentTotal = 0;
     try {
-      enrichment = db.listEnrichment({ limit: 10 })
-        .filter(e => e.entityType === 'project' && e.entityId === project.id);
+      enrichment = db.listEnrichment({ entityType: 'project', entityId: project.id, limit: enrichLimit, offset: enrichOffset });
+      enrichmentTotal = db.countEnrichment({ entityType: 'project', entityId: project.id });
     } catch { /* enrichment_cache may not exist yet */ }
 
     return json(res, {
@@ -65,6 +68,7 @@ export async function handleEntityRoutes(
       suggestions: suggestions.slice(0, 10).map(s => ({ id: s.id, kind: s.kind, title: s.title, impactScore: s.impactScore, confidenceScore: s.confidenceScore, riskScore: s.riskScore })),
       memories: memories.slice(0, 10).map(m => ({ id: m.id, kind: m.kind, layer: m.layer, title: m.title, createdAt: m.createdAt })),
       enrichment,
+      enrichmentTotal,
       counts: {
         observations: db.countObservations({ status: 'active', projectId: project.id }),
         suggestions: db.countSuggestions({ status: 'pending', projectId: project.id }),
