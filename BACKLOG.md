@@ -41,6 +41,9 @@ Los badges de kind (performance, security, code-quality, etc.) usan un color gen
 ### Renombrar botón "Analyze cross-repo" a "Suggest cross-repo" *(2026-04-08)*
 En ProjectDetailPage. El botón lanza `suggest-project`, no un análisis — el nombre actual confunde.
 
+### LiveStatusBar no usa los mismos colores que ActivityEntry *(2026-04-08)*
+`LiveStatusBar` (current job en Activity) tiene su propio `TYPE_COLORS` con solo 7 entries y colores distintos a los de `ActivityEntry` (16 entries). Ejemplo: `context-enrich` es cyan en LiveStatusBar pero amber en ActivityEntry. Fix: extraer `TYPE_COLORS` a un módulo compartido y usarlo en ambos componentes.
+
 ### Progreso visible en jobs multi-repo/multi-project *(2026-04-08)*
 Jobs como repo-profile, remote-sync o suggest-deep iteran sobre varios repos/proyectos pero solo muestran una fase genérica. Mostrar progreso tipo "repo-profile: 3/6 repos" o "profiling: shadow" mientras corren. Aprovechar `setPhase` o `activity` para comunicar el item actual y el total.
 
