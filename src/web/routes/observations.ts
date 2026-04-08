@@ -16,10 +16,11 @@ export async function handleObservationRoutes(
       const offset = clampOffset(params.get('offset'));
       const status = params.get('status') ?? 'all';
       const repoId = params.get('repoId') ?? undefined;
+      const projectId = params.get('projectId') ?? undefined;
       const severity = params.get('severity') ?? undefined;
       const kind = params.get('kind') ?? undefined;
-      const items = db.listObservations({ limit, offset, status, repoId, severity, kind });
-      const total = db.countObservations({ repoId, status, severity, kind });
+      const items = db.listObservations({ limit, offset, status, repoId, projectId, severity, kind });
+      const total = db.countObservations({ repoId, projectId, status, severity, kind });
       const fbState = db.getThumbsState('observation');
       return json(res, { items, total, feedbackState: fbState }), true;
     }

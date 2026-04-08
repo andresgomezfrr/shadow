@@ -47,11 +47,11 @@ export const fetchDailySummary = () => api<DailySummary>('/api/daily-summary');
 export const fetchMemories = (params?: { q?: string; layer?: string; memoryType?: string; limit?: number; offset?: number }) =>
   api<{ items: Memory[]; total: number }>(`/api/memories${qs({ q: params?.q, layer: params?.layer, memoryType: params?.memoryType, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
-export const fetchSuggestions = (params?: { status?: string; kind?: string; sort?: string; limit?: number; offset?: number }) =>
-  api<{ items: Suggestion[]; total: number; feedbackState: Record<string, string>; scores: Record<string, number> }>(`/api/suggestions${qs({ status: params?.status, kind: params?.kind, sort: params?.sort, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+export const fetchSuggestions = (params?: { status?: string; kind?: string; sort?: string; repoId?: string; projectId?: string; limit?: number; offset?: number }) =>
+  api<{ items: Suggestion[]; total: number; feedbackState: Record<string, string>; scores: Record<string, number> }>(`/api/suggestions${qs({ status: params?.status, kind: params?.kind, sort: params?.sort, repoId: params?.repoId, projectId: params?.projectId, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
-export const fetchObservations = (params?: { limit?: number; offset?: number; status?: string; severity?: string; kind?: string }) =>
-  api<{ items: Observation[]; total: number; feedbackState: Record<string, string> }>(`/api/observations${qs({ limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined, status: params?.status, severity: params?.severity, kind: params?.kind })}`);
+export const fetchObservations = (params?: { limit?: number; offset?: number; status?: string; severity?: string; kind?: string; repoId?: string; projectId?: string }) =>
+  api<{ items: Observation[]; total: number; feedbackState: Record<string, string> }>(`/api/observations${qs({ limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined, status: params?.status, severity: params?.severity, kind: params?.kind, repoId: params?.repoId, projectId: params?.projectId })}`);
 
 export const fetchRepos = () => api<Repo[]>('/api/repos');
 
