@@ -92,6 +92,8 @@ stop_shadow_daemon() {
   fi
   pkill -f "shadow/src/daemon/runtime.ts" 2>/dev/null || true
   pkill -f "shadow/app/src/daemon/runtime.ts" 2>/dev/null || true
+  pkill -f "shadow/dist/daemon/runtime.js" 2>/dev/null || true
+  pkill -f "shadow/app/dist/daemon/runtime.js" 2>/dev/null || true
   pkill -f 'claude.*--allowedTools.*mcp__shadow' 2>/dev/null || true
   lsof -ti :3700 2>/dev/null | xargs kill -9 2>/dev/null || true
   sleep 1
@@ -104,6 +106,65 @@ add_to_path() {
   fi
   mkdir -p "$(dirname "$rc")"
   printf '\n%s\n%s\n' "$guard" "$line" >> "$rc"
+  return 0
+}
+
+# Resolve Node >= 22 binary across version managers
+# Sets NODE22 and NPM22 variables. Returns 1 if not found.
+resolve_node22() {
+  local candidate=""
+
+  # nvm (XDG layout: ~/.local/share/nvm)
+  if [ -z "$candidate" ] && [ -d "$HOME/.local/share/nvm" ]; then
+    for d in "$HOME/.local/share/nvm"/v22.*/bin/node; do
+      [ -x "$d" ] && candidate="$d" && break
+    done
+  fi
+
+  # nvm (classic layout: ~/.nvm)
+  if [ -z "$candidate" ] && [ -d "$HOME/.nvm/versions/node" ]; then
+    for d in "$HOME/.nvm/versions/node"/v22.*/bin/node; do
+      [ -x "$d" ] && candidate="$d" && break
+    done
+  fi
+
+  # fnm
+  if [ -z "$candidate" ]; then
+    for d in "$HOME/Library/Application Support/fnm/node-versions"/v22.*/installation/bin/node; do
+      [ -x "$d" ] && candidate="$d" && break
+    done
+  fi
+
+  # Homebrew
+  if [ -z "$candidate" ]; then
+    for d in /opt/homebrew/opt/node@22/bin/node /usr/local/opt/node@22/bin/node; do
+      [ -x "$d" ] && candidate="$d" && break
+    done
+  fi
+
+  # PATH fallback — only if it's actually >= 22
+  if [ -z "$candidate" ] && command -v node >/dev/null 2>&1; then
+    local ver
+    ver=$(node --version 2>/dev/null | sed 's/^v//' | cut -d. -f1)
+    if [ "$ver" -ge 22 ] 2>/dev/null; then
+      candidate="$(command -v node)"
+    fi
+  fi
+
+  if [ -z "$candidate" ]; then
+    return 1
+  fi
+
+  NODE22="$candidate"
+  # npm lives next to node in all version managers
+  local bindir
+  bindir="$(dirname "$candidate")"
+  if [ -x "$bindir/npm" ]; then
+    NPM22="$bindir/npm"
+  else
+    # Fallback to PATH npm (e.g. system install)
+    NPM22="$(command -v npm || true)"
+  fi
   return 0
 }
 
@@ -185,28 +246,29 @@ else
   fail "git not found — install it first"; exit 1
 fi
 
-# Node.js >= 22
-if command -v node >/dev/null 2>&1; then
-  NODE_VERSION=$(node --version)
-  NODE_MAJOR=$(echo "$NODE_VERSION" | sed 's/^v//' | cut -d. -f1)
-  if [ "$NODE_MAJOR" -ge 22 ] 2>/dev/null; then
-    success "Node.js $NODE_VERSION"
-  else
-    fail "Node.js >= 22 required (found $NODE_VERSION)"
-    info "Install via: https://nodejs.org or nvm install 22"
-    exit 1
-  fi
+# Node.js >= 22 (search version managers, not just PATH)
+NODE22=""
+NPM22=""
+if resolve_node22; then
+  NODE_VERSION=$("$NODE22" --version)
+  success "Node.js $NODE_VERSION ($NODE22)"
 else
-  fail "Node.js not found — install Node.js >= 22"
+  # Show what's in PATH for diagnostics
+  if command -v node >/dev/null 2>&1; then
+    fail "Node.js >= 22 required (found $(node --version) in PATH)"
+    info "Node 22 not found in nvm, fnm, or Homebrew either"
+  else
+    fail "Node.js not found"
+  fi
   info "Install via: https://nodejs.org or nvm install 22"
   exit 1
 fi
 
-# npm
-if command -v npm >/dev/null 2>&1; then
-  success "npm $(npm --version)"
+# npm (from same prefix as resolved node)
+if [ -x "$NPM22" ]; then
+  success "npm $("$NPM22" --version) ($NPM22)"
 else
-  fail "npm not found"; exit 1
+  fail "npm not found next to $NODE22"; exit 1
 fi
 
 # Claude CLI (optional)
@@ -257,12 +319,13 @@ else
 
   # Determine clone URL: try SSH first
   CLONE_URL=""
-  if ssh -T -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes git@github.com 2>&1 | grep -qi "successfully authenticated"; then
+  SSH_OUTPUT=$(ssh -T -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new git@github.com 2>&1 || true)
+  if echo "$SSH_OUTPUT" | grep -qi "successfully authenticated"; then
     CLONE_URL="$REPO_SSH"
     info "Using SSH: $REPO_SSH"
   else
     CLONE_URL="$REPO_HTTPS"
-    info "Using HTTPS: $REPO_HTTPS"
+    info "SSH auth failed, using HTTPS: $REPO_HTTPS"
   fi
 
   git clone --depth 1 "$CLONE_URL" "$SHADOW_APP" 2>/dev/null
@@ -292,10 +355,10 @@ fi
 step "3/7" "Installing dependencies..."
 
 cd "$SHADOW_APP"
-npm install --loglevel=error 2>&1 | tail -1 || true
+"$NPM22" install --loglevel=error 2>&1 | tail -1 || true
 success "Root dependencies installed"
 
-npm run dashboard:install --loglevel=error 2>&1 | tail -1 || true
+"$NPM22" run dashboard:install --loglevel=error 2>&1 | tail -1 || true
 success "Dashboard dependencies installed"
 
 # ── Phase 4: Build ────────────────────────────────────────────────────────────
@@ -303,7 +366,7 @@ success "Dashboard dependencies installed"
 step "4/7" "Building..."
 
 cd "$SHADOW_APP"
-npm run build 2>&1 | tail -3 || { fail "Build failed"; exit 1; }
+"$NPM22" run build 2>&1 | tail -3 || { fail "Build failed"; exit 1; }
 success "TypeScript compiled + dashboard built"
 
 # ── Phase 5: CLI wrapper + PATH ───────────────────────────────────────────────
@@ -312,10 +375,51 @@ step "5/7" "Setting up CLI..."
 
 mkdir -p "$SHADOW_BIN"
 
-# Create wrapper script
+# Create wrapper script that resolves Node >= 22 across version managers
 cat > "$SHADOW_BIN/shadow" << 'WRAPPER'
 #!/bin/bash
-exec node "$HOME/.shadow/app/dist/cli.js" "$@"
+# Resolve Node >= 22 — check common version managers, then fall back to PATH
+NODE=""
+
+# nvm (XDG layout: ~/.local/share/nvm)
+if [ -z "$NODE" ] && [ -d "$HOME/.local/share/nvm" ]; then
+  for d in "$HOME/.local/share/nvm"/v22.*/bin/node; do
+    [ -x "$d" ] && NODE="$d" && break
+  done
+fi
+
+# nvm (classic layout: ~/.nvm)
+if [ -z "$NODE" ] && [ -d "$HOME/.nvm/versions/node" ]; then
+  for d in "$HOME/.nvm/versions/node"/v22.*/bin/node; do
+    [ -x "$d" ] && NODE="$d" && break
+  done
+fi
+
+# fnm
+if [ -z "$NODE" ] && command -v fnm >/dev/null 2>&1; then
+  for d in "$HOME/Library/Application Support/fnm/node-versions"/v22.*/installation/bin/node; do
+    [ -x "$d" ] && NODE="$d" && break
+  done
+fi
+
+# Homebrew
+if [ -z "$NODE" ]; then
+  for d in /opt/homebrew/opt/node@22/bin/node /usr/local/opt/node@22/bin/node; do
+    [ -x "$d" ] && NODE="$d" && break
+  done
+fi
+
+# Fallback to PATH
+if [ -z "$NODE" ]; then
+  NODE="$(command -v node)"
+fi
+
+if [ -z "$NODE" ]; then
+  echo "Error: Node.js not found. Install Node.js >= 22." >&2
+  exit 1
+fi
+
+exec "$NODE" "$HOME/.shadow/app/dist/cli.js" "$@"
 WRAPPER
 chmod +x "$SHADOW_BIN/shadow"
 success "Created ~/.shadow/bin/shadow"
@@ -358,9 +462,9 @@ export PATH="$SHADOW_BIN:$PATH"
 
 step "6/7" "Initializing Shadow..."
 
-# Run shadow init non-interactively (EOF auto-accepts all prompts)
+# Run shadow init non-interactively (stdin closed → auto-accepts all prompts)
 cd "$SHADOW_APP"
-node dist/cli.js init < /dev/null 2>&1 | while IFS= read -r line; do
+"$NODE22" dist/cli.js init < /dev/null 2>&1 | while IFS= read -r line; do
   case "$line" in
     *"already up to date"*|*"skipped"*) info "$line" ;;
     *"added"*|*"updated"*|*"installed"*|*"started"*) success "$line" ;;
@@ -390,7 +494,7 @@ fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 
-VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$SHADOW_APP/package.json','utf8')).version)" 2>/dev/null || echo "unknown")
+VERSION=$("$NODE22" -e "console.log(JSON.parse(require('fs').readFileSync('$SHADOW_APP/package.json','utf8')).version)" 2>/dev/null || echo "unknown")
 
 printf "\n"
 printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
