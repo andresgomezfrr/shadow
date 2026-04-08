@@ -281,7 +281,7 @@ export class ShadowDatabase {
 
   createSuggestion(input: CreateSuggestionInput): SuggestionRecord { return knowledge.createSuggestion(this.database, input); }
   getSuggestion(id: string): SuggestionRecord | null { return knowledge.getSuggestion(this.database, id); }
-  listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; limit?: number; offset?: number }): SuggestionRecord[] { return knowledge.listSuggestions(this.database, filters); }
+  listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] { return knowledge.listSuggestions(this.database, filters); }
   countSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string }): number { return knowledge.countSuggestions(this.database, filters); }
   updateSuggestion(id: string, updates: Partial<Pick<SuggestionRecord, 'status' | 'feedbackNote' | 'shownAt' | 'resolvedAt' | 'expiresAt'>>): void { return knowledge.updateSuggestion(this.database, id, updates); }
   countPendingSuggestions(): number { return knowledge.countPendingSuggestions(this.database); }

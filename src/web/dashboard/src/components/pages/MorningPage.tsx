@@ -32,7 +32,9 @@ function formatDate(): string {
 export function MorningPage() {
   const { data, refresh } = useApi(fetchDailySummary, [], 60_000);
   const { data: digests } = useApi(() => fetchDigests({ kind: 'daily' }), [], 60_000);
-  const yesterday = new Date(Date.now() - 86_400_000).toISOString().split('T')[0];
+  const now = new Date();
+  const yesterdayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const yesterday = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
   const latestDigest = digests?.find((d) => d.periodStart === yesterday) ?? null;
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 

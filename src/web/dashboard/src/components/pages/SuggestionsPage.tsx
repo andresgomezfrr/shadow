@@ -15,12 +15,25 @@ import type { Repo } from '../../api/types';
 
 // --- Visual config ---
 
-const SUG_KIND_COLORS: Record<string, string> = {
-  refactor: 'text-purple bg-purple/15',
-  bug: 'text-red bg-red/15',
-  improvement: 'text-blue bg-blue/15',
-  feature: 'text-green bg-green/15',
-};
+const SUG_KINDS = {
+  refactor:    { badge: 'bg-purple-500/20 text-purple-300', dot: 'bg-purple-400', active: 'bg-purple-500/15 text-purple-300' },
+  bug:         { badge: 'bg-red-500/20 text-red-300',       dot: 'bg-red-400',    active: 'bg-red-500/15 text-red-300' },
+  improvement: { badge: 'bg-blue-500/20 text-blue-300',     dot: 'bg-blue-400',   active: 'bg-blue-500/15 text-blue-300' },
+  feature:     { badge: 'bg-green-500/20 text-green-300',   dot: 'bg-green-400',  active: 'bg-green-500/15 text-green-300' },
+} as const;
+
+const SUG_KIND_COLORS: Record<string, string> =
+  Object.fromEntries(Object.entries(SUG_KINDS).map(([k, v]) => [k, v.badge]));
+
+const SUG_KIND_OPTIONS = [
+  { label: 'All', value: '' },
+  ...Object.entries(SUG_KINDS).map(([k, v]) => ({
+    label: k.charAt(0).toUpperCase() + k.slice(1),
+    value: k,
+    dotColor: v.dot,
+    activeClass: v.active,
+  })),
+];
 
 const STATUS_BORDER: Record<string, string> = {
   pending: 'border-l-orange',
@@ -103,12 +116,6 @@ export function SuggestionsPage() {
   const total = rawData?.total ?? 0;
   const scores = rawData?.scores ?? {};
 
-  // Derive available kinds
-  const kindsRef = useRef<string[]>([]);
-  const currentKinds = data ? [...new Set(data.map((s) => s.kind))].sort() : [];
-  if (!params.kind && currentKinds.length > 0) kindsRef.current = currentKinds;
-  const kinds = params.kind ? kindsRef.current : currentKinds;
-  const kindOptions = [{ label: 'All', value: '' }, ...kinds.map((k) => ({ label: k, value: k }))];
 
   // Handle highlight
   if (highlightId && !pulseId && data?.some((s) => s.id === highlightId)) {
@@ -226,13 +233,9 @@ export function SuggestionsPage() {
         )}
       </div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        {kinds.length > 1 && (
-          <>
-            <span className="text-xs text-text-muted">Kind:</span>
-            <FilterTabs options={kindOptions} active={params.kind} onChange={(v) => setParam('kind', v)} />
-            <span className="text-border mx-1">|</span>
-          </>
-        )}
+        <span className="text-xs text-text-muted">Kind:</span>
+        <FilterTabs options={SUG_KIND_OPTIONS} active={params.kind} onChange={(v) => setParam('kind', v)} />
+        <span className="text-border mx-1">|</span>
         <span className="text-xs text-text-muted">Sort:</span>
         <FilterTabs options={SORT_OPTIONS} active={params.sort} onChange={(v) => setParam('sort', v)} />
       </div>
@@ -284,6 +287,7 @@ export function SuggestionsPage() {
                   <Badge className={SUG_KIND_COLORS[s.kind] ?? 'text-text-dim bg-border'}>{s.kind}</Badge>
                   {repo && <Badge className="text-text-dim bg-border">{repo}</Badge>}
                   <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} compact />
+                  {scores[s.id] != null && <span className="font-mono text-xs text-accent">{scores[s.id]}</span>}
                   <ThumbsFeedback targetKind="suggestion" targetId={s.id} initial={thumbsFromAction(fbState?.[s.id])} />
                   <span className="text-xs text-text-muted shrink-0">{timeAgo(s.createdAt)}</span>
                 </div>
