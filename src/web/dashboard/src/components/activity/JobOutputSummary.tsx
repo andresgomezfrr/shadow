@@ -1,36 +1,9 @@
-import { Badge } from '../common/Badge';
 import type { ActivityEntry } from '../../api/types';
+import { chip, num, str, arr, items } from '../../utils/job-results.js';
 
 type Props = {
   entry: ActivityEntry;
 };
-
-function chip(label: string, className?: string) {
-  return <Badge className={className ?? 'text-text-dim bg-border'}>{label}</Badge>;
-}
-
-function num(result: Record<string, unknown>, key: string): number {
-  const v = result[key];
-  return typeof v === 'number' ? v : 0;
-}
-
-function str(result: Record<string, unknown>, key: string): string | undefined {
-  const v = result[key];
-  return typeof v === 'string' ? v : undefined;
-}
-
-function arr(result: Record<string, unknown>, key: string): string[] {
-  const v = result[key];
-  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
-}
-
-function items(result: Record<string, unknown>, key: string): Array<{ id: string; title: string }> {
-  const v = result[key];
-  if (!Array.isArray(v)) return [];
-  return v.filter((x): x is { id: string; title: string } =>
-    typeof x === 'object' && x !== null && typeof (x as Record<string, unknown>).id === 'string' && typeof (x as Record<string, unknown>).title === 'string'
-  );
-}
 
 export function JobOutputSummary({ entry }: Props) {
   if (entry.status === 'queued') return <span className="text-orange text-xs">queued</span>;
@@ -42,7 +15,7 @@ export function JobOutputSummary({ entry }: Props) {
     const obs = num(r, 'observationsCreated');
     const mem = num(r, 'memoriesCreated');
     const obsItems = items(r, 'observationItems');
-    const obsTitles = obsItems.length > 0 ? obsItems.map(i => i.title) : arr(r, 'observationTitles');
+    const obsTitles = obsItems.map(i => i.title);
     if (obs === 0 && mem === 0) return <span className="text-text-muted text-xs">idle — no new activity</span>;
     return (
       <span className="inline-flex items-center gap-1.5 flex-wrap">

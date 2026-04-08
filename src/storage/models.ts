@@ -295,6 +295,100 @@ export type JobRecord = {
   createdAt: string;
 };
 
+// --- Job result types (compile-time only, runtime is always Record<string, unknown>) ---
+
+export type HeartbeatJobResult = {
+  observationsCreated: number;
+  observationItems?: Array<{ id: string; title: string }>;
+  memoriesCreated: number;
+  memoryItems?: Array<{ id: string; title: string }>;
+  reposAnalyzed: string[];
+};
+
+export type SuggestJobResult = {
+  suggestionsCreated: number;
+  suggestionItems: Array<{ id: string; title: string }>;
+  repoId?: string;
+};
+
+export type SuggestDeepJobResult = {
+  repoName: string;
+  suggestionsCreated: number;
+  suggestionTitles: string[];
+  repoId: string;
+};
+
+export type SuggestProjectJobResult = {
+  projectName: string;
+  suggestionsCreated: number;
+  suggestionTitles: string[];
+};
+
+export type ConsolidateJobResult = {
+  memoriesPromoted: number;
+  memoriesDemoted: number;
+  memoriesExpired: number;
+  correctionsProcessed: number;
+  memoriesArchived: number;
+  memoriesEdited: number;
+  memoriesMerged: number;
+  memoriesArchivedByMerge: number;
+  memoriesDeduped: number;
+};
+
+export type ReflectJobResult = {
+  skipped: boolean;
+  soulUpdated?: boolean;
+  reason?: string;
+  deltaPreview?: string;
+};
+
+export type RemoteSyncJobResult = {
+  reposSynced: number;
+  reposWithChanges: number;
+  repoSummaries: Array<{ name: string; newCommits: number }>;
+};
+
+export type RepoProfileJobResult = {
+  reposProfiled: number;
+  repoNames: string[];
+};
+
+export type ContextEnrichJobResult = {
+  itemsCollected: number;
+  sources: string[];
+  entityNames: string[];
+};
+
+export type ProjectProfileJobResult = {
+  projectName: string;
+  repoCount: number;
+};
+
+export type DigestJobResult = {
+  periodStart?: string;
+  digestId?: string;
+  wordCount: number;
+};
+
+export type JobResultMap = {
+  heartbeat: HeartbeatJobResult;
+  suggest: SuggestJobResult;
+  'suggest-deep': SuggestDeepJobResult;
+  'suggest-project': SuggestProjectJobResult;
+  consolidate: ConsolidateJobResult;
+  reflect: ReflectJobResult;
+  'remote-sync': RemoteSyncJobResult;
+  'repo-profile': RepoProfileJobResult;
+  'context-enrich': ContextEnrichJobResult;
+  'project-profile': ProjectProfileJobResult;
+  'digest-daily': DigestJobResult;
+  'digest-weekly': DigestJobResult;
+  'digest-brag': DigestJobResult;
+};
+
+export type JobType = keyof JobResultMap;
+
 // --- Feedback ---
 
 export type FeedbackRecord = {

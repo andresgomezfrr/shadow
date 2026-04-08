@@ -17,6 +17,19 @@ export type {
   FeedbackRecord,
   LlmUsageRecord,
   EnrichmentCacheRecord,
+  HeartbeatJobResult,
+  SuggestJobResult,
+  SuggestDeepJobResult,
+  SuggestProjectJobResult,
+  ConsolidateJobResult,
+  ReflectJobResult,
+  RemoteSyncJobResult,
+  RepoProfileJobResult,
+  ContextEnrichJobResult,
+  ProjectProfileJobResult,
+  DigestJobResult,
+  JobResultMap,
+  JobType,
 } from '@shadow/models';
 
 // ---------------------------------------------------------------------------
