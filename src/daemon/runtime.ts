@@ -36,6 +36,7 @@ export type DaemonState = {
   activeJobCount: number;
   activeJobs: Array<{ jobId: string; type: string; phase: string | null }>;
   activeProjects: Array<{ projectId: string; projectName: string; score: number }>;
+  updateAvailable: { latest: string; current: string } | null;
 };
 
 // --- Constants ---
@@ -120,6 +121,7 @@ function emptyState(): DaemonState {
     activeJobCount: 0,
     activeJobs: [],
     activeProjects: [],
+    updateAvailable: null,
   };
 }
 
@@ -285,6 +287,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       activeJobCount: 0,
       activeJobs: [],
       activeProjects: [],
+      updateAvailable: null,
     };
 
     writeDaemonState(config, state);
@@ -437,6 +440,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       // Remote sync: periodic git ls-remote for detecting remote changes
       if (config.remoteSyncEnabled && shouldEnqueue('remote-sync', config.remoteSyncIntervalMs)) {
         _db.enqueueJob('remote-sync', { priority: 2 });
+      }
+
+      // Version check: periodic check for new Shadow releases (every 12h)
+      if (shouldEnqueue('version-check', 12 * 60 * 60 * 1000)) {
+        _db.enqueueJob('version-check', { priority: 1 });
       }
 
       // Repo profiling: now reactive (triggered by remote-sync when changes detected)
@@ -627,6 +635,17 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         }
       } else {
         state.lastHeartbeatPhase = null;
+      }
+
+      // Derive updateAvailable from latest version-check job
+      const lastVersionCheck = _db.getLastJob('version-check');
+      if (lastVersionCheck?.status === 'completed') {
+        const vcResult = lastVersionCheck.result as Record<string, unknown> | null;
+        if (vcResult?.isNewer === true) {
+          state.updateAvailable = { latest: vcResult.latestVersion as string, current: vcResult.currentVersion as string };
+        } else {
+          state.updateAvailable = null;
+        }
       }
 
       // Periodically rotate watchers to pick up newly-active repos (~every 60 idle ticks ≈ 30min)

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { mcpSchema, type McpTool, type ToolContext } from './types.js';
 import { applyTrustDelta } from '../../profile/trust.js';
 import { loadPersonality } from '../../personality/loader.js';
+import { getDaemonState } from '../../daemon/runtime.js';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -134,6 +135,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
           contextKnowledge,
           todayTokens: usage.totalInputTokens + usage.totalOutputTokens,
           todayLlmCalls: usage.totalCalls,
+          updateAvailable: getDaemonState(config).updateAvailable ?? null,
         };
       },
     },
