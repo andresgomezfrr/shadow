@@ -68,14 +68,24 @@ export function MorningPage() {
   return (
     <div className="max-w-5xl mx-auto">
       {/* Greeting */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold">
-          {getGreeting()}, {profile.displayName ?? 'dev'} {moodEmoji}
-        </h1>
-        <p className="text-text-dim mt-1 capitalize">{formatDate()}</p>
-        <p className="text-text-muted text-xs mt-0.5">
-          Trust: Lv.{profile.trustLevel} {trustName} &middot; Score: {profile.trustScore.toFixed(1)}
-        </p>
+      <div className="mb-6 flex items-center gap-5">
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-[120px] h-[120px] rounded-full object-cover shrink-0"
+          src="/ghost/morning-greeting.mp4"
+        />
+        <div>
+          <h1 className="text-2xl font-semibold">
+            {getGreeting()}, {profile.displayName ?? 'dev'} {moodEmoji}
+          </h1>
+          <p className="text-text-dim mt-1 capitalize">{formatDate()}</p>
+          <p className="text-text-muted text-xs mt-0.5">
+            Trust: Lv.{profile.trustLevel} {trustName} &middot; Score: {profile.trustScore.toFixed(1)}
+          </p>
+        </div>
       </div>
 
       {/* Yesterday's digest — context before today's data */}
