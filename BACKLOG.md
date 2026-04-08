@@ -26,9 +26,6 @@ Las sugerencias aceptadas e implementadas quedan en "accepted" para siempre (30+
 ### Evaluar: trust por repo en vez de global *(2026-04-08)*
 Actualmente el trust es un score global. Pero Shadow puede saber mucho de un repo y poco de otro — ¿tiene sentido que el trust sea por repo? Implicaría trust_score en la tabla `repos` en vez de `user_profile`, y gates por repo en los MCP tools. Hablar con Andrés antes de diseñar.
 
-### Progreso visible en jobs multi-repo/multi-project *(2026-04-08)*
-Jobs como repo-profile, remote-sync o suggest-deep iteran sobre varios repos/proyectos pero solo muestran una fase genérica. Mostrar progreso tipo "repo-profile: 3/6 repos" o "profiling: shadow" mientras corren. Aprovechar `setPhase` o `activity` para comunicar el item actual y el total.
-
 ### Botones de trigger deben reflejar estado queued/running del job *(2026-04-08)*
 Al disparar un job desde el dashboard, si ya hay uno encolado o corriendo, el endpoint devuelve 409 pero el botón no lo refleja. Todos los botones que lanzan jobs deben mostrar estado "running" / disabled mientras `hasQueuedOrRunning(type)` sea true. Aplica a: schedule ribbon, botones de ProjectDetailPage (Suggest cross-repo, Profile), ReposPage, y cualquier otro trigger.
 
@@ -47,8 +44,10 @@ Con Activity visibility, analizar: ¿consolidate LLM parte se ejecuta? ¿reflect
 ### Consolidate timing: no consumir correcciones antes de que otros jobs las vean
 Si consolidate corre antes que repo-profile, consume la corrección y repo-profile no la ve. Evaluar si necesita coordinación.
 
-### Consolidate: auto-fix de memorias mal clasificadas *(2026-04-08)*
+### Consolidate: auto-fix de memorias mal clasificadas *(2026-04-08)* — LOW PRIO
 Si durante consolidate el LLM detecta memorias con metadata incorrecta (repo equivocado, proyecto mal asignado, labels/kind/scope/layer inapropiados, entities_json incompleto), debería corregirlas automáticamente en vez de solo reorganizar layers. Ejemplos: memoria asociada a repo A que claramente habla de repo B, kind "pattern" que es realmente "improvement", scope incorrecto, o entidades faltantes que se pueden inferir del contenido.
+
+> **Nota (2026-04-09):** Riesgo > valor por ahora. LLM corrigiendo metadata de otro LLM puede amplificar errores. El correction system manual (`shadow_correct`) cubre los casos puntuales. Mejor invertir en mejorar la clasificación en el heartbeat extract (prevenir > corregir). Reevaluar si la frecuencia de misclassification sube.
 
 ---
 
@@ -83,9 +82,6 @@ Autonomía por repo/scope configurable. Shadow mergea donde tiene permiso.
 
 ### Concepto de Tarea/Iniciativa
 Agrupación temporal (1-2 semanas) con repos, PRs, docs y tickets.
-
-### Descripciones de memorias no parsean `\n` correctamente *(2026-04-08)*
-En el dashboard, las descripciones de memorias muestran `\n` literal en vez de saltos de línea. El contenido viene con newlines escapados del JSON y no se renderiza como markdown/texto multilínea.
 
 ### Evaluar: asegurar entity linking en memorias, observaciones, sugerencias y runs *(2026-04-08)*
 No está claro si siempre estamos asociando `entities_json` (repo, proyecto) cuando la información lo permite. Auditar: ¿los jobs de heartbeat/suggest/teach siempre vinculan al repo/proyecto activo? ¿Los runs guardan su repo? ¿Hay entidades huérfanas sin linking? Importante para que los filtros por repo/proyecto funcionen bien.
