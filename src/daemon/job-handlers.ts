@@ -921,6 +921,78 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
   };
 }
 
+// --- Version Check Handler ---
+
+async function handleVersionCheck(ctx: JobContext): Promise<JobHandlerResult> {
+  ctx.setPhase('version-check');
+
+  const projectRoot = resolve(__dirname, '..', '..');
+  const currentVersion: string = JSON.parse(
+    readFileSync(resolve(projectRoot, 'package.json'), 'utf8'),
+  ).version;
+
+  const { execSync } = await import('node:child_process');
+  let remoteTags: string;
+  try {
+    remoteTags = execSync('git ls-remote --tags origin "refs/tags/v*"', {
+      cwd: projectRoot, encoding: 'utf8', timeout: 15_000,
+    });
+  } catch {
+    console.error('[version-check] Failed to reach remote');
+    return { llmCalls: 0, tokensUsed: 0, phases: ['version-check'], result: { error: 'network' } };
+  }
+
+  // Parse latest semver tag from ls-remote output
+  const tags = remoteTags
+    .split('\n')
+    .map(line => line.match(/refs\/tags\/(v\d+\.\d+\.\d+)$/)?.[1])
+    .filter((t): t is string => !!t);
+
+  if (tags.length === 0) {
+    return { llmCalls: 0, tokensUsed: 0, phases: ['version-check'], result: { noTags: true } };
+  }
+
+  tags.sort((a, b) => {
+    const pa = a.slice(1).split('.').map(Number);
+    const pb = b.slice(1).split('.').map(Number);
+    return pa[0] - pb[0] || pa[1] - pb[1] || pa[2] - pb[2];
+  });
+  const latestTag = tags[tags.length - 1];
+  const latestVersion = latestTag.slice(1); // strip 'v'
+
+  // Compare: is remote newer?
+  const cv = currentVersion.split('.').map(Number);
+  const lv = latestVersion.split('.').map(Number);
+  const isNewer = lv[0] > cv[0] || (lv[0] === cv[0] && lv[1] > cv[1]) || (lv[0] === cv[0] && lv[1] === cv[1] && lv[2] > cv[2]);
+
+  if (isNewer) {
+    // Avoid duplicate events for same version
+    const pending = ctx.db.listPendingEvents();
+    const alreadyQueued = pending.some(e => {
+      if (e.kind !== 'version_available') return false;
+      try { return (e.payload as Record<string, unknown>)?.version === latestVersion; } catch { return false; }
+    });
+
+    if (!alreadyQueued) {
+      ctx.db.createEvent({
+        kind: 'version_available',
+        priority: 8,
+        payload: {
+          version: latestVersion,
+          current: currentVersion,
+          message: `Shadow ${latestVersion} disponible — ejecuta: shadow upgrade`,
+        },
+      });
+      console.error(`[version-check] New version available: v${latestVersion} (current: v${currentVersion})`);
+    }
+  }
+
+  return {
+    llmCalls: 0, tokensUsed: 0, phases: ['version-check'],
+    result: { currentVersion, latestVersion, isNewer },
+  };
+}
+
 // --- Registry ---
 
 export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
@@ -936,6 +1008,7 @@ export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
   registry.set('project-profile', { category: 'llm', fn: handleProjectProfile });
   registry.set('suggest-deep', { category: 'llm', fn: handleSuggestDeep });
   registry.set('suggest-project', { category: 'llm', fn: handleSuggestProject });
+  registry.set('version-check', { category: 'io', fn: handleVersionCheck });
 
   // Digest handlers registered with their full type name
   for (const digestType of ['digest-daily', 'digest-weekly', 'digest-brag']) {

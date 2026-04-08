@@ -8,7 +8,8 @@ export type ShadowEventKind =
   | 'memory_insight'
   | 'consolidation_complete'
   | 'suggestion_expiring'
-  | 'suggestion_expired';
+  | 'suggestion_expired'
+  | 'version_available';
 
 export type ShadowEventPayload = {
   message: string;
@@ -32,4 +33,5 @@ export const EVENT_PRIORITIES: Record<ShadowEventKind, number> = {
   consolidation_complete: 3,
   suggestion_expiring: 3,
   suggestion_expired: 2,
+  version_available: 8,
 };

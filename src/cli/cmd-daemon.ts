@@ -1,11 +1,25 @@
 import type { Command } from 'commander';
 import type { ShadowConfig } from '../config/load-config.js';
 import type { WithDb } from './types.js';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { printOutput } from './output.js';
+
+function parseLatestSemver(tagOutput: string): string | null {
+  const tags = tagOutput
+    .split('\n')
+    .map(t => t.trim())
+    .filter(t => /^v\d+\.\d+\.\d+$/.test(t));
+  if (tags.length === 0) return null;
+  tags.sort((a, b) => {
+    const pa = a.slice(1).split('.').map(Number);
+    const pb = b.slice(1).split('.').map(Number);
+    return pa[0] - pb[0] || pa[1] - pb[1] || pa[2] - pb[2];
+  });
+  return tags[tags.length - 1];
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -174,4 +188,110 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       db.enqueueJob('reflect', { priority: 5, triggerSource: 'manual' });
       printOutput({ triggered: true, message: 'reflect enqueued — daemon will pick it up on next tick' }, json);
     }));
+
+  // --- upgrade ---
+
+  program
+    .command('upgrade')
+    .description('upgrade Shadow to the latest release (or a specific branch)')
+    .option('--branch <branch>', 'use a specific branch instead of latest release tag')
+    .action(async (opts: { branch?: string }) => {
+      const { execSync } = await import('node:child_process');
+      const json = Boolean(program.opts().json);
+      const projectRoot = resolve(__dirname, '..', '..');
+      const currentVersion: string = JSON.parse(
+        readFileSync(join(projectRoot, 'package.json'), 'utf8'),
+      ).version;
+
+      console.error(`Current version: v${currentVersion}`);
+
+      // Fetch tags + branches
+      console.error('Fetching updates...');
+      try {
+        execSync('git fetch --tags origin', { cwd: projectRoot, stdio: 'pipe' });
+      } catch {
+        printOutput({ error: 'Failed to fetch from remote — check your network/SSH keys' }, json);
+        return;
+      }
+
+      // Determine target
+      let target: string;
+      let targetLabel: string;
+
+      if (opts.branch) {
+        target = `origin/${opts.branch}`;
+        targetLabel = opts.branch;
+        try {
+          execSync(`git fetch origin ${opts.branch}`, { cwd: projectRoot, stdio: 'pipe' });
+        } catch {
+          printOutput({ error: `Branch '${opts.branch}' not found on remote` }, json);
+          return;
+        }
+      } else {
+        const tagsRaw = execSync('git tag -l "v*"', { cwd: projectRoot, encoding: 'utf8' });
+        const latest = parseLatestSemver(tagsRaw);
+        if (!latest) {
+          printOutput({ message: `No release tags found. Use --branch to upgrade from a branch.` }, json);
+          return;
+        }
+        if (latest === `v${currentVersion}`) {
+          printOutput({ message: `Already up to date (v${currentVersion})` }, json);
+          return;
+        }
+        target = latest;
+        targetLabel = latest;
+      }
+
+      console.error(`Upgrading to ${targetLabel}...`);
+
+      // Stop daemon
+      console.error('Stopping daemon...');
+      const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
+      if (existsSync(plistPath)) {
+        try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
+      }
+      try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
+      try { execSync('pkill -f "claude.*--allowedTools.*mcp__shadow"', { stdio: 'pipe' }); } catch { /* ok */ }
+      try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
+      await new Promise(r => setTimeout(r, 1500));
+
+      // Checkout target
+      try {
+        execSync(`git checkout ${target}`, { cwd: projectRoot, stdio: 'inherit' });
+      } catch {
+        printOutput({ error: `Failed to checkout ${targetLabel}` }, json);
+        return;
+      }
+
+      // Rebuild
+      console.error('Installing dependencies...');
+      execSync('npm install --loglevel=error', { cwd: projectRoot, stdio: 'inherit' });
+      execSync('npm run dashboard:install --loglevel=error', { cwd: projectRoot, stdio: 'inherit' });
+
+      console.error('Building...');
+      execSync('npm run build', { cwd: projectRoot, stdio: 'inherit' });
+
+      // Re-init (regenerate hooks, settings)
+      console.error('Re-initializing...');
+      execSync('node dist/cli.js init', { cwd: projectRoot, stdio: 'inherit', input: '' });
+
+      // Start daemon
+      console.error('Starting daemon...');
+      if (existsSync(plistPath)) {
+        try {
+          execSync(`launchctl bootstrap gui/$(id -u) ${plistPath} 2>/dev/null || launchctl kickstart gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
+        } catch { /* ok */ }
+      }
+
+      const newVersion: string = JSON.parse(
+        readFileSync(join(projectRoot, 'package.json'), 'utf8'),
+      ).version;
+
+      printOutput({
+        upgraded: true,
+        from: `v${currentVersion}`,
+        to: `v${newVersion}`,
+        message: `Shadow upgraded from v${currentVersion} to v${newVersion}`,
+      }, json);
+    });
 }
