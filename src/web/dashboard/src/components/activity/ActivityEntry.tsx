@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { timeAgo, formatTokens } from '../../utils/format';
-import { num, str, arr, items } from '../../utils/job-results.js';
+import { num, str, arr, items } from '../../utils/job-results';
 import { Badge } from '../common/Badge';
 import { ConfidenceIndicator } from '../common/ConfidenceIndicator';
 import { JobOutputSummary } from './JobOutputSummary';
