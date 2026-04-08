@@ -1,30 +1,12 @@
 import { useState, useCallback } from 'react';
 import { timeAgo, formatTokens } from '../../utils/format';
 import { num, str, arr, items } from '../../utils/job-results';
+import { JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
 import { ConfidenceIndicator } from '../common/ConfidenceIndicator';
 import { JobOutputSummary } from './JobOutputSummary';
 import { triggerJobWithParams } from '../../api/client';
 import type { ActivityEntry as ActivityEntryType } from '../../api/types';
-
-const TYPE_COLORS: Record<string, string> = {
-  heartbeat: 'bg-purple-500/20 text-purple-300',
-  suggest: 'bg-green-500/20 text-green-300',
-  consolidate: 'bg-orange-500/20 text-orange-300',
-  reflect: 'bg-blue-500/20 text-blue-300',
-  'remote-sync': 'bg-pink-400/20 text-pink-300',
-  'repo-profile': 'bg-teal-400/20 text-teal-300',
-  'suggest-deep': 'bg-green-600/20 text-green-400',
-  'suggest-project': 'bg-emerald-400/20 text-emerald-300',
-  'project-profile': 'bg-emerald-400/20 text-emerald-300',
-  'context-enrich': 'bg-amber-400/20 text-amber-300',
-  'mcp-discover': 'bg-indigo-400/20 text-indigo-300',
-  'digest-daily': 'bg-cyan-500/20 text-cyan-300',
-  'digest-weekly': 'bg-cyan-500/20 text-cyan-300',
-  'digest-brag': 'bg-cyan-500/20 text-cyan-300',
-  'run:plan': 'bg-indigo-500/20 text-indigo-300',
-  'run:execution': 'bg-violet-500/20 text-violet-300',
-};
 
 const STATUS_BADGE: Record<string, string> = {
   completed: 'text-green bg-green/15',
@@ -492,7 +474,7 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
   const isFailed = entry.status === 'failed';
   const skip = isSkip(entry);
   const isRun = entry.source === 'run';
-  const typeColor = TYPE_COLORS[entry.type] ?? 'text-text-dim bg-border';
+  const typeColor = JOB_TYPE_COLORS[entry.type] ?? JOB_TYPE_COLOR_DEFAULT;
 
   const borderClass = isRunning
     ? 'border-l-blue animate-pulse'

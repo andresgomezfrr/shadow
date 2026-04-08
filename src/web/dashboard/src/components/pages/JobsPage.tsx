@@ -2,6 +2,7 @@ import { timeAgo, formatTokens, useNow, formatCountdown } from '../../utils/form
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchJobs, fetchStatus, triggerHeartbeat } from '../../api/client';
+import { JOB_JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
 import { MetricCard } from '../common/MetricCard';
 import { EmptyState } from '../common/EmptyState';
@@ -26,7 +27,6 @@ const PHASE_STYLES: Record<string, string> = {
 
 
 function isActive(hb: Job): boolean {
-  // Jobs that did real work: LLM calls, or non-empty result with actual data
   if (hb.llmCalls > 0) return true;
   const result = hb.result ?? {};
   const hasResultData = Object.values(result).some(v => v !== null && v !== undefined && v !== 0 && v !== false && v !== '');
@@ -51,18 +51,6 @@ const TYPE_FILTERS = [
   { label: 'Enrich', value: 'context-enrich' },
   { label: 'Digest', value: 'digest' },
 ];
-
-const TYPE_COLORS: Record<string, string> = {
-  heartbeat: 'text-purple bg-purple/15',
-  suggest: 'text-green bg-green/15',
-  consolidate: 'text-orange bg-orange/15',
-  reflect: 'text-blue bg-blue/15',
-  'remote-sync': 'text-pink-400 bg-pink-400/15',
-  'context-enrich': 'text-cyan bg-cyan/15',
-  'digest-daily': 'text-cyan bg-cyan/15',
-  'digest-weekly': 'text-cyan bg-cyan/15',
-  'digest-brag': 'text-cyan bg-cyan/15',
-};
 
 const PAGE_SIZE = 30;
 
@@ -126,11 +114,11 @@ export function JobsPage() {
       {/* Job schedule */}
       <div className="bg-card border border-border rounded-lg p-3 mb-4 text-xs space-y-1.5">
         <div className="flex items-center gap-3 flex-wrap">
-          <Badge title="Detects active projects, extracts memories and generates observations" tooltipBelow className={TYPE_COLORS.heartbeat}>heartbeat</Badge>
+          <Badge title="Detects active projects, extracts memories and generates observations" tooltipBelow className={JOB_TYPE_COLORS.heartbeat}>heartbeat</Badge>
           <span className="text-text-muted">every 30m · </span>
           <span className="text-text font-mono">{formatCountdown(schedule?.heartbeat?.nextAt, now)}</span>
           <span className="text-text-muted">→ if activity →</span>
-          <Badge title="Generates project-aware technical suggestions based on observations" tooltipBelow className={TYPE_COLORS.suggest}>suggest</Badge>
+          <Badge title="Generates project-aware technical suggestions based on observations" tooltipBelow className={JOB_TYPE_COLORS.suggest}>suggest</Badge>
           <button
             onClick={handleTrigger}
             disabled={!canTrigger}
@@ -140,33 +128,33 @@ export function JobsPage() {
           </button>
         </div>
         <div className="flex items-center gap-3">
-          <Badge title="Promotes and demotes memories between layers based on access patterns" tooltipBelow className={TYPE_COLORS.consolidate}>consolidate</Badge>
+          <Badge title="Promotes and demotes memories between layers based on access patterns" tooltipBelow className={JOB_TYPE_COLORS.consolidate}>consolidate</Badge>
           <span className="text-text-muted">every 6h ·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.consolidate?.nextAt, now)}</span>
           <span className="text-text-muted">│</span>
-          <Badge title="2-phase soul reflection: Sonnet extracts deltas, Opus evolves understanding" tooltipBelow className={TYPE_COLORS.reflect}>reflect</Badge>
+          <Badge title="2-phase soul reflection: Sonnet extracts deltas, Opus evolves understanding" tooltipBelow className={JOB_TYPE_COLORS.reflect}>reflect</Badge>
           <span className="text-text-muted">every 24h ·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.reflect?.nextAt, now)}</span>
         </div>
         <div className="flex items-center gap-3">
-          <Badge title="Checks git remotes for new commits via ls-remote" tooltipBelow className={TYPE_COLORS['remote-sync']}>remote-sync</Badge>
+          <Badge title="Checks git remotes for new commits via ls-remote" tooltipBelow className={JOB_TYPE_COLORS['remote-sync']}>remote-sync</Badge>
           <span className="text-text-muted">every 30m ·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.['remote-sync']?.nextAt, now)}</span>
           <span className="text-text-muted">│</span>
-          <Badge title="Queries user MCP tools for external context (calendar, monitoring, CI). Enable with SHADOW_ENRICHMENT_ENABLED=true" tooltipBelow className={TYPE_COLORS['context-enrich']}>enrich</Badge>
+          <Badge title="Queries user MCP tools for external context (calendar, monitoring, CI). Enable with SHADOW_ENRICHMENT_ENABLED=true" tooltipBelow className={JOB_TYPE_COLORS['context-enrich']}>enrich</Badge>
           <span className="text-text-muted">every 2h ·</span>
           <span className="text-text font-mono">{(schedule?.['context-enrich'] as Record<string, unknown>)?.enabled ? formatCountdown(schedule?.['context-enrich']?.nextAt, now) : 'disabled'}</span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <Badge title="Daily standup digest" tooltipBelow className={TYPE_COLORS['digest-daily']}>digest-daily</Badge>
+          <Badge title="Daily standup digest" tooltipBelow className={JOB_TYPE_COLORS['digest-daily']}>digest-daily</Badge>
           <span className="text-text-muted">{(schedule?.['digest-daily'] as Record<string, unknown>)?.schedule as string ?? '23:30'} ·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.['digest-daily']?.nextAt, now)}</span>
           <span className="text-text-muted">│</span>
-          <Badge title="Weekly 1:1 digest" tooltipBelow className={TYPE_COLORS['digest-weekly']}>digest-weekly</Badge>
+          <Badge title="Weekly 1:1 digest" tooltipBelow className={JOB_TYPE_COLORS['digest-weekly']}>digest-weekly</Badge>
           <span className="text-text-muted">{(schedule?.['digest-weekly'] as Record<string, unknown>)?.schedule as string ?? 'Sun 23:30'} ·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.['digest-weekly']?.nextAt, now)}</span>
           <span className="text-text-muted">│</span>
-          <Badge title="Quarterly brag doc" tooltipBelow className={TYPE_COLORS['digest-brag']}>digest-brag</Badge>
+          <Badge title="Quarterly brag doc" tooltipBelow className={JOB_TYPE_COLORS['digest-brag']}>digest-brag</Badge>
           <span className="text-text-muted">{(schedule?.['digest-brag'] as Record<string, unknown>)?.schedule as string ?? 'Mon 08:00'} ·</span>
           <span className="text-text font-mono">{formatCountdown(schedule?.['digest-brag']?.nextAt, now)}</span>
         </div>
@@ -203,7 +191,7 @@ export function JobsPage() {
                   className="bg-accent/5 border border-accent/30 rounded-lg px-4 py-3 animate-pulse"
                 >
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Badge className={TYPE_COLORS[hb.type] ?? 'text-text-dim bg-border'}>{hb.type}</Badge>
+                    <Badge className={JOB_TYPE_COLORS[hb.type] ?? JOB_TYPE_COLOR_DEFAULT}>{hb.type}</Badge>
                     {hb.type.startsWith('digest-') && typeof hb.result.periodStart === 'string' && (
                       <span className="text-xs text-text-muted">{hb.result.periodStart}</span>
                     )}
@@ -223,7 +211,7 @@ export function JobsPage() {
                   onClick={() => toggle(hb.id)}
                   className="bg-card/50 border border-border/50 rounded px-4 py-2 cursor-pointer flex items-center gap-2 text-text-muted hover:border-border transition-colors"
                 >
-                  <Badge className={TYPE_COLORS[hb.type] ?? PHASE_STYLES.skip}>{hb.type}</Badge>
+                  <Badge className={JOB_TYPE_COLORS[hb.type] ?? PHASE_STYLES.skip}>{hb.type}</Badge>
                   <Badge className={PHASE_STYLES.skip}>skip</Badge>
                   <span className="text-xs flex-1">{duration}</span>
                   <span className="text-xs">{timeAgo(hb.startedAt)}</span>
@@ -240,7 +228,7 @@ export function JobsPage() {
                 }`}
               >
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Badge className={TYPE_COLORS[hb.type] ?? 'text-text-dim bg-border'}>{hb.type}</Badge>
+                  <Badge className={JOB_TYPE_COLORS[hb.type] ?? JOB_TYPE_COLOR_DEFAULT}>{hb.type}</Badge>
                   {hb.type.startsWith('digest-') && typeof hb.result.periodStart === 'string' && (
                     <span className="text-xs text-text-muted">{hb.result.periodStart}</span>
                   )}
