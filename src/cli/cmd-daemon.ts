@@ -46,6 +46,42 @@ function resolveDaemonRunner(): { command: string; args: string[]; cwd: string }
   };
 }
 
+async function gracefulStopDaemon(opts: {
+  config: ShadowConfig;
+  execSync: typeof import('node:child_process').execSync;
+  plistPath: string;
+  timeoutMs?: number;
+}): Promise<'graceful' | 'forced'> {
+  const { config, execSync, plistPath, timeoutMs = 30_000 } = opts;
+  const { stopDaemon, isDaemonRunning } = await import('../daemon/runtime.js');
+
+  const wasStopped = stopDaemon(config);
+
+  if (wasStopped) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline && isDaemonRunning(config)) {
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+
+  if (!isDaemonRunning(config)) {
+    if (existsSync(plistPath)) {
+      try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
+    }
+    await new Promise(r => setTimeout(r, 500));
+    return 'graceful';
+  }
+
+  if (existsSync(plistPath)) {
+    try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
+  }
+  try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
+  try { execSync('pkill -f "claude.*--allowedTools.*mcp__shadow"', { stdio: 'pipe' }); } catch { /* ok */ }
+  try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
+  await new Promise(r => setTimeout(r, 1500));
+  return 'forced';
+}
+
 export function registerDaemonCommands(program: Command, config: ShadowConfig, withDb: WithDb): void {
   // --- daemon ---
 
@@ -130,36 +166,9 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       const { execSync } = await import('node:child_process');
       const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
 
-      // Step 1: Graceful stop — SIGTERM lets daemon drain active jobs
-      const { stopDaemon, isDaemonRunning } = await import('../daemon/runtime.js');
-      const wasStopped = stopDaemon(config);
+      await gracefulStopDaemon({ config, execSync, plistPath });
 
-      if (wasStopped) {
-        // Wait for drain (up to 30s — daemon has 60s drain internally)
-        const deadline = Date.now() + 30_000;
-        while (Date.now() < deadline && isDaemonRunning(config)) {
-          await new Promise(r => setTimeout(r, 500));
-        }
-      }
-
-      // Step 2: Force kill if still alive after graceful wait
-      if (isDaemonRunning(config)) {
-        if (existsSync(plistPath)) {
-          try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
-        }
-        try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
-        try { execSync('pkill -f "claude.*--allowedTools.*mcp__shadow"', { stdio: 'pipe' }); } catch { /* ok */ }
-        try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
-        await new Promise(r => setTimeout(r, 1500));
-      } else {
-        // Graceful stop worked — just bootout launchd
-        if (existsSync(plistPath)) {
-          try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
-        }
-        await new Promise(r => setTimeout(r, 500));
-      }
-
-      // Step 3: Start
+      // Start
       if (existsSync(plistPath)) {
         try {
           execSync(`launchctl bootstrap gui/$(id -u) ${plistPath} 2>/dev/null || launchctl kickstart gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
@@ -270,13 +279,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       // Stop daemon
       console.error('Stopping daemon...');
       const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
-      if (existsSync(plistPath)) {
-        try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
-      }
-      try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
-      try { execSync('pkill -f "claude.*--allowedTools.*mcp__shadow"', { stdio: 'pipe' }); } catch { /* ok */ }
-      try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
-      await new Promise(r => setTimeout(r, 1500));
+      await gracefulStopDaemon({ config, execSync, plistPath });
 
       // Checkout target
       try {

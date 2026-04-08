@@ -47,8 +47,8 @@ export const fetchDailySummary = () => api<DailySummary>('/api/daily-summary');
 export const fetchMemories = (params?: { q?: string; layer?: string; memoryType?: string; limit?: number; offset?: number }) =>
   api<{ items: Memory[]; total: number }>(`/api/memories${qs({ q: params?.q, layer: params?.layer, memoryType: params?.memoryType, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
-export const fetchSuggestions = (params?: { status?: string; kind?: string; limit?: number; offset?: number }) =>
-  api<{ items: Suggestion[]; total: number; feedbackState: Record<string, string> }>(`/api/suggestions${qs({ status: params?.status, kind: params?.kind, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+export const fetchSuggestions = (params?: { status?: string; kind?: string; sort?: string; limit?: number; offset?: number }) =>
+  api<{ items: Suggestion[]; total: number; feedbackState: Record<string, string>; scores: Record<string, number> }>(`/api/suggestions${qs({ status: params?.status, kind: params?.kind, sort: params?.sort, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
 export const fetchObservations = (params?: { limit?: number; offset?: number; status?: string; severity?: string; kind?: string }) =>
   api<{ items: Observation[]; total: number; feedbackState: Record<string, string> }>(`/api/observations${qs({ limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined, status: params?.status, severity: params?.severity, kind: params?.kind })}`);
@@ -217,7 +217,14 @@ export const dismissSuggestion = (id: string, note?: string, category?: string) 
     body: (note || category) ? JSON.stringify({ note, category }) : undefined,
   });
 
-export const bulkSuggestionAction = (action: 'accept' | 'dismiss' | 'snooze', ids: string[], opts?: { category?: string; note?: string; hours?: number }) =>
+export const updateSuggestionCategory = (id: string, category: string) =>
+  api<Suggestion>(`/api/suggestions/${id}/update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category }),
+  });
+
+export const bulkSuggestionAction = (action: 'accept' | 'dismiss' | 'snooze' | 'update', ids: string[], opts?: { category?: string; note?: string; hours?: number }) =>
   api<{ processed: number; total: number }>('/api/suggestions/bulk', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

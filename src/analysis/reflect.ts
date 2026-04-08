@@ -134,47 +134,97 @@ export async function activityReflect(
     'Output ONLY the markdown reflection, no preamble or explanation.',
   ].filter(Boolean).join('\n');
 
-  try {
-    const result = await adapter.execute({
-      repos: [], title: 'Shadow Reflect', goal: 'Evolve soul reflection',
-      prompt: evolvePrompt, relevantMemories: [], model: 'opus', effort: 'high',
-      systemPrompt: null, allowedTools: [],
-    });
-    llmCalls++;
-    tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
-    ctx.db.recordLlmUsage({ source: 'reflect_evolve', sourceId: null, model: 'opus', inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+  const expectedSections = ['## Developer profile', '## Decision patterns', '## Blind spots', '## What Shadow should watch for', '## Communication preferences'];
+  let phase2Output: string | null = null;
+  let phase2Error: string | null = null;
+  let retryHint: string | null = null;
 
-    if (result.status === 'success' && result.output) {
-      const expectedSections = ['## Developer profile', '## Decision patterns', '## Blind spots', '## What Shadow should watch for', '## Communication preferences'];
-      const missing = expectedSections.filter(s => !result.output!.includes(s));
-      if (missing.length > 0) {
-        console.error(`[shadow:reflect] Rejected: output missing sections: ${missing.join(', ')}`);
-        return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: `malformed output: missing ${missing.join(', ')}` };
-      }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const promptToUse = attempt === 0
+        ? evolvePrompt
+        : evolvePrompt + `\n\nIMPORTANT: Your previous output was missing these required sections: ${retryHint}. You MUST include ALL five sections exactly as specified.`;
 
-      // Save snapshot of previous soul before updating
-      if (existingSoul) {
-        const snapshotDate = new Date().toISOString().split('T')[0];
-        const snapshot = ctx.db.createMemory({
-          layer: 'core', scope: 'personal', kind: 'soul_snapshot',
-          title: `Soul reflection snapshot — ${snapshotDate}`,
-          bodyMd: existingSoul.bodyMd,
-          sourceType: 'reflect', confidenceScore: 95, relevanceScore: 0.3,
-        });
-        ctx.db.updateMemory(snapshot.id, { archivedAt: new Date().toISOString() });
-        ctx.db.updateMemory(existingSoul.id, { bodyMd: result.output });
+      const result = await adapter.execute({
+        repos: [], title: 'Shadow Reflect', goal: 'Evolve soul reflection',
+        prompt: promptToUse, relevantMemories: [], model: 'opus', effort: 'high',
+        systemPrompt: null, allowedTools: [],
+      });
+      llmCalls++;
+      tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+      ctx.db.recordLlmUsage({
+        source: attempt === 0 ? 'reflect_evolve' : 'reflect_evolve_retry',
+        sourceId: null, model: 'opus',
+        inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0,
+      });
+
+      if (result.status === 'success' && result.output) {
+        const missing = expectedSections.filter(s => !result.output!.includes(s));
+        if (missing.length === 0) {
+          phase2Output = result.output;
+          break;
+        }
+        if (attempt === 0) {
+          console.error(`[shadow:reflect] Attempt 1 rejected: missing sections: ${missing.join(', ')} — retrying`);
+          retryHint = missing.join(', ');
+          continue;
+        }
+        phase2Error = `malformed output after retry: missing ${missing.join(', ')}`;
+        console.error(`[shadow:reflect] Attempt 2 also rejected: ${phase2Error}`);
       } else {
-        ctx.db.createMemory({
-          layer: 'core', scope: 'personal', kind: 'soul_reflection',
-          title: 'Shadow soul reflection', bodyMd: result.output,
-          sourceType: 'reflect', confidenceScore: 95, relevanceScore: 1.0,
-        });
+        if (attempt === 0) {
+          console.error(`[shadow:reflect] Attempt 1 failed (status=${result.status}) — retrying`);
+          retryHint = expectedSections.map(s => s.replace('## ', '')).join(', ');
+          continue;
+        }
+        phase2Error = `Phase 2 returned status: ${result.status}`;
+        console.error(`[shadow:reflect] Attempt 2 also failed (status=${result.status})`);
       }
-      console.error(`[shadow:reflect] Soul reflection saved (2-phase). Tokens: ${tokensUsed}`);
-      return { llmCalls, tokensUsed, skipped: false, soulUpdated: true };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (attempt === 0) {
+        console.error(`[shadow:reflect] Attempt 1 error: ${msg} — retrying`);
+        retryHint = expectedSections.map(s => s.replace('## ', '')).join(', ');
+        continue;
+      }
+      phase2Error = `Phase 2 threw: ${msg}`;
+      console.error(`[shadow:reflect] Attempt 2 error: ${msg}`);
     }
-  } catch (e) {
-    console.error('[shadow:reflect] Phase 2 failed:', e instanceof Error ? e.message : e);
+  }
+
+  if (phase2Output) {
+    // Save snapshot of previous soul before updating
+    if (existingSoul) {
+      const snapshotDate = new Date().toISOString().split('T')[0];
+      const snapshot = ctx.db.createMemory({
+        layer: 'core', scope: 'personal', kind: 'soul_snapshot',
+        title: `Soul reflection snapshot — ${snapshotDate}`,
+        bodyMd: existingSoul.bodyMd,
+        sourceType: 'reflect', confidenceScore: 95, relevanceScore: 0.3,
+      });
+      ctx.db.updateMemory(snapshot.id, { archivedAt: new Date().toISOString() });
+      ctx.db.updateMemory(existingSoul.id, { bodyMd: phase2Output });
+    } else {
+      ctx.db.createMemory({
+        layer: 'core', scope: 'personal', kind: 'soul_reflection',
+        title: 'Shadow soul reflection', bodyMd: phase2Output,
+        sourceType: 'reflect', confidenceScore: 95, relevanceScore: 1.0,
+      });
+    }
+    console.error(`[shadow:reflect] Soul reflection saved (2-phase). Tokens: ${tokensUsed}`);
+    return { llmCalls, tokensUsed, skipped: false, soulUpdated: true };
+  }
+
+  if (phase2Error) {
+    ctx.db.createEvent({
+      kind: 'reflect_failed',
+      priority: 7,
+      payload: {
+        message: 'Soul reflection failed after retry',
+        detail: phase2Error,
+      },
+    });
+    return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: phase2Error };
   }
 
   return { llmCalls, tokensUsed, skipped: false };

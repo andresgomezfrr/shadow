@@ -15,6 +15,11 @@ const SuggestAcceptSchema = z.object({
   category: z.string().describe('Accept category: execute (run via runner, default), manual (already implemented), planned (add to backlog)').optional(),
 });
 
+const SuggestUpdateSchema = z.object({
+  suggestionId: z.string().describe('The suggestion ID to update'),
+  category: z.enum(['execute', 'manual', 'planned']).describe('New category: execute (run via runner), manual (already implemented), planned (backlog)'),
+});
+
 const SuggestDismissSchema = z.object({
   suggestionId: z.string().describe('The suggestion ID to dismiss'),
   note: z.string().describe('Optional feedback note explaining the dismissal').optional(),
@@ -117,6 +122,27 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
         if (!result.ok) return { isError: true, message: 'Cannot snooze — suggestion not pending' };
 
         return { snoozed: true, suggestionId, until };
+      },
+    },
+    {
+      name: 'shadow_suggest_update',
+      description: 'Update category of an accepted/backlog suggestion (e.g. move from backlog to implemented). Requires trust level >= 1.',
+      inputSchema: mcpSchema(SuggestUpdateSchema),
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+
+        const { suggestionId, category } = SuggestUpdateSchema.parse(params);
+        const suggestion = db.getSuggestion(suggestionId);
+        if (!suggestion) {
+          return { isError: true, message: `Suggestion not found: ${suggestionId}` };
+        }
+
+        const { updateSuggestionCategory } = await import('../../suggestion/engine.js');
+        const result = updateSuggestionCategory(db, suggestionId, category);
+        if (!result.ok) return { isError: true, message: 'Cannot update — suggestion not in backlog or accepted status' };
+
+        return { updated: true, suggestionId, category, ...(result.runCreated ? { runCreated: result.runCreated } : {}) };
       },
     },
   ];
