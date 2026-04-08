@@ -35,7 +35,7 @@ function gitExec(cmd: string, cwd: string, timeoutMs = 10_000): string | null {
  * then selective git fetch only for repos with detected changes.
  * Round-robin: processes repos sorted by lastFetchedAt ASC (oldest first).
  */
-export function remoteSyncRepos(db: ShadowDatabase, batchSize: number, repoId?: string): RemoteSyncResult[] {
+export function remoteSyncRepos(db: ShadowDatabase, batchSize: number, repoId?: string, onProgress?: (name: string, index: number, total: number) => void): RemoteSyncResult[] {
   const allRepos = db.listRepos();
   const results: RemoteSyncResult[] = [];
 
@@ -55,7 +55,9 @@ export function remoteSyncRepos(db: ShadowDatabase, batchSize: number, repoId?: 
     batch = sorted.slice(0, batchSize);
   }
 
-  for (const repo of batch) {
+  for (let i = 0; i < batch.length; i++) {
+    const repo = batch[i];
+    onProgress?.(repo.name, i + 1, batch.length);
     const now = new Date().toISOString();
 
     // Step 1: Lightweight detection — git ls-remote vs local HEAD
