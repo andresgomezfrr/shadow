@@ -450,5 +450,10 @@ export function mapEnrichment(row: unknown): EnrichmentCacheRecord {
     createdAt: str(d.created_at),
     updatedAt: str(d.updated_at),
     expiresAt: strOrNull(d.expires_at),
+    ttlCategory: strOrNull(d.ttl_category),
+    refreshCount: num(d.refresh_count),
+    changeCount: num(d.change_count),
+    accessCount: num(d.access_count),
+    lastConsumedAt: strOrNull(d.last_consumed_at),
   };
 }

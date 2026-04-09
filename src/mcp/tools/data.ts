@@ -347,8 +347,11 @@ export function dataTools(ctx: ToolContext): McpTool[] {
           const serverMeta = db.listEnrichment({ source: 'mcp-discover', entityId: parsed.source, limit: 1 });
           if (serverMeta.length > 0) {
             const detail = serverMeta[0].detail as Record<string, unknown> | undefined;
+            // Prefer learned TTL over default
+            const learnedTtl = detail?.learnedTtl as string | undefined;
             const discoveredTtl = detail?.defaultTtl as string | undefined;
-            if (discoveredTtl && TTL_MS[discoveredTtl]) ttlCategory = discoveredTtl;
+            const resolvedTtl = learnedTtl ?? discoveredTtl;
+            if (resolvedTtl && TTL_MS[resolvedTtl]) ttlCategory = resolvedTtl;
           }
         } catch { /* use default */ }
 
@@ -367,6 +370,12 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         const contentHash = createHash('sha256').update(`${parsed.source}:${parsed.summary}`).digest('hex').slice(0, 16);
 
         if (dedup.action === 'update') {
+          // Track whether content actually changed (TTL tuning signal)
+          const existing = db.getEnrichment(dedup.existingId);
+          const contentChanged = (dedup.similarity ?? 0) < 0.95;
+          const newRefreshCount = (existing?.refreshCount ?? 0) + 1;
+          const newChangeCount = (existing?.changeCount ?? 0) + (contentChanged ? 1 : 0);
+
           // Update existing record with fresh data
           db.upsertEnrichment({
             source: parsed.source,
@@ -378,8 +387,13 @@ export function dataTools(ctx: ToolContext): McpTool[] {
             contentHash,
             expiresAt,
           });
+          db.updateEnrichmentStats(dedup.existingId, {
+            refreshCount: newRefreshCount,
+            changeCount: newChangeCount,
+            ttlCategory,
+          });
           await generateAndStoreEmbedding(db, 'enrichment', dedup.existingId, { title: parsed.summary, summaryMd: parsed.summary });
-          return { ok: true, action: 'updated', existingId: dedup.existingId, similarity: dedup.similarity, ttl: ttlCategory };
+          return { ok: true, action: 'updated', existingId: dedup.existingId, similarity: dedup.similarity, ttl: ttlCategory, contentChanged };
         }
 
         // Create new entry
@@ -393,6 +407,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
           contentHash,
           expiresAt,
         });
+        db.updateEnrichmentStats(record.id, { ttlCategory });
         await generateAndStoreEmbedding(db, 'enrichment', record.id, { title: parsed.summary, summaryMd: parsed.summary });
 
         return { ok: true, action: 'created', ttl: ttlCategory, expiresAt };

@@ -730,6 +730,19 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    version: 36,
+    name: 'enrichment_intelligence',
+    sql: `
+      ALTER TABLE enrichment_cache ADD COLUMN ttl_category TEXT;
+      ALTER TABLE enrichment_cache ADD COLUMN refresh_count INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE enrichment_cache ADD COLUMN change_count INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE enrichment_cache ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE enrichment_cache ADD COLUMN last_consumed_at TEXT;
+      CREATE INDEX IF NOT EXISTS idx_enrichment_entity ON enrichment_cache(entity_id, entity_type, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_enrichment_expiry ON enrichment_cache(expires_at, stale);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

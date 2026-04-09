@@ -451,6 +451,11 @@ export type EnrichmentCacheRecord = {
   createdAt: string;
   updatedAt: string;
   expiresAt: string | null;
+  ttlCategory: string | null;
+  refreshCount: number;
+  changeCount: number;
+  accessCount: number;
+  lastConsumedAt: string | null;
 };
 
 // --- Memory search result ---
