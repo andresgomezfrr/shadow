@@ -115,6 +115,7 @@ export const ProfileUpdateSchema = z.object({
   personalityLevel: z.coerce.number().int().min(1).max(5).optional(),
   models: ModelsSchema.partial().optional(),
   efforts: EffortsSchema.partial().optional(),
+  preferences: z.record(z.string(), z.unknown()).optional(),
 }).strip();
 
 export type ShadowConfig = z.infer<typeof ConfigSchema> & {
