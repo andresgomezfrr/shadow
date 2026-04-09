@@ -5,26 +5,28 @@ import { fetchActivity, fetchStatus } from '../api/client';
 
 type PhaseInfo = { images: string[]; label: string };
 
+export const isVideo = (p: string) => p.endsWith('.mp4');
+
 const randomFrom = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
 const PHASE_MAP: Record<string, PhaseInfo> = {
-  idle:              { images: ['/ghost/idle-1.png', '/ghost/idle-2.png', '/ghost/idle-3.png', '/ghost/idle-4.png', '/ghost/idle-5.png', '/ghost/idle-6.png', '/ghost/idle-7.png', '/ghost/idle-8.png', '/ghost/idle-9.png'], label: 'idle' },
-  focus:             { images: ['/ghost/focus.png'],          label: 'focus mode' },
-  watching:          { images: ['/ghost/watching-1.png', '/ghost/watching-2.png', '/ghost/watching-3.png'], label: 'watching' },
-  learning:          { images: ['/ghost/learning-1.png', '/ghost/learning-2.png'], label: 'learning' },
-  heartbeat:         { images: ['/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png', '/ghost/analyzing-5.png'], label: 'analyzing...' },
+  idle:              { images: ['/ghost/idle.mp4'],            label: 'idle' },
+  focus:             { images: ['/ghost/focus.png'],           label: 'focus mode' },
+  watching:          { images: ['/ghost/watching.mp4'],        label: 'watching' },
+  learning:          { images: ['/ghost/watching.mp4'],        label: 'learning' },
+  heartbeat:         { images: ['/ghost/analyzing.mp4'],       label: 'analyzing...' },
   suggest:           { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'suggesting...' },
   'suggest-deep':    { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'deep suggesting...' },
   'suggest-project': { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'project suggestions...' },
   consolidate:       { images: ['/ghost/consolidating-1.png', '/ghost/consolidating-2.png'], label: 'consolidating...' },
-  reflect:           { images: ['/ghost/reflecting.png'],     label: 'reflecting...' },
-  'context-enrich':  { images: ['/ghost/enriching.png'],      label: 'enriching...' },
-  'remote-sync':     { images: ['/ghost/syncing.png'],        label: 'syncing...' },
-  'repo-profile':    { images: ['/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png', '/ghost/analyzing-5.png'], label: 'profiling...' },
-  'project-profile': { images: ['/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png', '/ghost/analyzing-5.png'], label: 'profiling...' },
-  'digest-daily':    { images: ['/ghost/reflecting.png'],     label: 'writing digest...' },
-  'digest-weekly':   { images: ['/ghost/reflecting.png'],     label: 'writing digest...' },
-  'digest-brag':     { images: ['/ghost/reflecting.png'],     label: 'writing digest...' },
+  reflect:           { images: ['/ghost/reflecting.png'],      label: 'reflecting...' },
+  'context-enrich':  { images: ['/ghost/enriching.png'],       label: 'enriching...' },
+  'remote-sync':     { images: ['/ghost/syncing.png'],         label: 'syncing...' },
+  'repo-profile':    { images: ['/ghost/analyzing.mp4'],       label: 'profiling...' },
+  'project-profile': { images: ['/ghost/analyzing.mp4'],       label: 'profiling...' },
+  'digest-daily':    { images: ['/ghost/reflecting.png'],      label: 'writing digest...' },
+  'digest-weekly':   { images: ['/ghost/reflecting.png'],      label: 'writing digest...' },
+  'digest-brag':     { images: ['/ghost/reflecting.png'],      label: 'writing digest...' },
 };
 
 // Higher index = higher priority for display
@@ -79,7 +81,7 @@ export function useGhostPhase(): GhostPhase {
     const allSources = Object.values(PHASE_MAP).flatMap(p => p.images);
     allSources.push('/ghost/offline.png');
     for (const src of allSources) {
-      if (!seen.has(src)) {
+      if (!seen.has(src) && !isVideo(src)) {
         seen.add(src);
         const img = new Image();
         img.src = src;

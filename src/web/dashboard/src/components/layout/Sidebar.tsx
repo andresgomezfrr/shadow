@@ -4,7 +4,7 @@ import type { StatusResponse } from '../../api/types';
 import { CorrectionPanel } from '../common/CorrectionPanel';
 import { GhostTV } from '../common/GhostTV';
 import { SpeechBubble } from '../common/SpeechBubble';
-import { useGhostPhase } from '../../hooks/useGhostPhase';
+import { useGhostPhase, isVideo } from '../../hooks/useGhostPhase';
 import { useSSEConnected } from '../../hooks/useEventStream';
 
 type Counts = StatusResponse['counts'];
@@ -88,6 +88,15 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
             <span className="text-sm font-mono ghost-pulse text-accent" data-mood={ghostMood} data-energy={ghost.energy}>
               {isOffline ? '{-_-}z' : '{•‿•}'}
             </span>
+          ) : isVideo(ghostImage) ? (
+            <video
+              src={ghostImage}
+              autoPlay loop muted playsInline
+              className="w-[40px] h-[40px] rounded-full object-cover ghost-pulse"
+              data-mood={ghostMood}
+              data-energy={ghost.energy}
+              onError={() => setGhostImgError(true)}
+            />
           ) : (
             <img
               src={ghostImage}
