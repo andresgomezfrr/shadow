@@ -31,7 +31,9 @@ suggest-deep (20+ commits or 7d/30d)
   \u2193 deep scan complete
 suggest-project (reactive, 7d gap, 2+ repos)
 
-consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)`}</pre>
+consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)
+
+revalidate-suggestion (on-demand from Workspace)`}</pre>
         </div>
       </section>
 
@@ -157,6 +159,18 @@ consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)`}</pre>
             output="Enrichment cache items (fed into heartbeat context)"
             reactive={false}
             note="Enable in Settings. Requires MCP servers other than Shadow."
+          />
+
+          <JobCard
+            name="revalidate-suggestion"
+            color="bg-sky-400/20 text-sky-300"
+            purpose="Re-evaluates a suggestion against the current codebase to check if it is still valid, partially valid, or outdated"
+            trigger="On-demand from Workspace (user clicks Re-evaluate)"
+            model="Opus high"
+            phases={['prepare', 'evaluate', 'apply']}
+            output="Updates suggestion content, scores, and verdict (valid/partial/outdated)"
+            reactive={false}
+            note="Uses tool access to read repo files. Outdated suggestions get a pre-filled dismiss note."
           />
 
           <JobCard

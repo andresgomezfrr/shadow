@@ -151,6 +151,53 @@ export type SystemDetail = import('@shadow/models').SystemRecord & {
 };
 
 // ---------------------------------------------------------------------------
+// Workspace types
+// ---------------------------------------------------------------------------
+
+export type FeedItem = {
+  source: 'run' | 'suggestion' | 'observation';
+  id: string;
+  priority: number;
+  data: import('@shadow/models').RunRecord | import('@shadow/models').SuggestionRecord | import('@shadow/models').ObservationRecord;
+};
+
+export type FeedResponse = {
+  items: FeedItem[];
+  total: number;
+  counts: { runs: number; suggestions: number; observations: number };
+};
+
+export type RunContext = {
+  run: import('@shadow/models').RunRecord;
+  childRuns: import('@shadow/models').RunRecord[];
+  parentRun: import('@shadow/models').RunRecord | null;
+  sourceSuggestion: import('@shadow/models').SuggestionRecord | null;
+  sourceObservation: import('@shadow/models').ObservationRecord | null;
+};
+
+export type SuggestionContext = {
+  suggestion: import('@shadow/models').SuggestionRecord;
+  sourceObservation: import('@shadow/models').ObservationRecord | null;
+  linkedRuns: import('@shadow/models').RunRecord[];
+  rankScore: number | null;
+  warning?: string;
+};
+
+export type ObservationContext = {
+  observation: import('@shadow/models').ObservationRecord;
+  generatedSuggestions: import('@shadow/models').SuggestionRecord[];
+  linkedRuns: import('@shadow/models').RunRecord[];
+};
+
+export type PrStatus = {
+  state: 'OPEN' | 'MERGED' | 'CLOSED';
+  isDraft: boolean;
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
+  checksStatus: 'SUCCESS' | 'FAILURE' | 'PENDING' | null;
+  url: string;
+};
+
+// ---------------------------------------------------------------------------
 // UI constants
 // ---------------------------------------------------------------------------
 

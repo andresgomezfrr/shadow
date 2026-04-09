@@ -36,7 +36,19 @@ export function computeRankScore(
     }
   }
 
-  return Math.max(0, base - penalty - daysOld + momentumBoost);
+  // Revalidation boost: +5 per revalidation (capped at +15), extra +3 if validated recently (< 3 days)
+  let revalidationBoost = 0;
+  if (suggestion.revalidationCount > 0) {
+    revalidationBoost = Math.min(suggestion.revalidationCount * 5, 15);
+    if (suggestion.lastRevalidatedAt) {
+      const daysSinceRevalidation = (Date.now() - new Date(suggestion.lastRevalidatedAt).getTime()) / 86400000;
+      if (daysSinceRevalidation < 3) revalidationBoost += 3;
+    }
+    // Outdated verdict penalizes instead
+    if (suggestion.revalidationVerdict === 'outdated') revalidationBoost = -20;
+  }
+
+  return Math.max(0, base - penalty - daysOld + momentumBoost + revalidationBoost);
 }
 
 /**

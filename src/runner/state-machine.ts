@@ -12,13 +12,15 @@ export type RunStatus =
   | 'executed'
   | 'executed_manual'
   | 'discarded'
-  | 'failed';
+  | 'failed'
+  | 'closed';
 
 export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
   'executed',
   'executed_manual',
   'discarded',
   'failed',
+  'closed',
 ]);
 
 /**
@@ -28,11 +30,12 @@ export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
 const TRANSITIONS: Record<RunStatus, ReadonlySet<RunStatus>> = {
   queued:          new Set(['running', 'failed']),
   running:         new Set(['completed', 'executed', 'failed']),
-  completed:       new Set(['executed', 'executed_manual', 'discarded']),
-  executed:        new Set(),  // terminal
-  executed_manual: new Set(),  // terminal
+  completed:       new Set(['executed', 'executed_manual', 'discarded', 'closed']),
+  executed:        new Set(['closed']),
+  executed_manual: new Set(['closed']),
   discarded:       new Set(),  // terminal
   failed:          new Set(),  // terminal
+  closed:          new Set(),  // terminal
 };
 
 export class RunTransitionError extends Error {

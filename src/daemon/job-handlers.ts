@@ -1052,6 +1052,142 @@ async function handleVersionCheck(ctx: JobContext): Promise<JobHandlerResult> {
 
 // --- Registry ---
 
+// --- Revalidate suggestion ---
+
+async function handleRevalidateSuggestion(ctx: JobContext, _shared: DaemonSharedState): Promise<JobHandlerResult> {
+  ctx.setPhase('prepare');
+
+  const job = ctx.db.getJob(ctx.jobId);
+  const suggestionId = (job?.result as Record<string, unknown>)?.suggestionId as string;
+  if (!suggestionId) return { llmCalls: 0, tokensUsed: 0, phases: ['prepare'], result: { error: 'no suggestionId' } };
+
+  const suggestion = ctx.db.getSuggestion(suggestionId);
+  if (!suggestion) return { llmCalls: 0, tokensUsed: 0, phases: ['prepare'], result: { error: 'suggestion not found' } };
+
+  const repo = suggestion.repoId ? ctx.db.getRepo(suggestion.repoId) : null;
+  if (!repo) return { llmCalls: 0, tokensUsed: 0, phases: ['prepare'], result: { error: 'repo not found' } };
+
+  // Source observation context
+  const sourceObs = suggestion.sourceObservationId ? ctx.db.getObservation(suggestion.sourceObservationId) : null;
+
+  ctx.setPhase('evaluate');
+
+  const prompt = `You are Shadow, re-evaluating a suggestion that was created ${suggestion.createdAt}.
+The user wants to know if this suggestion is STILL VALID given the current state of the codebase.
+
+## Suggestion to Re-evaluate
+**Title:** ${suggestion.title}
+**Kind:** ${suggestion.kind}
+**Impact:** ${suggestion.impactScore}/5 · **Confidence:** ${suggestion.confidenceScore}/100 · **Risk:** ${suggestion.riskScore}/5
+${suggestion.revalidationCount > 0 ? `**Previously revalidated:** ${suggestion.revalidationCount} time(s)` : ''}
+
+### Summary
+${suggestion.summaryMd}
+
+${suggestion.reasoningMd ? `### Reasoning\n${suggestion.reasoningMd}` : ''}
+
+${sourceObs ? `### Source Observation\n[${sourceObs.severity}] ${sourceObs.title} (status: ${sourceObs.status})` : ''}
+
+## Your Task
+1. Read the relevant files in the codebase to check if the issue/opportunity still exists
+2. Check if the problem was already fixed or if the code has changed significantly
+3. Determine if the suggestion is still valid, partially valid, or outdated
+
+Use Read, Grep, Glob to explore the code. Be thorough.
+
+Respond with JSON:
+{
+  "verdict": "valid" | "outdated" | "partial",
+  "verdictNote": "Explanation of why (2-3 sentences). If outdated, explain what changed. If partial, explain what still applies.",
+  "title": "Updated title (or same if unchanged)",
+  "summaryMd": "Updated summary reflecting current state",
+  "reasoningMd": "Updated reasoning with what you found in the code NOW",
+  "impactScore": 1-5,
+  "confidenceScore": 0-100,
+  "riskScore": 1-5,
+  "dismissReason": "If verdict is 'outdated', a pre-written dismiss note the user can use as-is or edit"
+}`;
+
+  const { selectAdapter } = await import('../backend/index.js');
+  const adapter = selectAdapter(ctx.config);
+
+  const result = await adapter.execute({
+    repos: [{ id: repo.id, name: repo.name, path: repo.path }],
+    title: `Revalidate: ${suggestion.title}`,
+    goal: 'Re-evaluate suggestion against current codebase',
+    prompt,
+    relevantMemories: [],
+    model: ctx.config.models.revalidate,
+    effort: ctx.config.efforts.revalidate,
+    systemPrompt: null,
+    allowedTools: ['Read', 'Grep', 'Glob', 'Bash'],
+  });
+
+  const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+
+  if (result.status !== 'success' || !result.output) {
+    return { llmCalls: 1, tokensUsed: tokens, phases: ['prepare', 'evaluate'], result: { error: 'LLM call failed', suggestionId } };
+  }
+
+  ctx.setPhase('apply');
+
+  const { safeParseJson } = await import('../backend/json-repair.js');
+  const { z } = await import('zod');
+  const schema = z.object({
+    verdict: z.enum(['valid', 'outdated', 'partial']),
+    verdictNote: z.string(),
+    title: z.string(),
+    summaryMd: z.string(),
+    reasoningMd: z.string(),
+    impactScore: z.number().min(1).max(5),
+    confidenceScore: z.number().min(0).max(100),
+    riskScore: z.number().min(1).max(5),
+    dismissReason: z.string().optional(),
+  });
+
+  const parsed = safeParseJson(result.output, schema, 'revalidate-suggestion');
+  if (!parsed.success) {
+    return { llmCalls: 1, tokensUsed: tokens, phases: ['prepare', 'evaluate', 'apply'], result: { error: 'Failed to parse LLM output', suggestionId } };
+  }
+
+  const v = parsed.data;
+  const now = new Date().toISOString();
+
+  // Update suggestion in-place
+  ctx.db.updateSuggestion(suggestionId, {
+    title: v.title,
+    summaryMd: v.summaryMd,
+    reasoningMd: v.reasoningMd,
+    impactScore: v.impactScore,
+    confidenceScore: v.confidenceScore,
+    riskScore: v.riskScore,
+    revalidationCount: suggestion.revalidationCount + 1,
+    lastRevalidatedAt: now,
+    revalidationVerdict: v.verdict,
+    revalidationNote: v.verdict === 'outdated' ? (v.dismissReason ?? v.verdictNote) : v.verdictNote,
+  });
+
+  // Re-generate embedding with updated content
+  try {
+    const { generateAndStoreEmbedding } = await import('../memory/lifecycle.js');
+    await generateAndStoreEmbedding(ctx.db, 'suggestion', suggestionId, { title: v.title, summaryMd: v.summaryMd });
+  } catch { /* non-fatal */ }
+
+  return {
+    llmCalls: 1,
+    tokensUsed: tokens,
+    phases: ['prepare', 'evaluate', 'apply'],
+    result: {
+      suggestionId,
+      suggestionTitle: v.title,
+      verdict: v.verdict,
+      verdictNote: v.verdictNote,
+      previousCount: suggestion.revalidationCount,
+      newCount: suggestion.revalidationCount + 1,
+    },
+  };
+}
+
 export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
   const registry = new Map<string, JobHandlerEntry>();
 
@@ -1067,6 +1203,7 @@ export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
   registry.set('suggest-deep', { category: 'llm', fn: handleSuggestDeep });
   registry.set('suggest-project', { category: 'llm', fn: handleSuggestProject });
   registry.set('version-check', { category: 'io', fn: handleVersionCheck });
+  registry.set('revalidate-suggestion', { category: 'llm', fn: handleRevalidateSuggestion });
 
   // Digest handlers registered with their full type name
   for (const digestType of ['digest-daily', 'digest-weekly', 'digest-brag']) {

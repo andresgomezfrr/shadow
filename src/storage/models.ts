@@ -186,6 +186,10 @@ export type SuggestionRecord = {
   feedbackNote: string | null;
   shownAt: string | null;
   resolvedAt: string | null;
+  revalidationCount: number;
+  lastRevalidatedAt: string | null;
+  revalidationVerdict: string | null;
+  revalidationNote: string | null;
   createdAt: string;
   expiresAt: string | null;
 };
@@ -241,6 +245,7 @@ export type RunRecord = {
   diffStat: string | null;
   verification: Record<string, { passed: boolean; output: string; durationMs: number }>;
   verified: 'verified' | 'needs_review' | 'unverified' | null;
+  closedNote: string | null;
   archived: boolean;
   startedAt: string | null;
   finishedAt: string | null;

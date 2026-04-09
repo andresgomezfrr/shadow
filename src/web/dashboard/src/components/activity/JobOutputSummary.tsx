@@ -211,6 +211,21 @@ export function JobOutputSummary({ entry }: Props) {
     return chip(`profiled ${projectName ?? 'project'} (${repoCount} repos)`, 'text-emerald-300 bg-emerald-400/15');
   }
 
+  if (type === 'revalidate-suggestion') {
+    const verdict = str(r, 'verdict');
+    const title = str(r, 'suggestionTitle');
+    const note = str(r, 'verdictNote');
+    if (!verdict) return <span className="text-text-muted text-xs">--</span>;
+    const verdictLabel = verdict === 'valid' ? '✓ valid' : verdict === 'partial' ? '◐ partial' : '✕ outdated';
+    const verdictColor = verdict === 'valid' ? 'text-green bg-green/15' : verdict === 'partial' ? 'text-orange bg-orange/15' : 'text-red bg-red/15';
+    return (
+      <span className="inline-flex items-center gap-1.5 flex-wrap">
+        <Badge className={verdictColor} title={note} tooltipBelow>{verdictLabel}</Badge>
+        {title && <span className="text-xs text-text-dim truncate max-w-56">{title}</span>}
+      </span>
+    );
+  }
+
   if (type === 'run:plan' || type === 'run:execution') {
     return (
       <span className="inline-flex items-center gap-1.5">

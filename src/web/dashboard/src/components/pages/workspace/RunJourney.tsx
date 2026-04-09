@@ -1,0 +1,281 @@
+import { useApi } from '../../../hooks/useApi';
+import { fetchRunContext, fetchPrStatus, createRunSession, executeRun, discardRun, closeRun, cleanupWorktree, createDraftPr } from '../../../api/client';
+import { Markdown } from '../../common/Markdown';
+import { ConfidenceIndicator } from '../../common/ConfidenceIndicator';
+import { Badge } from '../../common/Badge';
+import { timeAgo } from '../../../utils/format';
+import { useState, useCallback } from 'react';
+import type { Run } from '../../../api/types';
+
+// --- Timeline step visual ---
+function Step({ status, label, children }: { status: 'done' | 'active' | 'pending' | 'failed'; label: string; children?: React.ReactNode }) {
+  const dot: Record<string, string> = {
+    done: 'bg-green text-green', active: 'bg-blue text-blue animate-pulse',
+    pending: 'bg-border text-text-muted', failed: 'bg-red text-red',
+  };
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center">
+        <div className={`w-3 h-3 rounded-full shrink-0 ${dot[status]?.split(' ')[0] ?? 'bg-border'}`} />
+        <div className="w-px flex-1 bg-border" />
+      </div>
+      <div className="pb-4 flex-1 min-w-0">
+        <div className={`text-xs font-medium mb-1 ${dot[status]?.split(' ')[1] ?? 'text-text-muted'}`}>{label}</div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: () => void }) {
+  const { data: ctx, refresh } = useApi(() => fetchRunContext(runId), [runId], 30_000);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [sessionInfo, setSessionInfo] = useState<{ command: string } | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+
+  const run = ctx?.run;
+  const childRuns = ctx?.childRuns ?? [];
+  const sourceSuggestion = ctx?.sourceSuggestion;
+  const sourceObservation = ctx?.sourceObservation;
+
+  // Active run = latest non-archived child, or the run itself
+  const activeChild = childRuns.filter(c => !c.archived).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+  const activeRun = activeChild ?? run;
+
+  // PR status — only fetch if run has a PR URL
+  const prRunId = activeRun?.prUrl ? activeRun.id : null;
+  const { data: prStatus } = useApi(
+    () => prRunId ? fetchPrStatus(prRunId) : Promise.resolve(null),
+    [prRunId],
+    60_000,
+  );
+
+  const doRefresh = useCallback(() => { refresh(); onRefresh?.(); }, [refresh, onRefresh]);
+
+  const handleExecute = useCallback(async () => {
+    if (!run) return;
+    setLoading('execute');
+    try { await executeRun(run.id); doRefresh(); } finally { setLoading(null); }
+  }, [run, doRefresh]);
+
+  const handleSession = useCallback(async () => {
+    if (!run) return;
+    setLoading('session');
+    try {
+      const result = await createRunSession(run.id);
+      if (result) setSessionInfo({ command: result.command });
+      doRefresh();
+    } finally { setLoading(null); }
+  }, [run, doRefresh]);
+
+  const handleDiscard = useCallback(async () => {
+    if (!run) return;
+    const note = window.prompt('Reason for discarding (optional):');
+    await discardRun(run.id, note || undefined);
+    doRefresh();
+  }, [run, doRefresh]);
+
+  const handleClose = useCallback(async () => {
+    if (!run) return;
+    const note = window.prompt('Reason for closing (optional):');
+    await closeRun(run.id, note || undefined);
+    doRefresh();
+  }, [run, doRefresh]);
+
+  const handleDraftPr = useCallback(async () => {
+    if (!activeRun) return;
+    setLoading('pr');
+    try {
+      const result = await createDraftPr(activeRun.id);
+      if (result?.prUrl) window.open(result.prUrl, '_blank');
+      doRefresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to create draft PR');
+    } finally { setLoading(null); }
+  }, [activeRun, doRefresh]);
+
+  const handleCleanup = useCallback(async () => {
+    if (!activeRun) return;
+    await cleanupWorktree(activeRun.id);
+    doRefresh();
+  }, [activeRun, doRefresh]);
+
+  if (!ctx || !run) return <div className="text-text-dim text-sm p-4">Loading journey...</div>;
+
+  const isPlanCompleted = run.status === 'completed';
+  const isTerminal = ['executed', 'executed_manual', 'discarded', 'failed', 'closed'].includes(run.status);
+  const hasWorktree = !!activeRun?.worktreePath;
+  const hasPr = !!activeRun?.prUrl;
+
+  // Determine step statuses
+  const planStatus: 'done' | 'active' | 'pending' | 'failed' =
+    run.status === 'failed' ? 'failed' :
+    run.status === 'running' ? 'active' :
+    ['completed', 'executed', 'executed_manual', 'closed'].includes(run.status) ? 'done' : 'pending';
+
+  const execStatus: 'done' | 'active' | 'pending' | 'failed' =
+    activeChild?.status === 'failed' ? 'failed' :
+    activeChild?.status === 'running' ? 'active' :
+    activeChild && ['completed', 'executed'].includes(activeChild.status) ? 'done' :
+    run.status === 'executed' || run.status === 'executed_manual' ? 'done' : 'pending';
+
+  return (
+    <div className="space-y-2">
+      {/* Origin — Observation */}
+      {sourceObservation && (
+        <Step status="done" label="Origin">
+          <div className="text-xs text-text-dim">
+            <span className="text-orange mr-1">{sourceObservation.severity}</span>
+            {sourceObservation.title}
+          </div>
+          <a href={`/observations?highlight=${sourceObservation.id}`} className="text-xs text-accent hover:underline">View observation</a>
+        </Step>
+      )}
+
+      {/* Suggestion */}
+      {sourceSuggestion && (
+        <Step status="done" label="Suggestion">
+          <div className="text-xs text-text-dim">
+            💡 {sourceSuggestion.title}
+          </div>
+          {sourceSuggestion.status === 'backlog' && sourceSuggestion.resolvedAt && (
+            <div className="text-xs text-text-muted mt-0.5">In backlog since {timeAgo(sourceSuggestion.resolvedAt)}</div>
+          )}
+        </Step>
+      )}
+
+      {/* Plan */}
+      <Step status={planStatus} label="Plan">
+        {run.confidence && <ConfidenceIndicator confidence={run.confidence} doubts={run.doubts?.length} compact />}
+        {run.resultSummaryMd && (
+          <div className="mt-1">
+            <button onClick={() => setPlanOpen(!planOpen)} className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer">
+              {planOpen ? '▾ Hide plan' : '▸ View plan'}
+            </button>
+            {planOpen && (
+              <div className="mt-1 bg-bg rounded-lg p-2 max-h-48 overflow-y-auto">
+                <Markdown>{run.resultSummaryMd}</Markdown>
+              </div>
+            )}
+          </div>
+        )}
+        {run.errorSummary && (
+          <div className="mt-1 bg-red/5 border border-red/20 rounded p-2 text-xs text-red whitespace-pre-wrap max-h-24 overflow-y-auto">{run.errorSummary}</div>
+        )}
+        {isPlanCompleted && (
+          <div className="flex items-center gap-2 mt-2">
+            <button onClick={handleExecute} disabled={loading === 'execute'} className="px-3 py-1 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer hover:brightness-110 disabled:opacity-50">▶ Execute</button>
+            <button onClick={handleSession} disabled={loading === 'session'} className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer disabled:opacity-50">{loading === 'session' ? '...' : 'Session'}</button>
+            <button onClick={handleDiscard} className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer">Discard</button>
+          </div>
+        )}
+      </Step>
+
+      {/* Execution attempts */}
+      {childRuns.length > 0 && (
+        <Step status={execStatus} label={`Execution${childRuns.length > 1 ? ` (${childRuns.length} attempts)` : ''}`}>
+          {childRuns.map((child, i) => (
+            <div key={child.id} className={`text-xs ${child.archived ? 'text-text-muted line-through' : 'text-text-dim'} ${i > 0 ? 'mt-1' : ''}`}>
+              {child.status === 'failed' ? '✕' : child.status === 'running' ? '⟳' : '✓'}
+              {' '}Attempt {i + 1} — {child.status}
+              {child.startedAt && child.finishedAt && ` (${Math.round((new Date(child.finishedAt).getTime() - new Date(child.startedAt).getTime()) / 1000)}s)`}
+            </div>
+          ))}
+        </Step>
+      )}
+
+      {/* Manual execution note */}
+      {run.status === 'executed_manual' && childRuns.length === 0 && (
+        <Step status="done" label="Execution">
+          <div className="text-xs text-text-dim">Implemented manually</div>
+        </Step>
+      )}
+
+      {/* Verification */}
+      {activeRun && activeRun.verified && Object.keys(activeRun.verification).length > 0 && (
+        <Step status={activeRun.verified === 'verified' ? 'done' : 'failed'} label="Verification">
+          {Object.entries(activeRun.verification).map(([cmd, result]) => (
+            <div key={cmd} className="text-xs flex items-center gap-1">
+              <span className={result.passed ? 'text-green' : 'text-red'}>{result.passed ? '✓' : '✗'}</span>
+              <span>{cmd}</span>
+              <span className="text-text-muted">({result.durationMs}ms)</span>
+            </div>
+          ))}
+        </Step>
+      )}
+
+      {/* Pull Request */}
+      {(hasPr || hasWorktree) && (
+        <Step status={hasPr ? 'done' : 'pending'} label="Pull Request">
+          {hasPr && prStatus ? (
+            <div className="text-xs space-y-1">
+              <div className="flex items-center gap-2">
+                <Badge className={prStatus.state === 'MERGED' ? 'text-purple bg-purple/15' : prStatus.state === 'CLOSED' ? 'text-red bg-red/15' : 'text-green bg-green/15'}>
+                  {prStatus.isDraft ? 'draft' : prStatus.state.toLowerCase()}
+                </Badge>
+                {prStatus.checksStatus && (
+                  <Badge className={prStatus.checksStatus === 'SUCCESS' ? 'text-green bg-green/15' : prStatus.checksStatus === 'FAILURE' ? 'text-red bg-red/15' : 'text-orange bg-orange/15'}>
+                    checks: {prStatus.checksStatus.toLowerCase()}
+                  </Badge>
+                )}
+                {prStatus.reviewDecision && (
+                  <Badge className={prStatus.reviewDecision === 'APPROVED' ? 'text-green bg-green/15' : 'text-orange bg-orange/15'}>
+                    {prStatus.reviewDecision.toLowerCase().replace('_', ' ')}
+                  </Badge>
+                )}
+              </div>
+              <a href={activeRun!.prUrl!} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">View on GitHub →</a>
+            </div>
+          ) : hasPr ? (
+            <a href={activeRun!.prUrl!} target="_blank" rel="noopener noreferrer" className="text-xs text-accent hover:underline">View on GitHub →</a>
+          ) : hasWorktree ? (
+            <button onClick={handleDraftPr} disabled={loading === 'pr'} className="px-3 py-1 rounded-lg text-xs font-semibold bg-purple text-bg border-none cursor-pointer hover:brightness-110 disabled:opacity-50">
+              {loading === 'pr' ? 'Creating...' : 'Create draft PR'}
+            </button>
+          ) : null}
+        </Step>
+      )}
+
+      {/* --- Session & Worktree info --- */}
+      <div className="border-t border-border pt-3 space-y-2">
+        {/* Session */}
+        <div className="text-xs">
+          <span className="text-text-muted">Session: </span>
+          {sessionInfo ? (
+            <code className="bg-bg rounded px-1.5 py-0.5 select-all text-[11px]">{sessionInfo.command}</code>
+          ) : run.sessionId ? (
+            <span className="text-text-dim">
+              <code className="bg-bg rounded px-1.5 py-0.5 select-all text-[11px]">{run.sessionId.slice(0, 12)}...</code>
+              <button onClick={handleSession} className="text-accent hover:underline bg-transparent border-none cursor-pointer ml-2 text-xs">Resume</button>
+            </span>
+          ) : (
+            <button onClick={handleSession} disabled={loading === 'session'} className="text-accent hover:underline bg-transparent border-none cursor-pointer text-xs disabled:opacity-50">
+              {loading === 'session' ? 'Creating...' : 'Open session'}
+            </button>
+          )}
+        </div>
+
+        {/* Worktree */}
+        {hasWorktree && (
+          <div className="text-xs">
+            <span className="text-text-muted">Branch: </span>
+            <code className="bg-bg rounded px-1.5 py-0.5 select-all text-[11px]">shadow/{activeRun!.id.slice(0, 8)}</code>
+            {isTerminal && (
+              <button onClick={handleCleanup} className="text-text-muted hover:text-red bg-transparent border-none cursor-pointer ml-2 text-xs">Clean up</button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* --- Bottom actions --- */}
+      {!isTerminal && (
+        <div className="border-t border-border pt-3 flex items-center gap-3">
+          <button onClick={handleClose} className="text-xs text-text-muted hover:text-text bg-transparent border-none cursor-pointer">Close journey</button>
+        </div>
+      )}
+      {run.status === 'closed' && run.closedNote && (
+        <div className="text-xs text-text-muted italic">Closed: "{run.closedNote}"</div>
+      )}
+    </div>
+  );
+}

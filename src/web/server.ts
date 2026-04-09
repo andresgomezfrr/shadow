@@ -16,6 +16,7 @@ import { handleJobRoutes } from './routes/jobs.js';
 import { handleEntityRoutes } from './routes/entities.js';
 import { handleKnowledgeRoutes } from './routes/knowledge.js';
 import { handleProfileRoutes } from './routes/profile.js';
+import { handleWorkspaceRoutes } from './routes/workspace.js';
 
 const MUTATING_TOOLS = new Set([
   'shadow_memory_teach', 'shadow_memory_forget', 'shadow_memory_update', 'shadow_correct',
@@ -185,6 +186,7 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
         }
 
         const handlers = [
+          handleWorkspaceRoutes,
           handleSuggestionRoutes, handleObservationRoutes, handleRunRoutes,
           handleActivityRoutes, handleJobRoutes, handleEntityRoutes,
           handleKnowledgeRoutes, handleProfileRoutes,

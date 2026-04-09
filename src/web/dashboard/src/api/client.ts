@@ -19,6 +19,11 @@ import type {
   UserProfile,
   ActivityEntry,
   ActivitySummary,
+  FeedResponse,
+  RunContext,
+  SuggestionContext,
+  ObservationContext,
+  PrStatus,
 } from './types';
 
 async function api<T>(path: string, opts?: RequestInit): Promise<T | null> {
@@ -271,3 +276,49 @@ export const createCorrection = (params: { title?: string; body: string; scope: 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });
+
+// --- Workspace ---
+
+export const fetchWorkspaceFeed = (params?: { type?: string; projectId?: string; limit?: number; offset?: number }) =>
+  api<FeedResponse>(`/api/workspace/feed${qs({ type: params?.type, projectId: params?.projectId, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+
+export const fetchRunContext = (id: string) =>
+  api<RunContext>(`/api/runs/${id}/context`);
+
+export const fetchSuggestionContext = (id: string) =>
+  api<SuggestionContext>(`/api/suggestions/${id}/context`);
+
+export const fetchObservationContext = (id: string) =>
+  api<ObservationContext>(`/api/observations/${id}/context`);
+
+export const fetchPrStatus = (id: string) =>
+  api<PrStatus>(`/api/runs/${id}/pr-status`);
+
+export const revalidateSuggestion = (id: string) =>
+  api<{ ok: boolean; jobId: string }>(`/api/suggestions/${id}/revalidate`, { method: 'POST' });
+
+/** Check if there are active (queued/running) revalidation jobs for given suggestion IDs */
+export async function getActiveRevalidations(suggestionIds?: string[]): Promise<Set<string>> {
+  const active = new Set<string>();
+  const [queued, running] = await Promise.all([
+    fetchJobs({ type: 'revalidate-suggestion', limit: 20 }),
+    fetchJobs({ type: 'revalidate-suggestion', limit: 20 }),
+  ]);
+  const all = [...(queued?.items ?? []), ...(running?.items ?? [])];
+  for (const job of all) {
+    if (job.status !== 'queued' && job.status !== 'running') continue;
+    const sid = (job.result as Record<string, unknown>)?.suggestionId as string | undefined;
+    if (sid && (!suggestionIds || suggestionIds.includes(sid))) active.add(sid);
+  }
+  return active;
+}
+
+export const closeRun = (id: string, note?: string) =>
+  api<{ ok: boolean }>(`/api/runs/${id}/close`, {
+    method: 'POST',
+    headers: note ? { 'Content-Type': 'application/json' } : undefined,
+    body: note ? JSON.stringify({ note }) : undefined,
+  });
+
+export const cleanupWorktree = (id: string) =>
+  api<{ ok: boolean }>(`/api/runs/${id}/cleanup-worktree`, { method: 'POST' });

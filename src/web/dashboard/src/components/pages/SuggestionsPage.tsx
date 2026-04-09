@@ -1,9 +1,9 @@
 import { timeAgo } from '../../utils/format';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchSuggestions, fetchRepos, fetchRuns, fetchProjects, acceptSuggestion, dismissSuggestion, snoozeSuggestion, updateSuggestionCategory, bulkSuggestionAction } from '../../api/client';
+import { fetchSuggestions, fetchSuggestionContext, fetchRepos, fetchRuns, fetchProjects, acceptSuggestion, dismissSuggestion, snoozeSuggestion, updateSuggestionCategory, bulkSuggestionAction, revalidateSuggestion, getActiveRevalidations } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { FilterTabs } from '../common/FilterTabs';
 import { Pagination } from '../common/Pagination';
@@ -125,6 +125,56 @@ export function SuggestionsPage() {
   const [bulkDismissOpen, setBulkDismissOpen] = useState(false);
   const [bulkDismissNote, setBulkDismissNote] = useState('');
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [revalidatingSet, setRevalidatingSet] = useState<Set<string>>(new Set());
+  const pollRefs = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+
+  // On mount + when data changes: check for active revalidation jobs
+  useEffect(() => {
+    if (!data || data.length === 0) return;
+    let cancelled = false;
+    getActiveRevalidations(data.map(s => s.id)).then(activeSet => {
+      if (cancelled || activeSet.size === 0) return;
+      setRevalidatingSet(prev => {
+        const next = new Set(prev);
+        for (const id of activeSet) {
+          if (!next.has(id)) {
+            next.add(id);
+            startPoll(id, data.find(s => s.id === id)?.revalidationCount ?? 0);
+          }
+        }
+        return next;
+      });
+    });
+    return () => { cancelled = true; };
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cleanup polls on unmount
+  useEffect(() => {
+    return () => { for (const timer of pollRefs.current.values()) clearInterval(timer); };
+  }, []);
+
+  function startPoll(id: string, baseline: number) {
+    if (pollRefs.current.has(id)) return;
+    const timer = setInterval(async () => {
+      const fresh = await fetchSuggestionContext(id);
+      if (fresh && fresh.suggestion.revalidationCount > baseline) {
+        clearInterval(timer);
+        pollRefs.current.delete(id);
+        setRevalidatingSet(prev => { const next = new Set(prev); next.delete(id); return next; });
+        refresh();
+      }
+    }, 3000);
+    pollRefs.current.set(id, timer);
+    setTimeout(() => { if (pollRefs.current.has(id)) { clearInterval(timer); pollRefs.current.delete(id); setRevalidatingSet(prev => { const next = new Set(prev); next.delete(id); return next; }); } }, 5 * 60 * 1000);
+  }
+
+  const handleRevalidate = useCallback(async (id: string) => {
+    const current = data?.find(s => s.id === id);
+    const baseline = current?.revalidationCount ?? 0;
+    setRevalidatingSet(prev => new Set(prev).add(id));
+    await revalidateSuggestion(id);
+    startPoll(id, baseline);
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (id: string) => {
     setExpanded((s) => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -279,6 +329,12 @@ export function SuggestionsPage() {
                     />
                   )}
                   <span className="font-medium text-sm flex-1 min-w-0 truncate">{s.title}</span>
+                  {s.revalidationCount > 0 && (
+                    <Badge className={s.revalidationVerdict === 'outdated' ? 'text-red bg-red/15' : s.revalidationVerdict === 'partial' ? 'text-orange bg-orange/15' : 'text-cyan-300 bg-cyan-500/15'}>
+                      🔍 {s.revalidationCount}x
+                    </Badge>
+                  )}
+                  {revalidatingSet.has(s.id) && <Badge className="text-sky-300 bg-sky-400/15 animate-pulse">🔍 ...</Badge>}
                   <Badge className={SUG_KIND_COLORS[s.kind] ?? SUG_KIND_COLOR_DEFAULT}>{s.kind}</Badge>
                   {repo && <Badge className="text-text-dim bg-border">{repo}</Badge>}
                   <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} compact />
@@ -437,12 +493,33 @@ export function SuggestionsPage() {
                       <div className="text-xs text-text-dim italic">"{s.feedbackNote}"</div>
                     )}
 
-                    {/* Scores detail */}
+                    {/* Revalidation verdict */}
+                    {s.revalidationVerdict && (
+                      <div className={`text-xs rounded-lg p-2 border ${
+                        s.revalidationVerdict === 'valid' ? 'text-green bg-green/10 border-green/20' :
+                        s.revalidationVerdict === 'partial' ? 'text-orange bg-orange/10 border-orange/20' :
+                        'text-red bg-red/10 border-red/20'
+                      }`}>
+                        {s.revalidationVerdict === 'valid' && '✓ Still valid'}
+                        {s.revalidationVerdict === 'partial' && '◐ Partially valid'}
+                        {s.revalidationVerdict === 'outdated' && '✕ Outdated'}
+                        {s.revalidationNote && <span className="text-text-dim ml-2">— {s.revalidationNote}</span>}
+                      </div>
+                    )}
+
+                    {/* Scores detail + revalidate */}
                     <div className="flex items-center gap-4 text-xs">
                       <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} />
                       {s.sourceObservationId && (
                         <a href={`/observations?highlight=${s.sourceObservationId}`} className="text-accent hover:underline">from observation</a>
                       )}
+                      <button
+                        onClick={() => handleRevalidate(s.id)}
+                        disabled={revalidatingSet.has(s.id)}
+                        className={`ml-auto text-xs border-none cursor-pointer px-2 py-0.5 rounded-md transition-colors ${
+                          revalidatingSet.has(s.id) ? 'bg-sky-400/15 text-sky-300 animate-pulse cursor-wait' : 'bg-transparent text-cyan-300 hover:bg-sky-400/10'
+                        }`}
+                      >{revalidatingSet.has(s.id) ? '🔍 Revalidating...' : '🔍 Re-evaluate'}</button>
                     </div>
 
                     {/* Summary markdown */}

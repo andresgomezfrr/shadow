@@ -743,6 +743,23 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_enrichment_expiry ON enrichment_cache(expires_at, stale);
     `,
   },
+  {
+    version: 37,
+    name: 'run_closed_status',
+    sql: `
+      ALTER TABLE runs ADD COLUMN closed_note TEXT;
+    `,
+  },
+  {
+    version: 38,
+    name: 'suggestion_revalidation',
+    sql: `
+      ALTER TABLE suggestions ADD COLUMN revalidation_count INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE suggestions ADD COLUMN last_revalidated_at TEXT;
+      ALTER TABLE suggestions ADD COLUMN revalidation_verdict TEXT;
+      ALTER TABLE suggestions ADD COLUMN revalidation_note TEXT;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

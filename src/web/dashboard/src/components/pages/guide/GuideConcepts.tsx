@@ -134,10 +134,48 @@ export function GuideConcepts() {
           <span className="text-text"> dismissed</span> (with reason) |
           <span className="text-text"> snoozed</span> (delay for N hours).
         </p>
-        <p className="text-sm text-text-dim">
+        <p className="text-sm text-text-dim mb-3">
           Accepting a suggestion creates a <span className="text-text">Run</span> — Shadow plans the implementation,
           optionally evaluates confidence, and can auto-execute if trust level allows.
           Dismissed suggestions are remembered to avoid re-suggesting the same thing (semantic dedup).
+        </p>
+        <p className="text-sm text-text-dim">
+          <span className="text-text">Revalidation:</span> Suggestions can be re-evaluated on demand against the current codebase.
+          An Opus job reads the repo, checks if the issue still exists, and updates the suggestion in-place (title, summary, scores).
+          Verdict: <span className="text-green">valid</span> (still applies),{' '}
+          <span className="text-orange">partial</span> (some aspects changed), or{' '}
+          <span className="text-red">outdated</span> (no longer relevant — pre-filled dismiss ready).
+          Revalidated suggestions get a ranking boost (+5 per revalidation). Outdated ones get penalized (-20).
+        </p>
+      </section>
+
+      {/* Workspace */}
+      <section className="bg-card border border-border rounded-lg p-5 mb-6">
+        <h2 className="text-base font-semibold mb-3">Workspace</h2>
+        <p className="text-sm text-text-dim mb-3">
+          The <span className="text-text">Workspace</span> is the developer command center — a unified feed of all
+          pending runs, suggestions, and observations sorted by priority. Quick filter tabs let you focus on one type.
+          Project chips filter by active project.
+        </p>
+        <p className="text-sm text-text-dim mb-3">
+          Clicking an item opens a <span className="text-text">Context Panel</span> on the right:
+        </p>
+        <div className="space-y-2 mb-3">
+          {CONTEXT_PANEL_TYPES.map(([icon, name, desc]) => (
+            <div key={name} className="flex gap-3 items-start bg-bg rounded-lg px-4 py-2.5">
+              <span className="text-base flex-shrink-0">{icon}</span>
+              <div>
+                <span className="text-sm font-medium text-text">{name}</span>
+                <span className="text-sm text-text-dim ml-2">{desc}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-sm text-text-dim">
+          Run lifecycle: <span className="text-text">Plan</span> &rarr; <span className="text-text">Execute</span> (creates worktree) &rarr;
+          <span className="text-text"> Verify</span> (build/lint/test) &rarr; <span className="text-text">PR</span> (draft via gh CLI).
+          A journey can be <span className="text-text">closed</span> at any point — not everything needs a PR.
+          Runs can also be created directly via the <code className="text-accent bg-bg px-1.5 py-0.5 rounded text-xs">shadow_run_create</code> MCP tool.
         </p>
       </section>
 
@@ -224,6 +262,12 @@ const OBSERVATION_KINDS: [string, string][] = [
   ['\uD83D\uDD04', 'pattern'],
   ['\uD83D\uDD27', 'infrastructure'],
   ['\uD83C\uDF10', 'cross_project'],
+];
+
+const CONTEXT_PANEL_TYPES: [string, string, string][] = [
+  ['▶', 'Run Journey', 'Vertical timeline: origin observation → suggestion → plan → execution attempts → verification → PR. Session and worktree info always visible.'],
+  ['💡', 'Suggestion Detail', 'Full summary, reasoning, scores, source observation, linked runs. Re-evaluate button to check freshness.'],
+  ['👁', 'Observation Detail', 'Description, context, severity, generated suggestions (1:N), linked runs.'],
 ];
 
 const DIGEST_KINDS: [string, string, string][] = [

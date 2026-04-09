@@ -340,7 +340,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const age = Date.now() - new Date(job.startedAt).getTime();
         _db.updateJob(job.id, {
           status: 'failed',
-          result: { error: 'orphaned — daemon restarted' },
+          result: { ...job.result, error: 'orphaned — daemon restarted' },
           durationMs: age,
           finishedAt: new Date().toISOString(),
         });

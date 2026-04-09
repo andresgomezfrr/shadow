@@ -283,7 +283,7 @@ export class ShadowDatabase {
   getSuggestion(id: string): SuggestionRecord | null { return knowledge.getSuggestion(this.database, id); }
   listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] { return knowledge.listSuggestions(this.database, filters); }
   countSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string }): number { return knowledge.countSuggestions(this.database, filters); }
-  updateSuggestion(id: string, updates: Partial<Pick<SuggestionRecord, 'status' | 'feedbackNote' | 'shownAt' | 'resolvedAt' | 'expiresAt'>>): void { return knowledge.updateSuggestion(this.database, id, updates); }
+  updateSuggestion(id: string, updates: Partial<Pick<SuggestionRecord, 'status' | 'feedbackNote' | 'shownAt' | 'resolvedAt' | 'expiresAt' | 'title' | 'summaryMd' | 'reasoningMd' | 'impactScore' | 'confidenceScore' | 'riskScore' | 'revalidationCount' | 'lastRevalidatedAt' | 'revalidationVerdict' | 'revalidationNote'>>): void { return knowledge.updateSuggestion(this.database, id, updates); }
   countPendingSuggestions(): number { return knowledge.countPendingSuggestions(this.database); }
 
   // --- Vector embeddings ---
@@ -312,7 +312,7 @@ export class ShadowDatabase {
   getRun(id: string): RunRecord | null { return execution.getRun(this.database, id); }
   listRuns(filters?: { status?: string; repoId?: string; parentRunId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] { return execution.listRuns(this.database, filters); }
   countRuns(filters?: { status?: string; archived?: boolean }): number { return execution.countRuns(this.database, filters); }
-  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'archived' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void { return execution.updateRun(this.database, id, updates); }
+  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'closedNote' | 'archived' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void { return execution.updateRun(this.database, id, updates); }
   transitionRun(id: string, to: import('./models.js').RunRecord['status']): void { return execution.transitionRun(this.database, id, to); }
 
   // --- Entity Relations ---
