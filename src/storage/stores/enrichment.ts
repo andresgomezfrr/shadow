@@ -73,6 +73,20 @@ export function expireStaleEnrichment(db: DatabaseSync): number {
   return Number(result.changes);
 }
 
+export function touchEnrichment(db: DatabaseSync, id: string): void {
+  db.prepare('UPDATE enrichment_cache SET access_count = access_count + 1, last_consumed_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+}
+
+export function updateEnrichmentStats(db: DatabaseSync, id: string, stats: { refreshCount?: number; changeCount?: number; ttlCategory?: string }): void {
+  const sets: string[] = ['updated_at = ?'];
+  const values: (string | number)[] = [new Date().toISOString()];
+  if (stats.refreshCount !== undefined) { sets.push('refresh_count = ?'); values.push(stats.refreshCount); }
+  if (stats.changeCount !== undefined) { sets.push('change_count = ?'); values.push(stats.changeCount); }
+  if (stats.ttlCategory !== undefined) { sets.push('ttl_category = ?'); values.push(stats.ttlCategory); }
+  values.push(id);
+  db.prepare(`UPDATE enrichment_cache SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+}
+
 // --- Digests ---
 
 export function createDigest(db: DatabaseSync, input: { kind: string; periodStart: string; periodEnd: string; contentMd: string; model: string; tokensUsed?: number }): DigestRecord {

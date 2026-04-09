@@ -13,6 +13,7 @@ type PerProjectResult = {
   itemsCollected: number;
   sources: string[];
   findings: Array<{ source: string; summary: string }>;
+  dedupStats?: { created: number; updated: number };
   error?: string;
 };
 
@@ -48,8 +49,9 @@ function buildEnrichPrompt(
   systemNames: string[],
   serverDescriptions: string,
   projectId: string,
-  existingCache?: string,
+  opts?: { existingCache?: string; runHistory?: string; sourceEffectiveness?: string },
 ): string {
+  const { existingCache, runHistory, sourceEffectiveness } = opts ?? {};
   return [
     `You are Shadow's enrichment agent for project: ${projectName}`,
     '',
@@ -61,10 +63,15 @@ function buildEnrichPrompt(
     '## Available MCP servers',
     serverDescriptions,
     '',
+    sourceEffectiveness ? '## Source effectiveness (based on past consumption)' : '',
+    sourceEffectiveness ?? '',
+    '',
     existingCache ? '## Already cached (do not re-query unless expiring within 2 hours)' : '',
     existingCache ?? '',
-    existingCache ? '' : '',
     existingCache ? 'Focus on discovering NEW context not listed above. Only refresh items expiring soon.' : '',
+    '',
+    runHistory ? '## Recent enrichment runs' : '',
+    runHistory ?? '',
     '',
     '## Tool usage',
     '- **shadow_*** tools: read Shadow\'s knowledge (memories, project details) and write results (shadow_enrichment_write).',
@@ -81,6 +88,7 @@ function buildEnrichPrompt(
     '   - summary: a concise 1-2 sentence finding',
     '4. Skip external servers that are not relevant to this project.',
     existingCache ? '5. Do NOT re-query information already in the cache above.' : '',
+    sourceEffectiveness ? '6. Prioritize high-value sources. Skip low-value sources unless you have a specific reason.' : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -106,6 +114,109 @@ function buildPostEnrichPrompt(findingSummaries: string): string {
     'Only call shadow_memory_teach if you find genuinely stable knowledge.',
     'If nothing is worth remembering, do nothing.',
   ].join('\n');
+}
+
+// --- Query History ---
+
+function buildRunHistory(db: ShadowDatabase, projectId: string, limit = 3): string | undefined {
+  const recentJobs = db.listJobs({ type: 'context-enrich', status: 'completed', limit });
+  if (recentJobs.length === 0) return undefined;
+
+  const lines: string[] = [];
+  for (const job of recentJobs) {
+    const result = job.result as Record<string, unknown> | null;
+    const projectResults = (result?.projectResults ?? []) as Array<{
+      projectId: string; projectName: string; dedupStats?: { created: number; updated: number }; sources: string[];
+    }>;
+    const pr = projectResults.find(p => p.projectId === projectId);
+    if (!pr) continue;
+
+    const ago = Math.round((Date.now() - new Date(job.finishedAt ?? job.startedAt).getTime()) / 3600000);
+    const stats = pr.dedupStats;
+    if (stats) {
+      const sourceList = pr.sources.length > 0 ? pr.sources.join(', ') : 'none';
+      lines.push(`- ${ago}h ago: ${stats.created} new, ${stats.updated} updated (sources: ${sourceList})`);
+    } else {
+      lines.push(`- ${ago}h ago: ${pr.sources.length > 0 ? pr.sources.join(', ') : 'no data'}`);
+    }
+  }
+
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
+// --- Source Effectiveness ---
+
+function buildSourceEffectiveness(db: ShadowDatabase, projectId: string): string | undefined {
+  try {
+    const rows = db.rawDb.prepare(`
+      SELECT source, COUNT(*) as total,
+        SUM(CASE WHEN access_count > 0 THEN 1 ELSE 0 END) as consumed
+      FROM enrichment_cache WHERE entity_id = ? AND stale = 0
+      GROUP BY source HAVING total >= 3
+    `).all(projectId) as Array<{ source: string; total: number; consumed: number }>;
+
+    if (rows.length === 0) return undefined;
+
+    const lines = rows.map(r => {
+      const pct = Math.round((r.consumed / r.total) * 100);
+      const label = pct >= 60 ? 'high value' : pct >= 30 ? 'moderate' : 'low value — consider skipping';
+      return `- ${r.source}: ${r.consumed}/${r.total} consumed (${pct}%) — ${label}`;
+    });
+    return lines.join('\n');
+  } catch {
+    return undefined;
+  }
+}
+
+// --- TTL Intelligence ---
+
+const TTL_TIERS: Array<{ maxRate: number; category: string }> = [
+  { maxRate: 0.15, category: 'stable' },
+  { maxRate: 0.35, category: 'long' },
+  { maxRate: 0.60, category: 'medium' },
+  { maxRate: 1.00, category: 'short' },
+];
+
+function analyzeTtlDrift(db: ShadowDatabase): void {
+  try {
+    const rows = db.rawDb.prepare(`
+      SELECT source, SUM(refresh_count) as refreshes, SUM(change_count) as changes
+      FROM enrichment_cache WHERE stale = 0 AND refresh_count > 0
+      GROUP BY source
+    `).all() as Array<{ source: string; refreshes: number; changes: number }>;
+
+    for (const row of rows) {
+      if (row.refreshes < 5) continue; // not enough data
+      const changeRate = row.changes / row.refreshes;
+      const optimal = TTL_TIERS.find(t => changeRate <= t.maxRate)?.category ?? 'medium';
+
+      // Load mcp-discover metadata for this source
+      const meta = db.listEnrichment({ source: 'mcp-discover' })
+        .find(d => d.entityName === row.source);
+      if (!meta) continue;
+
+      const detail = meta.detail as Record<string, unknown>;
+      const currentTtl = (detail.learnedTtl ?? detail.defaultTtl) as string | undefined;
+      if (currentTtl === optimal) continue;
+
+      // Update learned TTL
+      const newDetail = { ...detail, learnedTtl: optimal };
+      const { createHash } = require('node:crypto') as typeof import('node:crypto');
+      const contentHash = createHash('sha256').update(`mcp-discover:${meta.summary}`).digest('hex').slice(0, 16);
+      db.upsertEnrichment({
+        source: 'mcp-discover',
+        entityType: 'mcp-server',
+        entityId: row.source,
+        entityName: row.source,
+        summary: meta.summary,
+        detail: newDetail,
+        contentHash,
+      });
+      console.error(`[shadow:enrich] TTL drift: ${row.source} ${currentTtl ?? 'default'}→${optimal} (change_rate=${changeRate.toFixed(2)}, ${row.changes}/${row.refreshes})`);
+    }
+  } catch (e) {
+    console.error('[shadow:enrich] TTL analysis failed:', e instanceof Error ? e.message : e);
+  }
 }
 
 // --- Main ---
@@ -191,7 +302,11 @@ export async function activityEnrich(
           existingCache = lines.join('\n');
         }
 
-        const prompt = buildEnrichPrompt(project.name, repoNames, systemNames, serverDescriptions, project.id, existingCache);
+        const runHistory = buildRunHistory(db, project.id);
+        const sourceEff = buildSourceEffectiveness(db, project.id);
+        const prompt = buildEnrichPrompt(project.name, repoNames, systemNames, serverDescriptions, project.id, {
+          existingCache, runHistory, sourceEffectiveness: sourceEff,
+        });
 
         console.error(`[shadow:enrich] Starting enrichment for ${project.name} (${repoNames.length} repos, ${cachedItems.length} cached)`);
 
@@ -215,12 +330,15 @@ export async function activityEnrich(
 
         // Count items written via shadow_enrichment_write during this execution
         const newItems = db.listEnrichment({ entityId: project.id, createdSince: phaseStart, limit: 50 });
+        const updatedItems = db.listEnrichment({ entityId: project.id, limit: 50 })
+          .filter(i => i.updatedAt >= phaseStart && i.createdAt < phaseStart);
         pr.itemsCollected = newItems.length;
-        pr.sources = [...new Set(newItems.map(i => i.source))];
+        pr.sources = [...new Set([...newItems, ...updatedItems].map(i => i.source))];
         pr.findings = newItems.map(i => ({ source: i.source, summary: i.summary }));
+        pr.dedupStats = { created: newItems.length, updated: updatedItems.length };
         totalItems += pr.itemsCollected;
 
-        console.error(`[shadow:enrich] ${project.name}: ${pr.itemsCollected} items from ${pr.sources.join(', ') || 'no sources'}`);
+        console.error(`[shadow:enrich] ${project.name}: ${newItems.length} new, ${updatedItems.length} updated from ${pr.sources.join(', ') || 'no sources'}`);
       } catch (e) {
         pr.error = e instanceof Error ? e.message : String(e);
         console.error(`[shadow:enrich] Project ${ap.projectName} failed:`, pr.error);
@@ -263,6 +381,7 @@ export async function activityEnrich(
     }
 
     db.expireStaleEnrichment();
+    analyzeTtlDrift(db);
     return { itemsCollected: totalItems, llmCalls: totalLlmCalls, tokensUsed: totalTokens, projectResults };
   }
 
@@ -328,6 +447,9 @@ export function buildEnrichmentContext(db: ShadowDatabase): { context: string; i
   const newItems = db.listNewEnrichment(10);
   if (newItems.length === 0) return undefined;
 
+  // Track consumption for scoring
+  for (const item of newItems) db.touchEnrichment(item.id);
+
   const lines = newItems.map(item => {
     const entityLabel = item.entityName ? ` (${item.entityType}: ${item.entityName})` : '';
     return `- [${item.source}]${entityLabel}: ${item.summary}`;
@@ -355,6 +477,9 @@ export function getEnrichmentSummary(
   const valid = items.filter(i => !i.expiresAt || i.expiresAt > now);
 
   if (valid.length === 0) return undefined;
+
+  // Track consumption for scoring
+  for (const item of valid) db.touchEnrichment(item.id);
 
   return valid.map(item => {
     const entityLabel = item.entityName ? ` (${item.entityType}: ${item.entityName})` : '';
