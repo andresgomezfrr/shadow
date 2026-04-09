@@ -307,7 +307,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
           <div className="text-red">Rejected — {str(r, 'reason')}</div>
         ) : (
           <div>
-            <span className="text-accent">Soul updated</span>
+            <a href="/profile#section-soul" className="text-accent hover:underline" onClick={e => e.stopPropagation()}>Soul updated</a>
             {preview && <div className="text-text-dim mt-0.5 italic">"{preview}"</div>}
           </div>
         )}
