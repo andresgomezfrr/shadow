@@ -42,7 +42,7 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
  * Keeps it concise — title + body, within model's sweet spot.
  */
 export function embeddingText(
-  type: 'memory' | 'observation' | 'suggestion',
+  type: 'memory' | 'observation' | 'suggestion' | 'enrichment',
   entity: {
     kind?: string;
     title: string;
@@ -58,5 +58,7 @@ export function embeddingText(
       return `${entity.kind ?? ''} ${entity.title}`.trim();
     case 'suggestion':
       return `${entity.kind ?? ''} ${entity.title} ${entity.summaryMd ?? ''}`.slice(0, 1000).trim();
+    case 'enrichment':
+      return `${entity.title} ${entity.summaryMd ?? ''}`.slice(0, 1000).trim();
   }
 }

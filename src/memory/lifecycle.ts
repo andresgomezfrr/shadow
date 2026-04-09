@@ -1,8 +1,8 @@
 import type { ShadowDatabase } from '../storage/database.js';
 import { embed, embeddingText } from './embeddings.js';
 
-type VecTable = 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors';
-type EntityType = 'memory' | 'observation' | 'suggestion';
+type VecTable = 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors';
+type EntityType = 'memory' | 'observation' | 'suggestion' | 'enrichment';
 
 /**
  * Generate an embedding for an entity and store it in the vector table.

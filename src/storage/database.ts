@@ -288,8 +288,8 @@ export class ShadowDatabase {
 
   // --- Vector embeddings ---
 
-  storeEmbedding(table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors', id: string, embedding: Float32Array): void { return knowledge.storeEmbedding(this.database, table, id, embedding); }
-  deleteEmbedding(table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors', id: string): void { return knowledge.deleteEmbedding(this.database, table, id); }
+  storeEmbedding(table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors', id: string, embedding: Float32Array): void { return knowledge.storeEmbedding(this.database, table, id, embedding); }
+  deleteEmbedding(table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors', id: string): void { return knowledge.deleteEmbedding(this.database, table, id); }
   removeEntityReferences(entityType: string, entityId: string): void { return knowledge.removeEntityReferences(this.database, entityType, entityId); }
 
   // --- Interactions ---

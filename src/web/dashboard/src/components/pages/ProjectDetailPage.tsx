@@ -1,12 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { useRunningJobs } from '../../hooks/useRunningJobs';
-import { fetchProjectDetail, fetchProjectEnrichment, triggerJobWithParams } from '../../api/client';
+import { fetchProjectDetail, fetchProjectEnrichment, fetchEnrichmentProjects, toggleEnrichmentProject, triggerJobWithParams } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Pagination } from '../common/Pagination';
 import { Markdown } from '../common/Markdown';
 import { ScoreBar } from '../common/ScoreBar';
+import { Toggle } from '../common/Toggle';
 import { SEVERITY_COLORS, LAYER_COLORS } from '../../api/types';
 import { timeAgo } from '../../utils/format';
 
@@ -43,6 +44,19 @@ export function ProjectDetailPage() {
     [id, enrichOffset],
     30_000,
   );
+
+  // Enrichment enabled/disabled state for this project
+  const [enrichEnabled, setEnrichEnabled] = useState<boolean | null>(null);
+  const [togglingEnrich, setTogglingEnrich] = useState(false);
+  useEffect(() => {
+    if (!data?.project) return;
+    fetchEnrichmentProjects().then(d => {
+      if (d?.projects) {
+        const match = d.projects.find(p => p.id === data.project.id);
+        setEnrichEnabled(match?.enabled ?? true);
+      }
+    });
+  }, [data?.project?.id]);
 
   const handleAnalyze = useCallback(() => {
     if (!id) return;
@@ -299,31 +313,52 @@ export function ProjectDetailPage() {
       </div>
 
       {/* Enrichment */}
-      {enrichData && enrichData.total > 0 && (
-        <div className="mb-6">
-          <h2 className="text-lg font-medium mb-3">
-            External Context
-            <span className="text-sm text-text-muted font-normal ml-2">({enrichData.total})</span>
-          </h2>
-          <div className="space-y-2">
-            {enrichData.items.map((e) => (
-              <div key={e.id} className="bg-card border border-border rounded p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <Badge className="text-cyan bg-cyan/15">{e.source}</Badge>
-                  <span className="text-xs text-text-dim">{new Date(e.createdAt).toLocaleString()}</span>
-                </div>
-                <div className="text-sm">{e.summary}</div>
-              </div>
-            ))}
+      {(enrichData && enrichData.total > 0) || enrichEnabled === false ? (
+        <div className={`mb-6 ${enrichEnabled === false ? 'opacity-60' : ''}`}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-medium">
+              External Context
+              {enrichData && enrichData.total > 0 && <span className="text-sm text-text-muted font-normal ml-2">({enrichData.total})</span>}
+            </h2>
+            {enrichEnabled !== null && data?.project && (
+              <Toggle
+                checked={enrichEnabled}
+                onChange={async (v) => {
+                  setTogglingEnrich(true);
+                  const res = await toggleEnrichmentProject(data.project.name, v);
+                  if (res?.ok) setEnrichEnabled(v);
+                  setTogglingEnrich(false);
+                }}
+                disabled={togglingEnrich}
+              />
+            )}
           </div>
-          <Pagination
-            total={enrichData.total}
-            offset={enrichOffset}
-            limit={ENRICH_LIMIT}
-            onChange={setEnrichOffset}
-          />
+          {enrichEnabled === false && (
+            <p className="text-xs text-text-muted">Enrichment disabled for this project</p>
+          )}
+          {enrichData && enrichData.total > 0 && enrichEnabled !== false && (
+            <>
+              <div className="space-y-2">
+                {enrichData.items.map((e) => (
+                  <div key={e.id} className="bg-card border border-border rounded p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge className="text-cyan bg-cyan/15">{e.source}</Badge>
+                      <span className="text-xs text-text-dim">{new Date(e.createdAt).toLocaleString()}</span>
+                    </div>
+                    <div className="text-sm">{e.summary}</div>
+                  </div>
+                ))}
+              </div>
+              <Pagination
+                total={enrichData.total}
+                offset={enrichOffset}
+                limit={ENRICH_LIMIT}
+                onChange={setEnrichOffset}
+              />
+            </>
+          )}
         </div>
-      )}
+      ) : null}
 
       {/* Dates */}
       <div className="flex gap-4 text-xs text-text-dim border-t border-border pt-3">

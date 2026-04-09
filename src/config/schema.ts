@@ -87,7 +87,7 @@ export const ConfigSchema = z.object({
   remoteSyncIntervalMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
   remoteSyncBatchSize: z.coerce.number().int().min(1).max(20).default(5),
   enrichmentEnabled: z.coerce.boolean().default(false),
-  enrichmentIntervalMs: z.coerce.number().int().positive().default(2 * 60 * 60 * 1000),
+  enrichmentIntervalMs: z.coerce.number().int().positive().default(6 * 60 * 60 * 1000),
   repoProfileEnabled: z.coerce.boolean().default(true),
   repoProfileIntervalMs: z.coerce.number().int().positive().default(24 * 60 * 60 * 1000),
   repoProfileBatchSize: z.coerce.number().int().min(1).max(20).default(5),

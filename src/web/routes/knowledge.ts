@@ -75,6 +75,20 @@ export async function handleKnowledgeRoutes(
       return json(res, { servers }), true;
     }
 
+    // Enrichment projects: list all projects with enrichment enabled/disabled status
+    if (pathname === '/api/enrichment/projects') {
+      const profile = db.ensureProfile();
+      const prefs = profile.preferences as Record<string, unknown> | undefined;
+      const disabled = (prefs?.enrichmentDisabledProjects as string[] | undefined) ?? [];
+      const projects = db.listProjects({}).map(p => ({
+        id: p.id,
+        name: p.name,
+        status: p.status,
+        enabled: !disabled.includes(p.name),
+      }));
+      return json(res, { projects, disabledProjects: disabled }), true;
+    }
+
     // Enrichment cache: /api/enrichment
     if (pathname === '/api/enrichment') {
       const source = params.get('source') ?? undefined;
@@ -126,6 +140,25 @@ export async function handleKnowledgeRoutes(
         disabled.add(body.name);
       }
       prefs.enrichmentDisabledServers = Array.from(disabled);
+      db.updateProfile('default', { preferencesJson: prefs });
+      return json(res, { ok: true, name: body.name, enabled: body.enabled }), true;
+    }
+
+    // Toggle enrichment project enabled/disabled
+    if (pathname === '/api/enrichment/projects') {
+      let body: { name: string; enabled: boolean };
+      try { body = JSON.parse(await readBody(req)) as { name: string; enabled: boolean }; } catch { return json(res, { error: 'Invalid JSON' }, 400), true; }
+      if (!body.name || typeof body.enabled !== 'boolean') return json(res, { error: 'name and enabled required' }, 400), true;
+
+      const profile = db.ensureProfile();
+      const prefs = { ...(profile.preferences as Record<string, unknown>) };
+      const disabled = new Set((prefs.enrichmentDisabledProjects as string[] | undefined) ?? []);
+      if (body.enabled) {
+        disabled.delete(body.name);
+      } else {
+        disabled.add(body.name);
+      }
+      prefs.enrichmentDisabledProjects = Array.from(disabled);
       db.updateProfile('default', { preferencesJson: prefs });
       return json(res, { ok: true, name: body.name, enabled: body.enabled }), true;
     }
