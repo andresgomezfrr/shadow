@@ -346,6 +346,11 @@ export class RunnerService {
         },
       });
 
+      // Create event for top-level plan runs (not child execution runs)
+      if (!run.parentRunId && isSuccess) {
+        this.db.createEvent({ kind: 'run_completed', priority: 6, payload: { message: `Plan ready: ${run.prompt.slice(0, 80)}`, runId: run.id, repoId: run.repoId } });
+      }
+
       const updatedRun = this.db.getRun(run.id)!;
       this.cleanupWorktree(worktreePath, mainRepoCwd);
       return { processed: true, run: updatedRun };
@@ -369,6 +374,9 @@ export class RunnerService {
           this.db.updateRun(run.parentRunId, { finishedAt });
         }
       }
+
+      // Create run_failed event
+      this.db.createEvent({ kind: 'run_failed', priority: 8, payload: { message: `Run failed: ${errorMessage.slice(0, 80)}`, runId: run.id, repoId: run.repoId } });
 
       // Apply failure trust delta
       const profile = this.db.ensureProfile();

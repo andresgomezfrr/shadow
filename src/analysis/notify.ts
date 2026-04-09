@@ -40,7 +40,7 @@ export async function activityNotify(
   for (const obs of criticalObservations) {
     // Always notify on critical/high observations regardless of proactivity level
     ctx.db.createEvent({
-      kind: 'observation_alert',
+      kind: 'observation_notable',
       priority: obs.severity === 'critical' ? 9 : 7,
       payload: {
         observationId: obs.id,

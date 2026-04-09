@@ -99,6 +99,24 @@ export function deliverAllEvents(db: DatabaseSync): number {
   return Number(result.changes);
 }
 
+export function listUnreadEvents(db: DatabaseSync, since?: string): EventRecord[] {
+  const sinceIso = since ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  return db
+    .prepare('SELECT * FROM event_queue WHERE read_at IS NULL AND created_at >= ? ORDER BY priority DESC, created_at DESC')
+    .all(sinceIso)
+    .map(mapEvent);
+}
+
+export function markEventRead(db: DatabaseSync, id: string): void {
+  db.prepare('UPDATE event_queue SET read_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+}
+
+export function markAllEventsRead(db: DatabaseSync): number {
+  const now = new Date().toISOString();
+  const result = db.prepare('UPDATE event_queue SET read_at = ? WHERE read_at IS NULL').run(now);
+  return Number(result.changes);
+}
+
 // --- Feedback ---
 
 export function createFeedback(db: DatabaseSync, input: { targetKind: string; targetId: string; action: string; note?: string | null; category?: string | null }): void {

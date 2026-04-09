@@ -313,6 +313,18 @@ export async function getActiveRevalidations(suggestionIds?: string[]): Promise<
   return active;
 }
 
+export const fetchNotifications = () => api<import('./types').EventRecord[]>('/api/notifications');
+
+export const markNotificationsRead = (ids: string[]) =>
+  api<{ ok: boolean; read: number }>('/api/notifications/read', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+
+export const markAllNotificationsRead = () =>
+  api<{ ok: boolean; read: number }>('/api/notifications/read-all', { method: 'POST' });
+
 export const closeRun = (id: string, note?: string) =>
   api<{ ok: boolean }>(`/api/runs/${id}/close`, {
     method: 'POST',

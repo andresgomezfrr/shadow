@@ -305,6 +305,9 @@ export class ShadowDatabase {
   listPendingEvents(minPriority?: number): EventRecord[] { return tracking.listPendingEvents(this.database, minPriority); }
   deliverEvent(id: string): void { return tracking.deliverEvent(this.database, id); }
   deliverAllEvents(): number { return tracking.deliverAllEvents(this.database); }
+  listUnreadEvents(since?: string): import('./models.js').EventRecord[] { return tracking.listUnreadEvents(this.database, since); }
+  markEventRead(id: string): void { return tracking.markEventRead(this.database, id); }
+  markAllEventsRead(): number { return tracking.markAllEventsRead(this.database); }
 
   // --- Runs ---
 

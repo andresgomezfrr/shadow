@@ -215,6 +215,8 @@ export function JobOutputSummary({ entry }: Props) {
     const verdict = str(r, 'verdict');
     const title = str(r, 'suggestionTitle');
     const note = str(r, 'verdictNote');
+    const error = str(r, 'error');
+    if (!verdict && error) return <span className="text-red text-xs">{error}</span>;
     if (!verdict) return <span className="text-text-muted text-xs">--</span>;
     const verdictLabel = verdict === 'valid' ? '✓ valid' : verdict === 'partial' ? '◐ partial' : '✕ outdated';
     const verdictColor = verdict === 'valid' ? 'text-green bg-green/15' : verdict === 'partial' ? 'text-orange bg-orange/15' : 'text-red bg-red/15';

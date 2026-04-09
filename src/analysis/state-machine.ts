@@ -10,7 +10,7 @@ import {
 
 // --- Types ---
 
-export type HeartbeatPhase = 'wake' | 'observe' | 'cleanup' | 'analyze' | 'notify' | 'idle';
+export type HeartbeatPhase = 'wake' | 'prepare' | 'extract' | 'cleanup' | 'observe' | 'notify' | 'idle';
 
 export type HeartbeatContext = {
   config: ShadowConfig;
@@ -114,14 +114,13 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
     return result;
   }
 
-  // --- CLEANUP + ANALYZE phase ---
+  // --- EXTRACT + CLEANUP + OBSERVE phases (3 LLM calls inside activityAnalyze) ---
   if ((unprocessedCount > 0 || hasRecentInteractions || hasRecentConversations) && !focusActive) {
-    result.phases.push('cleanup');
-    ctx.onPhase?.('cleanup');
-    result.phases.push('analyze');
-    ctx.onPhase?.('analyze');
     const unprocessed = ctx.db.listObservations({ processed: false });
-    const analyzeResult = await activityAnalyze(ctx, unprocessed);
+    const analyzeResult = await activityAnalyze(ctx, unprocessed, undefined, (phase) => {
+      result.phases.push(phase as HeartbeatPhase);
+      ctx.onPhase?.(phase as HeartbeatPhase);
+    });
     result.llmCalls += analyzeResult.llmCalls;
     result.tokensUsed += analyzeResult.tokensUsed;
     result.observationsCreated += analyzeResult.observationsCreated ?? 0;

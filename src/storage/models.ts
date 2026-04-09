@@ -218,6 +218,7 @@ export type EventRecord = {
   payload: Record<string, unknown>;
   delivered: boolean;
   deliveredAt: string | null;
+  readAt: string | null;
   createdAt: string;
 };
 

@@ -98,16 +98,14 @@ export function ActivityPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <MetricCard label="Jobs" value={summary?.jobCount ?? 0}>
           {(summary?.runCount ?? 0) > 0 && (
-            <div className="text-xs text-text-muted mt-1">{summary!.runCount} runs</div>
+            <span className="text-xs text-text-muted">{summary!.runCount} runs</span>
           )}
         </MetricCard>
         <MetricCard label="LLM calls" value={summary?.llmCalls ?? 0} />
         <MetricCard label="Tokens" value={formatTokens(summary?.tokensUsed ?? 0)} />
-        <MetricCard
-          label="Items produced"
-          value={`${itemsProduced} — ${summary?.observationsCreated ?? 0}o ${summary?.memoriesCreated ?? 0}m ${summary?.suggestionsCreated ?? 0}s`}
-          accent={itemsProduced > 0}
-        />
+        <MetricCard label="Items produced" value={itemsProduced} accent={itemsProduced > 0}>
+          <span className="text-xs text-text-muted">{summary?.observationsCreated ?? 0}o {summary?.memoriesCreated ?? 0}m {summary?.suggestionsCreated ?? 0}s</span>
+        </MetricCard>
       </div>
 
       <div className="mb-4">

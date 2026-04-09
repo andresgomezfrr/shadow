@@ -163,7 +163,7 @@ export function JobsPage() {
       {data && data.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <MetricCard label="Today" value={todayBeats.length}>
-            <div className="text-xs text-text-muted mt-1">{todayActive.length} active</div>
+            <span className="text-xs text-text-muted">{todayActive.length} active</span>
           </MetricCard>
           <MetricCard label="LLM calls" value={todayLlmCalls} />
           <MetricCard label="Tokens" value={formatTokens(todayTokens)} />
