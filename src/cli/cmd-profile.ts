@@ -81,6 +81,7 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
           thought: (daemonState.thought as string) ?? null,
           thoughtExpiresAt: (daemonState.thoughtExpiresAt as string) ?? null,
           activeProject,
+          alerts: (daemonState.alerts as Array<{ id: string; message: string; severity: string; since: string }>) ?? [],
         };
       }),
     );

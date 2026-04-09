@@ -209,6 +209,24 @@ THOUGHT=$(echo "$RAW_STATUS" | grep -o '"thought": *"[^"]*"' | head -1 | sed 's/
 THOUGHT_EXPIRES=$(echo "$RAW_STATUS" | grep -o '"thoughtExpiresAt": *"[^"]*"' | head -1 | sed 's/"thoughtExpiresAt": *"//;s/"$//')
 ACTIVE_PROJECT=$(echo "$STATUS" | grep -o '"activeProject":"[^"]*"' | head -1 | cut -d'"' -f4)
 
+# Extract alerts: each alert has message + severity + since + acked
+ALERT_MESSAGES=()
+ALERT_SEVERITIES=()
+ALERT_SINCES=()
+ALERT_ACKED=()
+while IFS= read -r msg; do
+  [ -n "$msg" ] && ALERT_MESSAGES+=("$msg")
+done < <(echo "$RAW_STATUS" | grep -o '"message": *"[^"]*"' | sed 's/"message": *"//;s/"$//')
+while IFS= read -r sev; do
+  [ -n "$sev" ] && ALERT_SEVERITIES+=("$sev")
+done < <(echo "$RAW_STATUS" | grep -o '"severity": *"[^"]*"' | sed 's/"severity": *"//;s/"$//')
+while IFS= read -r since; do
+  [ -n "$since" ] && ALERT_SINCES+=("$since")
+done < <(echo "$RAW_STATUS" | grep -o '"since": *"[^"]*"' | sed 's/"since": *"//;s/"$//')
+while IFS= read -r acked; do
+  [ -n "$acked" ] && ALERT_ACKED+=("$acked")
+done < <(echo "$STATUS" | grep -o '"acked":[a-z]*' | cut -d: -f2)
+
 # Trust name + emoji
 case "$TRUST" in
   1) TNAME="observer"; TEMOJI="🔍" ;;
@@ -406,6 +424,41 @@ OUTPUT="$LINE"
 if [ -n "$SHOW_THOUGHT" ]; then
   OUTPUT="$OUTPUT\\n\${CD}💭 \${SHOW_THOUGHT}\${C0}"
 fi
+
+# Line 3+: alerts (persistent, one per line)
+for i in "\${!ALERT_MESSAGES[@]}"; do
+  AMSG="\${ALERT_MESSAGES[$i]}"
+  ASEV="\${ALERT_SEVERITIES[$i]:-warning}"
+  ASINCE="\${ALERT_SINCES[$i]}"
+  if [ "$ASEV" = "critical" ]; then
+    AICON="🚨"
+    ACOLOR="$CR"
+  elif [ "$ASEV" = "warning" ]; then
+    AICON="⚠️"
+    ACOLOR="$CY"
+  else
+    AICON="ℹ️"
+    ACOLOR="$CC"
+  fi
+  # Compute time ago from since timestamp
+  AAGO=""
+  if [ -n "$ASINCE" ] && [ "$ASINCE" != "null" ]; then
+    A_TS=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "\${ASINCE%%.*}" "+%s" 2>/dev/null || date -u -d "$ASINCE" "+%s" 2>/dev/null || echo 0)
+    NOW_TS=$(date +%s)
+    A_ELAPSED=$(( NOW_TS - A_TS ))
+    if [ "$A_ELAPSED" -ge 3600 ] 2>/dev/null; then
+      AAGO=" ($(( A_ELAPSED / 3600 ))h ago)"
+    elif [ "$A_ELAPSED" -ge 60 ] 2>/dev/null; then
+      AAGO=" ($(( A_ELAPSED / 60 ))m ago)"
+    fi
+  fi
+  AACKED="\${ALERT_ACKED[$i]:-false}"
+  if [ "$AACKED" = "true" ]; then
+    OUTPUT="$OUTPUT\\n\${CD}\${AICON} \${AMSG}\${AAGO}\${C0}"
+  else
+    OUTPUT="$OUTPUT\\n\${ACOLOR}\${AICON} \${AMSG}\${AAGO}\${C0}"
+  fi
+done
 
 echo -e "$OUTPUT"
 echo -e "$OUTPUT" > "$CACHE_FILE"

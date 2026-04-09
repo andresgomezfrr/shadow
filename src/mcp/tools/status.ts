@@ -1,3 +1,5 @@
+import { appendFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { z } from 'zod';
 import { mcpSchema, type McpTool, type ToolContext } from './types.js';
 import { applyTrustDelta } from '../../profile/trust.js';
@@ -13,6 +15,14 @@ const CheckInSchema = z.object({
 });
 
 const StatusSchema = z.object({});
+
+const AlertAckSchema = z.object({
+  id: z.string().describe('Alert ID to acknowledge (e.g. "backend_unhealthy")'),
+});
+
+const AlertResolveSchema = z.object({
+  id: z.string().describe('Alert ID to resolve/dismiss manually'),
+});
 
 const AvailableSchema = z.object({});
 
@@ -136,6 +146,12 @@ export function statusTools(ctx: ToolContext): McpTool[] {
           todayTokens: usage.totalInputTokens + usage.totalOutputTokens,
           todayLlmCalls: usage.totalCalls,
           updateAvailable: getDaemonState(config).updateAvailable ?? null,
+          activeAlerts: (getDaemonState(config).alerts ?? []).map(a => ({
+            id: a.id,
+            message: a.message,
+            severity: a.severity,
+            since: a.since,
+          })),
         };
       },
     },
@@ -185,6 +201,59 @@ export function statusTools(ctx: ToolContext): McpTool[] {
         db.updateProfile('default', { focusMode: null, focusUntil: null });
         const profile = db.ensureProfile();
         return { ok: true, mode: 'available', proactivityLevel: profile.proactivityLevel };
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // shadow_alerts
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_alerts',
+      description: 'List active daemon alerts (backend health, version updates, etc).',
+      inputSchema: mcpSchema(StatusSchema),
+      handler: async () => {
+        const alerts = getDaemonState(config).alerts ?? [];
+        return { alerts, count: alerts.length };
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // shadow_alert_ack
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_alert_ack',
+      description: 'Acknowledge an alert — dims it on the status line but keeps it visible. Requires trust level >= 1.',
+      inputSchema: mcpSchema(AlertAckSchema),
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+        const { id } = AlertAckSchema.parse(params);
+        const alerts = getDaemonState(config).alerts ?? [];
+        const alert = alerts.find(a => a.id === id);
+        if (!alert) return { ok: false, error: `Alert "${id}" not found` };
+        const actionsPath = resolve(config.resolvedDataDir, 'alert-actions.jsonl');
+        appendFileSync(actionsPath, JSON.stringify({ action: 'ack', id }) + '\n', 'utf-8');
+        return { ok: true, id, action: 'acked' };
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // shadow_alert_resolve
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_alert_resolve',
+      description: 'Manually resolve/dismiss an alert — removes it. Auto-managed alerts may reappear if the condition persists. Requires trust level >= 1.',
+      inputSchema: mcpSchema(AlertResolveSchema),
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+        const { id } = AlertResolveSchema.parse(params);
+        const alerts = getDaemonState(config).alerts ?? [];
+        const alert = alerts.find(a => a.id === id);
+        if (!alert) return { ok: false, error: `Alert "${id}" not found` };
+        const actionsPath = resolve(config.resolvedDataDir, 'alert-actions.jsonl');
+        appendFileSync(actionsPath, JSON.stringify({ action: 'resolve', id }) + '\n', 'utf-8');
+        return { ok: true, id, action: 'resolved' };
       },
     },
   ];
