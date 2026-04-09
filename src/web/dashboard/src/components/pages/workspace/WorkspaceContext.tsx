@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useRef, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Run, Suggestion, Observation } from '../../../api/types';
 
@@ -8,7 +8,7 @@ export type SelectedItem = {
   data: Run | Suggestion | Observation;
 };
 
-export type ActiveFilter = 'all' | 'run' | 'suggestion' | 'observation';
+export type ActiveFilter = 'all' | 'run' | 'suggestion' | 'observation' | 'backlog' | 'snoozed' | 'acknowledged';
 
 type WorkspaceState = {
   selectedProjectId: string | null;
@@ -23,7 +23,9 @@ type WorkspaceContextType = {
   setProject: (id: string | null) => void;
   setFilter: (f: ActiveFilter) => void;
   setSelectedItem: (id: string | null, type?: string) => void;
+  drillToItem: (id: string, type: string) => void;
   setOffset: (n: number) => void;
+  isDrillDown: React.RefObject<boolean>;
 };
 
 const WorkspaceCtx = createContext<WorkspaceContextType | null>(null);
@@ -58,8 +60,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     update({ filter: f === 'all' ? null : f, offset: null });
   }, [update]);
 
+  const isDrillDown = useRef(false);
+
   const setSelectedItem = useCallback((id: string | null, type?: string) => {
     update({ item: id, itemType: type ?? null });
+  }, [update]);
+
+  const drillToItem = useCallback((id: string, type: string) => {
+    isDrillDown.current = true;
+    update({ item: id, itemType: type });
   }, [update]);
 
   const setOffset = useCallback((n: number) => {
@@ -67,7 +76,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [update]);
 
   return (
-    <WorkspaceCtx.Provider value={{ state, setProject, setFilter, setSelectedItem, setOffset }}>
+    <WorkspaceCtx.Provider value={{ state, setProject, setFilter, setSelectedItem, drillToItem, setOffset, isDrillDown }}>
       {children}
     </WorkspaceCtx.Provider>
   );

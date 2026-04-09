@@ -4,9 +4,11 @@ import { Badge } from '../../common/Badge';
 import { OBS_KIND_COLORS, OBS_KIND_COLOR_DEFAULT, OBS_SEVERITY_ICON, OBS_SEVERITY_ICON_COLOR } from '../../../utils/observation-colors';
 import { timeAgo } from '../../../utils/format';
 import { useCallback } from 'react';
+import { useWorkspace } from './WorkspaceContext';
 
 export function ObservationDetail({ observationId, onRefresh }: { observationId: string; onRefresh?: () => void }) {
   const { data: ctx, refresh } = useApi(() => fetchObservationContext(observationId), [observationId], 30_000);
+  const { drillToItem } = useWorkspace();
 
   const doRefresh = useCallback(() => { refresh(); onRefresh?.(); }, [refresh, onRefresh]);
 
@@ -78,8 +80,11 @@ export function ObservationDetail({ observationId, onRefresh }: { observationId:
             <div key={s.id} className="flex items-center gap-2">
               <span>💡</span>
               <Badge className="text-text-dim bg-border">{s.status}</Badge>
-              <span className="truncate">{s.title}</span>
-              <a href={`/suggestions?highlight=${s.id}`} className="text-accent hover:underline shrink-0">View</a>
+              <span className="truncate flex-1">{s.title}</span>
+              <button
+                onClick={() => drillToItem(s.id, 'suggestion')}
+                className="text-accent hover:underline shrink-0 bg-transparent border-none cursor-pointer text-xs"
+              >View</button>
             </div>
           ))}
         </div>
@@ -92,7 +97,11 @@ export function ObservationDetail({ observationId, onRefresh }: { observationId:
           {linkedRuns.map(r => (
             <div key={r.id} className="flex items-center gap-2">
               <Badge className="text-text-dim bg-border">{r.status}</Badge>
-              <span className="truncate">{r.prompt.slice(0, 60)}</span>
+              <span className="truncate flex-1">{r.prompt.slice(0, 60)}</span>
+              <button
+                onClick={() => drillToItem(r.id, 'run')}
+                className="text-accent hover:underline shrink-0 bg-transparent border-none cursor-pointer text-xs"
+              >View</button>
             </div>
           ))}
         </div>

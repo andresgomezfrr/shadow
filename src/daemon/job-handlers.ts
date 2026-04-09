@@ -23,6 +23,8 @@ export type JobContext = {
   db: ShadowDatabase;
   eventBus: EventBus;
   setPhase: (phase: string | null) => void;
+  /** AbortSignal that fires when the job is cancelled (timeout or killAll). Pass to fetch() calls. */
+  signal: AbortSignal;
 };
 
 export type DaemonSharedState = {
@@ -783,7 +785,8 @@ Generate 1-5 suggestions. Quality over quantity.`;
   if (suggestionsCreated > 0) {
     ctx.setPhase('notify');
     for (const item of suggestionItems) {
-      ctx.db.createEvent({ kind: 'suggestion_ready', priority: 6, payload: { message: `Deep scan suggestion: ${item.title}`, suggestionId: item.id, repoId } });
+      ctx.db.createEvent({ kind: 'suggestion_ready', priority: 6, payload: { message: `Deep scan suggestion: ${item.title}`, suggestionId: item.id, title: item.title, repoId } });
+      ctx.db.updateSuggestion(item.id, { shownAt: new Date().toISOString() });
     }
   }
 
@@ -980,7 +983,8 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
   if (suggestionsCreated > 0) {
     ctx.setPhase('notify');
     for (const item of suggestionItems) {
-      ctx.db.createEvent({ kind: 'suggestion_ready', priority: 6, payload: { message: `Cross-repo suggestion: ${item.title}`, suggestionId: item.id } });
+      ctx.db.createEvent({ kind: 'suggestion_ready', priority: 6, payload: { message: `Cross-repo suggestion: ${item.title}`, suggestionId: item.id, title: item.title } });
+      ctx.db.updateSuggestion(item.id, { shownAt: new Date().toISOString() });
     }
   }
 
@@ -1158,7 +1162,7 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
     impactScore: z.number().min(1).max(5).optional(),
     confidenceScore: z.number().min(0).max(100).optional(),
     riskScore: z.number().min(1).max(5).optional(),
-    dismissReason: z.string().optional(),
+    dismissReason: z.string().nullable().optional(),
   });
 
   const parsed = safeParseJson(result.output, schema, 'revalidate-suggestion');

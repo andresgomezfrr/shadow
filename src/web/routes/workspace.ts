@@ -3,11 +3,19 @@ import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 import { json, clampLimit, clampOffset } from '../helpers.js';
 
+type ChainInfo = {
+  observationId?: string;
+  observationTitle?: string;
+  suggestionId?: string;
+  suggestionTitle?: string;
+};
+
 type FeedItem = {
   source: 'run' | 'suggestion' | 'observation';
   id: string;
   priority: number;
   data: unknown;
+  chain?: ChainInfo;
 };
 
 /**
@@ -51,13 +59,20 @@ export async function handleWorkspaceRoutes(
 
     const items: FeedItem[] = [];
 
+    // Which suggestion/observation statuses to include
+    const includeRuns = type === 'all' || type === 'run';
+    const includePending = type === 'all' || type === 'suggestion';
+    const includeBacklog = type === 'backlog';
+    const includeSnoozed = type === 'snoozed';
+    const includeActiveObs = type === 'all' || type === 'observation';
+    const includeAckedObs = type === 'acknowledged';
+
     // Runs: only "to review" (completed, not archived, top-level only)
-    if (type === 'all' || type === 'run') {
+    if (includeRuns) {
       const runs = db.listRuns({ status: 'completed', archived: false, limit: 50 });
       for (const r of runs) {
         if (r.parentRunId) continue; // skip children
         if (projectId) {
-          // Filter by project: check if run's repo is in project's repos
           const projects = db.findProjectsForRepo(r.repoId);
           if (!projects.some(p => p.id === projectId)) continue;
         }
@@ -65,19 +80,31 @@ export async function handleWorkspaceRoutes(
       }
     }
 
-    // Suggestions: pending + backlog
-    if (type === 'all' || type === 'suggestion') {
-      const pending = db.listSuggestions({ status: 'pending', projectId, limit: 50 });
-      const backlog = db.listSuggestions({ status: 'backlog', projectId, limit: 20 });
-      for (const s of [...pending, ...backlog]) {
+    // Suggestions by status
+    if (includePending) {
+      for (const s of db.listSuggestions({ status: 'pending', projectId, limit: 50 })) {
+        items.push({ source: 'suggestion', id: s.id, priority: 0, data: s });
+      }
+    }
+    if (includeBacklog) {
+      for (const s of db.listSuggestions({ status: 'backlog', projectId, limit: 50 })) {
+        items.push({ source: 'suggestion', id: s.id, priority: 0, data: s });
+      }
+    }
+    if (includeSnoozed) {
+      for (const s of db.listSuggestions({ status: 'snoozed', projectId, limit: 50 })) {
         items.push({ source: 'suggestion', id: s.id, priority: 0, data: s });
       }
     }
 
-    // Observations: active only
-    if (type === 'all' || type === 'observation') {
-      const obs = db.listObservations({ status: 'active', projectId, limit: 50 });
-      for (const o of obs) {
+    // Observations by status
+    if (includeActiveObs) {
+      for (const o of db.listObservations({ status: 'active', projectId, limit: 50 })) {
+        items.push({ source: 'observation', id: o.id, priority: 0, data: o });
+      }
+    }
+    if (includeAckedObs) {
+      for (const o of db.listObservations({ status: 'acknowledged', projectId, limit: 50 })) {
         items.push({ source: 'observation', id: o.id, priority: 0, data: o });
       }
     }
@@ -86,15 +113,81 @@ export async function handleWorkspaceRoutes(
     for (const item of items) item.priority = assignPriority(item);
     items.sort((a, b) => b.priority - a.priority);
 
-    // Counts (before pagination)
+    // Counts — always computed for all statuses so tabs show accurate numbers
+    const countRuns = db.listRuns({ status: 'completed', archived: false, limit: 50 }).filter(r => !r.parentRunId).length;
+    const countPending = db.countSuggestions({ status: 'pending', projectId });
+    const countBacklog = db.countSuggestions({ status: 'backlog', projectId });
+    const countSnoozed = db.countSuggestions({ status: 'snoozed', projectId });
+    const countActive = db.countObservations({ status: 'active', projectId });
+    const countAcked = db.countObservations({ status: 'acknowledged', projectId });
+
     const counts = {
-      runs: items.filter(i => i.source === 'run').length,
-      suggestions: items.filter(i => i.source === 'suggestion').length,
-      observations: items.filter(i => i.source === 'observation').length,
+      runs: countRuns,
+      suggestions: countPending,
+      observations: countActive,
+      backlog: countBacklog,
+      snoozed: countSnoozed,
+      acknowledged: countAcked,
     };
 
     const total = items.length;
     const paged = items.slice(offset, offset + limit);
+
+    // Enrich paged items with chain info (batch lookups)
+    const suggestionIds = new Set<string>();
+    const observationIds = new Set<string>();
+
+    for (const item of paged) {
+      if (item.source === 'run') {
+        const r = item.data as { suggestionId?: string | null };
+        if (r.suggestionId) suggestionIds.add(r.suggestionId);
+      }
+      if (item.source === 'suggestion') {
+        const s = item.data as { sourceObservationId?: string | null };
+        if (s.sourceObservationId) observationIds.add(s.sourceObservationId);
+      }
+    }
+
+    // Fetch suggestions referenced by runs
+    const sugCache = new Map<string, { id: string; title: string; sourceObservationId: string | null }>();
+    for (const sid of suggestionIds) {
+      const s = db.getSuggestion(sid);
+      if (s) {
+        sugCache.set(sid, { id: s.id, title: s.title, sourceObservationId: s.sourceObservationId });
+        if (s.sourceObservationId) observationIds.add(s.sourceObservationId);
+      }
+    }
+
+    // Fetch observations referenced by suggestions (and transitively by runs)
+    const obsCache = new Map<string, { id: string; title: string }>();
+    for (const oid of observationIds) {
+      const o = db.getObservation(oid);
+      if (o) obsCache.set(oid, { id: o.id, title: o.title });
+    }
+
+    // Attach chain to each item
+    for (const item of paged) {
+      if (item.source === 'run') {
+        const r = item.data as { suggestionId?: string | null };
+        if (r.suggestionId) {
+          const sug = sugCache.get(r.suggestionId);
+          if (sug) {
+            const obs = sug.sourceObservationId ? obsCache.get(sug.sourceObservationId) : undefined;
+            item.chain = {
+              suggestionId: sug.id, suggestionTitle: sug.title,
+              ...(obs ? { observationId: obs.id, observationTitle: obs.title } : {}),
+            };
+          }
+        }
+      }
+      if (item.source === 'suggestion') {
+        const s = item.data as { sourceObservationId?: string | null };
+        if (s.sourceObservationId) {
+          const obs = obsCache.get(s.sourceObservationId);
+          if (obs) item.chain = { observationId: obs.id, observationTitle: obs.title };
+        }
+      }
+    }
 
     return json(res, { items: paged, total, counts }), true;
   }

@@ -2,7 +2,7 @@ import { useApi } from '../../hooks/useApi';
 import { useEventStream } from '../../hooks/useEventStream';
 import { fetchNotifications, markNotificationsRead, markAllNotificationsRead } from '../../api/client';
 import { useNavigate } from 'react-router-dom';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { timeAgo } from '../../utils/format';
 import type { EventRecord } from '../../api/types';
 
@@ -14,6 +14,18 @@ type NotificationGroup = {
   navigateTo: string;
 };
 
+type KindConfig = { label: (n: number) => string; icon: string; nav: string };
+
+const KINDS: Record<string, KindConfig> = {
+  suggestion_ready: { label: n => `${n} new suggestion${n !== 1 ? 's' : ''}`, icon: '💡', nav: '/workspace?filter=suggestion' },
+  observation_notable: { label: n => `${n} observation${n !== 1 ? 's' : ''}`, icon: '⚠', nav: '/workspace?filter=observation' },
+  run_completed: { label: n => `${n} run${n !== 1 ? 's' : ''} ready`, icon: '▶', nav: '/workspace?filter=run' },
+  run_failed: { label: n => `${n} run${n !== 1 ? 's' : ''} failed`, icon: '✕', nav: '/workspace?filter=run' },
+  job_completed: { label: n => `${n} job${n !== 1 ? 's' : ''} completed`, icon: '⚙', nav: '/activity' },
+  job_failed: { label: n => `${n} job${n !== 1 ? 's' : ''} failed`, icon: '✕', nav: '/activity' },
+  version_available: { label: () => 'Update available', icon: '🆕', nav: '/profile' },
+};
+
 function groupEvents(events: EventRecord[]): NotificationGroup[] {
   const byKind = new Map<string, EventRecord[]>();
   for (const e of events) {
@@ -23,18 +35,8 @@ function groupEvents(events: EventRecord[]): NotificationGroup[] {
   }
 
   const groups: NotificationGroup[] = [];
-
-  const KINDS: Record<string, { label: (n: number) => string; icon: string; nav: string }> = {
-    suggestion_ready: { label: n => `${n} new suggestion${n !== 1 ? 's' : ''}`, icon: '💡', nav: '/workspace?filter=suggestion' },
-    observation_notable: { label: n => `${n} observation${n !== 1 ? 's' : ''}`, icon: '⚠', nav: '/workspace?filter=observation' },
-    run_completed: { label: n => `${n} run${n !== 1 ? 's' : ''} ready`, icon: '▶', nav: '/workspace?filter=run' },
-    run_failed: { label: n => `${n} run${n !== 1 ? 's' : ''} failed`, icon: '✕', nav: '/workspace?filter=run' },
-    job_completed: { label: n => `${n} job${n !== 1 ? 's' : ''} completed`, icon: '⚙', nav: '/activity' },
-    job_failed: { label: n => `${n} job${n !== 1 ? 's' : ''} failed`, icon: '✕', nav: '/activity' },
-    version_available: { label: () => 'Update available', icon: '🆕', nav: '/profile' },
-  };
-
   for (const [kind, items] of byKind) {
+    items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const config = KINDS[kind];
     if (config) {
       groups.push({ kind, label: config.label(items.length), icon: config.icon, events: items, navigateTo: config.nav });
@@ -52,23 +54,48 @@ function groupEvents(events: EventRecord[]): NotificationGroup[] {
   return groups;
 }
 
+function eventNavTarget(event: EventRecord): string | null {
+  const p = event.payload as Record<string, unknown>;
+  if (p.suggestionId) return `/workspace?filter=suggestion&item=${p.suggestionId}&itemType=suggestion`;
+  if (p.runId) return `/workspace?filter=run&item=${p.runId}&itemType=run`;
+  if (p.observationId) return `/workspace?filter=observation&item=${p.observationId}&itemType=observation`;
+  if (Array.isArray(p.observationIds) && p.observationIds.length === 1) return `/workspace?filter=observation&item=${p.observationIds[0]}&itemType=observation`;
+  if (p.jobType) return '/activity';
+  return null;
+}
+
 export function NotificationPanel({ onClose, onRead }: { onClose: () => void; onRead?: () => void }) {
   const { data: events, refresh } = useApi(fetchNotifications, [], 10_000);
   const navigate = useNavigate();
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEventStream(['suggestion:new', 'observation:new', 'run:status', 'job:complete'], refresh);
 
   const pending = events ?? [];
   const groups = groupEvents(pending);
 
-  const handleView = useCallback(async (group: NotificationGroup) => {
+  const toggleExpand = useCallback((kind: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind); else next.add(kind);
+      return next;
+    });
+  }, []);
+
+  const handleViewAll = useCallback(async (group: NotificationGroup) => {
     const ids = group.events.map(e => e.id);
-    await markNotificationsRead(ids);
-    refresh();
-    onRead?.();
+    markNotificationsRead(ids).then(() => onRead?.());
     navigate(group.navigateTo);
     onClose();
-  }, [navigate, onClose, refresh, onRead]);
+  }, [navigate, onClose, onRead]);
+
+  const handleViewItem = useCallback(async (event: EventRecord) => {
+    const target = eventNavTarget(event);
+    if (!target) return;
+    markNotificationsRead([event.id]).then(() => onRead?.());
+    navigate(target);
+    onClose();
+  }, [navigate, onClose, onRead]);
 
   const handleMarkAllRead = useCallback(async () => {
     await markAllNotificationsRead();
@@ -105,30 +132,54 @@ export function NotificationPanel({ onClose, onRead }: { onClose: () => void; on
             </div>
           ) : (
             <div className="py-2">
-              {groups.map(group => (
-                <div
-                  key={group.kind}
-                  className="px-4 py-3 hover:bg-accent-soft cursor-pointer transition-colors border-b border-border/50"
-                  onClick={() => handleView(group)}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span>{group.icon}</span>
-                    <span className="text-sm font-medium flex-1">{group.label}</span>
-                    <span className="text-[11px] text-text-muted">{timeAgo(group.events[0].createdAt)}</span>
-                  </div>
-                  <div className="space-y-0.5 ml-6">
-                    {group.events.slice(0, 5).map(e => {
-                      const msg = (e.payload as Record<string, unknown>)?.message as string | undefined;
-                      return msg ? (
-                        <div key={e.id} className="text-xs text-text-dim truncate">· {msg}</div>
-                      ) : null;
-                    })}
-                    {group.events.length > 5 && (
-                      <div className="text-[11px] text-text-muted">+{group.events.length - 5} more</div>
+              {groups.map(group => {
+                const isExpanded = expanded.has(group.kind);
+                const isSingle = group.events.length === 1;
+                return (
+                  <div key={group.kind} className="border-b border-border/50">
+                    <div
+                      className="px-4 py-3 hover:bg-accent-soft cursor-pointer transition-colors flex items-center gap-2"
+                      onClick={() => isSingle ? handleViewItem(group.events[0]) : toggleExpand(group.kind)}
+                    >
+                      <span className={`text-[10px] text-text-muted transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                        {isSingle ? '' : '▶'}
+                      </span>
+                      <span>{group.icon}</span>
+                      <span className="text-sm font-medium flex-1">{group.label}</span>
+                      <span className="text-[11px] text-text-muted">{timeAgo(group.events[0].createdAt)}</span>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="pb-2">
+                        {group.events.map(e => {
+                          const p = e.payload as Record<string, unknown>;
+                          const msg = (p.title as string) || (p.message as string) || null;
+                          const hasTarget = !!eventNavTarget(e);
+                          return (
+                            <div
+                              key={e.id}
+                              className={`px-4 py-1.5 ml-6 mr-2 rounded text-xs transition-colors ${hasTarget ? 'hover:bg-accent-soft cursor-pointer' : 'text-text-dim'}`}
+                              onClick={hasTarget ? () => handleViewItem(e) : undefined}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-text-dim">·</span>
+                                <span className={`flex-1 truncate ${hasTarget ? 'text-text' : 'text-text-dim'}`}>{msg || e.kind}</span>
+                                <span className="text-[10px] text-text-muted shrink-0">{timeAgo(e.createdAt)}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div
+                          className="px-4 py-1 ml-6 text-[11px] text-accent hover:text-accent/80 cursor-pointer"
+                          onClick={() => handleViewAll(group)}
+                        >
+                          View all in workspace →
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
