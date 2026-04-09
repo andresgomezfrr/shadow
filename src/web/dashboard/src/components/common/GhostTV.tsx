@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { isVideo } from '../../hooks/useGhostPhase';
 
 const FALLBACK_FACES: Record<string, string> = {
   idle: '{•‿•}',
@@ -90,22 +91,30 @@ export function GhostTV({ open, onClose, imagePath, label, phase, isActive, mood
             </div>
           ) : (
             <>
-              {/* Previous image (fading out during transition) */}
+              {/* Previous media (fading out during transition) */}
               {transitioning && prevImage !== imagePath && (
+                isVideo(prevImage)
+                  ? <video src={prevImage} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 opacity-0" />
+                  : <img src={prevImage} alt="" className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 opacity-0" />
+              )}
+              {/* Current media */}
+              {isVideo(imagePath) ? (
+                <video
+                  src={imagePath}
+                  autoPlay loop muted playsInline
+                  className={`w-full h-full object-cover transition-opacity duration-500 ${transitioning ? 'opacity-0' : 'opacity-100'}`}
+                  onError={() => setImgError(true)}
+                  onLoadedData={() => { if (transitioning) { setPrevImage(imagePath); setTransitioning(false); } }}
+                />
+              ) : (
                 <img
-                  src={prevImage}
-                  alt=""
-                  className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 opacity-0"
+                  src={imagePath}
+                  alt={`Shadow — ${label}`}
+                  className={`w-full h-full object-cover transition-opacity duration-500 ${transitioning ? 'opacity-0' : 'opacity-100'}`}
+                  onError={() => setImgError(true)}
+                  onLoad={() => { if (transitioning) { setPrevImage(imagePath); setTransitioning(false); } }}
                 />
               )}
-              {/* Current image */}
-              <img
-                src={imagePath}
-                alt={`Shadow — ${label}`}
-                className={`w-full h-full object-cover transition-opacity duration-500 ${transitioning ? 'opacity-0' : 'opacity-100'}`}
-                onError={() => setImgError(true)}
-                onLoad={() => { if (transitioning) { setPrevImage(imagePath); setTransitioning(false); } }}
-              />
             </>
           )}
         </div>
