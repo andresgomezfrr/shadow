@@ -19,8 +19,9 @@ export const OBSERVATION_THRESHOLDS: DedupThresholds = { skip: 0.80, update: 0.6
 export const SUGGESTION_THRESHOLDS: DedupThresholds = { skip: 0.80, update: 0.70 };
 // Lower threshold for dismissed — even loosely similar should be skipped
 export const SUGGESTION_DISMISSED_THRESHOLDS: DedupThresholds = { skip: 0.75, update: 0.75 };
+export const ENRICHMENT_THRESHOLDS: DedupThresholds = { skip: 0.85, update: 0.65 };
 
-type VecTable = 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors';
+type VecTable = 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors';
 
 // --- Core function ---
 
@@ -127,5 +128,18 @@ export async function checkSuggestionDuplicate(
     vecTable: 'suggestion_vectors',
     thresholds: against === 'dismissed' ? SUGGESTION_DISMISSED_THRESHOLDS : SUGGESTION_THRESHOLDS,
     statusFilter: { table: 'suggestions', statuses: statusMap[against] },
+  });
+}
+
+export async function checkEnrichmentDuplicate(
+  db: ShadowDatabase,
+  entity: { title: string; summaryMd?: string },
+): Promise<DedupDecision> {
+  return checkDuplicate({
+    text: embeddingText('enrichment', entity),
+    db,
+    vecTable: 'enrichment_vectors',
+    thresholds: ENRICHMENT_THRESHOLDS,
+    // No statusFilter — match against stale entries too so we can un-stale them on update
   });
 }

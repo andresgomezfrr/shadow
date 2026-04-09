@@ -48,6 +48,7 @@ function buildEnrichPrompt(
   systemNames: string[],
   serverDescriptions: string,
   projectId: string,
+  existingCache?: string,
 ): string {
   return [
     `You are Shadow's enrichment agent for project: ${projectName}`,
@@ -59,6 +60,11 @@ function buildEnrichPrompt(
     '',
     '## Available MCP servers',
     serverDescriptions,
+    '',
+    existingCache ? '## Already cached (do not re-query unless expiring within 2 hours)' : '',
+    existingCache ?? '',
+    existingCache ? '' : '',
+    existingCache ? 'Focus on discovering NEW context not listed above. Only refresh items expiring soon.' : '',
     '',
     '## Tool usage',
     '- **shadow_*** tools: read Shadow\'s knowledge (memories, project details) and write results (shadow_enrichment_write).',
@@ -74,6 +80,7 @@ function buildEnrichPrompt(
     '   - source: the name of the external MCP server you queried',
     '   - summary: a concise 1-2 sentence finding',
     '4. Skip external servers that are not relevant to this project.',
+    existingCache ? '5. Do NOT re-query information already in the cache above.' : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -147,11 +154,19 @@ export async function activityEnrich(
 
   // ========== PROJECT-SCOPED ENRICHMENT ==========
   if (activeProjects && activeProjects.length > 0) {
+    // Filter out disabled projects
+    const disabledProjects = (prefs?.enrichmentDisabledProjects as string[] | undefined) ?? [];
+    const lowerDisabled = disabledProjects.map(n => n.toLowerCase());
+    const eligibleProjects = activeProjects.filter(p => !lowerDisabled.includes(p.projectName.toLowerCase()));
+    if (eligibleProjects.length < activeProjects.length) {
+      const skipped = activeProjects.filter(p => lowerDisabled.includes(p.projectName.toLowerCase())).map(p => p.projectName);
+      console.error(`[shadow:enrich] Skipping disabled projects: ${skipped.join(', ')}`);
+    }
     const projectResults: PerProjectResult[] = [];
 
-    for (let i = 0; i < activeProjects.length; i++) {
-      const ap = activeProjects[i];
-      onProgress?.(ap.projectName, i + 1, activeProjects.length);
+    for (let i = 0; i < eligibleProjects.length; i++) {
+      const ap = eligibleProjects[i];
+      onProgress?.(ap.projectName, i + 1, eligibleProjects.length);
       const pr: PerProjectResult = {
         projectId: ap.projectId, projectName: ap.projectName,
         itemsCollected: 0, sources: [], findings: [],
@@ -165,9 +180,20 @@ export async function activityEnrich(
         const repoNames = (project.repoIds ?? []).map(id => db.getRepo(id)?.name).filter(Boolean) as string[];
         const systemNames = (project.systemIds ?? []).map(id => db.getSystem(id)).filter(Boolean).map(s => `${s!.name} (${s!.kind})`) as string[];
 
-        const prompt = buildEnrichPrompt(project.name, repoNames, systemNames, serverDescriptions, project.id);
+        // Build existing cache summary so the LLM knows what's already cached
+        const cachedItems = db.listEnrichment({ entityId: project.id, limit: 20 });
+        let existingCache: string | undefined;
+        if (cachedItems.length > 0) {
+          const lines = cachedItems.map(item => {
+            const expires = item.expiresAt ? new Date(item.expiresAt).toISOString().slice(0, 16).replace('T', ' ') : 'no expiry';
+            return `- [${item.source}] ${item.summary} (expires: ${expires})`;
+          });
+          existingCache = lines.join('\n');
+        }
 
-        console.error(`[shadow:enrich] Starting enrichment for ${project.name} (${repoNames.length} repos)`);
+        const prompt = buildEnrichPrompt(project.name, repoNames, systemNames, serverDescriptions, project.id, existingCache);
+
+        console.error(`[shadow:enrich] Starting enrichment for ${project.name} (${repoNames.length} repos, ${cachedItems.length} cached)`);
 
         const result = await adapter.execute({
           repos: [],

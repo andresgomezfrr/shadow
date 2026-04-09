@@ -720,6 +720,16 @@ export const migrations: Migration[] = [
       ALTER TABLE repos ADD COLUMN last_remote_head TEXT;
     `,
   },
+  {
+    version: 35,
+    name: 'enrichment_vectors',
+    sql: `
+      CREATE VIRTUAL TABLE IF NOT EXISTS enrichment_vectors USING vec0(
+        id TEXT PRIMARY KEY,
+        embedding FLOAT[384]
+      );
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

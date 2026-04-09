@@ -518,7 +518,7 @@ export function countPendingSuggestions(db: DatabaseSync): number {
 
 // --- Vector embeddings ---
 
-export function storeEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors', id: string, embedding: Float32Array): void {
+export function storeEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors', id: string, embedding: Float32Array): void {
   try {
     db.prepare(`INSERT OR REPLACE INTO ${table}(id, embedding) VALUES (?, ?)`).run(id, embedding);
   } catch (e) {
@@ -526,7 +526,7 @@ export function storeEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'obse
   }
 }
 
-export function deleteEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors', id: string): void {
+export function deleteEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors', id: string): void {
   try {
     db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
   } catch (e) {

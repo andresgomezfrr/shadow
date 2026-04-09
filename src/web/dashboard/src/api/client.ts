@@ -112,6 +112,16 @@ export const toggleEnrichmentServer = (name: string, enabled: boolean) =>
     body: JSON.stringify({ name, enabled }),
   });
 
+export const fetchEnrichmentProjects = () =>
+  api<{ projects: { id: string; name: string; status: string; enabled: boolean }[]; disabledProjects: string[] }>('/api/enrichment/projects');
+
+export const toggleEnrichmentProject = (name: string, enabled: boolean) =>
+  api<{ ok: boolean; name: string; enabled: boolean }>('/api/enrichment/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, enabled }),
+  });
+
 export const fetchUsage = (period: 'day' | 'week' | 'month' = 'week') =>
   api<UsageSummary>(`/api/usage?period=${period}`);
 

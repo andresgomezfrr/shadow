@@ -90,8 +90,8 @@ export const THOUGHT_DURATION_OPTIONS = [
 export const ENRICHMENT_INTERVAL_OPTIONS = [
   { value: '30', label: 'Every 30 min' },
   { value: '60', label: 'Every 1h' },
-  { value: '120', label: 'Every 2h (default)' },
-  { value: '360', label: 'Every 6h' },
+  { value: '120', label: 'Every 2h' },
+  { value: '360', label: 'Every 6h (default)' },
   { value: '720', label: 'Every 12h' },
 ];
 

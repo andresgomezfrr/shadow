@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { UserProfile } from '../../../api/types';
-import { fetchEnrichmentServers, toggleEnrichmentServer, triggerJob } from '../../../api/client';
+import { fetchEnrichmentServers, toggleEnrichmentServer, fetchEnrichmentProjects, toggleEnrichmentProject, triggerJob } from '../../../api/client';
 import { Toggle } from '../../common/Toggle';
 import { SaveIndicator } from '../../common/SettingsField';
 import { ENRICHMENT_INTERVAL_OPTIONS, getPref } from './settings-data';
@@ -29,12 +29,20 @@ export function SectionEnrichment({ profile, saved, onSavePreference, visible }:
   const [servers, setServers] = useState<ServerInfo[]>([]);
   const [togglingServer, setTogglingServer] = useState<string | null>(null);
   const [discoverTriggered, setDiscoverTriggered] = useState(false);
+  const [projects, setProjects] = useState<{ id: string; name: string; status: string; enabled: boolean }[]>([]);
+  const [disabledProjectNames, setDisabledProjectNames] = useState<string[]>([]);
+  const [togglingProject, setTogglingProject] = useState<string | null>(null);
+  const [newExclusion, setNewExclusion] = useState('');
   const enabled = getPref(profile, 'enrichmentEnabled', false);
   const intervalMin = getPref(profile, 'enrichmentIntervalMin', 120);
 
   useEffect(() => {
     fetchEnrichmentServers().then(data => {
       if (data?.servers) setServers(data.servers);
+    });
+    fetchEnrichmentProjects().then(data => {
+      if (data?.projects) setProjects(data.projects);
+      if (data?.disabledProjects) setDisabledProjectNames(data.disabledProjects);
     });
   }, []);
 
@@ -45,6 +53,23 @@ export function SectionEnrichment({ profile, saved, onSavePreference, visible }:
       setServers(prev => prev.map(s => s.name === name ? { ...s, enabled: newEnabled } : s));
     }
     setTogglingServer(null);
+  };
+
+  const handleToggleProject = async (name: string, newEnabled: boolean) => {
+    setTogglingProject(name);
+    const res = await toggleEnrichmentProject(name, newEnabled);
+    if (res?.ok) {
+      setProjects(prev => prev.map(p => p.name === name ? { ...p, enabled: newEnabled } : p));
+      setDisabledProjectNames(prev => newEnabled ? prev.filter(n => n !== name) : [...prev, name]);
+    }
+    setTogglingProject(null);
+  };
+
+  const handleAddExclusion = async () => {
+    const name = newExclusion.trim();
+    if (!name) return;
+    await handleToggleProject(name, false);
+    setNewExclusion('');
   };
 
   return (
@@ -140,6 +165,60 @@ export function SectionEnrichment({ profile, saved, onSavePreference, visible }:
 
       {enabled && servers.length === 0 && (
         <p className="text-xs text-text-muted mt-3">No external MCP servers discovered.</p>
+      )}
+
+      {/* Projects */}
+      {enabled && (
+        <div className="mt-4">
+          <label className="text-sm font-medium mb-2 block">Projects</label>
+
+          {/* Active projects with toggle */}
+          {projects.filter(p => p.status === 'active').length > 0 && (
+            <div className="space-y-1.5 mb-3">
+              {projects.filter(p => p.status === 'active').map(p => (
+                <div key={p.id} className={`flex items-center justify-between px-3 py-2 border rounded-lg transition-colors ${p.enabled ? 'bg-bg border-border' : 'bg-bg/50 border-border/50 opacity-60'}`}>
+                  <span className="text-sm text-text">{p.name}</span>
+                  <Toggle
+                    checked={p.enabled}
+                    onChange={() => handleToggleProject(p.name, !p.enabled)}
+                    disabled={togglingProject === p.name}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Never-enrich exclusions (includes non-active project exclusions) */}
+          {disabledProjectNames.filter(n => !projects.some(p => p.status === 'active' && p.name === n)).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {disabledProjectNames.filter(n => !projects.some(p => p.status === 'active' && p.name === n)).map(name => (
+                <span key={name} className="inline-flex items-center gap-1 text-xs bg-border/50 text-text-dim px-2 py-1 rounded-full">
+                  {name}
+                  <button onClick={() => handleToggleProject(name, true)} className="hover:text-accent cursor-pointer">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Add exclusion */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newExclusion}
+              onChange={e => setNewExclusion(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAddExclusion()}
+              placeholder="Exclude project..."
+              className="bg-bg border border-border rounded px-2 py-1 text-xs text-text outline-none focus:border-accent transition-colors flex-1"
+            />
+            <button
+              onClick={handleAddExclusion}
+              disabled={!newExclusion.trim()}
+              className="text-[10px] px-2 py-1 rounded bg-red-500/15 text-red-300 hover:bg-red-500/25 border-none cursor-pointer transition-colors disabled:opacity-30"
+            >
+              Exclude
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Collapsed summary */}

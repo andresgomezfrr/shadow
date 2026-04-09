@@ -255,6 +255,8 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         const prefs = profile.preferences as Record<string, unknown> | undefined;
         const disabled = (prefs?.enrichmentDisabledServers as string[] | undefined) ?? [];
 
+        const disabledProjects = (prefs?.enrichmentDisabledProjects as string[] | undefined) ?? [];
+
         const result: Record<string, unknown> = {
           enabled: config.enrichmentEnabled,
           intervalMs: config.enrichmentIntervalMs,
@@ -262,6 +264,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
           availableMcpServers: discovered.map(name => ({ name, enabled: !disabled.includes(name) })),
           serverCount: discovered.length,
           enabledCount: discovered.filter(s => !disabled.includes(s)).length,
+          disabledProjects,
         };
 
         if (includeCache) {
@@ -349,11 +352,38 @@ export function dataTools(ctx: ToolContext): McpTool[] {
           }
         } catch { /* use default */ }
 
-        const { createHash } = await import('node:crypto');
-        const contentHash = createHash('sha256').update(`${parsed.source}:${parsed.summary}`).digest('hex').slice(0, 16);
         const expiresAt = new Date(Date.now() + (TTL_MS[ttlCategory] ?? TTL_MS.medium)).toISOString();
 
-        db.upsertEnrichment({
+        // Embedding-based dedup: skip near-duplicates, update similar entries
+        const { checkEnrichmentDuplicate } = await import('../../memory/dedup.js');
+        const { generateAndStoreEmbedding } = await import('../../memory/lifecycle.js');
+        const dedup = await checkEnrichmentDuplicate(db, { title: parsed.summary, summaryMd: parsed.summary });
+
+        if (dedup.action === 'skip') {
+          return { ok: true, action: 'skip', reason: 'similar entry exists', existingId: dedup.existingId, similarity: dedup.similarity };
+        }
+
+        const { createHash } = await import('node:crypto');
+        const contentHash = createHash('sha256').update(`${parsed.source}:${parsed.summary}`).digest('hex').slice(0, 16);
+
+        if (dedup.action === 'update') {
+          // Update existing record with fresh data
+          db.upsertEnrichment({
+            source: parsed.source,
+            entityType: 'project',
+            entityId: parsed.projectId,
+            entityName: project.name,
+            summary: parsed.summary,
+            detail: parsed.detail,
+            contentHash,
+            expiresAt,
+          });
+          await generateAndStoreEmbedding(db, 'enrichment', dedup.existingId, { title: parsed.summary, summaryMd: parsed.summary });
+          return { ok: true, action: 'updated', existingId: dedup.existingId, similarity: dedup.similarity, ttl: ttlCategory };
+        }
+
+        // Create new entry
+        const record = db.upsertEnrichment({
           source: parsed.source,
           entityType: 'project',
           entityId: parsed.projectId,
@@ -363,8 +393,9 @@ export function dataTools(ctx: ToolContext): McpTool[] {
           contentHash,
           expiresAt,
         });
+        await generateAndStoreEmbedding(db, 'enrichment', record.id, { title: parsed.summary, summaryMd: parsed.summary });
 
-        return { ok: true, ttl: ttlCategory, expiresAt };
+        return { ok: true, action: 'created', ttl: ttlCategory, expiresAt };
       },
     },
   ];
