@@ -7,6 +7,7 @@ import type { HeartbeatContext } from './state-machine.js';
 
 export async function activityReflect(
   ctx: HeartbeatContext,
+  opts?: { onPhase?: (phase: string) => void },
 ): Promise<{ llmCalls: number; tokensUsed: number; skipped: boolean; soulUpdated?: boolean; reason?: string }> {
   const lastReflect = ctx.db.getLastJob('reflect');
   const sinceIso = lastReflect?.finishedAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -15,6 +16,7 @@ export async function activityReflect(
   const existingSoul = ctx.db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
 
   // ========== PHASE 1: Extract deltas (Sonnet, cheap) ==========
+  opts?.onPhase?.('reflect-delta');
 
   // Gather only NEW data since last reflect
   const newMemories = ctx.db.listMemories({ archived: false })
@@ -89,6 +91,7 @@ export async function activityReflect(
   }
 
   // ========== PHASE 2: Evolve soul (Opus) ==========
+  opts?.onPhase?.('reflect-evolve');
 
   // Minimal entity context (names only, not full dumps)
   const projects = ctx.db.listProjects({ status: 'active' });

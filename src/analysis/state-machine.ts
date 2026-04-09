@@ -23,6 +23,7 @@ export type HeartbeatContext = {
   remoteSyncResults?: Array<{ repoId: string; repoName: string; newRemoteCommits: number; behindBranches: Array<{ branch: string; behind: number; ahead: number }>; newCommitMessages: string[] }>;
   enrichmentContext?: string;
   activeProjects?: Array<{ projectId: string; projectName: string; score: number }>;
+  onPhase?: (phase: HeartbeatPhase) => void;
 };
 
 export type HeartbeatResult = {
@@ -60,6 +61,7 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
 
   // --- WAKE phase ---
   result.phases.push('wake');
+  ctx.onPhase?.('wake');
 
   const unprocessedCount = ctx.db.listObservations({ processed: false }).length;
   let hasNewObservationsSinceLastBeat = unprocessedCount > 0;
@@ -104,6 +106,7 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
 
   if (skipLlmPhases) {
     result.phases.push('notify');
+    ctx.onPhase?.('notify');
     const notifyResult = await activityNotify(ctx);
     result.eventsQueued = notifyResult.eventsQueued;
     result.phases.push('idle');
@@ -114,7 +117,9 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
   // --- CLEANUP + ANALYZE phase ---
   if ((unprocessedCount > 0 || hasRecentInteractions || hasRecentConversations) && !focusActive) {
     result.phases.push('cleanup');
+    ctx.onPhase?.('cleanup');
     result.phases.push('analyze');
+    ctx.onPhase?.('analyze');
     const unprocessed = ctx.db.listObservations({ processed: false });
     const analyzeResult = await activityAnalyze(ctx, unprocessed);
     result.llmCalls += analyzeResult.llmCalls;
@@ -124,6 +129,7 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
 
   // --- NOTIFY phase ---
   result.phases.push('notify');
+  ctx.onPhase?.('notify');
   const notifyResult = await activityNotify(ctx);
   result.eventsQueued = notifyResult.eventsQueued;
 
