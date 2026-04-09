@@ -37,6 +37,7 @@ export type DaemonState = {
   activeJobs: Array<{ jobId: string; type: string; phase: string | null }>;
   activeProjects: Array<{ projectId: string; projectName: string; score: number }>;
   updateAvailable: { latest: string; current: string } | null;
+  alerts: Array<{ id: string; message: string; severity: 'info' | 'warning' | 'critical'; since: string; acked: boolean }>;
 };
 
 // --- Constants ---
@@ -122,6 +123,7 @@ function emptyState(): DaemonState {
     activeJobs: [],
     activeProjects: [],
     updateAvailable: null,
+    alerts: [],
   };
 }
 
@@ -221,6 +223,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       pendingRemoteSyncResults,
       activeProjects: [],
       consecutiveIdleTicks: 0,
+      consecutiveGhostJobs: 0,
     };
 
     // Step 3c: Start EventBus + web server (receives daemonShared for MCP + /api/status)
@@ -288,6 +291,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       activeJobs: [],
       activeProjects: [],
       updateAvailable: null,
+      alerts: [],
     };
 
     writeDaemonState(config, state);
@@ -626,6 +630,49 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       state.activeJobCount = jobQueue.activeCount;
       state.activeJobs = jobQueue.activeJobs;
       state.activeProjects = daemonShared.activeProjects;
+
+      // Process alert actions from MCP/external tools
+      const alertActionsPath = resolve(config.resolvedDataDir, 'alert-actions.jsonl');
+      try {
+        if (existsSync(alertActionsPath)) {
+          const raw = readFileSync(alertActionsPath, 'utf-8').trim();
+          if (raw) {
+            for (const line of raw.split('\n')) {
+              try {
+                const action = JSON.parse(line) as { action: string; id: string };
+                const idx = state.alerts.findIndex(a => a.id === action.id);
+                if (idx === -1) continue;
+                if (action.action === 'ack') {
+                  state.alerts[idx].acked = true;
+                  console.error(`[daemon] Alert acked: ${action.id}`);
+                } else if (action.action === 'resolve') {
+                  state.alerts.splice(idx, 1);
+                  console.error(`[daemon] Alert resolved: ${action.id}`);
+                }
+              } catch { /* skip malformed line */ }
+            }
+          }
+          unlinkSync(alertActionsPath);
+        }
+      } catch { /* best-effort */ }
+
+      // Manage alerts based on daemon health signals
+      const GHOST_JOB_THRESHOLD = 2;
+      const existingBackendAlert = state.alerts.findIndex(a => a.id === 'backend_unhealthy');
+      if (daemonShared.consecutiveGhostJobs >= GHOST_JOB_THRESHOLD && existingBackendAlert === -1) {
+        state.alerts.push({
+          id: 'backend_unhealthy',
+          message: 'CLI auth expired — LLM jobs failing',
+          severity: 'critical',
+          since: new Date().toISOString(),
+          acked: false,
+        });
+        console.error(`[daemon] Alert raised: backend_unhealthy (${daemonShared.consecutiveGhostJobs} consecutive ghost jobs)`);
+      } else if (daemonShared.consecutiveGhostJobs === 0 && existingBackendAlert !== -1) {
+        state.alerts.splice(existingBackendAlert, 1);
+        console.error('[daemon] Alert cleared: backend_unhealthy — LLM jobs recovering');
+      }
+
       // Derive lastHeartbeatPhase from the highest-priority active job
       // For heartbeat: use phase directly (observe, analyze, etc.)
       // For other jobs: use "type" or "type-phase" to distinguish in status line
@@ -642,14 +689,27 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         state.lastHeartbeatPhase = null;
       }
 
-      // Derive updateAvailable from latest version-check job
+      // Derive updateAvailable from latest version-check job + create info alert
       const lastVersionCheck = _db.getLastJob('version-check');
       if (lastVersionCheck?.status === 'completed') {
         const vcResult = lastVersionCheck.result as Record<string, unknown> | null;
         if (vcResult?.isNewer === true) {
           state.updateAvailable = { latest: vcResult.latestVersion as string, current: vcResult.currentVersion as string };
+          const existingUpdateAlert = state.alerts.findIndex(a => a.id === 'update_available');
+          if (existingUpdateAlert === -1) {
+            state.alerts.push({
+              id: 'update_available',
+              message: `New version available: ${vcResult.latestVersion} (current: ${vcResult.currentVersion})`,
+              severity: 'info',
+              since: lastVersionCheck.finishedAt ?? new Date().toISOString(),
+              acked: false,
+            });
+          }
         } else {
           state.updateAvailable = null;
+          // Clear version alert if no longer applicable
+          const existingUpdateAlert = state.alerts.findIndex(a => a.id === 'update_available');
+          if (existingUpdateAlert !== -1) state.alerts.splice(existingUpdateAlert, 1);
         }
       }
 

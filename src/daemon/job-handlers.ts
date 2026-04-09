@@ -34,6 +34,7 @@ export type DaemonSharedState = {
   pendingRemoteSyncResults: Array<{ repoId: string; repoName: string; newRemoteCommits: number; behindBranches: Array<{ branch: string; behind: number; ahead: number }>; newCommitMessages: string[] }>;
   activeProjects: Array<{ projectId: string; projectName: string; score: number }>;
   consecutiveIdleTicks: number;
+  consecutiveGhostJobs: number;
 };
 
 export type JobCategory = 'llm' | 'io';
@@ -132,8 +133,6 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
     }
   } catch { /* enrichment not available */ }
 
-  ctx.setPhase('analyze');
-
   const { runHeartbeat } = await import('../analysis/state-machine.js');
 
   // Drain sensor data for heartbeat context
@@ -149,6 +148,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
     remoteSyncResults: remoteSyncData.length > 0 ? remoteSyncData : undefined,
     enrichmentContext: enrichmentCtx,
     activeProjects: detectedProjects.length > 0 ? detectedProjects : undefined,
+    onPhase: (phase) => ctx.setPhase(phase),
   });
 
   // Mark enrichment items as reported only after heartbeat succeeds
@@ -252,6 +252,7 @@ async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> {
     pendingEventCount: ctx.db.listPendingEvents().length,
   };
   const suggestResult = await activitySuggest(actCtx, unprocessed);
+  ctx.setPhase('notify');
   await activityNotify(actCtx);
 
   const suggestionItems = recentItems(ctx.db, 'suggestions', jobStart);
@@ -331,7 +332,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
 async function handleReflect(ctx: JobContext): Promise<JobHandlerResult> {
   const { activityReflect } = await import('../analysis/activities.js');
 
-  ctx.setPhase('reflect');
+  ctx.setPhase('reflect-delta');
 
   const profile = ctx.db.ensureProfile();
   const actCtx = {
@@ -339,7 +340,7 @@ async function handleReflect(ctx: JobContext): Promise<JobHandlerResult> {
     lastHeartbeat: ctx.db.getLastJob('heartbeat'),
     pendingEventCount: ctx.db.listPendingEvents().length,
   };
-  const reflectResult = await activityReflect(actCtx);
+  const reflectResult = await activityReflect(actCtx, { onPhase: ctx.setPhase });
 
   // Get soul reflection preview if updated
   let deltaPreview: string | undefined;
@@ -979,7 +980,10 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
 async function handleVersionCheck(ctx: JobContext): Promise<JobHandlerResult> {
   ctx.setPhase('version-check');
 
-  const projectRoot = resolve(__dirname, '..', '..');
+  const { dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const __handlerDir = dirname(fileURLToPath(import.meta.url));
+  const projectRoot = resolve(__handlerDir, '..', '..');
   const currentVersion: string = JSON.parse(
     readFileSync(resolve(projectRoot, 'package.json'), 'utf8'),
   ).version;

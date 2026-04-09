@@ -82,6 +82,7 @@ function createShared(): DaemonSharedState {
     lastHeartbeatAt: null, nextHeartbeatAt: null, lastConsolidationAt: null,
     pendingGitEvents: [], pendingRemoteSyncResults: [], activeProjects: [],
     consecutiveIdleTicks: 0,
+    consecutiveGhostJobs: 0,
   };
 }
 

@@ -121,19 +121,34 @@ export class JobQueue {
       try {
         const result = await handlerPromise;
         if (cancelled) return;
+
+        // Detect ghost jobs: LLM calls were attempted but returned no tokens (auth/backend issue)
+        const isGhostJob = entry.category === 'llm' && result.llmCalls > 0 && result.tokensUsed === 0;
+        const finalStatus = isGhostJob ? 'failed' : 'completed';
+        const finalResult = isGhostJob
+          ? { ...result.result, error: 'LLM calls returned no tokens — possible auth/backend issue', ghost: true }
+          : result.result;
+
         this.db.updateJob(job.id, {
-          status: 'completed',
+          status: finalStatus,
           phases: result.phases,
           llmCalls: result.llmCalls,
           tokensUsed: result.tokensUsed,
-          result: result.result,
+          result: finalResult,
           durationMs: Date.now() - startMs,
           finishedAt: new Date().toISOString(),
         });
         this.eventBus.emit({
           type: 'job:complete',
-          data: { jobId: job.id, type: job.type, status: 'completed', durationMs: Date.now() - startMs, result: result.result },
+          data: { jobId: job.id, type: job.type, status: finalStatus, durationMs: Date.now() - startMs, result: finalResult },
         });
+        // Track consecutive ghost jobs for backend health alerting
+        if (isGhostJob) {
+          this.shared.consecutiveGhostJobs++;
+          console.error(`[job-queue] Ghost job detected: ${job.type}/${job.id.slice(0, 8)} — ${result.llmCalls} LLM calls, 0 tokens (consecutive: ${this.shared.consecutiveGhostJobs})`);
+        } else if (entry.category === 'llm' && result.tokensUsed > 0) {
+          this.shared.consecutiveGhostJobs = 0;
+        }
       } catch (err) {
         if (cancelled) return;
         const errorMsg = err instanceof Error ? err.message : String(err);

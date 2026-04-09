@@ -29,6 +29,7 @@ const MUTATING_TOOLS = new Set([
   'shadow_system_add', 'shadow_system_remove',
   'shadow_relation_add', 'shadow_relation_remove',
   'shadow_events_ack', 'shadow_feedback',
+  'shadow_alert_ack', 'shadow_alert_resolve',
 ]);
 
 const MIME_TYPES: Record<string, string> = {
