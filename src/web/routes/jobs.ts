@@ -46,7 +46,7 @@ export async function handleJobRoutes(
     const jobTriggerMatch = pathname.match(/^\/api\/jobs\/trigger\/(.+)$/);
     if (jobTriggerMatch) {
       const type = decodeURIComponent(jobTriggerMatch[1]);
-      const VALID_TYPES = new Set(['heartbeat', 'suggest', 'suggest-deep', 'suggest-project', 'consolidate', 'reflect', 'remote-sync', 'repo-profile', 'project-profile', 'context-enrich', 'mcp-discover', 'digest-daily', 'digest-weekly', 'digest-brag']);
+      const VALID_TYPES = new Set(['heartbeat', 'suggest', 'suggest-deep', 'suggest-project', 'consolidate', 'reflect', 'remote-sync', 'repo-profile', 'project-profile', 'context-enrich', 'mcp-discover', 'digest-daily', 'digest-weekly', 'digest-brag', 'revalidate-suggestion']);
       if (!VALID_TYPES.has(type)) {
         return json(res, { error: `Unknown job type: ${type}` }, 400), true;
       }

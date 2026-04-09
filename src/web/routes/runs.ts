@@ -22,6 +22,69 @@ export async function handleRunRoutes(
       const total = db.countRuns({ status, archived });
       return json(res, { items, total }), true;
     }
+
+    // Run context — full journey chain in one call
+    const contextMatch = pathname.match(/^\/api\/runs\/([^/]+)\/context$/);
+    if (contextMatch) {
+      const run = db.getRun(contextMatch[1]);
+      if (!run) return json(res, { error: 'Run not found' }, 404), true;
+
+      // Resolve the "root" run (parent if this is a child)
+      const parentRun = run.parentRunId ? db.getRun(run.parentRunId) : null;
+      const rootRun = parentRun ?? run;
+
+      // All children of the root run (including archived retries)
+      const childRuns = db.listRuns({ parentRunId: rootRun.id, archived: undefined });
+
+      // Source suggestion and observation
+      const sourceSuggestion = rootRun.suggestionId ? db.getSuggestion(rootRun.suggestionId) : null;
+      const sourceObservation = sourceSuggestion?.sourceObservationId ? db.getObservation(sourceSuggestion.sourceObservationId) : null;
+
+      return json(res, {
+        run: rootRun,
+        childRuns,
+        parentRun,
+        sourceSuggestion,
+        sourceObservation,
+      }), true;
+    }
+
+    // PR status — live via gh CLI
+    const prStatusMatch = pathname.match(/^\/api\/runs\/([^/]+)\/pr-status$/);
+    if (prStatusMatch) {
+      const run = db.getRun(prStatusMatch[1]);
+      if (!run) return json(res, { error: 'Run not found' }, 404), true;
+      if (!run.prUrl) return json(res, { error: 'Run has no PR' }, 400), true;
+
+      try {
+        const { execSync } = await import('node:child_process');
+        const repo = db.getRepo(run.repoId);
+        if (!repo) return json(res, { error: 'Repo not found' }, 404), true;
+        const prJson = execSync(
+          `gh pr view "${run.prUrl}" --json state,isDraft,reviewDecision,statusCheckRollup,url`,
+          { cwd: repo.path, timeout: 15_000, stdio: 'pipe', encoding: 'utf-8' },
+        ).trim();
+        const pr = JSON.parse(prJson) as { state?: string; isDraft?: boolean; reviewDecision?: string; statusCheckRollup?: Array<{ conclusion?: string; state?: string }>; url?: string };
+        // Aggregate checks status
+        const checks = pr.statusCheckRollup ?? [];
+        let checksStatus: string | null = null;
+        if (checks.length > 0) {
+          if (checks.some(c => c.conclusion === 'FAILURE' || c.state === 'FAILURE')) checksStatus = 'FAILURE';
+          else if (checks.every(c => c.conclusion === 'SUCCESS' || c.state === 'SUCCESS')) checksStatus = 'SUCCESS';
+          else checksStatus = 'PENDING';
+        }
+        return json(res, {
+          state: pr.state ?? 'OPEN',
+          isDraft: pr.isDraft ?? false,
+          reviewDecision: pr.reviewDecision ?? null,
+          checksStatus,
+          url: pr.url ?? run.prUrl,
+        }), true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return json(res, { error: `Failed to fetch PR status: ${msg}` }, 500), true;
+      }
+    }
   }
 
   if (req.method === 'POST') {
@@ -206,6 +269,49 @@ export async function handleRunRoutes(
         db.updateRun(runId, { sessionId: finalSessionId });
         return json(res, { sessionId: finalSessionId, command: `cd ${cwd} && claude --resume ${finalSessionId}` }), true;
       }
+    }
+
+    // Close journey — done, no more action needed
+    const closeMatch = pathname.match(/^\/api\/runs\/([^/]+)\/close$/);
+    if (closeMatch) {
+      const runId = closeMatch[1];
+      const run = db.getRun(runId);
+      if (!run) return json(res, { error: 'Run not found' }, 404), true;
+      try { db.transitionRun(runId, 'closed'); } catch { return json(res, { error: 'Cannot close run in current status' }, 400), true; }
+      const body = await parseOptionalBody(req, res, OptionalNoteSchema);
+      if (!body) return true;
+      if (body.note) db.updateRun(runId, { closedNote: body.note });
+      db.createFeedback({ targetKind: 'run', targetId: runId, action: 'close', note: body.note });
+      // Also close pending child runs
+      const children = db.listRuns({ parentRunId: runId, archived: undefined });
+      for (const child of children) {
+        if (!['discarded', 'failed', 'closed'].includes(child.status)) {
+          try { db.transitionRun(child.id, 'closed'); } catch { /* skip non-closeable children */ }
+        }
+      }
+      return json(res, { ok: true, status: 'closed' }), true;
+    }
+
+    // Cleanup worktree — remove orphaned worktree + branch
+    const cleanupMatch = pathname.match(/^\/api\/runs\/([^/]+)\/cleanup-worktree$/);
+    if (cleanupMatch) {
+      const runId = cleanupMatch[1];
+      const run = db.getRun(runId);
+      if (!run) return json(res, { error: 'Run not found' }, 404), true;
+      if (!run.worktreePath) return json(res, { error: 'No worktree to clean up' }, 400), true;
+      const repo = db.getRepo(run.repoId);
+      if (!repo) return json(res, { error: 'Repo not found' }, 404), true;
+      try {
+        const { execSync } = await import('node:child_process');
+        try { execSync(`git worktree remove "${run.worktreePath}" --force`, { cwd: repo.path, timeout: 10_000, stdio: 'pipe' }); } catch { /* may not exist */ }
+        const branchName = `shadow/${runId.slice(0, 8)}`;
+        try { execSync(`git branch -D "${branchName}"`, { cwd: repo.path, timeout: 5_000, stdio: 'pipe' }); } catch { /* may not exist */ }
+        db.updateRun(runId, { worktreePath: null as unknown as string });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return json(res, { error: `Cleanup failed: ${msg}` }, 500), true;
+      }
+      return json(res, { ok: true }), true;
     }
 
     // Draft PR endpoint

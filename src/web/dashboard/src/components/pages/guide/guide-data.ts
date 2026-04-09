@@ -220,8 +220,9 @@ export const MCP_CATEGORIES: McpCategory[] = [
   {
     name: 'Runs & Events',
     tools: [
-      { name: 'shadow_run_list', description: 'List task runs with optional status filter.', trust: 0, readOnly: true },
+      { name: 'shadow_run_list', description: 'List task runs. Filter by status, repo, archived. Supports pagination.', trust: 0, readOnly: true },
       { name: 'shadow_run_view', description: 'View details of a specific run.', trust: 0, readOnly: true },
+      { name: 'shadow_run_create', description: 'Create a run directly from a Claude session (without a suggestion).', trust: 2, readOnly: false },
       { name: 'shadow_events', description: 'Returns pending (undelivered) events.', trust: 0, readOnly: true },
       { name: 'shadow_events_ack', description: 'Acknowledge all pending events.', trust: 1, readOnly: false },
     ],

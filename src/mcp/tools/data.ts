@@ -13,7 +13,17 @@ const SearchSchema = z.object({
 });
 
 const RunListSchema = z.object({
-  status: z.string().describe('Filter by status: queued, running, completed, failed').optional(),
+  status: z.string().describe('Filter by status: queued, running, completed, executed, executed_manual, failed, closed, discarded').optional(),
+  repoId: z.string().describe('Filter by repo ID').optional(),
+  archived: z.boolean().describe('Include archived runs (default false)').optional(),
+  limit: z.number().describe('Max results (default 20)').optional(),
+  offset: z.number().describe('Offset for pagination (default 0)').optional(),
+});
+
+const RunCreateSchema = z.object({
+  repoId: z.string().describe('Repository ID where the work will happen'),
+  prompt: z.string().describe('Description of what to implement'),
+  kind: z.string().describe('Run kind — e.g. task, refactor, bug, improvement (default: task)').optional(),
 });
 
 const RunViewSchema = z.object({
@@ -132,11 +142,13 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     // ---- Runs ----
     {
       name: 'shadow_run_list',
-      description: 'List task runs with optional status filter.',
+      description: 'List task runs. Filter by status, repo, archived. Supports pagination.',
       inputSchema: mcpSchema(RunListSchema),
       handler: async (params) => {
-        const { status } = RunListSchema.parse(params);
-        return db.listRuns({ status });
+        const { status, repoId, archived, limit, offset } = RunListSchema.parse(params);
+        const items = db.listRuns({ status, repoId, archived: archived ?? false, limit: limit ?? 20, offset: offset ?? 0 });
+        const total = db.countRuns({ status, archived: archived ?? false });
+        return { items, total };
       },
     },
     {
@@ -148,6 +160,20 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         const run = db.getRun(runId);
         if (!run) return { isError: true, message: `Run not found: ${runId}` };
         return run;
+      },
+    },
+    {
+      name: 'shadow_run_create',
+      description: 'Create a new run directly (without a suggestion). Use this to register implementation work in Shadow so it is trackable in the workspace. Requires trust level >= 2.',
+      inputSchema: mcpSchema(RunCreateSchema),
+      handler: async (params) => {
+        const gate = trustGate(2);
+        if (!gate.ok) return gate.error;
+        const { repoId, prompt, kind } = RunCreateSchema.parse(params);
+        const repo = db.getRepo(repoId);
+        if (!repo) return { isError: true, message: `Repo not found: ${repoId}` };
+        const run = db.createRun({ repoId, repoIds: [repoId], kind: kind ?? 'task', prompt });
+        return { ok: true, runId: run.id, status: run.status };
       },
     },
 

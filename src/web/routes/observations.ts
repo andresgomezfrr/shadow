@@ -24,6 +24,19 @@ export async function handleObservationRoutes(
       const fbState = db.getThumbsState('observation');
       return json(res, { items, total, feedbackState: fbState }), true;
     }
+
+    // Observation context — generated suggestions + linked runs
+    const contextMatch = pathname.match(/^\/api\/observations\/([^/]+)\/context$/);
+    if (contextMatch) {
+      const observation = db.getObservation(contextMatch[1]);
+      if (!observation) return json(res, { error: 'Observation not found' }, 404), true;
+      // 1:N — all suggestions sourced from this observation
+      const generatedSuggestions = db.listSuggestions({ limit: 50 }).filter(s => s.sourceObservationId === observation.id);
+      // Runs created from those suggestions
+      const suggestionIds = new Set(generatedSuggestions.map(s => s.id));
+      const linkedRuns = db.listRuns({ archived: undefined }).filter(r => r.suggestionId && suggestionIds.has(r.suggestionId) && !r.parentRunId);
+      return json(res, { observation, generatedSuggestions, linkedRuns }), true;
+    }
   }
 
   if (req.method === 'POST') {

@@ -16,6 +16,7 @@ export const ModelsSchema = z.object({
   suggestProject: z.string().default('opus'),
   projectProfile: z.string().default('opus'),
   mcpDiscover: z.string().default('sonnet'),
+  revalidate: z.string().default('opus'),
 });
 
 export const EffortsSchema = z.object({
@@ -27,6 +28,7 @@ export const EffortsSchema = z.object({
   suggestProject: z.string().default('high'),
   projectProfile: z.string().default('high'),
   enrich: z.string().default('high'),
+  revalidate: z.string().default('high'),
 });
 
 export const ConfigSchema = z.object({
@@ -61,6 +63,7 @@ export const ConfigSchema = z.object({
     suggestProject: 'opus',
     projectProfile: 'opus',
     mcpDiscover: 'sonnet',
+    revalidate: 'opus',
   }),
   efforts: EffortsSchema.default({
     analyze: 'medium',
@@ -71,6 +74,7 @@ export const ConfigSchema = z.object({
     suggestProject: 'high',
     projectProfile: 'high',
     enrich: 'high',
+    revalidate: 'high',
   }),
   locale: z.string().default('es'),
   watcherEnabled: z.coerce.boolean().default(true),

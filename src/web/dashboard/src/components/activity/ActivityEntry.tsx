@@ -39,6 +39,9 @@ const PHASE_DOT: Record<string, string> = {
   scan: 'bg-green-600',
   profile: 'bg-emerald-400',
   digest: 'bg-cyan',
+  prepare: 'bg-sky-400',
+  evaluate: 'bg-sky-500',
+  apply: 'bg-sky-300',
 };
 
 const PHASE_TEXT: Record<string, string> = {
@@ -62,6 +65,9 @@ const PHASE_TEXT: Record<string, string> = {
   scan: 'text-green-600',
   profile: 'text-emerald-400',
   digest: 'text-cyan',
+  prepare: 'text-sky-400',
+  evaluate: 'text-sky-500',
+  apply: 'text-sky-300',
 };
 
 const JOB_PHASES: Record<string, string[]> = {
@@ -79,6 +85,7 @@ const JOB_PHASES: Record<string, string[]> = {
   'digest-daily': ['digest-daily'],
   'digest-weekly': ['digest-weekly'],
   'digest-brag': ['digest-brag'],
+  'revalidate-suggestion': ['prepare', 'evaluate', 'apply'],
 };
 
 
@@ -117,8 +124,8 @@ function PhasePipeline({ phases, currentPhase, allPhases }: { phases: string[]; 
         return (
           <div key={phase} className="flex items-center">
             {i > 0 && <div className={`w-4 h-px ${isFuture ? 'bg-border/50' : 'bg-border'} mx-0.5`} />}
-            <div className="flex items-center gap-1">
-              <div className={`w-1.5 h-1.5 rounded-full ${dotColor} ${isCurrent ? 'animate-pulse' : ''}`} />
+            <div className={`flex items-center gap-1 ${isCurrent ? 'animate-pulse' : ''}`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
               <span className={`text-[10px] ${textColor}`}>{phase}</span>
             </div>
           </div>
@@ -140,7 +147,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const repos = arr(r, 'reposAnalyzed');
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['heartbeat']} />
         {num(r, 'observationsCreated') > 0 && (
           <div>
             <span className="text-accent">Observations ({num(r, 'observationsCreated')}):</span>
@@ -188,7 +195,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const sugItems = items(r, 'suggestionItems');
     return (
       <>
-        <PhasePipeline phases={entry.phases} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['suggest']} />
         {num(r, 'suggestionsCreated') > 0 ? (
           <div>
             <span className="text-accent">Suggestions ({num(r, 'suggestionsCreated')}):</span>
@@ -277,10 +284,33 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     );
   }
 
+  if (type === 'revalidate-suggestion') {
+    const verdict = str(r, 'verdict');
+    const verdictNote = str(r, 'verdictNote');
+    const title = str(r, 'suggestionTitle');
+    const count = num(r, 'newCount');
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['revalidate-suggestion']} />
+        {title && <div><span className="text-accent">Suggestion:</span> <span className="text-text-dim">{title}</span></div>}
+        {verdict && (
+          <div className="flex items-center gap-2">
+            <span className="text-accent">Verdict:</span>
+            <Badge className={verdict === 'valid' ? 'text-green bg-green/15' : verdict === 'partial' ? 'text-orange bg-orange/15' : 'text-red bg-red/15'}>
+              {verdict === 'valid' ? '✓ valid' : verdict === 'partial' ? '◐ partial' : '✕ outdated'}
+            </Badge>
+            {count > 1 && <span className="text-text-muted text-xs">(revalidation #{count})</span>}
+          </div>
+        )}
+        {verdictNote && <div className="text-text-dim text-xs">{verdictNote}</div>}
+      </>
+    );
+  }
+
   if (type === 'consolidate') {
     return (
       <>
-        <PhasePipeline phases={entry.phases} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['consolidate']} />
         <div className="flex items-center gap-3 flex-wrap">
           <span><span className="text-accent">Promoted:</span> <span className="text-text-dim">{num(r, 'memoriesPromoted')}</span></span>
           <span><span className="text-accent">Demoted:</span> <span className="text-text-dim">{num(r, 'memoriesDemoted')}</span></span>
@@ -300,7 +330,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const preview = str(r, 'deltaPreview');
     return (
       <>
-        <PhasePipeline phases={entry.phases} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['reflect']} />
         {r.skipped ? (
           <div className="text-text-muted">Skipped{str(r, 'reason') ? ` — ${str(r, 'reason')}` : ' — no changes since last reflect'}</div>
         ) : str(r, 'reason') && !r.soulUpdated ? (
@@ -319,7 +349,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const summaries = (r.repoSummaries ?? []) as Array<{ name: string; newCommits: number }>;
     return (
       <>
-        <PhasePipeline phases={entry.phases} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['remote-sync']} />
         <div>
           <span className="text-accent">{num(r, 'reposSynced')} repos synced</span>
           <span className="text-text-muted">, {num(r, 'reposWithChanges')} with changes</span>
@@ -339,7 +369,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const names = arr(r, 'repoNames');
     return (
       <>
-        <PhasePipeline phases={entry.phases} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['repo-profile']} />
         <div>
           <span className="text-accent">Profiled:</span>{' '}
           <span className="text-text-dim">{names.length > 0 ? names.join(', ') : `${num(r, 'reposProfiled')} repos`}</span>
@@ -355,7 +385,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     }> | undefined;
     return (
       <>
-        <PhasePipeline phases={entry.phases} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['context-enrich']} />
         {projectResults && projectResults.length > 0 ? (
           <div className="space-y-3">
             {projectResults.map(pr => (
@@ -412,7 +442,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
 
     return (
       <>
-        <PhasePipeline phases={entry.phases} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES[type] ?? [type]} />
         <div>
           <span className="text-accent">{kind} digest{periodFull ? ` for ${periodFull}` : ''}</span>
           {words > 0 && <span className="text-text-dim">, {words} words</span>}
@@ -450,7 +480,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
   // Fallback: generic key-value dump
   return (
     <>
-      {entry.phases.length > 0 && <PhasePipeline phases={entry.phases} />}
+      {(entry.phases.length > 0 || JOB_PHASES[type]) && <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES[type]} />}
       {Object.entries(r)
         .filter(([, v]) => v != null && v !== 0 && v !== '' && v !== false)
         .map(([k, v]) => (
@@ -522,12 +552,11 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
         <div className="flex items-center gap-2 flex-wrap">
           <Badge className={typeColor}>{entry.type}</Badge>
           {isRun && entry.repoName && <Badge className="text-text-dim bg-border">{entry.repoName}</Badge>}
-          <span className="text-xs text-accent">running</span>
           {entry.startedAt && <span className="text-xs text-text-muted ml-auto">{timeAgo(entry.startedAt)}</span>}
         </div>
         {expectedPhases && (
           <div className="mt-2">
-            <PhasePipeline phases={[]} currentPhase={entry.activity ?? undefined} allPhases={expectedPhases} />
+            <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={expectedPhases} />
           </div>
         )}
       </div>
@@ -615,12 +644,13 @@ function RetryButton({ entry }: { entry: ActivityEntryType }) {
     if (triggered) return;
     setTriggered(true);
 
-    // Extract original params from the job result (repoId, projectId, periodStart, etc.)
+    // Extract original params from the job result (repoId, projectId, periodStart, suggestionId, etc.)
     const r = entry.result ?? {};
     const params: Record<string, string> = {};
     if (r.repoId) params.repoId = String(r.repoId);
     if (r.projectId) params.projectId = String(r.projectId);
     if (r.periodStart) params.periodStart = String(r.periodStart);
+    if (r.suggestionId) params.suggestionId = String(r.suggestionId);
 
     triggerJobWithParams(entry.type, Object.keys(params).length > 0 ? params : undefined);
     setTimeout(() => setTriggered(false), 15_000);

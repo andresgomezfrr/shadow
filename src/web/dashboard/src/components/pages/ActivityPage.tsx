@@ -103,11 +103,11 @@ export function ActivityPage() {
         </MetricCard>
         <MetricCard label="LLM calls" value={summary?.llmCalls ?? 0} />
         <MetricCard label="Tokens" value={formatTokens(summary?.tokensUsed ?? 0)} />
-        <MetricCard label="Items produced" value={itemsProduced} accent={itemsProduced > 0}>
-          <div className="text-xs text-text-muted mt-1">
-            {summary?.observationsCreated ?? 0} obs, {summary?.memoriesCreated ?? 0} mem, {summary?.suggestionsCreated ?? 0} sug
-          </div>
-        </MetricCard>
+        <MetricCard
+          label="Items produced"
+          value={`${itemsProduced} — ${summary?.observationsCreated ?? 0}o ${summary?.memoriesCreated ?? 0}m ${summary?.suggestionsCreated ?? 0}s`}
+          accent={itemsProduced > 0}
+        />
       </div>
 
       <div className="mb-4">

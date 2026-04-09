@@ -39,6 +39,28 @@ export async function handleSuggestionRoutes(
       for (const s of items) scores[s.id] = scoreMap.get(s.id) ?? 0;
       return json(res, { items, total, feedbackState: fbState, scores }), true;
     }
+
+    // Suggestion context — source observation + linked runs
+    const contextMatch = pathname.match(/^\/api\/suggestions\/([^/]+)\/context$/);
+    if (contextMatch) {
+      const suggestion = db.getSuggestion(contextMatch[1]);
+      if (!suggestion) return json(res, { error: 'Suggestion not found' }, 404), true;
+      const sourceObservation = suggestion.sourceObservationId ? db.getObservation(suggestion.sourceObservationId) : null;
+      const linkedRuns = db.listRuns({ archived: undefined }).filter(r => r.suggestionId === suggestion.id && !r.parentRunId);
+
+      // Compute rank score
+      const { computeRankScore } = await import('../../suggestion/ranking.js');
+      const { computeProjectMomentum } = await import('../../analysis/project-detection.js');
+      const profile = db.ensureProfile();
+      const projects = db.listProjects();
+      const projectMomentum = new Map(projects.map(p => [p.id, computeProjectMomentum(db, p.id, 7)]));
+      const rankScore = Math.round(computeRankScore(suggestion, profile, { projectMomentum }) * 10) / 10;
+
+      // Warning if source observation already resolved
+      const warning = sourceObservation?.status === 'resolved' ? 'The source observation has been resolved' : undefined;
+
+      return json(res, { suggestion, sourceObservation, linkedRuns, rankScore, warning }), true;
+    }
   }
 
   if (req.method === 'POST') {
@@ -74,6 +96,16 @@ export async function handleSuggestionRoutes(
         }
       }
       return json(res, { processed, total: body.ids.length }), true;
+    }
+
+    // Revalidate suggestion — enqueue job
+    const revalidateMatch = pathname.match(/^\/api\/suggestions\/([^/]+)\/revalidate$/);
+    if (revalidateMatch) {
+      const suggestion = db.getSuggestion(revalidateMatch[1]);
+      if (!suggestion) return json(res, { error: 'Suggestion not found' }, 404), true;
+      if (!suggestion.repoId) return json(res, { error: 'Suggestion has no repo' }, 400), true;
+      const job = db.enqueueJob('revalidate-suggestion', { priority: 7, triggerSource: 'web', params: { suggestionId: suggestion.id } });
+      return json(res, { ok: true, jobId: job.id }), true;
     }
 
     const match = pathname.match(/^\/api\/suggestions\/([^/]+)\/(accept|dismiss|snooze|update)$/);

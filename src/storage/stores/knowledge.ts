@@ -497,7 +497,7 @@ export function countSuggestions(db: DatabaseSync, filters?: { status?: string; 
   return (db.prepare(`SELECT COUNT(*) as total FROM suggestions ${where}`).get(...values) as { total: number }).total;
 }
 
-export function updateSuggestion(db: DatabaseSync, id: string, updates: Partial<Pick<SuggestionRecord, 'status' | 'feedbackNote' | 'shownAt' | 'resolvedAt' | 'expiresAt'>>): void {
+export function updateSuggestion(db: DatabaseSync, id: string, updates: Partial<Pick<SuggestionRecord, 'status' | 'feedbackNote' | 'shownAt' | 'resolvedAt' | 'expiresAt' | 'title' | 'summaryMd' | 'reasoningMd' | 'impactScore' | 'confidenceScore' | 'riskScore' | 'revalidationCount' | 'lastRevalidatedAt' | 'revalidationVerdict' | 'revalidationNote'>>): void {
   const sets: string[] = [];
   const values: SQLValue[] = [];
   for (const [key, value] of Object.entries(updates)) {
