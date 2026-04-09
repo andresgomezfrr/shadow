@@ -1,16 +1,29 @@
 # Shadow — Backlog
 
-Actualizado 2026-04-07. Items completados en [COMPLETED.md](COMPLETED.md).
+Actualizado 2026-04-09. Items completados en [COMPLETED.md](COMPLETED.md).
 
 ---
 
 ## Prioridad media — Tests
 
 ### Tests MCP tools
-53 tools, 0 tests. La interfaz principal de Shadow con Claude.
+54 tools (incl. shadow_run_create), 0 tests. La interfaz principal de Shadow con Claude.
 
 ### Tests WorkspacePage filtros + lifecycle
-Renderizado por filtro, transiciones de estado. (Renamed from RunsPage)
+Renderizado por filtro, transiciones de estado del feed unificado y context panel.
+
+---
+
+## Prioridad media — Workspace & Runs *(2026-04-09)*
+
+### Heartbeat dedup para observations resueltas que reaparecen
+Cuando `checkDuplicate()` encuentra match con observation resuelta, incrementar `votes` en vez de crear nueva. Feedback al heartbeat: "observation X resuelta pero reaparecida — votes incrementado a N".
+
+### Detectar PRs creados fuera de Shadow
+Si un run tiene worktree pero no prUrl, detectar si existe un PR con `gh pr list --head shadow/{id}`. Mostrar en el journey view.
+
+### Warning de worktree huerfano en workspace
+Si un run terminal tiene `worktreePath` pero el directorio ya no existe, mostrar warning visual en el journey view (no solo el cleanup button).
 
 ---
 

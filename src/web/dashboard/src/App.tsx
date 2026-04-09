@@ -17,7 +17,7 @@ import { JobsPage } from './components/pages/JobsPage';
 import { RunsPage } from './components/pages/RunsPage';
 import { WorkspacePage } from './components/pages/WorkspacePage';
 import { ActivityPage } from './components/pages/ActivityPage';
-import { EventsPage } from './components/pages/EventsPage';
+
 import { DigestsPage } from './components/pages/DigestsPage';
 import { GuidePage } from './components/pages/GuidePage';
 import { NotFoundPage } from './components/pages/NotFoundPage';
@@ -45,7 +45,7 @@ export function App() {
         <Route path="/workspace" element={<WorkspacePage />} />
         <Route path="/activity" element={<ActivityPage />} />
         <Route path="/digests" element={<DigestsPage />} />
-        <Route path="/events" element={<EventsPage />} />
+        <Route path="/events" element={<Navigate to="/activity" replace />} />
         <Route path="/guide" element={<GuidePage />} />
         <Route path="/emoji-guide" element={<Navigate to="/guide?section=status-line" replace />} />
         <Route path="*" element={<NotFoundPage />} />

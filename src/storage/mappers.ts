@@ -310,6 +310,7 @@ export function mapEvent(row: unknown): EventRecord {
     payload: jsonParse(d.payload_json, {}),
     delivered: bool(d.delivered),
     deliveredAt: strOrNull(d.delivered_at),
+    readAt: strOrNull(d.read_at),
     createdAt: str(d.created_at),
   };
 }

@@ -137,6 +137,11 @@ export async function handleProfileRoutes(
       return json(res, events), true;
     }
 
+    if (pathname === '/api/notifications') {
+      const events = db.listUnreadEvents();
+      return json(res, events), true;
+    }
+
     if (pathname === '/api/feedback-state') {
       const targetKind = params.get('targetKind');
       if (!targetKind) return json(res, { error: 'Missing targetKind' }, 400), true;
@@ -145,6 +150,20 @@ export async function handleProfileRoutes(
   }
 
   if (req.method === 'POST') {
+    // Mark notifications as read
+    if (pathname === '/api/notifications/read-all') {
+      const count = db.markAllEventsRead();
+      return json(res, { ok: true, read: count }), true;
+    }
+    if (pathname === '/api/notifications/read') {
+      let body: { ids?: string[] };
+      try { body = JSON.parse(await readBody(req)); } catch { return json(res, { error: 'Invalid JSON' }, 400), true; }
+      if (Array.isArray(body.ids)) {
+        for (const id of body.ids) db.markEventRead(id);
+      }
+      return json(res, { ok: true, read: body.ids?.length ?? 0 }), true;
+    }
+
     if (pathname === '/api/profile') {
       let body: Record<string, unknown>;
       try { body = JSON.parse(await readBody(req)); } catch { return json(res, { error: 'Invalid JSON body' }, 400), true; }

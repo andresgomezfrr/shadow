@@ -40,6 +40,7 @@ const PHASE_DOT: Record<string, string> = {
   profile: 'bg-emerald-400',
   digest: 'bg-cyan',
   prepare: 'bg-sky-400',
+  extract: 'bg-purple',
   evaluate: 'bg-sky-500',
   apply: 'bg-sky-300',
 };
@@ -66,26 +67,27 @@ const PHASE_TEXT: Record<string, string> = {
   profile: 'text-emerald-400',
   digest: 'text-cyan',
   prepare: 'text-sky-400',
+  extract: 'text-purple',
   evaluate: 'text-sky-500',
   apply: 'text-sky-300',
 };
 
 const JOB_PHASES: Record<string, string[]> = {
-  heartbeat: ['observe', 'cleanup', 'analyze', 'notify'],
+  heartbeat: ['prepare', 'extract', 'cleanup', 'observe', 'notify'],
   suggest: ['suggest', 'notify'],
   consolidate: ['layer-maintenance', 'corrections', 'merge', 'meta-patterns'],
   reflect: ['reflect-delta', 'reflect-evolve'],
   'remote-sync': ['remote-sync'],
   'repo-profile': ['repo-profile'],
-  'suggest-deep': ['scan', 'validate'],
-  'suggest-project': ['analyze', 'validate'],
+  'suggest-deep': ['scan', 'validate', 'notify'],
+  'suggest-project': ['analyze', 'validate', 'notify'],
   'project-profile': ['profile'],
   'context-enrich': ['enrich'],
   'mcp-discover': ['discover'],
   'digest-daily': ['digest-daily'],
   'digest-weekly': ['digest-weekly'],
   'digest-brag': ['digest-brag'],
-  'revalidate-suggestion': ['prepare', 'evaluate', 'apply'],
+  'revalidate-suggestion': ['prepare', 'evaluate', 'apply', 'notify'],
 };
 
 

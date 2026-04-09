@@ -73,7 +73,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
   // Get last completed heartbeat for context (the claimed one is now 'running', skip it)
   const previousHeartbeat = db.listJobs({ type: 'heartbeat', status: 'completed', limit: 1 })[0] ?? null;
 
-  ctx.setPhase('observe');
+  ctx.setPhase('prepare');
 
   // Detect active projects from recent interactions + conversations
   let detectedProjects: Array<{ projectId: string; projectName: string; score: number }> = [];
@@ -779,6 +779,14 @@ Generate 1-5 suggestions. Quality over quantity.`;
     }
   }
 
+  // Notify for created suggestions
+  if (suggestionsCreated > 0) {
+    ctx.setPhase('notify');
+    for (const item of suggestionItems) {
+      ctx.db.createEvent({ kind: 'suggestion_ready', priority: 6, payload: { message: `Deep scan suggestion: ${item.title}`, suggestionId: item.id, repoId } });
+    }
+  }
+
   // Post deep-scan: trigger suggest-project if repo belongs to a project with 2+ repos
   try {
     const projects = ctx.db.listProjects().filter(p => {
@@ -799,7 +807,7 @@ Generate 1-5 suggestions. Quality over quantity.`;
 
   return {
     llmCalls: 1, tokensUsed: tokens,
-    phases: suggestionsCreated > 0 ? ['scan', 'validate'] : ['scan'],
+    phases: suggestionsCreated > 0 ? ['scan', 'validate', 'notify'] : ['scan'],
     result: { repoName: repo.name, suggestionsCreated, suggestionItems, repoId },
   };
 }
@@ -968,9 +976,17 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
     }
   }
 
+  // Notify for created suggestions
+  if (suggestionsCreated > 0) {
+    ctx.setPhase('notify');
+    for (const item of suggestionItems) {
+      ctx.db.createEvent({ kind: 'suggestion_ready', priority: 6, payload: { message: `Cross-repo suggestion: ${item.title}`, suggestionId: item.id } });
+    }
+  }
+
   return {
     llmCalls: 1, tokensUsed: tokens,
-    phases: suggestionsCreated > 0 ? ['analyze', 'validate'] : ['analyze'],
+    phases: suggestionsCreated > 0 ? ['analyze', 'validate', 'notify'] : ['analyze'],
     result: { projectName: project.name, suggestionsCreated, suggestionItems },
   };
 }
@@ -1093,9 +1109,9 @@ ${sourceObs ? `### Source Observation\n[${sourceObs.severity}] ${sourceObs.title
 2. Check if the problem was already fixed or if the code has changed significantly
 3. Determine if the suggestion is still valid, partially valid, or outdated
 
-Use Read, Grep, Glob to explore the code. Be thorough.
+Use Read, Grep, Glob to explore the code. Be thorough but focused — check the specific files and patterns the suggestion mentions.
 
-Respond with JSON:
+IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON object (no markdown fences, no explanation before or after). This JSON is machine-parsed:
 {
   "verdict": "valid" | "outdated" | "partial",
   "verdictNote": "Explanation of why (2-3 sentences). If outdated, explain what changed. If partial, explain what still applies.",
@@ -1136,42 +1152,62 @@ Respond with JSON:
   const schema = z.object({
     verdict: z.enum(['valid', 'outdated', 'partial']),
     verdictNote: z.string(),
-    title: z.string(),
-    summaryMd: z.string(),
-    reasoningMd: z.string(),
-    impactScore: z.number().min(1).max(5),
-    confidenceScore: z.number().min(0).max(100),
-    riskScore: z.number().min(1).max(5),
+    title: z.string().optional(),
+    summaryMd: z.string().optional(),
+    reasoningMd: z.string().optional(),
+    impactScore: z.number().min(1).max(5).optional(),
+    confidenceScore: z.number().min(0).max(100).optional(),
+    riskScore: z.number().min(1).max(5).optional(),
     dismissReason: z.string().optional(),
   });
 
   const parsed = safeParseJson(result.output, schema, 'revalidate-suggestion');
   if (!parsed.success) {
-    return { llmCalls: 1, tokensUsed: tokens, phases: ['prepare', 'evaluate', 'apply'], result: { error: 'Failed to parse LLM output', suggestionId } };
+    console.error(`[daemon] revalidate-suggestion parse error: ${parsed.error}\nRaw output (first 500): ${result.output.slice(0, 500)}`);
+    return { llmCalls: 1, tokensUsed: tokens, phases: ['prepare', 'evaluate', 'apply'], result: { error: `Parse failed: ${parsed.error?.slice(0, 100)}`, suggestionId, rawSnippet: result.output.slice(0, 200) } };
   }
 
   const v = parsed.data;
   const now = new Date().toISOString();
 
-  // Update suggestion in-place
-  ctx.db.updateSuggestion(suggestionId, {
-    title: v.title,
-    summaryMd: v.summaryMd,
-    reasoningMd: v.reasoningMd,
-    impactScore: v.impactScore,
-    confidenceScore: v.confidenceScore,
-    riskScore: v.riskScore,
+  // Update suggestion in-place — only update fields the LLM provided
+  const updates: Record<string, unknown> = {
     revalidationCount: suggestion.revalidationCount + 1,
     lastRevalidatedAt: now,
     revalidationVerdict: v.verdict,
     revalidationNote: v.verdict === 'outdated' ? (v.dismissReason ?? v.verdictNote) : v.verdictNote,
-  });
+  };
+  if (v.title) updates.title = v.title;
+  if (v.summaryMd) updates.summaryMd = v.summaryMd;
+  if (v.reasoningMd) updates.reasoningMd = v.reasoningMd;
+  // Apply verdict-based score adjustments
+  // If Claude provided scores, use them. Otherwise, adjust existing scores by verdict.
+  if (v.verdict === 'valid') {
+    updates.impactScore = v.impactScore ?? suggestion.impactScore;
+    updates.confidenceScore = v.confidenceScore ?? Math.max(suggestion.confidenceScore, 70);
+    updates.riskScore = v.riskScore ?? suggestion.riskScore;
+  } else if (v.verdict === 'partial') {
+    updates.impactScore = v.impactScore ?? Math.round(suggestion.impactScore * 0.8);
+    updates.confidenceScore = v.confidenceScore ?? Math.round(suggestion.confidenceScore * 0.6);
+    updates.riskScore = v.riskScore ?? suggestion.riskScore;
+  } else if (v.verdict === 'outdated') {
+    updates.impactScore = v.impactScore ?? suggestion.impactScore;
+    updates.confidenceScore = v.confidenceScore ?? 15;
+    updates.riskScore = v.riskScore ?? suggestion.riskScore;
+  } else {
+    if (v.impactScore != null) updates.impactScore = v.impactScore;
+    if (v.confidenceScore != null) updates.confidenceScore = v.confidenceScore;
+    if (v.riskScore != null) updates.riskScore = v.riskScore;
+  }
+  ctx.db.updateSuggestion(suggestionId, updates as Parameters<typeof ctx.db.updateSuggestion>[1]);
 
   // Re-generate embedding with updated content
   try {
     const { generateAndStoreEmbedding } = await import('../memory/lifecycle.js');
-    await generateAndStoreEmbedding(ctx.db, 'suggestion', suggestionId, { title: v.title, summaryMd: v.summaryMd });
+    await generateAndStoreEmbedding(ctx.db, 'suggestion', suggestionId, { title: v.title ?? suggestion.title, summaryMd: v.summaryMd ?? suggestion.summaryMd });
   } catch { /* non-fatal */ }
+
+  // Note: job_completed event created by job-queue.ts (manual trigger)
 
   return {
     llmCalls: 1,

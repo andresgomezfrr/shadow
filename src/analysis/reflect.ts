@@ -219,14 +219,7 @@ export async function activityReflect(
   }
 
   if (phase2Error) {
-    ctx.db.createEvent({
-      kind: 'reflect_failed',
-      priority: 7,
-      payload: {
-        message: 'Soul reflection failed after retry',
-        detail: phase2Error,
-      },
-    });
+    // Job failure event created by job-queue.ts on handler throw/error
     return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: phase2Error };
   }
 

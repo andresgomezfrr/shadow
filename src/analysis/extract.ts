@@ -28,6 +28,7 @@ export async function activityAnalyze(
   ctx: HeartbeatContext,
   observations: ObservationRecord[],
   heartbeatId?: string,
+  onPhase?: (phase: string) => void,
 ): Promise<{ patternsDetected: number; memoriesCreated: number; llmCalls: number; tokensUsed: number; observationsCreated: number }> {
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const recentInteractions = loadRecentInteractions(ctx.config, twoHoursAgo);
@@ -206,6 +207,7 @@ export async function activityAnalyze(
       'Respond with JSON only.',
     ].join('\n');
 
+    onPhase?.('extract');
     const result = await adapter.execute({
       repos: [], title: 'Heartbeat Extract', goal: 'Extract knowledge + mood', prompt: extractPrompt,
       relevantMemories, model, effort,
@@ -323,6 +325,7 @@ export async function activityAnalyze(
         dataSources,
       ].join('\n');
 
+      onPhase?.('cleanup');
       const cleanupResult = await adapter.execute({
         repos: [], title: 'Observe Cleanup', goal: 'Resolve obsolete observations',
         prompt: cleanupPrompt, relevantMemories: [], model, effort,
@@ -378,6 +381,7 @@ export async function activityAnalyze(
       'Respond with JSON only.',
     ].join('\n');
 
+    onPhase?.('observe');
     const result = await adapter.execute({
       repos: [], title: 'Heartbeat Observe', goal: 'Generate observations', prompt: observePrompt,
       relevantMemories: [], model, effort,

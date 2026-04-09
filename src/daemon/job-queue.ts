@@ -142,6 +142,11 @@ export class JobQueue {
           type: 'job:complete',
           data: { jobId: job.id, type: job.type, status: finalStatus, durationMs: Date.now() - startMs, result: finalResult },
         });
+        // Emit event for manually triggered jobs
+        if (finalStatus === 'completed' && job.triggerSource === 'manual') {
+          this.db.createEvent({ kind: 'job_completed', priority: 3, payload: { message: `Manual job completed: ${job.type}`, detail: JSON.stringify(finalResult).slice(0, 200) } });
+        }
+
         // Track consecutive ghost jobs for backend health alerting
         if (isGhostJob) {
           this.shared.consecutiveGhostJobs++;
@@ -164,6 +169,7 @@ export class JobQueue {
           data: { jobId: job.id, type: job.type, status: 'failed', durationMs: Date.now() - startMs, error: errorMsg },
         });
         console.error(`[job-queue] Job ${job.type}/${job.id.slice(0, 8)} failed:`, errorMsg);
+        this.db.createEvent({ kind: 'job_failed', priority: 7, payload: { message: `${job.type} failed: ${errorMsg.slice(0, 100)}`, jobType: job.type, detail: errorMsg.slice(0, 200) } });
 
         // Auto-retry for reactive/backfill/first-scan jobs (max 2 retries)
         const MAX_RETRIES = 2;
@@ -200,6 +206,7 @@ export class JobQueue {
           data: { jobId: job.id, type: job.type, status: 'failed', durationMs: JOB_TIMEOUT_MS, error: 'timeout' },
         });
         console.error(`[job-queue] Job ${job.type}/${job.id.slice(0, 8)} timed out — killed adapters`);
+        this.db.createEvent({ kind: 'job_failed', priority: 7, payload: { message: `${job.type} timed out`, jobType: job.type, detail: 'Job exceeded timeout limit' } });
         this.active.delete(job.id);
       }
     });

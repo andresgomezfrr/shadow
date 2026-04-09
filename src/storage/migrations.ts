@@ -760,6 +760,13 @@ export const migrations: Migration[] = [
       ALTER TABLE suggestions ADD COLUMN revalidation_note TEXT;
     `,
   },
+  {
+    version: 39,
+    name: 'event_read_at',
+    sql: `
+      ALTER TABLE event_queue ADD COLUMN read_at TEXT;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {
