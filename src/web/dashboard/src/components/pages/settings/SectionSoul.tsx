@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApi } from '../../../hooks/useApi';
 import { fetchSoulHistory } from '../../../api/client';
+import { Markdown } from '../../common/Markdown';
 
 type Props = {
   visible: boolean;
@@ -25,8 +26,8 @@ export function SectionSoul({ visible }: Props) {
         Updated: {new Date(data.current.updatedAt).toLocaleString()}
       </p>
 
-      <div className="bg-bg rounded-lg px-4 py-3 text-sm text-text-dim prose prose-sm prose-invert max-w-none mb-4 whitespace-pre-wrap">
-        {data.current.bodyMd}
+      <div className="bg-bg rounded-lg px-4 py-3 mb-4">
+        <Markdown>{data.current.bodyMd}</Markdown>
       </div>
 
       {data.snapshots.length > 0 && (
@@ -47,8 +48,8 @@ export function SectionSoul({ visible }: Props) {
                   </span>
                 </button>
                 {expandedSnapshot === snap.id && (
-                  <div className="bg-bg rounded-lg px-4 py-3 text-xs text-text-muted mt-1 mb-2 whitespace-pre-wrap animate-fade-in">
-                    {snap.bodyMd}
+                  <div className="bg-bg rounded-lg px-4 py-3 mt-1 mb-2 animate-fade-in">
+                    <Markdown>{snap.bodyMd}</Markdown>
                   </div>
                 )}
               </div>
