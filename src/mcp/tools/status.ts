@@ -74,6 +74,11 @@ export function statusTools(ctx: ToolContext): McpTool[] {
           recentObs = recentObs.slice(0, 5);
         }
 
+        // Soul reflection — the synthesized understanding of the developer
+        const allMems = db.listMemories({ archived: false });
+        const soulMem = allMems.find(m => m.kind === 'soul_reflection');
+        const soul = soulMem?.bodyMd ?? null;
+
         // Context knowledge: relevant memories for the current context
         let contextKnowledge: { title: string; kind: string; snippet: string }[] = [];
         let contextEntities: { repo?: { name: string; id: string }; projects: { name: string; id: string }[]; systems: { name: string; id: string; kind: string }[] } | undefined;
@@ -141,6 +146,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
           })),
           contextRepo: contextRepoId,
           contextProjects: contextProjectIds,
+          soul,
           contextEntities,
           contextKnowledge,
           todayTokens: usage.totalInputTokens + usage.totalOutputTokens,
