@@ -154,17 +154,25 @@ export type SystemDetail = import('@shadow/models').SystemRecord & {
 // Workspace types
 // ---------------------------------------------------------------------------
 
+export type ChainInfo = {
+  observationId?: string;
+  observationTitle?: string;
+  suggestionId?: string;
+  suggestionTitle?: string;
+};
+
 export type FeedItem = {
   source: 'run' | 'suggestion' | 'observation';
   id: string;
   priority: number;
   data: import('@shadow/models').RunRecord | import('@shadow/models').SuggestionRecord | import('@shadow/models').ObservationRecord;
+  chain?: ChainInfo;
 };
 
 export type FeedResponse = {
   items: FeedItem[];
   total: number;
-  counts: { runs: number; suggestions: number; observations: number };
+  counts: { runs: number; suggestions: number; observations: number; backlog: number; snoozed: number; acknowledged: number };
 };
 
 export type RunContext = {

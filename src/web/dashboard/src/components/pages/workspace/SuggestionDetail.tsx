@@ -6,6 +6,7 @@ import { Badge } from '../../common/Badge';
 import { SUG_KIND_COLORS, SUG_KIND_COLOR_DEFAULT } from '../../../utils/suggestion-colors';
 import { timeAgo } from '../../../utils/format';
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useWorkspace } from './WorkspaceContext';
 
 function useRevalidationPolling(suggestionId: string, baseline: number, onComplete: () => void) {
   const [active, setActive] = useState(false);
@@ -39,6 +40,7 @@ function useRevalidationPolling(suggestionId: string, baseline: number, onComple
 
 export function SuggestionDetail({ suggestionId, onRefresh }: { suggestionId: string; onRefresh?: () => void }) {
   const { data: ctx, refresh } = useApi(() => fetchSuggestionContext(suggestionId), [suggestionId], 30_000);
+  const { drillToItem } = useWorkspace();
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
@@ -52,9 +54,20 @@ export function SuggestionDetail({ suggestionId, onRefresh }: { suggestionId: st
     doRefresh,
   );
 
-  const handleAccept = useCallback(async () => {
+  const [acceptMenuOpen, setAcceptMenuOpen] = useState(false);
+  const acceptMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!acceptMenuOpen) return;
+    const close = (e: MouseEvent) => { if (acceptMenuRef.current && !acceptMenuRef.current.contains(e.target as Node)) setAcceptMenuOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [acceptMenuOpen]);
+
+  const handleAccept = useCallback(async (category?: string) => {
     setLoading('accept');
-    try { await acceptSuggestion(suggestionId); doRefresh(); } finally { setLoading(null); }
+    setAcceptMenuOpen(false);
+    try { await acceptSuggestion(suggestionId, category); doRefresh(); } finally { setLoading(null); }
   }, [suggestionId, doRefresh]);
 
   const handleDismiss = useCallback(async (note?: string) => {
@@ -112,7 +125,7 @@ export function SuggestionDetail({ suggestionId, onRefresh }: { suggestionId: st
       )}
 
       {/* Pre-filled dismiss for outdated suggestions */}
-      {s.revalidationVerdict === 'outdated' && s.status === 'pending' && (
+      {s.revalidationVerdict === 'outdated' && (s.status === 'pending' || s.status === 'backlog') && (
         <div className="bg-red/5 border border-red/20 rounded-lg p-3 space-y-2">
           <div className="text-xs text-red font-medium">Ready to dismiss</div>
           <textarea
@@ -146,7 +159,10 @@ export function SuggestionDetail({ suggestionId, onRefresh }: { suggestionId: st
         <div className="text-xs bg-bg rounded-lg p-2">
           <span className="text-text-muted">From observation: </span>
           <span className="text-text-dim">{sourceObservation.title}</span>
-          <a href={`/observations?highlight=${sourceObservation.id}`} className="text-accent hover:underline ml-2">View</a>
+          <button
+            onClick={() => drillToItem(sourceObservation.id, 'observation')}
+            className="text-accent hover:underline ml-2 bg-transparent border-none cursor-pointer text-xs"
+          >View</button>
         </div>
       )}
 
@@ -189,7 +205,11 @@ export function SuggestionDetail({ suggestionId, onRefresh }: { suggestionId: st
           {linkedRuns.map(r => (
             <div key={r.id} className="flex items-center gap-2">
               <Badge className="text-text-dim bg-border">{r.status}</Badge>
-              <span className="truncate">{r.prompt.slice(0, 60)}</span>
+              <span className="truncate flex-1">{r.prompt.slice(0, 60)}</span>
+              <button
+                onClick={() => drillToItem(r.id, 'run')}
+                className="text-accent hover:underline shrink-0 bg-transparent border-none cursor-pointer text-xs"
+              >View</button>
             </div>
           ))}
         </div>
@@ -197,15 +217,35 @@ export function SuggestionDetail({ suggestionId, onRefresh }: { suggestionId: st
 
       {/* Actions */}
       <div className="flex items-center gap-3 border-t border-border pt-3 flex-wrap">
-        {s.status === 'pending' && (
+        {(s.status === 'pending' || s.status === 'backlog') && (
           <>
-            <button onClick={handleAccept} disabled={loading === 'accept'} className="px-4 py-2 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer hover:brightness-110 disabled:opacity-50">
-              ✓ Accept
-            </button>
-            <button onClick={handleSnooze} className="text-xs text-blue hover:underline bg-transparent border-none cursor-pointer">Snooze</button>
-            {s.revalidationVerdict !== 'outdated' && (
-              <button onClick={() => handleDismiss()} className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer">Dismiss</button>
+            <div className="relative" ref={acceptMenuRef}>
+              <button
+                onClick={() => setAcceptMenuOpen(!acceptMenuOpen)}
+                disabled={loading === 'accept'}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer hover:brightness-110 disabled:opacity-50"
+              >
+                {s.status === 'backlog' ? 'Move' : '✓ Accept'}
+              </button>
+              {acceptMenuOpen && (
+                <div className="absolute bottom-full left-0 mb-1 bg-card border border-border rounded-lg shadow-lg z-10 overflow-hidden min-w-36">
+                  {(s.status === 'backlog'
+                    ? [{ label: 'Execute', category: 'execute' }, { label: 'Already done', category: 'manual' }]
+                    : [{ label: 'Execute', category: 'execute' }, { label: 'Already done', category: 'manual' }, { label: 'Backlog', category: 'planned' }]
+                  ).map(opt => (
+                    <button
+                      key={opt.category}
+                      onClick={() => handleAccept(opt.category)}
+                      className="block w-full px-4 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer border-none bg-transparent"
+                    >{opt.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {s.status === 'pending' && (
+              <button onClick={handleSnooze} className="text-xs text-blue hover:underline bg-transparent border-none cursor-pointer">Snooze</button>
             )}
+            <button onClick={() => handleDismiss()} className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer">Dismiss</button>
           </>
         )}
         <button

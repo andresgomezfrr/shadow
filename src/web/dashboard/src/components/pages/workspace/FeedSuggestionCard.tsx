@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import { timeAgo } from '../../../utils/format';
 import { Badge } from '../../common/Badge';
 import { ScoreBar } from '../../common/ScoreBar';
@@ -10,11 +11,22 @@ const STATUS_BORDER: Record<string, string> = {
   accepted: 'border-l-green', dismissed: 'border-l-text-muted',
 };
 
+const ACCEPT_OPTIONS = [
+  { label: 'Execute', category: 'execute' },
+  { label: 'Already done', category: 'manual' },
+  { label: 'Backlog', category: 'planned' },
+];
+
+const BACKLOG_MOVE_OPTIONS = [
+  { label: 'Execute', category: 'execute' },
+  { label: 'Already done', category: 'manual' },
+];
+
 type Props = {
   suggestion: Suggestion;
   selected: boolean;
   onSelect: (item: SelectedItem) => void;
-  onAccept?: (id: string) => void;
+  onAccept?: (id: string, category?: string) => void;
   onDismiss?: (id: string) => void;
   onSnooze?: (id: string) => void;
 };
@@ -22,6 +34,19 @@ type Props = {
 export function FeedSuggestionCard({ suggestion: s, selected, onSelect, onAccept, onDismiss, onSnooze }: Props) {
   const border = STATUS_BORDER[s.status] ?? 'border-l-border';
   const isPending = s.status === 'pending';
+  const isBacklog = s.status === 'backlog';
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
+
+  const options = isBacklog ? BACKLOG_MOVE_OPTIONS : ACCEPT_OPTIONS;
+  const buttonLabel = isBacklog ? 'Move' : '✓ Accept';
 
   return (
     <div
@@ -33,15 +58,29 @@ export function FeedSuggestionCard({ suggestion: s, selected, onSelect, onAccept
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm">💡</span>
         <Badge className={SUG_KIND_COLORS[s.kind] ?? SUG_KIND_COLOR_DEFAULT}>{s.kind}</Badge>
+        {isBacklog && <Badge className="text-purple bg-purple/15">backlog</Badge>}
+        {s.revalidationVerdict === 'outdated' && <Badge className="text-red bg-red/15">outdated</Badge>}
         <span className="font-medium text-[13px] flex-1 min-w-0 truncate">{s.title}</span>
         <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} compact />
 
-        {/* Inline actions */}
-        {isPending && onAccept && (
-          <button
-            onClick={e => { e.stopPropagation(); onAccept(s.id); }}
-            className="px-3 py-1 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer transition-all hover:brightness-110"
-          >✓ Accept</button>
+        {(isPending || isBacklog) && onAccept && (
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+              className="px-3 py-1 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer transition-all hover:brightness-110"
+            >{buttonLabel}</button>
+            {menuOpen && (
+              <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 overflow-hidden min-w-36">
+                {options.map(opt => (
+                  <button
+                    key={opt.category}
+                    onClick={e => { e.stopPropagation(); onAccept(s.id, opt.category); setMenuOpen(false); }}
+                    className="block w-full px-4 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer border-none bg-transparent"
+                  >{opt.label}</button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {isPending && onSnooze && (
           <button
@@ -49,7 +88,7 @@ export function FeedSuggestionCard({ suggestion: s, selected, onSelect, onAccept
             className="text-xs text-blue hover:underline bg-transparent border-none cursor-pointer"
           >Snooze</button>
         )}
-        {isPending && onDismiss && (
+        {(isPending || isBacklog) && onDismiss && (
           <button
             onClick={e => { e.stopPropagation(); onDismiss(s.id); }}
             className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer"

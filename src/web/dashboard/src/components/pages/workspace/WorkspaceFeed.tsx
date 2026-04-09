@@ -34,7 +34,7 @@ export function WorkspaceFeed() {
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
-  const counts = data?.counts ?? { runs: 0, suggestions: 0, observations: 0 };
+  const counts = data?.counts ?? { runs: 0, suggestions: 0, observations: 0, backlog: 0, snoozed: 0, acknowledged: 0 };
   const allCount = counts.runs + counts.suggestions + counts.observations;
 
   const handleSelect = useCallback((id: string, type: string) => {
@@ -55,7 +55,7 @@ export function WorkspaceFeed() {
   }, [refresh]);
 
   // --- Suggestion actions ---
-  const handleAccept = useCallback(async (id: string) => { await acceptSuggestion(id); refresh(); }, [refresh]);
+  const handleAccept = useCallback(async (id: string, category?: string) => { await acceptSuggestion(id, category); refresh(); }, [refresh]);
   const handleDismiss = useCallback(async (id: string) => {
     const note = window.prompt('Reason for dismissing (optional):');
     await dismissSuggestion(id, note || undefined);
@@ -71,20 +71,69 @@ export function WorkspaceFeed() {
   }, [refresh]);
   const handleAck = useCallback(async (id: string) => { await acknowledgeObservation(id); refresh(); }, [refresh]);
 
+  // Map sub-filter values to their parent for highlight
+  const parentFilter = { all: 'all', run: 'run', suggestion: 'suggestion', backlog: 'suggestion', snoozed: 'suggestion', observation: 'observation', acknowledged: 'observation' } as const;
+  const activeParent = parentFilter[state.activeFilter] ?? 'all';
+
   const filterOptions = [
     { label: `All (${allCount})`, value: 'all' },
     { label: `Runs (${counts.runs})`, value: 'run', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
-    { label: `Suggestions (${counts.suggestions})`, value: 'suggestion', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
-    { label: `Observations (${counts.observations})`, value: 'observation', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
+    { label: `Suggestions (${counts.suggestions + counts.backlog + counts.snoozed})`, value: 'suggestion', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
+    { label: `Observations (${counts.observations + counts.acknowledged})`, value: 'observation', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
+  ];
+
+  const suggestionSubTabs = [
+    { label: `Pending (${counts.suggestions})`, value: 'suggestion' },
+    { label: `Backlog (${counts.backlog})`, value: 'backlog' },
+    { label: `Snoozed (${counts.snoozed})`, value: 'snoozed' },
+  ];
+
+  const observationSubTabs = [
+    { label: `Active (${counts.observations})`, value: 'observation' },
+    { label: `Acknowledged (${counts.acknowledged})`, value: 'acknowledged' },
   ];
 
   return (
     <div className="flex flex-col gap-2">
       <FilterTabs
         options={filterOptions}
-        active={state.activeFilter}
+        active={activeParent}
         onChange={v => setFilter(v as typeof state.activeFilter)}
       />
+
+      {/* Sub-tabs for suggestions */}
+      {(activeParent === 'suggestion') && (
+        <div className="flex gap-1 ml-1">
+          {suggestionSubTabs.map(t => (
+            <button
+              key={t.value}
+              onClick={() => setFilter(t.value as typeof state.activeFilter)}
+              className={`px-2.5 py-1 rounded text-[11px] border-none cursor-pointer transition-colors ${
+                state.activeFilter === t.value
+                  ? 'bg-blue/15 text-blue font-medium'
+                  : 'bg-transparent text-text-muted hover:text-text'
+              }`}
+            >{t.label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Sub-tabs for observations */}
+      {(activeParent === 'observation') && (
+        <div className="flex gap-1 ml-1">
+          {observationSubTabs.map(t => (
+            <button
+              key={t.value}
+              onClick={() => setFilter(t.value as typeof state.activeFilter)}
+              className={`px-2.5 py-1 rounded text-[11px] border-none cursor-pointer transition-colors ${
+                state.activeFilter === t.value
+                  ? 'bg-orange/15 text-orange font-medium'
+                  : 'bg-transparent text-text-muted hover:text-text'
+              }`}
+            >{t.label}</button>
+          ))}
+        </div>
+      )}
 
       {sessionInfo && (
         <div className="p-3 rounded-lg bg-accent-soft border border-accent/30 text-sm space-y-1">

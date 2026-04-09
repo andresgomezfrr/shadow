@@ -28,6 +28,7 @@ export async function activityNotify(
         impactScore: suggestion.impactScore,
       },
     });
+    ctx.db.updateSuggestion(suggestion.id, { shownAt: new Date().toISOString() });
     eventsQueued++;
   }
 

@@ -5,6 +5,7 @@ import { ConfidenceIndicator } from '../../common/ConfidenceIndicator';
 import { Badge } from '../../common/Badge';
 import { timeAgo } from '../../../utils/format';
 import { useState, useCallback } from 'react';
+import { useWorkspace } from './WorkspaceContext';
 import type { Run } from '../../../api/types';
 
 // --- Timeline step visual ---
@@ -32,6 +33,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
   const [planOpen, setPlanOpen] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<{ command: string } | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const { drillToItem } = useWorkspace();
 
   const run = ctx?.run;
   const childRuns = ctx?.childRuns ?? [];
@@ -128,7 +130,10 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
             <span className="text-orange mr-1">{sourceObservation.severity}</span>
             {sourceObservation.title}
           </div>
-          <a href={`/observations?highlight=${sourceObservation.id}`} className="text-xs text-accent hover:underline">View observation</a>
+          <button
+            onClick={() => drillToItem(sourceObservation.id, 'observation')}
+            className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer"
+          >View observation</button>
         </Step>
       )}
 
@@ -141,6 +146,10 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
           {sourceSuggestion.status === 'backlog' && sourceSuggestion.resolvedAt && (
             <div className="text-xs text-text-muted mt-0.5">In backlog since {timeAgo(sourceSuggestion.resolvedAt)}</div>
           )}
+          <button
+            onClick={() => drillToItem(sourceSuggestion.id, 'suggestion')}
+            className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer mt-0.5"
+          >View suggestion</button>
         </Step>
       )}
 
