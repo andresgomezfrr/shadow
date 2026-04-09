@@ -23,6 +23,8 @@ import type {
   RunContext,
   SuggestionContext,
   ObservationContext,
+  TaskContext,
+  Task,
   PrStatus,
 } from './types';
 
@@ -334,3 +336,28 @@ export const closeRun = (id: string, note?: string) =>
 
 export const cleanupWorktree = (id: string) =>
   api<{ ok: boolean }>(`/api/runs/${id}/cleanup-worktree`, { method: 'POST' });
+
+// --- Tasks ---
+
+export const fetchTasks = (params?: { status?: string; limit?: number; offset?: number }) => {
+  const q = new URLSearchParams();
+  if (params?.status) q.set('status', params.status);
+  if (params?.limit) q.set('limit', String(params.limit));
+  if (params?.offset) q.set('offset', String(params.offset));
+  const qs = q.toString();
+  return api<{ items: Task[]; total: number }>(`/api/tasks${qs ? `?${qs}` : ''}`);
+};
+
+export const fetchTaskContext = (id: string) => api<TaskContext>(`/api/tasks/${id}`);
+
+export const createTask = (input: { title: string; status?: string; contextMd?: string; externalRefs?: { source: string; key: string; url: string }[]; repoIds?: string[]; projectId?: string; sessionId?: string; sessionRepoPath?: string }) =>
+  api<Task>('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+
+export const updateTask = (id: string, updates: Record<string, unknown>) =>
+  api<Task>(`/api/tasks/${id}/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+
+export const closeTask = (id: string) =>
+  api<Task>(`/api/tasks/${id}/close`, { method: 'POST' });
+
+export const deleteTask = (id: string) =>
+  api<{ ok: boolean }>(`/api/tasks/${id}`, { method: 'DELETE' });

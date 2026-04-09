@@ -20,6 +20,7 @@ const NAV: NavEntry[] = [
   // Action
   { divider: true },
   { to: '/workspace', icon: '▶', label: 'Workspace', countKey: 'runsToReview' },
+  { to: '/tasks', icon: '✅', label: 'Tasks' },
   { to: '/suggestions', icon: '💡', label: 'Suggestions', countKey: 'pendingSuggestions' },
   { to: '/observations', icon: '👁', label: 'Observations', countKey: 'activeObservations' },
 

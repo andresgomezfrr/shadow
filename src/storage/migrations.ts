@@ -767,6 +767,29 @@ export const migrations: Migration[] = [
       ALTER TABLE event_queue ADD COLUMN read_at TEXT;
     `,
   },
+  {
+    version: 40,
+    name: 'tasks',
+    sql: `
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'todo',
+        context_md TEXT,
+        external_refs_json TEXT NOT NULL DEFAULT '[]',
+        repo_ids_json TEXT NOT NULL DEFAULT '[]',
+        project_id TEXT,
+        entities_json TEXT NOT NULL DEFAULT '[]',
+        session_id TEXT,
+        session_repo_path TEXT,
+        pr_urls_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        closed_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

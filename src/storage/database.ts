@@ -23,6 +23,7 @@ import type {
   RunRecord,
   SuggestionRecord,
   SystemRecord,
+  TaskRecord,
   UserProfileRecord,
 } from './models.js';
 import { applyMigrations } from './migrations.js';
@@ -34,6 +35,7 @@ import * as tracking from './stores/tracking.js';
 import * as profileStore from './stores/profile.js';
 import * as enrichmentStore from './stores/enrichment.js';
 import * as relations from './stores/relations.js';
+import * as tasksStore from './stores/tasks.js';
 
 // --- Input types ---
 
@@ -378,6 +380,15 @@ export class ShadowDatabase {
   listDigests(filters?: { kind?: string; limit?: number; before?: string; after?: string }): DigestRecord[] { return enrichmentStore.listDigests(this.database, filters); }
   getLatestDigest(kind: string): DigestRecord | null { return enrichmentStore.getLatestDigest(this.database, kind); }
   updateDigest(id: string, updates: { contentMd?: string; tokensUsed?: number }): void { return enrichmentStore.updateDigest(this.database, id, updates); }
+
+  // --- Tasks ---
+
+  createTask(input: Parameters<typeof tasksStore.createTask>[1]): TaskRecord { return tasksStore.createTask(this.database, input); }
+  getTask(id: string): TaskRecord | null { return tasksStore.getTask(this.database, id); }
+  listTasks(filters?: { status?: string; repoId?: string; projectId?: string; limit?: number; offset?: number }): TaskRecord[] { return tasksStore.listTasks(this.database, filters); }
+  countTasks(filters?: { status?: string; repoId?: string; projectId?: string }): number { return tasksStore.countTasks(this.database, filters); }
+  updateTask(id: string, updates: Parameters<typeof tasksStore.updateTask>[2]): void { return tasksStore.updateTask(this.database, id, updates); }
+  deleteTask(id: string): void { return tasksStore.deleteTask(this.database, id); }
 }
 
 // --- Factory ---

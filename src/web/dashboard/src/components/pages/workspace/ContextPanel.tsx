@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useWorkspace } from './WorkspaceContext';
 import { RunJourney } from './RunJourney';
+import { TaskDetail } from './TaskDetail';
 import { SuggestionDetail } from './SuggestionDetail';
 import { ObservationDetail } from './ObservationDetail';
 
@@ -76,6 +77,9 @@ export function ContextPanel() {
 
       {state.selectedItemType === 'run' && (
         <RunJourney runId={state.selectedItemId} />
+      )}
+      {state.selectedItemType === 'task' && (
+        <TaskDetail taskId={state.selectedItemId} />
       )}
       {state.selectedItemType === 'suggestion' && (
         <SuggestionDetail suggestionId={state.selectedItemId} />
