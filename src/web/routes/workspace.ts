@@ -11,7 +11,7 @@ type ChainInfo = {
 };
 
 type FeedItem = {
-  source: 'run' | 'suggestion' | 'observation';
+  source: 'run' | 'suggestion' | 'observation' | 'task';
   id: string;
   priority: number;
   data: unknown;
@@ -29,6 +29,12 @@ type FeedItem = {
  */
 function assignPriority(item: FeedItem): number {
   if (item.source === 'run') return 100;
+  if (item.source === 'task') {
+    const t = item.data as { status?: string };
+    if (t.status === 'in_progress') return 85;
+    if (t.status === 'blocked') return 82;
+    return 55; // todo
+  }
   if (item.source === 'observation') {
     const obs = item.data as { severity?: string };
     if (obs.severity === 'high') return 90;
@@ -59,8 +65,13 @@ export async function handleWorkspaceRoutes(
 
     const items: FeedItem[] = [];
 
-    // Which suggestion/observation statuses to include
+    // Which statuses to include
     const includeRuns = type === 'all' || type === 'run';
+    const includeActiveTasks = type === 'all' || type === 'task';
+    const includeTaskTodo = type === 'task-todo';
+    const includeTaskInProgress = type === 'task-in-progress';
+    const includeTaskBlocked = type === 'task-blocked';
+    const includeTaskClosed = type === 'task-closed';
     const includePending = type === 'all' || type === 'suggestion';
     const includeBacklog = type === 'backlog';
     const includeSnoozed = type === 'snoozed';
@@ -77,6 +88,33 @@ export async function handleWorkspaceRoutes(
           if (!projects.some(p => p.id === projectId)) continue;
         }
         items.push({ source: 'run', id: r.id, priority: 0, data: r });
+      }
+    }
+
+    // Tasks by status
+    if (includeActiveTasks) {
+      for (const t of db.listTasks({ projectId, limit: 50 })) {
+        if (t.status !== 'closed') items.push({ source: 'task', id: t.id, priority: 0, data: t });
+      }
+    }
+    if (includeTaskTodo) {
+      for (const t of db.listTasks({ status: 'todo', projectId, limit: 50 })) {
+        items.push({ source: 'task', id: t.id, priority: 0, data: t });
+      }
+    }
+    if (includeTaskInProgress) {
+      for (const t of db.listTasks({ status: 'in_progress', projectId, limit: 50 })) {
+        items.push({ source: 'task', id: t.id, priority: 0, data: t });
+      }
+    }
+    if (includeTaskBlocked) {
+      for (const t of db.listTasks({ status: 'blocked', projectId, limit: 50 })) {
+        items.push({ source: 'task', id: t.id, priority: 0, data: t });
+      }
+    }
+    if (includeTaskClosed) {
+      for (const t of db.listTasks({ status: 'closed', projectId, limit: 50 })) {
+        items.push({ source: 'task', id: t.id, priority: 0, data: t });
       }
     }
 
@@ -115,6 +153,10 @@ export async function handleWorkspaceRoutes(
 
     // Counts — always computed for all statuses so tabs show accurate numbers
     const countRuns = db.listRuns({ status: 'completed', archived: false, limit: 50 }).filter(r => !r.parentRunId).length;
+    const countTasksTodo = db.countTasks({ status: 'todo', projectId });
+    const countTasksInProgress = db.countTasks({ status: 'in_progress', projectId });
+    const countTasksBlocked = db.countTasks({ status: 'blocked', projectId });
+    const countTasksClosed = db.countTasks({ status: 'closed', projectId });
     const countPending = db.countSuggestions({ status: 'pending', projectId });
     const countBacklog = db.countSuggestions({ status: 'backlog', projectId });
     const countSnoozed = db.countSuggestions({ status: 'snoozed', projectId });
@@ -123,6 +165,11 @@ export async function handleWorkspaceRoutes(
 
     const counts = {
       runs: countRuns,
+      tasks: countTasksTodo + countTasksInProgress + countTasksBlocked,
+      tasksTodo: countTasksTodo,
+      tasksInProgress: countTasksInProgress,
+      tasksBlocked: countTasksBlocked,
+      tasksClosed: countTasksClosed,
       suggestions: countPending,
       observations: countActive,
       backlog: countBacklog,

@@ -17,6 +17,7 @@ import { handleEntityRoutes } from './routes/entities.js';
 import { handleKnowledgeRoutes } from './routes/knowledge.js';
 import { handleProfileRoutes } from './routes/profile.js';
 import { handleWorkspaceRoutes } from './routes/workspace.js';
+import { handleTaskRoutes } from './routes/tasks.js';
 
 const MUTATING_TOOLS = new Set([
   'shadow_memory_teach', 'shadow_memory_forget', 'shadow_memory_update', 'shadow_correct',
@@ -29,6 +30,7 @@ const MUTATING_TOOLS = new Set([
   'shadow_contact_add', 'shadow_contact_remove',
   'shadow_system_add', 'shadow_system_remove',
   'shadow_relation_add', 'shadow_relation_remove',
+  'shadow_task_create', 'shadow_task_update', 'shadow_task_close', 'shadow_task_remove',
   'shadow_events_ack', 'shadow_feedback',
   'shadow_alert_ack', 'shadow_alert_resolve',
 ]);
@@ -186,7 +188,7 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
         }
 
         const handlers = [
-          handleWorkspaceRoutes,
+          handleWorkspaceRoutes, handleTaskRoutes,
           handleSuggestionRoutes, handleObservationRoutes, handleRunRoutes,
           handleActivityRoutes, handleJobRoutes, handleEntityRoutes,
           handleKnowledgeRoutes, handleProfileRoutes,

@@ -1,14 +1,14 @@
 import { createContext, useContext, useCallback, useRef, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { Run, Suggestion, Observation } from '../../../api/types';
+import type { Run, Suggestion, Observation, Task } from '../../../api/types';
 
 export type SelectedItem = {
   id: string;
-  type: 'run' | 'suggestion' | 'observation';
-  data: Run | Suggestion | Observation;
+  type: 'run' | 'suggestion' | 'observation' | 'task';
+  data: Run | Suggestion | Observation | Task;
 };
 
-export type ActiveFilter = 'all' | 'run' | 'suggestion' | 'observation' | 'backlog' | 'snoozed' | 'acknowledged';
+export type ActiveFilter = 'all' | 'run' | 'task' | 'task-todo' | 'task-in-progress' | 'task-blocked' | 'task-closed' | 'suggestion' | 'observation' | 'backlog' | 'snoozed' | 'acknowledged';
 
 type WorkspaceState = {
   selectedProjectId: string | null;

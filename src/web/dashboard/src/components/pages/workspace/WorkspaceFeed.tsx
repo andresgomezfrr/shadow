@@ -7,12 +7,13 @@ import {
 } from '../../../api/client';
 import { useWorkspace } from './WorkspaceContext';
 import { FeedRunCard } from './FeedRunCard';
+import { FeedTaskCard } from './FeedTaskCard';
 import { FeedSuggestionCard } from './FeedSuggestionCard';
 import { FeedObservationCard } from './FeedObservationCard';
 import { FilterTabs } from '../../common/FilterTabs';
 import { Pagination } from '../../common/Pagination';
 import { EmptyState } from '../../common/EmptyState';
-import type { Run, Suggestion, Observation } from '../../../api/types';
+import type { Run, Task, Suggestion, Observation } from '../../../api/types';
 import { useState } from 'react';
 
 const PAGE_SIZE = 20;
@@ -34,8 +35,8 @@ export function WorkspaceFeed() {
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
-  const counts = data?.counts ?? { runs: 0, suggestions: 0, observations: 0, backlog: 0, snoozed: 0, acknowledged: 0 };
-  const allCount = counts.runs + counts.suggestions + counts.observations;
+  const counts = data?.counts ?? { runs: 0, tasks: 0, tasksTodo: 0, tasksInProgress: 0, tasksBlocked: 0, tasksClosed: 0, suggestions: 0, observations: 0, backlog: 0, snoozed: 0, acknowledged: 0 };
+  const allCount = counts.runs + counts.tasks + counts.suggestions + counts.observations;
 
   const handleSelect = useCallback((id: string, type: string) => {
     setSelectedItem(state.selectedItemId === id ? null : id, type);
@@ -72,14 +73,27 @@ export function WorkspaceFeed() {
   const handleAck = useCallback(async (id: string) => { await acknowledgeObservation(id); refresh(); }, [refresh]);
 
   // Map sub-filter values to their parent for highlight
-  const parentFilter = { all: 'all', run: 'run', suggestion: 'suggestion', backlog: 'suggestion', snoozed: 'suggestion', observation: 'observation', acknowledged: 'observation' } as const;
+  const parentFilter: Record<string, string> = {
+    all: 'all', run: 'run',
+    task: 'task', 'task-todo': 'task', 'task-in-progress': 'task', 'task-blocked': 'task', 'task-closed': 'task',
+    suggestion: 'suggestion', backlog: 'suggestion', snoozed: 'suggestion',
+    observation: 'observation', acknowledged: 'observation',
+  };
   const activeParent = parentFilter[state.activeFilter] ?? 'all';
 
   const filterOptions = [
     { label: `All (${allCount})`, value: 'all' },
     { label: `Runs (${counts.runs})`, value: 'run', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
+    { label: `Tasks (${counts.tasks + counts.tasksClosed})`, value: 'task', dotColor: 'bg-teal-400', activeClass: 'bg-teal-500/15 text-teal-300' },
     { label: `Suggestions (${counts.suggestions + counts.backlog + counts.snoozed})`, value: 'suggestion', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
     { label: `Observations (${counts.observations + counts.acknowledged})`, value: 'observation', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
+  ];
+
+  const taskSubTabs = [
+    { label: `Todo (${counts.tasksTodo})`, value: 'task-todo' },
+    { label: `In Progress (${counts.tasksInProgress})`, value: 'task-in-progress' },
+    { label: `Blocked (${counts.tasksBlocked})`, value: 'task-blocked' },
+    { label: `Closed (${counts.tasksClosed})`, value: 'task-closed' },
   ];
 
   const suggestionSubTabs = [
@@ -100,6 +114,23 @@ export function WorkspaceFeed() {
         active={activeParent}
         onChange={v => setFilter(v as typeof state.activeFilter)}
       />
+
+      {/* Sub-tabs for tasks */}
+      {(activeParent === 'task') && (
+        <div className="flex gap-1 ml-1">
+          {taskSubTabs.map(t => (
+            <button
+              key={t.value}
+              onClick={() => setFilter(t.value as typeof state.activeFilter)}
+              className={`px-2.5 py-1 rounded text-[11px] border-none cursor-pointer transition-colors ${
+                state.activeFilter === t.value
+                  ? 'bg-teal-500/15 text-teal-300 font-medium'
+                  : 'bg-transparent text-text-muted hover:text-text'
+              }`}
+            >{t.label}</button>
+          ))}
+        </div>
+      )}
 
       {/* Sub-tabs for suggestions */}
       {(activeParent === 'suggestion') && (
@@ -154,6 +185,9 @@ export function WorkspaceFeed() {
             const isSelected = state.selectedItemId === item.id;
             if (item.source === 'run') {
               return <FeedRunCard key={item.id} run={item.data as Run} selected={isSelected} onSelect={({ id, type }) => handleSelect(id, type)} onExecute={handleExecute} onSession={handleSession} onDiscard={handleDiscard} />;
+            }
+            if (item.source === 'task') {
+              return <FeedTaskCard key={item.id} task={item.data as Task} selected={isSelected} onSelect={({ id, type }) => handleSelect(id, type)} />;
             }
             if (item.source === 'suggestion') {
               return <FeedSuggestionCard key={item.id} suggestion={item.data as Suggestion} selected={isSelected} onSelect={({ id, type }) => handleSelect(id, type)} onAccept={handleAccept} onDismiss={handleDismiss} onSnooze={handleSnooze} />;

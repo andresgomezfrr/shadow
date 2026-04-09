@@ -30,6 +30,7 @@ export type {
   DigestJobResult,
   JobResultMap,
   JobType,
+  TaskRecord as Task,
 } from '@shadow/models';
 
 // ---------------------------------------------------------------------------
@@ -162,17 +163,17 @@ export type ChainInfo = {
 };
 
 export type FeedItem = {
-  source: 'run' | 'suggestion' | 'observation';
+  source: 'run' | 'suggestion' | 'observation' | 'task';
   id: string;
   priority: number;
-  data: import('@shadow/models').RunRecord | import('@shadow/models').SuggestionRecord | import('@shadow/models').ObservationRecord;
+  data: import('@shadow/models').RunRecord | import('@shadow/models').SuggestionRecord | import('@shadow/models').ObservationRecord | import('@shadow/models').TaskRecord;
   chain?: ChainInfo;
 };
 
 export type FeedResponse = {
   items: FeedItem[];
   total: number;
-  counts: { runs: number; suggestions: number; observations: number; backlog: number; snoozed: number; acknowledged: number };
+  counts: { runs: number; tasks: number; tasksTodo: number; tasksInProgress: number; tasksBlocked: number; tasksClosed: number; suggestions: number; observations: number; backlog: number; snoozed: number; acknowledged: number };
 };
 
 export type RunContext = {
@@ -195,6 +196,13 @@ export type ObservationContext = {
   observation: import('@shadow/models').ObservationRecord;
   generatedSuggestions: import('@shadow/models').SuggestionRecord[];
   linkedRuns: import('@shadow/models').RunRecord[];
+};
+
+export type TaskContext = {
+  task: import('@shadow/models').TaskRecord;
+  observations: import('@shadow/models').ObservationRecord[];
+  suggestions: import('@shadow/models').SuggestionRecord[];
+  runs: import('@shadow/models').RunRecord[];
 };
 
 export type PrStatus = {

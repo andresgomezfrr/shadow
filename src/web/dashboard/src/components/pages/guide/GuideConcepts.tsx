@@ -154,7 +154,8 @@ export function GuideConcepts() {
         <h2 className="text-base font-semibold mb-3">Workspace</h2>
         <p className="text-sm text-text-dim mb-3">
           The <span className="text-text">Workspace</span> is the developer command center — a unified feed of all
-          pending runs, suggestions, and observations sorted by priority. Quick filter tabs let you focus on one type.
+          pending runs, tasks, suggestions, and observations sorted by priority. Quick filter tabs let you focus on one type,
+          with sub-filters per status (e.g. Suggestions: Pending/Backlog/Snoozed, Tasks: Todo/In Progress/Blocked/Closed).
           Project chips filter by active project.
         </p>
         <p className="text-sm text-text-dim mb-3">
@@ -266,7 +267,8 @@ const OBSERVATION_KINDS: [string, string][] = [
 
 const CONTEXT_PANEL_TYPES: [string, string, string][] = [
   ['▶', 'Run Journey', 'Vertical timeline: origin observation → suggestion → plan → execution attempts → verification → PR. Session and worktree info always visible.'],
-  ['💡', 'Suggestion Detail', 'Full summary, reasoning, scores, source observation, linked runs. Re-evaluate button to check freshness.'],
+  ['📋', 'Task Detail', 'Work container: context, external refs (Jira, etc.), session resume command, PRs, related observations/suggestions/runs. Status: todo → in_progress → blocked → closed (free transitions).'],
+  ['💡', 'Suggestion Detail', 'Full summary, reasoning, scores, source observation, linked runs. Re-evaluate button to check freshness. Accept dropdown: Execute/Already done/Backlog.'],
   ['👁', 'Observation Detail', 'Description, context, severity, generated suggestions (1:N), linked runs.'],
 ];
 

@@ -16,6 +16,7 @@ import { UsagePage } from './components/pages/UsagePage';
 import { JobsPage } from './components/pages/JobsPage';
 import { RunsPage } from './components/pages/RunsPage';
 import { WorkspacePage } from './components/pages/WorkspacePage';
+import { TasksPage } from './components/pages/TasksPage';
 import { ActivityPage } from './components/pages/ActivityPage';
 
 import { DigestsPage } from './components/pages/DigestsPage';
@@ -43,6 +44,7 @@ export function App() {
         <Route path="/jobs" element={<Navigate to="/activity" replace />} />
         <Route path="/runs" element={<Navigate to="/workspace" replace />} />
         <Route path="/workspace" element={<WorkspacePage />} />
+        <Route path="/tasks" element={<TasksPage />} />
         <Route path="/activity" element={<ActivityPage />} />
         <Route path="/digests" element={<DigestsPage />} />
         <Route path="/events" element={<Navigate to="/activity" replace />} />

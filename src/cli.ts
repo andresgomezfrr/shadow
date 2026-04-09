@@ -16,6 +16,7 @@ import { registerKnowledgeCommands } from './cli/cmd-knowledge.js';
 import { registerDaemonCommands } from './cli/cmd-daemon.js';
 import { registerProfileCommands } from './cli/cmd-profile.js';
 import { registerMiscCommands } from './cli/cmd-misc.js';
+import { registerTaskCommands } from './cli/cmd-tasks.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = join(__dirname, '..', 'package.json');
@@ -49,6 +50,7 @@ registerEntityCommands(program, config, withDb);
 registerKnowledgeCommands(program, config, withDb);
 registerDaemonCommands(program, config, withDb);
 registerMiscCommands(program, config, withDb);
+registerTaskCommands(program, config, withDb);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));

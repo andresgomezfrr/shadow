@@ -125,6 +125,17 @@ export const CLI_GROUPS: CliGroup[] = [
     ],
   },
   {
+    name: 'task',
+    description: 'Manage work tasks (containers for ongoing work)',
+    commands: [
+      { command: 'shadow task list', description: 'List tasks (filter by --status todo|in_progress|blocked|closed)' },
+      { command: 'shadow task create', args: '<title>', description: 'Create a new task (--ref <url>, --repo <path>, --session <id>)' },
+      { command: 'shadow task update', args: '<id>', description: 'Update a task (--status, --title, --add-ref, --add-pr, --session)' },
+      { command: 'shadow task close', args: '<id>', description: 'Close a task' },
+      { command: 'shadow task remove', args: '<id>', description: 'Permanently delete a task' },
+    ],
+  },
+  {
     name: 'run',
     description: 'Manage task runs',
     commands: [
@@ -175,6 +186,16 @@ export const MCP_CATEGORIES: McpCategory[] = [
       { name: 'shadow_suggest_accept', description: 'Accept a suggestion (creates a run).', trust: 1, readOnly: false },
       { name: 'shadow_suggest_dismiss', description: 'Dismiss a suggestion with optional note.', trust: 1, readOnly: false },
       { name: 'shadow_suggest_snooze', description: 'Snooze a suggestion for a given number of hours.', trust: 1, readOnly: false },
+    ],
+  },
+  {
+    name: 'Tasks',
+    tools: [
+      { name: 'shadow_tasks', description: 'List tasks with filters (status, repoId, projectId).', trust: 0, readOnly: true },
+      { name: 'shadow_task_create', description: 'Create a work task — link to external tickets, repos, projects, and a Claude session.', trust: 1, readOnly: false },
+      { name: 'shadow_task_update', description: 'Update a task — change status, context, session, PRs, external refs. All states transition freely.', trust: 1, readOnly: false },
+      { name: 'shadow_task_close', description: 'Close a task (mark as done).', trust: 1, readOnly: false },
+      { name: 'shadow_task_remove', description: 'Permanently delete a task.', trust: 1, readOnly: false },
     ],
   },
   {

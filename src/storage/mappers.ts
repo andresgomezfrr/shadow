@@ -17,6 +17,7 @@ import type {
   RunRecord,
   SuggestionRecord,
   SystemRecord,
+  TaskRecord,
   UserProfileRecord,
 } from './models.js';
 
@@ -461,5 +462,25 @@ export function mapEnrichment(row: unknown): EnrichmentCacheRecord {
     changeCount: num(d.change_count),
     accessCount: num(d.access_count),
     lastConsumedAt: strOrNull(d.last_consumed_at),
+  };
+}
+
+export function mapTask(row: unknown): TaskRecord {
+  const d = r(row);
+  return {
+    id: str(d.id),
+    title: str(d.title),
+    status: str(d.status),
+    contextMd: strOrNull(d.context_md),
+    externalRefs: jsonParse(d.external_refs_json, []),
+    repoIds: jsonParse(d.repo_ids_json, []),
+    projectId: strOrNull(d.project_id),
+    entities: jsonParse<EntityLink[]>(d.entities_json, []),
+    sessionId: strOrNull(d.session_id),
+    sessionRepoPath: strOrNull(d.session_repo_path),
+    prUrls: jsonParse(d.pr_urls_json, []),
+    createdAt: str(d.created_at),
+    updatedAt: str(d.updated_at),
+    closedAt: strOrNull(d.closed_at),
   };
 }

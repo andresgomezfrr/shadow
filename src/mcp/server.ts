@@ -13,6 +13,7 @@ import { suggestionTools } from './tools/suggestions.js';
 import { entityTools } from './tools/entities.js';
 import { profileTools } from './tools/profile.js';
 import { dataTools } from './tools/data.js';
+import { taskTools } from './tools/tasks.js';
 
 // ---------------------------------------------------------------------------
 // Tool assembly
@@ -74,6 +75,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: 
     ...entityTools(ctx),
     ...profileTools(ctx),
     ...dataTools(ctx),
+    ...taskTools(ctx),
   ];
 }
 

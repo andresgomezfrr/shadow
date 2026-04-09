@@ -464,6 +464,25 @@ export type EnrichmentCacheRecord = {
   lastConsumedAt: string | null;
 };
 
+// --- Tasks ---
+
+export type TaskRecord = {
+  id: string;
+  title: string;
+  status: string;
+  contextMd: string | null;
+  externalRefs: { source: string; key: string; url: string }[];
+  repoIds: string[];
+  projectId: string | null;
+  entities: EntityLink[];
+  sessionId: string | null;
+  sessionRepoPath: string | null;
+  prUrls: string[];
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+};
+
 // --- Memory search result ---
 
 export type MemorySearchResult = {
