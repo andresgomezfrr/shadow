@@ -38,7 +38,18 @@ export async function activityNotify(
     (obs) => obs.severity === 'high' || obs.severity === 'critical',
   );
 
+  // Collect observation IDs that already have a pending (undelivered) event to avoid duplicates
+  const pendingEvents = ctx.db.listPendingEvents();
+  const notifiedObsIds = new Set(
+    pendingEvents
+      .filter((e) => e.kind === 'observation_notable')
+      .map((e) => e.payload?.observationId as string | undefined)
+      .filter(Boolean),
+  );
+
   for (const obs of criticalObservations) {
+    if (notifiedObsIds.has(obs.id)) continue;
+
     // Always notify on critical/high observations regardless of proactivity level
     ctx.db.createEvent({
       kind: 'observation_notable',
