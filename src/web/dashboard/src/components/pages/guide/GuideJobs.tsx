@@ -33,6 +33,8 @@ suggest-project (reactive, 7d gap, 2+ repos)
 
 consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)
 
+version-check (12h, IO) \u2014 queues event if newer tag on remote
+
 revalidate-suggestion (on-demand from Workspace)`}</pre>
         </div>
       </section>
@@ -47,7 +49,7 @@ revalidate-suggestion (on-demand from Workspace)`}</pre>
             purpose="Discovers active projects, extracts memories from conversations, generates observations about your work"
             trigger="Every 30min (60min when idle)"
             model="Sonnet medium"
-            phases={['observe', 'cleanup', 'analyze', 'notify']}
+            phases={['prepare', 'extract', 'cleanup', 'observe', 'notify']}
             output="Memories, observations, mood/energy updates"
             reactive={false}
             note="Also triggers suggest (if observations created) and repo-profile (if repos have new local commits, 2h gap)"
@@ -183,6 +185,18 @@ revalidate-suggestion (on-demand from Workspace)`}</pre>
             output="Server descriptions + tool counts → enrichment cache → dashboard settings"
             reactive={false}
             note="Enable Enrichment in Settings. One LLM call, zero tool invocations."
+          />
+
+          <JobCard
+            name="version-check"
+            color="bg-gray-400/20 text-gray-300"
+            purpose="Checks for new Shadow releases by comparing local package.json version against remote git tags"
+            trigger="Every 12h"
+            model="None (IO only)"
+            phases={['version-check']}
+            output="version_available event if a newer tag exists on the remote"
+            reactive={false}
+            note="Creates a pending event with upgrade instructions when a new version is detected. Deduplicates events for the same version."
           />
 
           <JobCard
