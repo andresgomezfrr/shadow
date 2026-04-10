@@ -479,46 +479,99 @@ else
 fi
 `, 'utf8');
 
-        // Post-tool-use hook script (auto-learning)
+        // Post-tool-use hook script (auto-learning) — single jq pipeline with per-tool detail
         writeFileSync(postToolPath, `#!/bin/bash
-# Shadow PostToolUse hook — logs tool usage for auto-learning
+# Shadow PostToolUse hook — logs tool usage with rich detail
 INPUT=$(cat)
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-TOOL_NAME=$(echo "$INPUT" | grep -o '"tool_name":"[^"]*"' | head -1 | cut -d'"' -f4)
-FILE_PATH=$(echo "$INPUT" | grep -o '"file_path":"[^"]*"' | head -1 | cut -d'"' -f4)
-COMMAND=$(echo "$INPUT" | grep -o '"command":"[^"]*"' | head -1 | cut -d'"' -f4 | head -c 200)
-
-if [ -n "$TOOL_NAME" ]; then
-  echo "{\\"ts\\":\\"$TIMESTAMP\\",\\"tool\\":\\"$TOOL_NAME\\",\\"file\\":\\"$FILE_PATH\\",\\"cmd\\":\\"$COMMAND\\"}" >> "${interactionsPath}"
+TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+LINE=$(echo "$INPUT" | jq -c --arg ts "$TS" '
+  .tool_name as $tool |
+  .tool_input as $ti |
+  (.tool_response // "") as $tr |
+  ($ti.file_path // $ti.path // "") as $file |
+  ($ti.command // "" | .[0:200]) as $cmd |
+  (if $tool == "Edit" then
+    { old_len: ($ti.old_string // "" | length), new_len: ($ti.new_string // "" | length) }
+  elif $tool == "Write" then
+    { content_len: ($ti.content // "" | length) }
+  elif $tool == "Read" then
+    { lines: ($ti.limit // "full") }
+  elif $tool == "Bash" then
+    { output: (if ($tr | type) == "string" then ($tr | .[0:800]) else ($tr | tojson | .[0:800]) end) }
+  elif $tool == "Grep" then
+    { pattern: ($ti.pattern // ""), matches: (if ($tr | type) == "string" then ($tr | split("\\n") | map(select(. != "")) | length) else 0 end) }
+  elif $tool == "Glob" then
+    { pattern: ($ti.pattern // ""), matches: (if ($tr | type) == "string" then ($tr | split("\\n") | map(select(. != "")) | length) else 0 end) }
+  elif $tool == "Agent" then
+    { desc: ($ti.description // "" | .[0:200]) }
+  elif $tool == "ToolSearch" then
+    { query: ($ti.query // "") }
+  else {} end) as $detail |
+  { ts: $ts, tool: $tool, file: $file, cmd: $cmd, session: .session_id, cwd: .cwd }
+  + (if ($detail | length) > 0 then { detail: $detail } else {} end)
+' 2>/dev/null)
+if [ -n "$LINE" ] && [ "$LINE" != "null" ]; then
+  echo "$LINE" >> "${interactionsPath}"
 fi
 `, 'utf8');
 
-        // User prompt capture hook (conversations)
+        // User prompt capture hook (conversations) — full text, no truncation
         const userPromptPath = resolve(config.resolvedDataDir, 'user-prompt.sh');
         const conversationsPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
         writeFileSync(userPromptPath, `#!/bin/bash
 # Shadow UserPromptSubmit hook — captures what the user says
 INPUT=$(cat)
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty' 2>/dev/null | head -c 500)
-SESSION=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
-if [ -n "$PROMPT" ]; then
-  ESCAPED=$(echo "$PROMPT" | jq -Rs .)
-  echo "{\\"ts\\":\\"$TIMESTAMP\\",\\"role\\":\\"user\\",\\"text\\":$ESCAPED,\\"session\\":\\"$SESSION\\"}" >> "${conversationsPath}"
+TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+LINE=$(echo "$INPUT" | jq -c --arg ts "$TS" '
+  select(.prompt != null and .prompt != "") |
+  { ts: $ts, role: "user", text: .prompt, session: .session_id, cwd: .cwd }
+' 2>/dev/null)
+if [ -n "$LINE" ] && [ "$LINE" != "null" ]; then
+  echo "$LINE" >> "${conversationsPath}"
 fi
 `, 'utf8');
 
-        // Stop hook — captures Claude's responses
+        // Stop hook — captures Claude's responses — full text, no truncation
         const stopHookPath = resolve(config.resolvedDataDir, 'stop.sh');
         writeFileSync(stopHookPath, `#!/bin/bash
 # Shadow Stop hook — captures what Claude responds
 INPUT=$(cat)
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-MSG=$(echo "$INPUT" | jq -r '.last_assistant_message // empty' 2>/dev/null | head -c 500)
-SESSION=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
-if [ -n "$MSG" ]; then
-  ESCAPED=$(echo "$MSG" | jq -Rs .)
-  echo "{\\"ts\\":\\"$TIMESTAMP\\",\\"role\\":\\"assistant\\",\\"text\\":$ESCAPED,\\"session\\":\\"$SESSION\\"}" >> "${conversationsPath}"
+TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+LINE=$(echo "$INPUT" | jq -c --arg ts "$TS" '
+  select(.last_assistant_message != null and .last_assistant_message != "") |
+  { ts: $ts, role: "assistant", text: .last_assistant_message, session: .session_id, cwd: .cwd }
+' 2>/dev/null)
+if [ -n "$LINE" ] && [ "$LINE" != "null" ]; then
+  echo "$LINE" >> "${conversationsPath}"
+fi
+`, 'utf8');
+
+        // StopFailure hook — captures API errors
+        const stopFailurePath = resolve(config.resolvedDataDir, 'stop-failure.sh');
+        const eventsPath = resolve(config.resolvedDataDir, 'events.jsonl');
+        writeFileSync(stopFailurePath, `#!/bin/bash
+# Shadow StopFailure hook — captures API errors
+INPUT=$(cat)
+TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+LINE=$(echo "$INPUT" | jq -c --arg ts "$TS" '
+  { ts: $ts, event: "stop_failure", session: .session_id, error_type: (.error_type // "unknown"), cwd: .cwd }
+' 2>/dev/null)
+if [ -n "$LINE" ] && [ "$LINE" != "null" ]; then
+  echo "$LINE" >> "${eventsPath}"
+fi
+`, 'utf8');
+
+        // SubagentStart hook — tracks subagent spawns
+        const subagentStartPath = resolve(config.resolvedDataDir, 'subagent-start.sh');
+        writeFileSync(subagentStartPath, `#!/bin/bash
+# Shadow SubagentStart hook — tracks subagent spawns
+INPUT=$(cat)
+TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+LINE=$(echo "$INPUT" | jq -c --arg ts "$TS" '
+  { ts: $ts, event: "subagent_start", session: .session_id, cwd: .cwd }
+' 2>/dev/null)
+if [ -n "$LINE" ] && [ "$LINE" != "null" ]; then
+  echo "$LINE" >> "${eventsPath}"
 fi
 `, 'utf8');
 
@@ -528,6 +581,8 @@ fi
         chmodSync(postToolPath, '755');
         chmodSync(userPromptPath, '755');
         chmodSync(stopHookPath, '755');
+        chmodSync(stopFailurePath, '755');
+        chmodSync(subagentStartPath, '755');
 
         // Update ~/.claude/settings.json with hooks and statusLine
         const settingsPath = resolve(homedir(), '.claude', 'settings.json');
@@ -556,7 +611,7 @@ fi
 
         // PostToolUse hook (async for zero performance impact)
         const postToolHook = {
-          matcher: 'Edit|Write|Read|Bash|Grep',
+          matcher: 'Edit|Write|Read|Bash|Grep|Glob|Agent|ToolSearch',
           hooks: [{ type: 'command', command: postToolPath, async: true }],
         };
         hooks.PostToolUse = [postToolHook];
@@ -571,6 +626,18 @@ fi
         hooks.Stop = [{
           matcher: '',
           hooks: [{ type: 'command', command: stopHookPath, async: true }],
+        }];
+
+        // StopFailure hook — capture API errors
+        hooks.StopFailure = [{
+          matcher: '',
+          hooks: [{ type: 'command', command: stopFailurePath, async: true }],
+        }];
+
+        // SubagentStart hook — track subagent spawns
+        hooks.SubagentStart = [{
+          matcher: '',
+          hooks: [{ type: 'command', command: subagentStartPath, async: true }],
         }];
 
         settings.hooks = hooks;

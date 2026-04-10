@@ -69,40 +69,28 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
     hasNewObservationsSinceLastBeat = ctx.db.countObservationsSince(ctx.lastHeartbeat.startedAt) > 0;
   }
 
-  let hasRecentInteractions = false;
+  let hasRecentActivity = false;
   try {
-    const { readFileSync } = await import('node:fs');
+    const { statSync, existsSync } = await import('node:fs');
     const { resolve } = await import('node:path');
     const interactionsPath = resolve(ctx.config.resolvedDataDir, 'interactions.jsonl');
-    const content = readFileSync(interactionsPath, 'utf8');
-    const lines = content.trim().split('\n').filter(Boolean);
-    const since = ctx.lastHeartbeat?.startedAt
-      ? new Date(ctx.lastHeartbeat.startedAt).getTime()
-      : Date.now() - 60 * 60 * 1000;
-    hasRecentInteractions = lines.some(line => {
-      try { return new Date((JSON.parse(line) as { ts: string }).ts).getTime() > since; }
-      catch { return false; }
-    });
-  } catch { /* no file */ }
+    const conversationsPath = resolve(ctx.config.resolvedDataDir, 'conversations.jsonl');
+    const eventsPath = resolve(ctx.config.resolvedDataDir, 'events.jsonl');
 
-  let hasRecentConversations = false;
-  try {
-    const { readFileSync } = await import('node:fs');
-    const { resolve } = await import('node:path');
-    const convPath = resolve(ctx.config.resolvedDataDir, 'conversations.jsonl');
-    const content = readFileSync(convPath, 'utf8');
-    const lines = content.trim().split('\n').filter(Boolean);
-    const since = ctx.lastHeartbeat?.startedAt
-      ? new Date(ctx.lastHeartbeat.startedAt).getTime()
-      : Date.now() - 60 * 60 * 1000;
-    hasRecentConversations = lines.some(line => {
-      try { return new Date((JSON.parse(line) as { ts: string }).ts).getTime() > since; }
-      catch { return false; }
-    });
-  } catch { /* no file */ }
+    // Check main files for new data (consume-and-delete: any content = new activity)
+    const hasContent = (p: string) => { try { return statSync(p).size > 0; } catch { return false; } };
+    hasRecentActivity = hasContent(interactionsPath) || hasContent(conversationsPath) || hasContent(eventsPath);
+
+    // Check for orphaned .rotating files from crashed heartbeat
+    if (!hasRecentActivity) {
+      hasRecentActivity = existsSync(interactionsPath + '.rotating')
+        || existsSync(conversationsPath + '.rotating')
+        || existsSync(eventsPath + '.rotating');
+    }
+  } catch { /* no files */ }
 
   // --- Determine if LLM phases should run ---
-  const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasRecentInteractions && !hasRecentConversations;
+  const skipLlmPhases = !hasNewObservationsSinceLastBeat && !hasRecentActivity;
 
   if (skipLlmPhases) {
     result.phases.push('notify');
@@ -115,7 +103,7 @@ export async function runHeartbeat(ctx: HeartbeatContext): Promise<HeartbeatResu
   }
 
   // --- EXTRACT + CLEANUP + OBSERVE phases (3 LLM calls inside activityAnalyze) ---
-  if ((unprocessedCount > 0 || hasRecentInteractions || hasRecentConversations) && !focusActive) {
+  if ((unprocessedCount > 0 || hasRecentActivity) && !focusActive) {
     const unprocessed = ctx.db.listObservations({ processed: false });
     const analyzeResult = await activityAnalyze(ctx, unprocessed, undefined, (phase) => {
       result.phases.push(phase as HeartbeatPhase);

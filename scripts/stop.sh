@@ -1,11 +1,14 @@
 #!/bin/bash
-# Shadow Stop hook — captures what Claude responds
+# Shadow Stop hook — captures what Claude responds (full text, no truncation)
 INPUT=$(cat)
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-MSG=$(echo "$INPUT" | jq -r '.last_assistant_message // empty' 2>/dev/null | head -c 500)
-SESSION=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
+TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 SHADOW_DATA="${SHADOW_DATA_DIR:-$HOME/.shadow}"
-if [ -n "$MSG" ]; then
-  ESCAPED=$(echo "$MSG" | jq -Rs .)
-  echo "{\"ts\":\"$TIMESTAMP\",\"role\":\"assistant\",\"text\":$ESCAPED,\"session\":\"$SESSION\"}" >> "$SHADOW_DATA/conversations.jsonl"
+
+LINE=$(echo "$INPUT" | jq -c --arg ts "$TS" '
+  select(.last_assistant_message != null and .last_assistant_message != "") |
+  { ts: $ts, role: "assistant", text: .last_assistant_message, session: .session_id, cwd: .cwd }
+' 2>/dev/null)
+
+if [ -n "$LINE" ] && [ "$LINE" != "null" ]; then
+  echo "$LINE" >> "$SHADOW_DATA/conversations.jsonl"
 fi

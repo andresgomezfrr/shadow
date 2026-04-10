@@ -1,4 +1,4 @@
-import { readFileSync, renameSync, appendFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, renameSync, appendFileSync, unlinkSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { ShadowConfig } from '../config/load-config.js';
@@ -79,27 +79,67 @@ export function persistEntityLinks(db: ShadowDatabase, table: 'memories' | 'obse
   } catch { /* best effort */ }
 }
 
+// --- Consume-and-delete rotation ---
+
+/**
+ * Rotate a JSONL file for consumption. Returns the path to the .rotating file to read, or null if nothing to process.
+ * Handles orphaned .rotating files from crashed heartbeats by appending new data to them.
+ */
+export function rotateForConsume(basePath: string): string | null {
+  const rotatingPath = basePath + '.rotating';
+
+  // Case A: orphaned .rotating from crashed heartbeat — append new data to it
+  if (existsSync(rotatingPath)) {
+    try {
+      const current = readFileSync(basePath, 'utf8');
+      if (current.trim()) appendFileSync(rotatingPath, current);
+      unlinkSync(basePath);
+    } catch { /* no main file — orphan has all the data */ }
+    return rotatingPath;
+  }
+
+  // Case B: normal — check main file has content, then rename
+  try {
+    const stat = statSync(basePath);
+    if (stat.size === 0) return null;
+    renameSync(basePath, rotatingPath);
+    return rotatingPath;
+  } catch {
+    return null;
+  }
+}
+
+/** Delete a .rotating file after consumption. Safe to call with null. */
+export function cleanupRotating(rotatingPath: string | null): void {
+  if (!rotatingPath) return;
+  try { unlinkSync(rotatingPath); } catch { /* already gone */ }
+}
+
 // --- Interaction loading ---
 
-export function loadRecentInteractions(config: ShadowConfig, sinceIso?: string): { file: string; tool: string; cmd: string; ts: string }[] {
-  const interactionsPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
-  try {
-    const content = readFileSync(interactionsPath, 'utf8');
-    const lines = content.trim().split('\n').filter(Boolean);
-    const since = sinceIso ? new Date(sinceIso).getTime() : Date.now() - 60 * 60 * 1000; // default: last 1h
-    const entries: { file: string; tool: string; cmd: string; ts: string }[] = [];
+export type InteractionEntry = {
+  ts: string; tool: string; file: string; cmd: string;
+  session?: string; cwd?: string; detail?: Record<string, unknown>;
+};
 
+/** Load ALL entries from a JSONL file (typically .rotating). No time filter. */
+export function loadAllInteractions(filePath: string): InteractionEntry[] {
+  try {
+    const content = readFileSync(filePath, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const entries: InteractionEntry[] = [];
     for (const line of lines) {
       try {
-        const entry = JSON.parse(line) as { ts: string; tool: string; file?: string; cmd?: string };
-        if (new Date(entry.ts).getTime() > since) {
-          entries.push({
-            ts: entry.ts,
-            tool: entry.tool,
-            file: entry.file ?? '',
-            cmd: entry.cmd ?? '',
-          });
-        }
+        const e = JSON.parse(line) as Record<string, unknown>;
+        entries.push({
+          ts: (e.ts as string) ?? '',
+          tool: (e.tool as string) ?? '',
+          file: (e.file as string) ?? '',
+          cmd: (e.cmd as string) ?? '',
+          session: e.session as string | undefined,
+          cwd: e.cwd as string | undefined,
+          detail: e.detail as Record<string, unknown> | undefined,
+        });
       } catch { /* skip malformed lines */ }
     }
     return entries;
@@ -108,58 +148,99 @@ export function loadRecentInteractions(config: ShadowConfig, sinceIso?: string):
   }
 }
 
-export function summarizeInteractions(interactions: { file: string; tool: string; cmd: string; ts: string }[]): string {
+export function summarizeInteractions(interactions: InteractionEntry[]): string {
   if (interactions.length === 0) return '';
 
-  // Group by file/repo to show what was worked on
-  const fileCounts = new Map<string, number>();
+  // Group by file with per-tool breakdown
+  const fileTools = new Map<string, Map<string, number>>();
   const toolCounts = new Map<string, number>();
+  const bashActivities: { cmd: string; output?: string }[] = [];
+  const grepActivities: { pattern: string; matches: number }[] = [];
+  const globActivities: { pattern: string; matches: number }[] = [];
 
   for (const i of interactions) {
-    if (i.file) {
-      fileCounts.set(i.file, (fileCounts.get(i.file) ?? 0) + 1);
-    }
     toolCounts.set(i.tool, (toolCounts.get(i.tool) ?? 0) + 1);
+    if (i.file) {
+      let tools = fileTools.get(i.file);
+      if (!tools) { tools = new Map(); fileTools.set(i.file, tools); }
+      tools.set(i.tool, (tools.get(i.tool) ?? 0) + 1);
+    }
+    // Collect key activities from detail
+    if (i.tool === 'Bash' && i.detail) {
+      const output = i.detail.output as string | undefined;
+      bashActivities.push({ cmd: i.cmd, output });
+    } else if (i.tool === 'Grep' && i.detail) {
+      grepActivities.push({ pattern: (i.detail.pattern as string) ?? '', matches: (i.detail.matches as number) ?? 0 });
+    } else if (i.tool === 'Glob' && i.detail) {
+      globActivities.push({ pattern: (i.detail.pattern as string) ?? '', matches: (i.detail.matches as number) ?? 0 });
+    }
   }
 
-  const lines: string[] = [`${interactions.length} tool calls in Claude CLI sessions:`];
+  const lines: string[] = [`${interactions.length} tool calls:`];
 
-  // Top files touched
-  const topFiles = [...fileCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  // Top files with per-tool breakdown
+  const topFiles = [...fileTools.entries()]
+    .map(([file, tools]) => ({ file, total: [...tools.values()].reduce((a, b) => a + b, 0), tools }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 15);
   if (topFiles.length > 0) {
     lines.push('\nFiles worked on:');
-    for (const [file, count] of topFiles) {
-      lines.push(`  - ${file} (${count}x)`);
+    for (const { file, total, tools } of topFiles) {
+      const breakdown = [...tools.entries()].map(([t, c]) => `${c} ${t.toLowerCase()}${c > 1 ? 's' : ''}`).join(', ');
+      lines.push(`  - ${file} (${total}x: ${breakdown})`);
     }
   }
 
-  // Tool usage breakdown
-  lines.push('\nTool usage:');
-  for (const [tool, count] of [...toolCounts.entries()].sort((a, b) => b[1] - a[1])) {
-    lines.push(`  - ${tool}: ${count}`);
+  // Key activities: Bash commands with output
+  const keyActivities: string[] = [];
+  for (const b of bashActivities.slice(0, 5)) {
+    if (b.cmd) {
+      const cmdShort = b.cmd.length > 80 ? b.cmd.slice(0, 80) + '...' : b.cmd;
+      if (b.output) {
+        const outShort = b.output.length > 200 ? b.output.slice(0, 200) + '...' : b.output;
+        keyActivities.push(`  - Bash: \`${cmdShort}\` → ${outShort}`);
+      } else {
+        keyActivities.push(`  - Bash: \`${cmdShort}\``);
+      }
+    }
   }
+  for (const g of grepActivities.slice(0, 3)) {
+    keyActivities.push(`  - Grep: "${g.pattern}" → ${g.matches} files`);
+  }
+  for (const g of globActivities.slice(0, 3)) {
+    keyActivities.push(`  - Glob: "${g.pattern}" → ${g.matches} files`);
+  }
+  if (keyActivities.length > 0) {
+    lines.push('\nKey activities:');
+    lines.push(...keyActivities);
+  }
+
+  // Tool breakdown
+  lines.push('\nTool breakdown: ' + [...toolCounts.entries()].sort((a, b) => b[1] - a[1]).map(([t, c]) => `${t}: ${c}`).join(', '));
 
   return lines.join('\n');
 }
 
 // --- Conversation loading ---
 
-export type ConversationTurn = { ts: string; role: string; text: string; session: string };
+export type ConversationTurn = { ts: string; role: string; text: string; session: string; cwd?: string };
 
-export function loadRecentConversations(config: ShadowConfig, sinceIso: string): ConversationTurn[] {
-  const convPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
+/** Load ALL entries from a conversations JSONL file (typically .rotating). No time filter. */
+export function loadAllConversations(filePath: string): ConversationTurn[] {
   try {
-    const content = readFileSync(convPath, 'utf8');
+    const content = readFileSync(filePath, 'utf8');
     const lines = content.trim().split('\n').filter(Boolean);
-    const since = new Date(sinceIso).getTime();
     const entries: ConversationTurn[] = [];
-
     for (const line of lines) {
       try {
-        const entry = JSON.parse(line) as ConversationTurn;
-        if (new Date(entry.ts).getTime() > since) {
-          entries.push(entry);
-        }
+        const e = JSON.parse(line) as ConversationTurn;
+        entries.push({
+          ts: e.ts ?? '',
+          role: e.role ?? '',
+          text: e.text ?? '',
+          session: e.session ?? 'unknown',
+          cwd: e.cwd,
+        });
       } catch { /* skip */ }
     }
     return entries;
@@ -183,8 +264,12 @@ export function summarizeConversations(conversations: ConversationTurn[]): strin
   const lines: string[] = [`${conversations.length} conversation turns across ${sessions.size} session(s):`];
 
   for (const [sid, turns] of sessions) {
-    lines.push(`\nSession ${sid.slice(0, 8)}... (${turns.length} turns):`);
-    for (const turn of turns.slice(-10)) { // last 10 turns per session
+    const cwd = turns.find(t => t.cwd)?.cwd;
+    const header = cwd
+      ? `\nSession ${sid.slice(0, 8)}... (${turns.length} turns, ${cwd}):`
+      : `\nSession ${sid.slice(0, 8)}... (${turns.length} turns):`;
+    lines.push(header);
+    for (const turn of turns) {
       const prefix = turn.role === 'user' ? '  User' : '  Claude';
       lines.push(`  ${prefix}: "${turn.text}"`);
     }
@@ -193,57 +278,60 @@ export function summarizeConversations(conversations: ConversationTurn[]): strin
   return lines.join('\n');
 }
 
-// --- Log rotation ---
+// --- Events loading ---
 
-export function rotateConversationsLog(config: ShadowConfig): void {
-  const convPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
-  const tmpPath = convPath + '.rotating';
+export type EventEntry = {
+  ts: string; event: string; session?: string; error_type?: string; cwd?: string;
+};
 
-  // Atomic rename — hooks will create a new file on their next append
-  try { renameSync(convPath, tmpPath); } catch { return; }
-
+/** Load ALL entries from an events JSONL file (typically .rotating). */
+export function loadAllEvents(filePath: string): EventEntry[] {
   try {
-    const content = readFileSync(tmpPath, 'utf8');
+    const content = readFileSync(filePath, 'utf8');
     const lines = content.trim().split('\n').filter(Boolean);
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const kept = lines.filter(line => {
+    const entries: EventEntry[] = [];
+    for (const line of lines) {
       try {
-        const entry = JSON.parse(line) as { ts: string };
-        return entry.ts > twoHoursAgo;
-      } catch { return false; }
-    });
-    // Append kept lines to the (possibly new) file — preserves any hook writes since rename
-    if (kept.length > 0) appendFileSync(convPath, kept.join('\n') + '\n', 'utf8');
-  } catch { /* read/filter error — non-fatal */ }
-
-  try { unlinkSync(tmpPath); } catch { /* already gone */ }
+        const e = JSON.parse(line) as EventEntry;
+        entries.push({
+          ts: e.ts ?? '',
+          event: e.event ?? '',
+          session: e.session,
+          error_type: e.error_type,
+          cwd: e.cwd,
+        });
+      } catch { /* skip */ }
+    }
+    return entries;
+  } catch {
+    return [];
+  }
 }
 
-export function rotateInteractionsLog(config: ShadowConfig, _cutoffIso: string): void {
-  const interactionsPath = resolve(config.resolvedDataDir, 'interactions.jsonl');
-  const tmpPath = interactionsPath + '.rotating';
+export function summarizeEvents(events: EventEntry[]): string {
+  if (events.length === 0) return '';
 
-  // Atomic rename — hooks will create a new file on their next append
-  try { renameSync(interactionsPath, tmpPath); } catch { return; }
+  const counts = new Map<string, number>();
+  const errorTypes = new Map<string, number>();
+  for (const e of events) {
+    counts.set(e.event, (counts.get(e.event) ?? 0) + 1);
+    if (e.event === 'stop_failure' && e.error_type) {
+      errorTypes.set(e.error_type, (errorTypes.get(e.error_type) ?? 0) + 1);
+    }
+  }
 
-  try {
-    const content = readFileSync(tmpPath, 'utf8');
-    const lines = content.trim().split('\n').filter(Boolean);
+  const parts: string[] = [];
+  const failures = counts.get('stop_failure') ?? 0;
+  if (failures > 0) {
+    const breakdown = [...errorTypes.entries()].map(([t, c]) => `${t}×${c}`).join(', ');
+    parts.push(`${failures} API error${failures > 1 ? 's' : ''} (${breakdown})`);
+  }
+  const subagents = counts.get('subagent_start') ?? 0;
+  if (subagents > 0) {
+    parts.push(`${subagents} subagent spawn${subagents > 1 ? 's' : ''}`);
+  }
 
-    // Keep lines from the last 2 hours as buffer (not 5 min — too aggressive)
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const kept = lines.filter(line => {
-      try {
-        const entry = JSON.parse(line) as { ts: string };
-        return entry.ts > twoHoursAgo;
-      } catch { return false; }
-    });
-
-    // Append kept lines to the (possibly new) file — preserves any hook writes since rename
-    if (kept.length > 0) appendFileSync(interactionsPath, kept.join('\n') + '\n', 'utf8');
-  } catch { /* read/filter error — non-fatal */ }
-
-  try { unlinkSync(tmpPath); } catch { /* already gone */ }
+  return parts.join(', ');
 }
 
 // --- Model / effort helpers ---

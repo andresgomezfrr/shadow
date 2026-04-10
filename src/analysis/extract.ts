@@ -10,16 +10,19 @@ import { safeParseJson } from '../backend/json-repair.js';
 
 import type { HeartbeatContext } from './state-machine.js';
 import { ExtractResponseSchema, ObserveResponseSchema, EXTRACT_FORMAT, OBSERVE_FORMAT } from './schemas.js';
+import { resolve } from 'node:path';
 import {
   loadEntityNameCache,
   buildEntityLinks,
   persistEntityLinks,
-  loadRecentInteractions,
+  rotateForConsume,
+  cleanupRotating,
+  loadAllInteractions,
   summarizeInteractions,
-  loadRecentConversations,
+  loadAllConversations,
   summarizeConversations,
-  rotateInteractionsLog,
-  rotateConversationsLog,
+  loadAllEvents,
+  summarizeEvents,
   getModel,
   getEffort,
 } from './shared.js';
@@ -30,11 +33,22 @@ export async function activityAnalyze(
   heartbeatId?: string,
   onPhase?: (phase: string) => void,
 ): Promise<{ patternsDetected: number; memoriesCreated: number; llmCalls: number; tokensUsed: number; observationsCreated: number }> {
-  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-  const recentInteractions = loadRecentInteractions(ctx.config, twoHoursAgo);
+  // --- Consume-and-delete rotation: claim data at START ---
+  const interactionsPath = resolve(ctx.config.resolvedDataDir, 'interactions.jsonl');
+  const conversationsPath = resolve(ctx.config.resolvedDataDir, 'conversations.jsonl');
+  const eventsPath = resolve(ctx.config.resolvedDataDir, 'events.jsonl');
+
+  const rotatingInt = rotateForConsume(interactionsPath);
+  const rotatingConv = rotateForConsume(conversationsPath);
+  const rotatingEvt = rotateForConsume(eventsPath);
+
+  const recentInteractions = rotatingInt ? loadAllInteractions(rotatingInt) : [];
+  const recentConversations = rotatingConv ? loadAllConversations(rotatingConv) : [];
+  const recentEvents = rotatingEvt ? loadAllEvents(rotatingEvt) : [];
+
   const interactionSummary = summarizeInteractions(recentInteractions);
-  const recentConversations = loadRecentConversations(ctx.config, twoHoursAgo);
   const conversationSummary = summarizeConversations(recentConversations);
+  const eventsSummary = summarizeEvents(recentEvents);
   const repoContexts = collectActiveRepoContexts(ctx.db);
   const repoContextSummary = summarizeRepoContexts(repoContexts);
 
@@ -42,6 +56,10 @@ export async function activityAnalyze(
   const entityCache = loadEntityNameCache(ctx.db);
 
   if (observations.length === 0 && recentInteractions.length === 0 && recentConversations.length === 0) {
+    // Nothing to process — clean up .rotating files before early return
+    cleanupRotating(rotatingInt);
+    cleanupRotating(rotatingConv);
+    cleanupRotating(rotatingEvt);
     return { patternsDetected: 0, memoriesCreated: 0, llmCalls: 0, tokensUsed: 0, observationsCreated: 0 };
   }
 
@@ -121,6 +139,7 @@ export async function activityAnalyze(
     projectContext,
     interactionSummary ? `### Tool Usage\n${interactionSummary}\n` : '',
     conversationSummary ? `### Conversations\n${conversationSummary}\n` : '',
+    eventsSummary ? `### Events\n${eventsSummary}\n` : '',
     gitEventsSummary,
     remoteSyncSummary,
     enrichmentSummary,
@@ -458,8 +477,10 @@ export async function activityAnalyze(
   for (const obs of observations) ctx.db.markObservationProcessed(obs.id);
   if (llmCalls > 0) { try { applyTrustDelta(ctx.db, 'heartbeat_completed'); } catch { /* */ } }
   if (recentInteractions.length >= 10) { try { applyTrustDelta(ctx.db, 'interaction_logged'); } catch { /* */ } }
-  rotateInteractionsLog(ctx.config, new Date().toISOString());
-  rotateConversationsLog(ctx.config);
+  // Consume-and-delete: clean up .rotating files
+  cleanupRotating(rotatingInt);
+  cleanupRotating(rotatingConv);
+  cleanupRotating(rotatingEvt);
 
   return { patternsDetected, memoriesCreated, llmCalls, tokensUsed, observationsCreated };
 }
