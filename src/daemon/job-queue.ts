@@ -103,12 +103,14 @@ export class JobQueue {
       }
     };
 
+    const ac = new AbortController();
     const ctx: JobContext = {
       jobId: job.id,
       config: this.config,
       db: this.db,
       eventBus: this.eventBus,
       setPhase,
+      signal: ac.signal,
     };
 
     // Emit job:started
@@ -150,9 +152,11 @@ export class JobQueue {
         // Track consecutive ghost jobs for backend health alerting
         if (isGhostJob) {
           this.shared.consecutiveGhostJobs++;
+          this.shared.lastGhostHint = result.lastError ?? null;
           console.error(`[job-queue] Ghost job detected: ${job.type}/${job.id.slice(0, 8)} — ${result.llmCalls} LLM calls, 0 tokens (consecutive: ${this.shared.consecutiveGhostJobs})`);
         } else if (entry.category === 'llm' && result.tokensUsed > 0) {
           this.shared.consecutiveGhostJobs = 0;
+          this.shared.lastGhostHint = null;
         }
       } catch (err) {
         if (cancelled) return;
@@ -194,6 +198,7 @@ export class JobQueue {
     Promise.race([jobPromise.then(() => 'done' as const), timeoutPromise]).then(winner => {
       if (winner === 'timeout' && this.active.has(job.id)) {
         cancelled = true;
+        ac.abort();
         killJobAdapters(job.id);
         this.db.updateJob(job.id, {
           status: 'failed',

@@ -15,6 +15,7 @@ export type JobHandlerResult = {
   tokensUsed: number;
   phases: string[];
   result: Record<string, unknown>;
+  lastError?: string;
 };
 
 export type JobContext = {
@@ -37,6 +38,7 @@ export type DaemonSharedState = {
   activeProjects: Array<{ projectId: string; projectName: string; score: number }>;
   consecutiveIdleTicks: number;
   consecutiveGhostJobs: number;
+  lastGhostHint: string | null;
 };
 
 export type JobCategory = 'llm' | 'io';
@@ -47,6 +49,12 @@ export type JobHandlerEntry = {
 };
 
 // --- Helpers ---
+
+/** Build a short error hint from a BackendExecutionResult for ghost job diagnostics */
+function errorHint(result: { status: string; exitCode: number | null }): string | undefined {
+  if (result.status === 'success') return undefined;
+  return `${result.status}${result.exitCode != null ? ` (exit ${result.exitCode})` : ''}`;
+}
 
 /** Query items created during this job's execution for result enrichment */
 function recentItems(db: ShadowDatabase, table: 'memories' | 'observations' | 'suggestions', since: string, limit = 5): Array<{ id: string; title: string }> {
@@ -616,6 +624,7 @@ Be concise. Each field 1-3 lines max. Respond with JSON: { "contextMd": "..." }`
   return {
     llmCalls: 1, tokensUsed: tokens, phases: ['profile'],
     result: { projectName: project.name, repoCount: repos.length },
+    lastError: errorHint(result),
   };
 }
 
@@ -812,6 +821,7 @@ Generate 1-5 suggestions. Quality over quantity.`;
     llmCalls: 1, tokensUsed: tokens,
     phases: suggestionsCreated > 0 ? ['scan', 'validate', 'notify'] : ['scan'],
     result: { repoName: repo.name, suggestionsCreated, suggestionItems, repoId },
+    lastError: errorHint(result),
   };
 }
 
@@ -992,6 +1002,7 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
     llmCalls: 1, tokensUsed: tokens,
     phases: suggestionsCreated > 0 ? ['analyze', 'validate', 'notify'] : ['analyze'],
     result: { projectName: project.name, suggestionsCreated, suggestionItems },
+    lastError: errorHint(result),
   };
 }
 
@@ -1146,7 +1157,7 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
   const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
 
   if (result.status !== 'success' || !result.output) {
-    return { llmCalls: 1, tokensUsed: tokens, phases: ['prepare', 'evaluate'], result: { error: 'LLM call failed', suggestionId } };
+    return { llmCalls: 1, tokensUsed: tokens, phases: ['prepare', 'evaluate'], result: { error: 'LLM call failed', suggestionId }, lastError: errorHint(result) };
   }
 
   ctx.setPhase('apply');
@@ -1225,6 +1236,7 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
       previousCount: suggestion.revalidationCount,
       newCount: suggestion.revalidationCount + 1,
     },
+    lastError: errorHint(result),
   };
 }
 

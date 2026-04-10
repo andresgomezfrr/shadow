@@ -313,6 +313,14 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         readFileSync(join(projectRoot, 'package.json'), 'utf8'),
       ).version;
 
+      // Enqueue a version-check so the daemon picks up the new version and clears stale alerts
+      try {
+        const { createDatabase } = await import('../storage/database.js');
+        const upgradeDb = createDatabase(config);
+        upgradeDb.enqueueJob('version-check', { priority: 9, triggerSource: 'manual' });
+        upgradeDb.close();
+      } catch { /* best-effort — daemon will run version-check on its own schedule */ }
+
       printOutput({
         upgraded: true,
         from: `v${currentVersion}`,

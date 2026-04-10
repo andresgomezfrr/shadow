@@ -224,6 +224,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       activeProjects: [],
       consecutiveIdleTicks: 0,
       consecutiveGhostJobs: 0,
+      lastGhostHint: null,
     };
 
     // Step 3c: Start EventBus + web server (receives daemonShared for MCP + /api/status)
@@ -660,9 +661,10 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       const GHOST_JOB_THRESHOLD = 2;
       const existingBackendAlert = state.alerts.findIndex(a => a.id === 'backend_unhealthy');
       if (daemonShared.consecutiveGhostJobs >= GHOST_JOB_THRESHOLD && existingBackendAlert === -1) {
+        const hint = daemonShared.lastGhostHint;
         state.alerts.push({
           id: 'backend_unhealthy',
-          message: 'CLI auth expired — LLM jobs failing',
+          message: hint ? `LLM jobs failing — ${hint}` : 'LLM jobs failing — unknown cause',
           severity: 'critical',
           since: new Date().toISOString(),
           acked: false,
