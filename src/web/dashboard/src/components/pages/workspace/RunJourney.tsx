@@ -167,7 +167,17 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
 
       {/* Plan */}
       <Step status={planStatus} label="Plan">
-        {run.confidence && <ConfidenceIndicator confidence={run.confidence} doubts={run.doubts?.length} compact />}
+        {run.confidence && <ConfidenceIndicator confidence={run.confidence} doubts={run.doubts?.length} />}
+        {run.doubts && run.doubts.length > 0 && (
+          <ul className="mt-1 space-y-0.5">
+            {run.doubts.map((d, i) => (
+              <li key={i} className="text-xs text-orange flex gap-1.5">
+                <span className="shrink-0">⚠</span>
+                <span className="text-text-dim">{d}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         {run.resultSummaryMd && (
           <div className="mt-1">
             <button onClick={() => setPlanOpen(!planOpen)} className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer">

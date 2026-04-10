@@ -522,7 +522,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
       <>
         {entry.runId && (
           <div>
-            <a href={`/workspace?highlight=${entry.runId}`} className="text-accent hover:underline" onClick={e => e.stopPropagation()}>
+            <a href={`/workspace?item=${entry.runId}&itemType=run`} className="text-accent hover:underline" onClick={e => e.stopPropagation()}>
               View in Workspace
             </a>
           </div>
