@@ -1,5 +1,5 @@
 import { useApi } from '../../../hooks/useApi';
-import { fetchRunContext, fetchPrStatus, createRunSession, executeRun, discardRun, closeRun, cleanupWorktree, createDraftPr } from '../../../api/client';
+import { fetchRunContext, fetchPrStatus, createRunSession, executeRun, discardRun, retryRun, archiveRun, closeRun, cleanupWorktree, createDraftPr } from '../../../api/client';
 import { Markdown } from '../../common/Markdown';
 import { ConfidenceIndicator } from '../../common/ConfidenceIndicator';
 import { Badge } from '../../common/Badge';
@@ -81,6 +81,18 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
     if (!run) return;
     const note = window.prompt('Reason for closing (optional):');
     await closeRun(run.id, note || undefined);
+    doRefresh();
+  }, [run, doRefresh]);
+
+  const handleRetry = useCallback(async () => {
+    if (!run) return;
+    setLoading('retry');
+    try { await retryRun(run.id); doRefresh(); } finally { setLoading(null); }
+  }, [run, doRefresh]);
+
+  const handleArchive = useCallback(async () => {
+    if (!run) return;
+    await archiveRun(run.id);
     doRefresh();
   }, [run, doRefresh]);
 
@@ -175,7 +187,13 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
           <div className="flex items-center gap-2 mt-2">
             <button onClick={handleExecute} disabled={loading === 'execute'} className="px-3 py-1 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer hover:brightness-110 disabled:opacity-50">▶ Execute</button>
             <button onClick={handleSession} disabled={loading === 'session'} className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer disabled:opacity-50">{loading === 'session' ? '...' : 'Session'}</button>
-            <button onClick={handleDiscard} className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer">Discard</button>
+            <button onClick={handleArchive} className="text-xs text-text-muted hover:text-text bg-transparent border-none cursor-pointer">Archive</button>
+          </div>
+        )}
+        {run.status === 'failed' && (
+          <div className="flex items-center gap-2 mt-2">
+            <button onClick={handleRetry} disabled={loading === 'retry'} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange/15 text-orange border-none cursor-pointer hover:bg-orange/25 disabled:opacity-50">{loading === 'retry' ? '...' : 'Retry'}</button>
+            <button onClick={handleArchive} className="text-xs text-text-muted hover:text-text bg-transparent border-none cursor-pointer">Archive</button>
           </div>
         )}
       </Step>
@@ -247,7 +265,8 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
 
       {/* --- Session & Worktree info --- */}
       <div className="border-t border-border pt-3 space-y-2">
-        {/* Session */}
+        {/* Session — hidden while running (daemon owns the process) */}
+        {run.status !== 'running' && (
         <div className="text-xs">
           <span className="text-text-muted">Session: </span>
           {sessionInfo ? (
@@ -263,6 +282,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
             </button>
           )}
         </div>
+        )}
 
         {/* Worktree */}
         {hasWorktree && (

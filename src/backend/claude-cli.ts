@@ -53,6 +53,11 @@ export class ClaudeCliAdapter implements BackendAdapter {
   kill(): void {
     if (this.instanceChild && !this.instanceChild.killed) {
       this.instanceChild.kill('SIGTERM');
+      // SIGKILL fallback if SIGTERM is ignored
+      const child = this.instanceChild;
+      setTimeout(() => {
+        if (!child.killed) child.kill('SIGKILL');
+      }, 5_000);
       this.instanceChild = null;
     }
     adapterInstances.delete(this);
@@ -87,10 +92,13 @@ export class ClaudeCliAdapter implements BackendAdapter {
     if (pack.effort) {
       args.push('--effort', pack.effort);
     }
+    if (pack.permissionMode) {
+      args.push('--permission-mode', pack.permissionMode);
+    }
 
-    // Tool access: undefined = default MCP tools, [] = no tools, [...] = MCP + extras
+    // Tool access: undefined = default (shadow MCP only), [] = no tools, [...] = explicit list
     if (!pack.allowedTools || pack.allowedTools.length > 0) {
-      const tools = ['mcp__shadow__*', ...(pack.allowedTools ?? [])];
+      const tools = pack.allowedTools ?? ['mcp__shadow__*'];
       args.push('--allowedTools', tools.join(','));
     }
 
@@ -238,6 +246,10 @@ function spawnAsync(
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
+      // SIGKILL fallback if SIGTERM is ignored
+      setTimeout(() => {
+        if (!child.killed) child.kill('SIGKILL');
+      }, 5_000);
     }, options.timeout);
 
     child.on('close', (code) => {

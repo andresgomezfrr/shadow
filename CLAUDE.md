@@ -391,7 +391,7 @@ SHADOW_PERSONALITY_LEVEL=4       # 1-5 (4=Tam-like)
 SHADOW_MODEL_ANALYZE=sonnet      # Model for heartbeat analyze
 SHADOW_MODEL_SUGGEST=opus        # Model for suggestions
 SHADOW_MODEL_CONSOLIDATE=sonnet  # Model for memory consolidation
-SHADOW_MODEL_RUNNER=sonnet       # Model for task execution
+SHADOW_MODEL_RUNNER=opus         # Model for task execution
 SHADOW_HEARTBEAT_INTERVAL_MS=900000  # 15 min
 SHADOW_DATA_DIR=~/.shadow        # Data directory
 ```

@@ -293,7 +293,7 @@ export const CONFIG_MODELS: ConfigVar[] = [
   { envVar: 'SHADOW_MODEL_ANALYZE', description: 'Model for heartbeat analyze phase', defaultVal: 'sonnet' },
   { envVar: 'SHADOW_MODEL_SUGGEST', description: 'Model for suggestion generation', defaultVal: 'opus' },
   { envVar: 'SHADOW_MODEL_CONSOLIDATE', description: 'Model for memory consolidation', defaultVal: 'sonnet' },
-  { envVar: 'SHADOW_MODEL_RUNNER', description: 'Model for task execution', defaultVal: 'sonnet' },
+  { envVar: 'SHADOW_MODEL_RUNNER', description: 'Model for task execution', defaultVal: 'opus' },
   { envVar: 'SHADOW_MODEL_THOUGHT', description: 'Model for ambient thoughts', defaultVal: 'haiku' },
 ];
 

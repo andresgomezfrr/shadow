@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useApi } from '../../../hooks/useApi';
 import {
-  fetchWorkspaceFeed, executeRun, createRunSession, discardRun,
+  fetchWorkspaceFeed, executeRun, createRunSession, discardRun, retryRun, archiveRun,
   acceptSuggestion, dismissSuggestion, snoozeSuggestion,
   acknowledgeObservation, resolveObservation,
 } from '../../../api/client';
@@ -54,6 +54,8 @@ export function WorkspaceFeed() {
     await discardRun(id, note || undefined);
     refresh();
   }, [refresh]);
+  const handleRetry = useCallback(async (id: string) => { await retryRun(id); refresh(); }, [refresh]);
+  const handleArchive = useCallback(async (id: string) => { await archiveRun(id); refresh(); }, [refresh]);
 
   // --- Suggestion actions ---
   const handleAccept = useCallback(async (id: string, category?: string) => { await acceptSuggestion(id, category); refresh(); }, [refresh]);
@@ -184,7 +186,7 @@ export function WorkspaceFeed() {
           {items.map(item => {
             const isSelected = state.selectedItemId === item.id;
             if (item.source === 'run') {
-              return <FeedRunCard key={item.id} run={item.data as Run} selected={isSelected} onSelect={({ id, type }) => handleSelect(id, type)} onExecute={handleExecute} onSession={handleSession} onDiscard={handleDiscard} />;
+              return <FeedRunCard key={item.id} run={item.data as Run} selected={isSelected} onSelect={({ id, type }) => handleSelect(id, type)} onExecute={handleExecute} onSession={handleSession} onDiscard={handleDiscard} onRetry={handleRetry} onArchive={handleArchive} />;
             }
             if (item.source === 'task') {
               return <FeedTaskCard key={item.id} task={item.data as Task} selected={isSelected} onSelect={({ id, type }) => handleSelect(id, type)} />;

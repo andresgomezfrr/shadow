@@ -209,7 +209,7 @@ SHADOW_PERSONALITY_LEVEL=4            # 1-5 (4 = Tam-like)
 SHADOW_MODEL_ANALYZE=sonnet           # Modelo para analisis
 SHADOW_MODEL_SUGGEST=opus             # Modelo para sugerencias
 SHADOW_MODEL_CONSOLIDATE=sonnet       # Modelo para consolidacion
-SHADOW_MODEL_RUNNER=sonnet            # Modelo para ejecucion
+SHADOW_MODEL_RUNNER=opus              # Modelo para ejecucion
 SHADOW_HEARTBEAT_INTERVAL_MS=900000   # 15 min
 ```
 

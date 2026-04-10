@@ -28,7 +28,13 @@ type FeedItem = {
  * 6. Observations severity=info, status=active
  */
 function assignPriority(item: FeedItem): number {
-  if (item.source === 'run') return 100;
+  if (item.source === 'run') {
+    const r = item.data as { status?: string };
+    if (r.status === 'running') return 110;
+    if (r.status === 'queued') return 105;
+    if (r.status === 'failed') return 102;
+    return 100;
+  }
   if (item.source === 'task') {
     const t = item.data as { status?: string };
     if (t.status === 'in_progress') return 85;
@@ -78,16 +84,18 @@ export async function handleWorkspaceRoutes(
     const includeActiveObs = type === 'all' || type === 'observation';
     const includeAckedObs = type === 'acknowledged';
 
-    // Runs: only "to review" (completed, not archived, top-level only)
+    // Runs: active (running/queued) + to review (completed/failed), not archived, top-level only
     if (includeRuns) {
-      const runs = db.listRuns({ status: 'completed', archived: false, limit: 50 });
-      for (const r of runs) {
-        if (r.parentRunId) continue; // skip children
-        if (projectId) {
-          const projects = db.findProjectsForRepo(r.repoId);
-          if (!projects.some(p => p.id === projectId)) continue;
+      for (const status of ['running', 'queued', 'completed', 'failed'] as const) {
+        const runs = db.listRuns({ status, archived: false, limit: 50 });
+        for (const r of runs) {
+          if (r.parentRunId) continue; // skip children
+          if (projectId) {
+            const projects = db.findProjectsForRepo(r.repoId);
+            if (!projects.some(p => p.id === projectId)) continue;
+          }
+          items.push({ source: 'run', id: r.id, priority: 0, data: r });
         }
-        items.push({ source: 'run', id: r.id, priority: 0, data: r });
       }
     }
 
@@ -152,7 +160,9 @@ export async function handleWorkspaceRoutes(
     items.sort((a, b) => b.priority - a.priority);
 
     // Counts — always computed for all statuses so tabs show accurate numbers
-    const countRuns = db.listRuns({ status: 'completed', archived: false, limit: 50 }).filter(r => !r.parentRunId).length;
+    const countRuns = (['running', 'queued', 'completed', 'failed'] as const)
+      .flatMap(s => db.listRuns({ status: s, archived: false, limit: 50 }))
+      .filter(r => !r.parentRunId).length;
     const countTasksTodo = db.countTasks({ status: 'todo', projectId });
     const countTasksInProgress = db.countTasks({ status: 'in_progress', projectId });
     const countTasksBlocked = db.countTasks({ status: 'blocked', projectId });

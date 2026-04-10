@@ -88,3 +88,9 @@ html, body, #root {
 }
 .animate-bubble-in { animation: bubbleIn 0.3s ease both; }
 .animate-bubble-out { animation: bubbleOut 0.3s ease both; }
+
+/* Run spinner */
+@keyframes rotation {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

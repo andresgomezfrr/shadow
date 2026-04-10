@@ -14,6 +14,26 @@ Renderizado por filtro, transiciones de estado del feed unificado y context pane
 
 ---
 
+## Prioridad alta — Runner plan→execute flow *(2026-04-10, en evaluación)*
+
+### Contexto
+El runner ahora sigue un flujo de 2 fases obligatorio: plan primero (plan mode, read-only, todos los MCPs) → revisión manual → execute (acceptEdits, edit tools, todos MCPs). Trust level ya no afecta el flujo. Confidence se evalúa como señal visual pero sin auto-execute.
+
+Cambios ya deployados:
+- `planOnly = run.kind !== 'execution'` (siempre plan-first, sin gate de trust)
+- `--permission-mode plan` para planes, `acceptEdits` para ejecución
+- `--allowedTools mcp__*` en ambos modos (todos los MCPs disponibles)
+- Modelo por defecto del runner: opus (antes sonnet)
+- SIGKILL fallback 5s después de SIGTERM (fix proceso zombie)
+- Dashboard: runs running/queued/failed visibles en workspace, spinner, retry/archive, session oculta en running
+
+### Pendiente de evaluar
+- **Auto-accept de planes**: planes de alta confidence que se auto-ejecutan sin revisión. Necesita UI para configurar umbral y tipos de sugerencia que pueden auto-aceptarse.
+- **Plan demasiado largo**: flyte-monitoring tiene un `bundle.yaml` de 3.7MB que satura el contexto de Claude. Evaluar file size hints en el briefing o exclusión de archivos grandes.
+- **Timeout de planes**: 10min puede ser corto para repos grandes con Opus. Evaluar si necesita timeout diferenciado para plan vs execute.
+
+---
+
 ## Prioridad media — Workspace & Runs *(2026-04-09)*
 
 ### Heartbeat dedup para observations resueltas que reaparecen

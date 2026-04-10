@@ -114,10 +114,8 @@ export class RunnerService {
         ? `You are Shadow.\n\n${soulMem.bodyMd}`
         : DEFAULT_RUNNER_PERSONALITY;
 
-      const currentProfile = this.db.ensureProfile();
-      // Plan-first for L1-4 — auto-execute gated by confidence evaluation (L3+)
-      // L4 proactive features not yet implemented, so cap behavior at L3
-      const planOnly = run.kind !== 'execution' && currentProfile.trustLevel <= 4;
+      // Always plan first. Execution only via explicit child run (kind=execution).
+      const planOnly = run.kind !== 'execution';
 
       const briefing = [
         personalityPrompt,
@@ -136,20 +134,19 @@ export class RunnerService {
         repo?.lintCommand ? `- Lint: \`${repo.lintCommand}\`` : '',
         '',
         '## Instructions',
-        'You have access to the filesystem and Shadow MCP tools (shadow_memory_search, shadow_observations, etc.).',
+        'You have access to the filesystem and any available MCP tools.',
         'Use them to gather any additional context you need.',
-        'Use shadow_soul to read your understanding of the developer before planning.',
         '',
         planOnly
           ? [
-              'Generate a detailed IMPLEMENTATION PLAN. Do NOT write code directly.',
-              'Read the relevant source files, search Shadow memories for context, then structure your plan as:',
+              'Generate a detailed IMPLEMENTATION PLAN. Do NOT write code.',
+              'Read the relevant source files, search memories and external tools for context, then structure your plan as:',
               '## Files to modify',
               '## Changes per file',
               '## Risks and edge cases',
               '## Verification steps',
             ].join('\n')
-          : 'Implement this change. Read the relevant files, make the changes, and verify.',
+          : 'Implement the plan below. Read the relevant files, make the changes, and verify.',
       ].filter(Boolean).join('\n');
 
       const fullPrompt = briefing;
@@ -162,8 +159,9 @@ export class RunnerService {
       );
       mkdirSync(artifactDir, { recursive: true });
 
-      // Execution runs need filesystem write access; plan-only runs only need read + MCP
-      const allowedTools = planOnly ? undefined : ['Edit', 'Write', 'Bash'];
+      // All MCP tools always available. Execution also gets filesystem write access.
+      const allowedTools = planOnly ? ['mcp__*'] : ['mcp__*', 'Edit', 'Write', 'Bash'];
+      const permissionMode = planOnly ? 'plan' as const : 'acceptEdits' as const;
 
       const pack: ObjectivePack = {
         runId: run.id,
@@ -178,6 +176,7 @@ export class RunnerService {
         effort: this.config.efforts.runner,
         systemPrompt: null, // No override — Claude uses default behavior with MCP tools + filesystem
         allowedTools,
+        permissionMode,
         timeoutMs: this.config.runnerTimeoutMs,
       };
 
@@ -195,40 +194,18 @@ export class RunnerService {
       const adapter = selectAdapter(this.config);
       const result = await adapter.execute(pack);
 
-      // 5b. L3 confidence gate — evaluate plan before deciding to auto-execute
+      // 5b. Evaluate confidence on plans (signal for the user, no auto-execute)
       const isSuccess = result.status === 'success';
-      if (currentProfile.trustLevel >= 3 && planOnly && isSuccess && !run.parentRunId) {
-        const evaluation = await this.evaluateConfidence(result.output, pack);
-        this.db.updateRun(run.id, {
-          confidence: evaluation.confidence,
-          doubts: evaluation.doubts,
-        });
-
-        if (evaluation.confidence === 'high' && evaluation.doubts.length === 0) {
-          // Auto-execute: create child execution run (picked up by next daemon tick)
-          const childRun = this.db.createRun({
-            repoId: run.repoId,
-            repoIds: run.repoIds.length > 0 ? run.repoIds : undefined,
-            suggestionId: run.suggestionId,
-            parentRunId: run.id,
-            kind: 'execution',
-            prompt: result.summaryHint ?? result.output,
+      if (planOnly && isSuccess) {
+        try {
+          const evaluation = await this.evaluateConfidence(result.output, pack);
+          this.db.updateRun(run.id, {
+            confidence: evaluation.confidence,
+            doubts: evaluation.doubts,
           });
-
-          this.db.createAuditEvent({
-            interface: 'runner',
-            action: 'l3-auto-execute',
-            targetKind: 'run',
-            targetId: run.id,
-            detail: {
-              confidence: evaluation.confidence,
-              childRunId: childRun.id,
-            },
-          });
-
-          console.error(`[runner] L3 auto-execute: confidence=${evaluation.confidence}, child run ${childRun.id}`);
-        } else {
-          console.error(`[runner] L3 gate: confidence=${evaluation.confidence}, doubts=${evaluation.doubts.length} — waiting for user`);
+          console.error(`[runner] Plan confidence=${evaluation.confidence}, doubts=${evaluation.doubts.length}`);
+        } catch {
+          // Non-fatal — plan is still valid without confidence score
         }
       }
 
