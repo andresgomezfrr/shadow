@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { selectAdapter } from '../backend/index.js';
 
 import type { HeartbeatContext } from './state-machine.js';
@@ -100,44 +97,40 @@ export async function activityReflect(
     projects.length > 0 ? `Projects: ${projects.map(p => p.name).join(', ')}` : '',
     `Repos: ${repos.length} (${repos.slice(0, 5).map(r => r.name).join(', ')})`,
     `Trust: L${ctx.profile.trustLevel} (${ctx.profile.trustScore})`,
+    `Proactivity: ${ctx.profile.proactivityLevel}/10`,
   ].filter(Boolean).join(' | ');
 
-  let soulMd = '';
-  try { soulMd = readFileSync(resolve(ctx.config.resolvedDataDir, 'SOUL.md'), 'utf8'); } catch { /* no SOUL.md */ }
-
   const evolvePrompt = [
-    'You are Shadow, evolving your understanding of the developer.',
-    'Below is your current reflection and a change report of what happened since you last reflected.',
-    'Evolve the reflection — update sections that need it, keep stable sections as-is.',
+    'You are Shadow, evolving your soul — your identity and understanding of the developer.',
+    'Below is your current soul and a change report of what happened since you last reflected.',
+    'Evolve the soul — update sections that need it, keep stable sections as-is.',
     '',
-    existingSoul ? `## Current reflection\n${existingSoul.bodyMd}\n` : '',
-    soulMd ? `## Base personality (SOUL.md)\n${soulMd}\n` : '',
+    existingSoul ? `## Current soul\n${existingSoul.bodyMd}\n` : '',
     '',
     `## Context\n${entityContext}\n`,
     `## Change report (since last reflect)\n${changeReport}\n`,
     '',
     'Structure as markdown with these exact sections:',
     '',
+    '## Shadow\'s voice',
+    'How Shadow should speak to this developer. Tone, humor calibration,',
+    'expressiveness, language patterns, when to push vs stay quiet.',
+    'What makes this relationship unique. Evolved from interactions.',
+    '',
     '## Developer profile',
-    'Who they are, their role, expertise areas, communication style.',
+    'Who they are, their role, expertise areas, what they\'re working on.',
     '',
     '## Decision patterns',
     'What principles drive their decisions? What do they consistently accept/reject?',
     '',
-    '## Blind spots',
-    'What topics/repos/systems have NOT appeared in recent activity that probably need attention?',
-    'The gap between stated priorities and actual activity IS the blind spot.',
+    '## Tensions & gaps',
+    'Blind spots, neglected areas, stated priorities vs actual activity.',
+    'Items Shadow should proactively watch for. Priority conflicts.',
     '',
-    '## What Shadow should watch for',
-    'Proactive items: upcoming deadlines, dependencies at risk, patterns that predict problems.',
-    '',
-    '## Communication preferences',
-    'How they want Shadow to communicate: tone, verbosity, when to be proactive vs silent.',
-    '',
-    'Output ONLY the markdown reflection, no preamble or explanation.',
+    'Output ONLY the markdown soul, no preamble or explanation.',
   ].filter(Boolean).join('\n');
 
-  const expectedSections = ['## Developer profile', '## Decision patterns', '## Blind spots', '## What Shadow should watch for', '## Communication preferences'];
+  const expectedSections = ['## Shadow\'s voice', '## Developer profile', '## Decision patterns', '## Tensions & gaps'];
   let phase2Output: string | null = null;
   let phase2Error: string | null = null;
   let retryHint: string | null = null;
@@ -146,7 +139,7 @@ export async function activityReflect(
     try {
       const promptToUse = attempt === 0
         ? evolvePrompt
-        : evolvePrompt + `\n\nIMPORTANT: Your previous output was missing these required sections: ${retryHint}. You MUST include ALL five sections exactly as specified.`;
+        : evolvePrompt + `\n\nIMPORTANT: Your previous output was missing these required sections: ${retryHint}. You MUST include ALL four sections exactly as specified.`;
 
       const result = await adapter.execute({
         repos: [], title: 'Shadow Reflect', goal: 'Evolve soul reflection',

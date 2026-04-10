@@ -100,7 +100,7 @@ const FEATURES: [string, string, string][] = [
 ];
 
 const STEPS: [string, string][] = [
-  ['shadow init', 'Bootstrap everything: DB, hooks, launchd, SOUL.md'],
+  ['shadow init', 'Bootstrap everything: DB, hooks, launchd, soul seed'],
   ['shadow repo add .', 'Register your current repo for Shadow to watch'],
   ['shadow daemon start', 'Start the background daemon (auto-starts on boot via launchd)'],
   ['shadow teach "We use trunk-based dev"', 'Teach Shadow about your team and conventions'],

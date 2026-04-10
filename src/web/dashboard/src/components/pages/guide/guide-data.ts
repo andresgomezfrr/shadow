@@ -15,7 +15,7 @@ export const CLI_GROUPS: CliGroup[] = [
     name: 'General',
     description: 'Setup, status, and daily use',
     commands: [
-      { command: 'shadow init', description: 'Bootstrap the global shadow home for this user (~/.shadow, hooks, launchd, SOUL.md)' },
+      { command: 'shadow init', description: 'Bootstrap the global shadow home for this user (~/.shadow, hooks, launchd, soul)' },
       { command: 'shadow status', description: 'Show current shadow state summary (trust, repos, suggestions, heartbeat)' },
       { command: 'shadow doctor', description: 'Check local environment (Node, Claude CLI, daemon, DB, hooks)' },
       { command: 'shadow teach', description: 'Open interactive teaching session with Claude CLI' },
@@ -99,7 +99,7 @@ export const CLI_GROUPS: CliGroup[] = [
     commands: [
       { command: 'shadow profile show', description: 'Show current user profile' },
       { command: 'shadow profile trust', description: 'Show trust level and score' },
-      { command: 'shadow profile set', args: '<key> <value>', description: 'Set a profile field (proactivityLevel, personalityLevel, timezone)' },
+      { command: 'shadow profile set', args: '<key> <value>', description: 'Set a profile field (proactivityLevel, timezone, displayName)' },
       { command: 'shadow profile focus', args: '[duration]', description: 'Enter focus mode (proactivity -> 1). Optional: "2h", "30m"' },
       { command: 'shadow profile available', description: 'Exit focus mode, restore previous proactivity level' },
     ],
@@ -260,7 +260,7 @@ export const MCP_CATEGORIES: McpCategory[] = [
   {
     name: 'Profile & Mode',
     tools: [
-      { name: 'shadow_profile_set', description: 'Update a profile field (proactivityLevel, personalityLevel, timezone, displayName).', trust: 1, readOnly: false },
+      { name: 'shadow_profile_set', description: 'Update a profile field (proactivityLevel, timezone, displayName).', trust: 1, readOnly: false },
       { name: 'shadow_focus', description: 'Enter focus mode (proactivity -> 1). Optional duration: "2h", "30m".', trust: 1, readOnly: false },
       { name: 'shadow_available', description: 'Exit focus mode, restore previous proactivity level.', trust: 1, readOnly: false },
       { name: 'shadow_soul_update', description: "Update Shadow's soul reflection.", trust: 1, readOnly: false },
@@ -281,7 +281,6 @@ export const CONFIG_GENERAL: ConfigVar[] = [
 
 export const CONFIG_PERSONALITY: ConfigVar[] = [
   { envVar: 'SHADOW_PROACTIVITY_LEVEL', description: 'How proactive Shadow is (1 = silent, 10 = very active)', defaultVal: '5' },
-  { envVar: 'SHADOW_PERSONALITY_LEVEL', description: 'Personality depth (1 = minimal, 5 = full companion)', defaultVal: '4' },
 ];
 
 export const CONFIG_TIMING: ConfigVar[] = [

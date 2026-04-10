@@ -95,7 +95,6 @@ export type UserProfileRecord = {
   verbosity: string;
   proactiveLevel: string;
   proactivityLevel: number;
-  personalityLevel: number;
   focusMode: string | null;
   focusUntil: string | null;
   energyLevel: string | null;

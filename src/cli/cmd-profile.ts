@@ -54,7 +54,6 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
           trustLevel: profile.trustLevel,
           trustScore: profile.trustScore,
           proactivityLevel: profile.proactivityLevel,
-          personalityLevel: profile.personalityLevel,
           focusMode: profile.focusMode,
           focusUntil: profile.focusUntil,
           bondLevel: profile.bondLevel,
@@ -110,7 +109,6 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
             ...doctorResult,
           },
           proactivityLevel: config.proactivityLevel,
-          personalityLevel: config.personalityLevel,
           models: config.models,
           heartbeatIntervalMs: config.heartbeatIntervalMs,
           daemonPollIntervalMs: config.daemonPollIntervalMs,
@@ -146,10 +144,10 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
 
   profile
     .command('set <key> <value>')
-    .description('set a profile field (e.g., proactivityLevel, personalityLevel, timezone)')
+    .description('set a profile field (e.g., proactivityLevel, timezone, displayName)')
     .action((key: string, value: string) =>
       withDb((db) => {
-        const numericFields = ['proactivityLevel', 'personalityLevel', 'trustLevel', 'trustScore', 'bondLevel'];
+        const numericFields = ['proactivityLevel', 'trustLevel', 'trustScore', 'bondLevel'];
         const parsedValue = numericFields.includes(key) ? Number(value) : value;
         db.updateProfile('default', { [key]: parsedValue });
         return { ok: true, set: key, value: parsedValue };

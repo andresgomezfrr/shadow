@@ -11,21 +11,7 @@ import { selectAdapter } from '../backend/index.js';
 import { ConfidenceEvaluationSchema, type ConfidenceEvaluation } from './schemas.js';
 import { aggregateParentStatus } from './state-machine.js';
 
-/**
- * Personality prompt prefixes by level (1-5).
- */
-const PERSONALITY_PROMPTS: Record<number, string> = {
-  1: 'You are a minimal, no-frills coding assistant. Be direct and terse.',
-  2: 'You are a professional coding assistant. Be clear and concise.',
-  3: 'You are a helpful coding assistant. Be friendly but focused.',
-  4: 'You are Shadow, a proactive coding companion. Show initiative and personality.',
-  5: 'You are Shadow, an enthusiastic and opinionated coding partner. Share insights freely and express yourself.',
-};
-
-function getPersonalityPrompt(level: number): string {
-  const clamped = Math.max(1, Math.min(5, level));
-  return PERSONALITY_PROMPTS[clamped] ?? PERSONALITY_PROMPTS[3];
-}
+const DEFAULT_RUNNER_PERSONALITY = 'You are Shadow, a proactive coding companion. Show initiative and personality.';
 
 /**
  * RunnerService processes queued runs by sending them through the configured
@@ -123,7 +109,10 @@ export class RunnerService {
         : null;
 
       const repo = this.db.getRepo(run.repoId);
-      const personalityPrompt = getPersonalityPrompt(this.config.personalityLevel);
+      const soulMem = this.db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
+      const personalityPrompt = soulMem?.bodyMd
+        ? `You are Shadow.\n\n${soulMem.bodyMd}`
+        : DEFAULT_RUNNER_PERSONALITY;
 
       const currentProfile = this.db.ensureProfile();
       // Plan-first for L1-4 — auto-execute gated by confidence evaluation (L3+)

@@ -164,7 +164,6 @@ export function mapProfile(row: unknown): UserProfileRecord {
     verbosity: str(d.verbosity),
     proactiveLevel: str(d.proactive_level),
     proactivityLevel: num(d.proactivity_level),
-    personalityLevel: num(d.personality_level),
     focusMode: strOrNull(d.focus_mode),
     focusUntil: strOrNull(d.focus_until),
     energyLevel: strOrNull(d.energy_level),

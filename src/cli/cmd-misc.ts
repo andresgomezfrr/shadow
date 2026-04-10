@@ -1,8 +1,6 @@
 import type { Command } from 'commander';
 import type { ShadowConfig } from '../config/load-config.js';
 import type { WithDb } from './types.js';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { printOutput } from './output.js';
 import { createDatabase } from '../storage/index.js';
 
@@ -93,14 +91,15 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
 
       const db = createDatabase(config);
       const profile = db.ensureProfile();
-      const { loadPersonality } = await import('../personality/loader.js');
-      const personality = loadPersonality(config.resolvedDataDir, profile.personalityLevel);
+      const soulMem = db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
+      const soulText = soulMem?.bodyMd ?? 'You are Shadow, a digital engineering companion.';
 
       const systemPrompt = [
         'You are Shadow in TEACHING MODE — the user wants to teach you something.',
         '',
-        '## Personality',
-        personality,
+        '<soul>',
+        soulText,
+        '</soul>',
         '',
         '## Your goal',
         'Learn from the user. Use shadow_memory_teach to save what they teach you.',
@@ -164,21 +163,9 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
       withDb((db) => {
         const profile = db.ensureProfile();
 
-        // Load personality from SOUL.md
-        const soulPath = resolve(config.resolvedDataDir, 'SOUL.md');
-        let personality = 'You are Shadow, a digital engineering companion.';
-        try {
-          const soulContent = readFileSync(soulPath, 'utf8');
-          const levelHeader = `## Level ${profile.personalityLevel}`;
-          const idx = soulContent.indexOf(levelHeader);
-          if (idx !== -1) {
-            const nextLevel = soulContent.indexOf('\n## Level ', idx + levelHeader.length);
-            const section = nextLevel === -1
-              ? soulContent.slice(idx + levelHeader.length)
-              : soulContent.slice(idx + levelHeader.length, nextLevel);
-            personality = section.replace(/^[:\s]+/, '').trim();
-          }
-        } catch { /* use default */ }
+        // Load soul from DB
+        const soulMem = db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
+        const soulText = soulMem?.bodyMd ?? 'You are Shadow — a digital engineering companion. Warm, informal, like a teammate.';
 
         // Gather context
         const pendingEvents = db.listPendingEvents();
@@ -223,8 +210,9 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         const lines = [
           `You are Shadow — a digital engineering companion. You are NOT Claude.`,
           ``,
-          `## Personality`,
-          personality,
+          `<soul>`,
+          soulText,
+          `</soul>`,
           ``,
           `## Current State`,
           `- Trust level: ${profile.trustLevel} (${trustNames[profile.trustLevel] ?? 'observer'})`,
@@ -297,11 +285,11 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
     .description('ask Shadow a question from any terminal (one-shot, uses Claude CLI)')
     .option('--model <model>', 'model to use', 'sonnet')
     .action(async (questionParts: string[], options: { model: string }) => {
-      const { loadPersonality } = await import('../personality/loader.js');
       const db = createDatabase(config);
       try {
         const profile = db.ensureProfile();
-        const personality = loadPersonality(config.resolvedDataDir, profile.personalityLevel);
+        const soulMem = db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
+        const soulText = soulMem?.bodyMd ?? 'You are Shadow, a digital engineering companion.';
 
         // Search for relevant memories
         const memories = db.searchMemories(questionParts.join(' '), { limit: 5 });
@@ -316,7 +304,10 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
 
         const prompt = [
           `You are Shadow, a digital engineering companion.`,
-          personality,
+          ``,
+          `<soul>`,
+          soulText,
+          `</soul>`,
           ``,
           `User: ${profile.displayName ?? 'unknown'}`,
           `Language: ${profile.locale === 'es' ? 'Spanish' : profile.locale}`,

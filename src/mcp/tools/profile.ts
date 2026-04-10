@@ -9,7 +9,7 @@ import { ProfileUpdateSchema } from '../../config/schema.js';
 const ProfileReadSchema = z.object({});
 
 const ProfileSetSchema = z.object({
-  key: z.string().describe('Profile field name (e.g., proactivityLevel, personalityLevel, timezone, displayName)'),
+  key: z.string().describe('Profile field name (e.g., proactivityLevel, timezone, displayName)'),
   value: z.string().describe('New value for the field'),
 });
 
@@ -53,7 +53,7 @@ export function profileTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_profile_set',
-      description: 'Update a user profile field. Requires trust level >= 1. Fields: proactivityLevel (1-10), personalityLevel (1-5), timezone, displayName.',
+      description: 'Update a user profile field. Requires trust level >= 1. Fields: proactivityLevel (1-10), timezone, displayName.',
       inputSchema: mcpSchema(ProfileSetSchema),
       handler: async (params) => {
         const gate = trustGate(1);

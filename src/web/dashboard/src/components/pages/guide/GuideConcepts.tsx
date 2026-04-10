@@ -235,9 +235,9 @@ export function GuideConcepts() {
         <p className="text-sm text-text-dim">
           Once a day, Shadow runs a <span className="text-text">reflect</span> job (Opus model) that synthesizes
           all feedback, memories, and interactions into a coherent understanding of you as a developer.
-          This reflection is stored in <code className="text-accent bg-bg px-1.5 py-0.5 rounded text-xs">SOUL.md</code> and
-          influences how Shadow communicates — tone, priorities, what to highlight or avoid.
-          The reflection blends with the existing personality; it evolves, never replaces.
+          This reflection is stored in the database as Shadow's <span className="text-text">soul</span> and
+          defines how Shadow communicates — tone, priorities, what to highlight or avoid.
+          The soul evolves with every reflection cycle, growing more personalized over time.
         </p>
       </section>
     </>

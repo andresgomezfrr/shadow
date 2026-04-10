@@ -247,7 +247,6 @@ revalidate-suggestion (on-demand from Workspace)`}</pre>
             <ul className="list-disc list-inside space-y-1 text-xs font-mono">
               <li>SHADOW_HEARTBEAT_INTERVAL_MS — heartbeat interval (default: 30min)</li>
               <li>SHADOW_PROACTIVITY_LEVEL — event delivery threshold 1-10 (default: 5)</li>
-              <li>SHADOW_PERSONALITY_LEVEL — personality tone 1-5 (default: 4)</li>
             </ul>
           </div>
           <div>

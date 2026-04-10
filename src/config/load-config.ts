@@ -47,7 +47,6 @@ export function loadConfig(): ShadowConfig {
     heartbeatIntervalMs: process.env.SHADOW_HEARTBEAT_INTERVAL_MS,
     daemonPollIntervalMs: process.env.SHADOW_DAEMON_POLL_INTERVAL_MS,
     proactivityLevel: process.env.SHADOW_PROACTIVITY_LEVEL,
-    personalityLevel: process.env.SHADOW_PERSONALITY_LEVEL,
     thoughtsEnabled: process.env.SHADOW_THOUGHTS_ENABLED,
     thoughtIntervalMinMs: process.env.SHADOW_THOUGHT_INTERVAL_MIN_MS,
     thoughtIntervalMaxMs: process.env.SHADOW_THOUGHT_INTERVAL_MAX_MS,

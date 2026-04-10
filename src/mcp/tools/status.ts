@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { z } from 'zod';
 import { mcpSchema, type McpTool, type ToolContext } from './types.js';
 import { applyTrustDelta } from '../../profile/trust.js';
-import { loadPersonality } from '../../personality/loader.js';
 import { getDaemonState } from '../../daemon/runtime.js';
 
 // ---------------------------------------------------------------------------
@@ -39,7 +38,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_check_in',
-      description: 'Get Shadow\'s current personality, mood, context, and pending updates. Call this at the start of a conversation to adopt Shadow\'s persona, or when the user greets Shadow.',
+      description: 'Get Shadow\'s current soul, mood, context, and pending updates. Call this at the start of a conversation to adopt Shadow\'s persona, or when the user greets Shadow.',
       inputSchema: mcpSchema(CheckInSchema),
       handler: async (params) => {
         const { repoPath } = CheckInSchema.parse(params);
@@ -47,7 +46,6 @@ export function statusTools(ctx: ToolContext): McpTool[] {
         const profile = db.ensureProfile();
         // Trust: each check_in increases trust
         try { applyTrustDelta(db, 'check_in'); } catch { /* ignore */ }
-        const personality = loadPersonality(config.resolvedDataDir, profile.personalityLevel);
         const mood = deriveMood();
         const greeting = deriveGreeting(profile);
         const pendingEvents = db.listPendingEvents();
@@ -118,8 +116,6 @@ export function statusTools(ctx: ToolContext): McpTool[] {
         }
 
         return {
-          personality,
-          personalityLevel: profile.personalityLevel,
           displayName: profile.displayName,
           locale: profile.locale,
           trustLevel: profile.trustLevel,
