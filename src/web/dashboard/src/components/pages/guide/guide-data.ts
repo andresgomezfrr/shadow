@@ -286,7 +286,7 @@ export const CONFIG_PERSONALITY: ConfigVar[] = [
 export const CONFIG_TIMING: ConfigVar[] = [
   { envVar: 'SHADOW_HEARTBEAT_INTERVAL_MS', description: 'Heartbeat interval', defaultVal: '900000 (15min)' },
   { envVar: 'SHADOW_DAEMON_POLL_INTERVAL_MS', description: 'Daemon poll interval', defaultVal: '30000 (30s)' },
-  { envVar: 'SHADOW_RUNNER_TIMEOUT_MS', description: 'Max time for a runner execution', defaultVal: '600000 (10min)' },
+  { envVar: 'SHADOW_RUNNER_TIMEOUT_MS', description: 'Max time for a runner execution', defaultVal: '1800000 (30min)' },
 ];
 
 export const CONFIG_MODELS: ConfigVar[] = [
