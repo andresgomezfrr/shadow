@@ -13,6 +13,7 @@ type ActiveJob = {
   category: 'llm' | 'io';
   phase: string | null;
   promise: Promise<void>;
+  abort: AbortController;
 };
 
 export class JobQueue {
@@ -84,12 +85,15 @@ export class JobQueue {
     const originalParams: Record<string, unknown> = { ...(job.result as Record<string, unknown>) };
     delete originalParams.error;
 
+    const abort = new AbortController();
+
     const activeEntry: ActiveJob = {
       jobId: job.id,
       type: job.type,
       category: entry.category,
       phase: null,
       promise: null!,
+      abort,
     };
 
     // Per-job setPhase closure
@@ -103,14 +107,13 @@ export class JobQueue {
       }
     };
 
-    const ac = new AbortController();
     const ctx: JobContext = {
       jobId: job.id,
       config: this.config,
       db: this.db,
       eventBus: this.eventBus,
       setPhase,
-      signal: ac.signal,
+      signal: abort.signal,
     };
 
     // Emit job:started
@@ -198,7 +201,7 @@ export class JobQueue {
     Promise.race([jobPromise.then(() => 'done' as const), timeoutPromise]).then(winner => {
       if (winner === 'timeout' && this.active.has(job.id)) {
         cancelled = true;
-        ac.abort();
+        abort.abort(new Error(`timeout (${Math.round(JOB_TIMEOUT_MS / 60000)}min)`));
         killJobAdapters(job.id);
         this.db.updateJob(job.id, {
           status: 'failed',
@@ -237,6 +240,7 @@ export class JobQueue {
 
   killAll(): void {
     for (const entry of this.active.values()) {
+      entry.abort.abort(new Error('daemon shutdown'));
       killJobAdapters(entry.jobId);
     }
     this.active.clear();
