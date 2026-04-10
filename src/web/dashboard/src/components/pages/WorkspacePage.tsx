@@ -12,17 +12,17 @@ function WorkspaceLayout() {
     <div className="flex flex-col">
       <WorkspaceHeader />
       <ProjectStrip />
-      <div className="relative flex gap-4 min-h-0">
-        <div className={`flex-1 min-w-0 transition-all ${hasSelection ? 'lg:mr-[500px]' : ''}`}>
+      <div className="relative flex gap-4 min-h-0 w-full">
+        <div className={`min-w-0 shrink transition-all ${hasSelection ? 'lg:flex-[0_0_58%]' : 'flex-1'}`}>
           <WorkspaceFeed />
         </div>
         {hasSelection && (
-          <div className="hidden lg:block fixed right-6 top-[72px] bottom-6 w-[500px] z-10">
+          <div className="hidden lg:block flex-[0_0_42%] sticky top-0 h-[calc(100vh-80px)] overflow-y-auto">
             <ContextPanel />
           </div>
         )}
         {hasSelection && (
-          <div className="lg:hidden">
+          <div className="lg:hidden fixed inset-0 z-30 bg-background overflow-y-auto p-4">
             <ContextPanel />
           </div>
         )}
