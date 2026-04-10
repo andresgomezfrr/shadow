@@ -10,7 +10,7 @@ import {
 
 // --- Types ---
 
-export type HeartbeatPhase = 'wake' | 'prepare' | 'extract' | 'cleanup' | 'observe' | 'notify' | 'idle';
+export type HeartbeatPhase = 'wake' | 'prepare' | 'summarize' | 'extract' | 'cleanup' | 'observe' | 'notify' | 'idle';
 
 export type HeartbeatContext = {
   config: ShadowConfig;

@@ -1,5 +1,6 @@
 #!/bin/bash
 # Shadow UserPromptSubmit hook — captures what the user says (full text, no truncation)
+[ "$SHADOW_JOB" = "1" ] && exit 0
 INPUT=$(cat)
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 SHADOW_DATA="${SHADOW_DATA_DIR:-$HOME/.shadow}"

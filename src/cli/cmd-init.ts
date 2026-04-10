@@ -482,6 +482,7 @@ fi
         // Post-tool-use hook script (auto-learning) — single jq pipeline with per-tool detail
         writeFileSync(postToolPath, `#!/bin/bash
 # Shadow PostToolUse hook — logs tool usage with rich detail
+[ "$SHADOW_JOB" = "1" ] && exit 0
 INPUT=$(cat)
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 LINE=$(echo "$INPUT" | jq -c --arg ts "$TS" '
@@ -520,6 +521,7 @@ fi
         const conversationsPath = resolve(config.resolvedDataDir, 'conversations.jsonl');
         writeFileSync(userPromptPath, `#!/bin/bash
 # Shadow UserPromptSubmit hook — captures what the user says
+[ "$SHADOW_JOB" = "1" ] && exit 0
 INPUT=$(cat)
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 LINE=$(echo "$INPUT" | jq -c --arg ts "$TS" '
@@ -535,6 +537,7 @@ fi
         const stopHookPath = resolve(config.resolvedDataDir, 'stop.sh');
         writeFileSync(stopHookPath, `#!/bin/bash
 # Shadow Stop hook — captures what Claude responds
+[ "$SHADOW_JOB" = "1" ] && exit 0
 INPUT=$(cat)
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 LINE=$(echo "$INPUT" | jq -c --arg ts "$TS" '

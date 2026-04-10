@@ -40,9 +40,14 @@ const PHASE_DOT: Record<string, string> = {
   profile: 'bg-emerald-400',
   digest: 'bg-cyan',
   prepare: 'bg-sky-400',
+  summarize: 'bg-amber-400',
   extract: 'bg-purple',
   evaluate: 'bg-sky-500',
   apply: 'bg-sky-300',
+  validate: 'bg-green-400',
+  'digest-daily': 'bg-cyan-400',
+  'digest-weekly': 'bg-cyan-400',
+  'digest-brag': 'bg-cyan-400',
 };
 
 const PHASE_TEXT: Record<string, string> = {
@@ -67,13 +72,18 @@ const PHASE_TEXT: Record<string, string> = {
   profile: 'text-emerald-400',
   digest: 'text-cyan',
   prepare: 'text-sky-400',
+  summarize: 'text-amber-400',
   extract: 'text-purple',
   evaluate: 'text-sky-500',
   apply: 'text-sky-300',
+  validate: 'text-green-400',
+  'digest-daily': 'text-cyan-400',
+  'digest-weekly': 'text-cyan-400',
+  'digest-brag': 'text-cyan-400',
 };
 
 const JOB_PHASES: Record<string, string[]> = {
-  heartbeat: ['prepare', 'extract', 'cleanup', 'observe', 'notify'],
+  heartbeat: ['prepare', 'summarize', 'extract', 'cleanup', 'observe', 'notify'],
   suggest: ['suggest', 'notify'],
   consolidate: ['layer-maintenance', 'corrections', 'merge', 'meta-patterns'],
   reflect: ['reflect-delta', 'reflect-evolve'],
@@ -84,10 +94,10 @@ const JOB_PHASES: Record<string, string[]> = {
   'project-profile': ['profile'],
   'context-enrich': ['enrich'],
   'mcp-discover': ['discover'],
-  'digest-daily': ['digest-daily'],
-  'digest-weekly': ['digest-weekly'],
-  'digest-brag': ['digest-brag'],
-  'revalidate-suggestion': ['prepare', 'evaluate', 'apply', 'notify'],
+  'digest-daily': ['digest'],
+  'digest-weekly': ['digest'],
+  'digest-brag': ['digest'],
+  'revalidate-suggestion': ['prepare', 'evaluate', 'apply'],
 };
 
 
@@ -111,24 +121,73 @@ function formatDuration(ms: number | null): string {
 
 // --- Phase Pipeline Component ---
 
-function PhasePipeline({ phases, currentPhase, allPhases }: { phases: string[]; currentPhase?: string; allPhases?: string[] }) {
+/** Job type → active phase color (dot + text). Active phase pulses in the job's color, not its own. */
+const JOB_ACTIVE_DOT: Record<string, string> = {
+  heartbeat: 'bg-purple-400',
+  suggest: 'bg-green-400',
+  'suggest-deep': 'bg-green-500',
+  'suggest-project': 'bg-emerald-400',
+  consolidate: 'bg-orange-400',
+  reflect: 'bg-blue-400',
+  'remote-sync': 'bg-pink-400',
+  'repo-profile': 'bg-teal-400',
+  'project-profile': 'bg-emerald-400',
+  'context-enrich': 'bg-amber-400',
+  'mcp-discover': 'bg-indigo-400',
+  'digest-daily': 'bg-cyan-400',
+  'digest-weekly': 'bg-cyan-400',
+  'digest-brag': 'bg-cyan-400',
+  'revalidate-suggestion': 'bg-sky-400',
+};
+const JOB_ACTIVE_TEXT: Record<string, string> = {
+  heartbeat: 'text-purple-300',
+  suggest: 'text-green-300',
+  'suggest-deep': 'text-green-400',
+  'suggest-project': 'text-emerald-300',
+  consolidate: 'text-orange-300',
+  reflect: 'text-blue-300',
+  'remote-sync': 'text-pink-300',
+  'repo-profile': 'text-teal-300',
+  'project-profile': 'text-emerald-300',
+  'context-enrich': 'text-amber-300',
+  'mcp-discover': 'text-indigo-300',
+  'digest-daily': 'text-cyan-300',
+  'digest-weekly': 'text-cyan-300',
+  'digest-brag': 'text-cyan-300',
+  'revalidate-suggestion': 'text-sky-300',
+};
+
+function PhasePipeline({ phases, currentPhase, allPhases, jobType }: { phases: string[]; currentPhase?: string; allPhases?: string[]; jobType?: string }) {
   const displayPhases = allPhases ?? interestingPhases(phases);
   if (displayPhases.length === 0) return null;
 
   return (
     <div className="flex items-center gap-0 mb-2">
       {displayPhases.map((phase, i) => {
-        const isCurrent = phase === currentPhase;
+        // Match "remote-sync: shadow (1/13)" against "remote-sync"
+        const isCurrent = currentPhase === phase || (currentPhase?.startsWith(phase + ':') ?? false) || (currentPhase?.startsWith(phase + ' ') ?? false);
         const isCompleted = !allPhases || phases.includes(phase);
         const isFuture = allPhases && !isCompleted && !isCurrent;
-        const dotColor = isFuture ? 'bg-border' : (PHASE_DOT[phase] ?? 'bg-text-muted');
-        const textColor = isFuture ? 'text-text-muted/40' : (PHASE_TEXT[phase] ?? 'text-text-muted');
+        // Extract detail from phase like "enrich: Flyte (2/3)" → "Flyte (2/3)"
+        const detail = isCurrent && currentPhase && currentPhase !== phase
+          ? currentPhase.slice(phase.length).replace(/^[:\s]+/, '')
+          : undefined;
+        // Active phase: job color. Completed (no active phase): uniform dim. Future: muted.
+        const jobDone = !currentPhase;
+        const dotColor = isCurrent && jobType
+          ? (JOB_ACTIVE_DOT[jobType] ?? 'bg-text-muted')
+          : isFuture ? 'bg-border'
+          : jobDone ? 'bg-text-muted' : (PHASE_DOT[phase] ?? 'bg-text-muted');
+        const textColor = isCurrent && jobType
+          ? (JOB_ACTIVE_TEXT[jobType] ?? 'text-text-muted')
+          : isFuture ? 'text-text-muted/40'
+          : jobDone ? 'text-text-muted' : (PHASE_TEXT[phase] ?? 'text-text-muted');
         return (
           <div key={phase} className="flex items-center">
             {i > 0 && <div className={`w-4 h-px ${isFuture ? 'bg-border/50' : 'bg-border'} mx-0.5`} />}
             <div className={`flex items-center gap-1 ${isCurrent ? 'animate-pulse' : ''}`}>
               <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-              <span className={`text-[10px] ${textColor}`}>{phase}</span>
+              <span className={`text-[10px] ${textColor}`}>{phase}{detail ? ` (${detail})` : ''}</span>
             </div>
           </div>
         );
@@ -149,7 +208,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const repos = arr(r, 'reposAnalyzed');
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['heartbeat']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['heartbeat']} />
         {num(r, 'observationsCreated') > 0 && (
           <div>
             <span className="text-accent">Observations ({num(r, 'observationsCreated')}):</span>
@@ -197,7 +256,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const sugItems = items(r, 'suggestionItems');
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['suggest']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['suggest']} />
         {num(r, 'suggestionsCreated') > 0 ? (
           <div>
             <span className="text-accent">Suggestions ({num(r, 'suggestionsCreated')}):</span>
@@ -227,7 +286,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const repoName = str(r, 'repoName');
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['suggest-deep']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['suggest-deep']} />
         {repoName && <div><span className="text-accent">Repo:</span> <span className="text-text-dim">{repoName}</span></div>}
         {num(r, 'suggestionsCreated') > 0 ? (
           <div>
@@ -252,7 +311,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const projectName = str(r, 'projectName');
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['suggest-project']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['suggest-project']} />
         {projectName && <div><span className="text-accent">Project:</span> <span className="text-text-dim">{projectName}</span></div>}
         {num(r, 'suggestionsCreated') > 0 ? (
           <div>
@@ -277,7 +336,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const repoCount = num(r, 'repoCount');
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['project-profile']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['project-profile']} />
         <div>
           <span className="text-accent">Profiled:</span>{' '}
           <span className="text-text-dim">{projectName ?? 'unknown'} ({repoCount} repos)</span>
@@ -293,7 +352,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const count = num(r, 'newCount');
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['revalidate-suggestion']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['revalidate-suggestion']} />
         {title && <div><span className="text-accent">Suggestion:</span> <span className="text-text-dim">{title}</span></div>}
         {verdict && (
           <div className="flex items-center gap-2">
@@ -312,7 +371,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
   if (type === 'consolidate') {
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['consolidate']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['consolidate']} />
         <div className="flex items-center gap-3 flex-wrap">
           <span><span className="text-accent">Promoted:</span> <span className="text-text-dim">{num(r, 'memoriesPromoted')}</span></span>
           <span><span className="text-accent">Demoted:</span> <span className="text-text-dim">{num(r, 'memoriesDemoted')}</span></span>
@@ -332,7 +391,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const preview = str(r, 'deltaPreview');
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['reflect']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['reflect']} />
         {r.skipped ? (
           <div className="text-text-muted">Skipped{str(r, 'reason') ? ` — ${str(r, 'reason')}` : ' — no changes since last reflect'}</div>
         ) : str(r, 'reason') && !r.soulUpdated ? (
@@ -351,7 +410,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const summaries = (r.repoSummaries ?? []) as Array<{ name: string; newCommits: number }>;
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['remote-sync']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['remote-sync']} />
         <div>
           <span className="text-accent">{num(r, 'reposSynced')} repos synced</span>
           <span className="text-text-muted">, {num(r, 'reposWithChanges')} with changes</span>
@@ -371,7 +430,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     const names = arr(r, 'repoNames');
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['repo-profile']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['repo-profile']} />
         <div>
           <span className="text-accent">Profiled:</span>{' '}
           <span className="text-text-dim">{names.length > 0 ? names.join(', ') : `${num(r, 'reposProfiled')} repos`}</span>
@@ -387,7 +446,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     }> | undefined;
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES['context-enrich']} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['context-enrich']} />
         {projectResults && projectResults.length > 0 ? (
           <div className="space-y-3">
             {projectResults.map(pr => (
@@ -444,7 +503,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
 
     return (
       <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES[type] ?? [type]} />
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES[type] ?? [type]} />
         <div>
           <span className="text-accent">{kind} digest{periodFull ? ` for ${periodFull}` : ''}</span>
           {words > 0 && <span className="text-text-dim">, {words} words</span>}
@@ -482,7 +541,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
   // Fallback: generic key-value dump
   return (
     <>
-      {(entry.phases.length > 0 || JOB_PHASES[type]) && <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={JOB_PHASES[type]} />}
+      {(entry.phases.length > 0 || JOB_PHASES[type]) && <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES[type]} />}
       {Object.entries(r)
         .filter(([, v]) => v != null && v !== 0 && v !== '' && v !== false)
         .map(([k, v]) => (
@@ -558,7 +617,7 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
         </div>
         {expectedPhases && (
           <div className="mt-2">
-            <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} allPhases={expectedPhases} />
+            <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={expectedPhases} />
           </div>
         )}
       </div>

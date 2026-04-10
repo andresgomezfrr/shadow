@@ -148,7 +148,7 @@ export function loadAllInteractions(filePath: string): InteractionEntry[] {
   }
 }
 
-export function summarizeInteractions(interactions: InteractionEntry[]): string {
+export function formatInteractions(interactions: InteractionEntry[]): string {
   if (interactions.length === 0) return '';
 
   // Group by file with per-tool breakdown
@@ -249,7 +249,7 @@ export function loadAllConversations(filePath: string): ConversationTurn[] {
   }
 }
 
-export function summarizeConversations(conversations: ConversationTurn[]): string {
+export function formatConversations(conversations: ConversationTurn[]): string {
   if (conversations.length === 0) return '';
 
   // Group by session
@@ -308,7 +308,7 @@ export function loadAllEvents(filePath: string): EventEntry[] {
   }
 }
 
-export function summarizeEvents(events: EventEntry[]): string {
+export function formatEvents(events: EventEntry[]): string {
   if (events.length === 0) return '';
 
   const counts = new Map<string, number>();

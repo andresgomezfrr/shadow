@@ -96,7 +96,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
 
     // Prompt via stdin — avoids ARG_MAX limit with large prompts (conversations, memories, etc.)
 
-    const env = { ...process.env };
+    const env: Record<string, string | undefined> = { ...process.env, SHADOW_JOB: '1' }; // Mark daemon LLM calls so hooks can skip them
     if (this.config.claudeExtraPath) {
       env.PATH = `${this.config.claudeExtraPath}:${env.PATH ?? ''}`;
     }

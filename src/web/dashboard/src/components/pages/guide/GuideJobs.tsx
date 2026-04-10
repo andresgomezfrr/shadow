@@ -48,8 +48,8 @@ revalidate-suggestion (on-demand from Workspace)`}</pre>
             color="bg-purple-500/20 text-purple-300"
             purpose="Discovers active projects, extracts memories from conversations, generates observations about your work"
             trigger="Every 30min (60min when idle)"
-            model="Sonnet medium"
-            phases={['prepare', 'extract', 'cleanup', 'observe', 'notify']}
+            model="Opus (summarize/extract/observe), Sonnet (cleanup)"
+            phases={['prepare', 'summarize', 'extract', 'cleanup', 'observe', 'notify']}
             output="Memories, observations, mood/energy updates"
             reactive={false}
             note="Also triggers suggest (if observations created) and repo-profile (if repos have new local commits, 2h gap)"

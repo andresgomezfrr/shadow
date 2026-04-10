@@ -18,11 +18,11 @@ import {
   rotateForConsume,
   cleanupRotating,
   loadAllInteractions,
-  summarizeInteractions,
+  formatInteractions,
   loadAllConversations,
-  summarizeConversations,
+  formatConversations,
   loadAllEvents,
-  summarizeEvents,
+  formatEvents,
   getModel,
   getEffort,
 } from './shared.js';
@@ -46,9 +46,9 @@ export async function activityAnalyze(
   const recentConversations = rotatingConv ? loadAllConversations(rotatingConv) : [];
   const recentEvents = rotatingEvt ? loadAllEvents(rotatingEvt) : [];
 
-  const interactionSummary = summarizeInteractions(recentInteractions);
-  const conversationSummary = summarizeConversations(recentConversations);
-  const eventsSummary = summarizeEvents(recentEvents);
+  const formattedInt = formatInteractions(recentInteractions);
+  const formattedConv = formatConversations(recentConversations);
+  const formattedEvt = formatEvents(recentEvents);
   const repoContexts = collectActiveRepoContexts(ctx.db);
   const repoContextSummary = summarizeRepoContexts(repoContexts);
 
@@ -132,33 +132,113 @@ export async function activityAnalyze(
   const hour = new Date().getHours();
   const timeLabel = hour < 7 ? 'early morning' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : hour < 22 ? 'evening' : 'late night';
 
-  const dataSources = [
-    `### Context\nCurrent time: ${hour}:${String(new Date().getMinutes()).padStart(2, '0')} (${timeLabel})\n`,
+  // rawDataSources: full formatted data for phase 0 (summarize)
+  const timeHeader = `### Context\nCurrent time: ${hour}:${String(new Date().getMinutes()).padStart(2, '0')} (${timeLabel})\n`;
+  const rawDataSources = [
+    timeHeader,
     repoContextSummary ? `### Repository Status\n${repoContextSummary}\n` : '',
     systemContext,
     projectContext,
-    interactionSummary ? `### Tool Usage\n${interactionSummary}\n` : '',
-    conversationSummary ? `### Conversations\n${conversationSummary}\n` : '',
-    eventsSummary ? `### Events\n${eventsSummary}\n` : '',
+    formattedInt ? `### Tool Usage\n${formattedInt}\n` : '',
+    formattedConv ? `### Conversations\n${formattedConv}\n` : '',
+    formattedEvt ? `### Events\n${formattedEvt}\n` : '',
     gitEventsSummary,
     remoteSyncSummary,
     enrichmentSummary,
   ].filter(Boolean).join('\n');
 
   const adapter = selectAdapter(ctx.config);
-  const model = getModel(ctx, 'analyze');
+  const cleanupModel = getModel(ctx, 'analyze'); // configurable model for cleanup (MCP tools)
   const effort = getEffort(ctx, 'analyze');
-
-  // Load soul reflection for context in extract/observe prompts
-  const soulReflection = ctx.db.listMemories({ archived: false })
-    .find(m => m.kind === 'soul_reflection')?.bodyMd ?? '';
-  const soulSection = soulReflection ? `### Shadow's understanding of the developer\n${soulReflection}\n` : '';
 
   let llmCalls = 0;
   let tokensUsed = 0;
   let patternsDetected = 0;
   let memoriesCreated = 0;
   let observationsCreated = 0;
+
+  // ========== CALL 0: Summarize raw session data (Opus, text-free) ==========
+  let sessionSummary = '';
+  if (formattedConv || formattedInt) {
+    try {
+      const summarizePrompt = [
+        'You are Shadow, an engineering companion analyzing a developer session.',
+        'Produce a structured text summary that captures everything noteworthy.',
+        '',
+        '## What to capture',
+        '',
+        '### Work & Decisions',
+        '- What was the developer working on? Which repos/projects?',
+        '- Key technical decisions and their reasoning',
+        '- Architecture choices, trade-offs discussed',
+        '- What was built, fixed, refactored, or abandoned?',
+        '',
+        '### Developer State',
+        '- Mood: frustrated, focused, excited, tired, concerned?',
+        '- Energy level: rapid iteration vs slow deliberation?',
+        '- Wins celebrated or blockers hit?',
+        '',
+        '### Risks & Issues',
+        '- Bugs, failures, or errors encountered',
+        '- Things that went wrong or took longer than expected',
+        '- Technical debt or shortcuts taken under pressure',
+        '- Cross-repo or cross-project dependencies at risk',
+        '',
+        '### Patterns & Preferences',
+        '- How the developer prefers to work (tools, workflows, communication)',
+        '- Conventions or standards discussed',
+        '- Repeated patterns across conversations (things that keep coming up)',
+        '',
+        '### Open Items',
+        '- Uncommitted work, pending PRs, unresolved discussions',
+        '- Things mentioned as "TODO" or "later"',
+        '- Decisions deferred or blocked on external input',
+        '',
+        '## What NOT to include',
+        '- Verbatim code (just describe what changed and why)',
+        '- Tool output details (just the conclusion)',
+        '- Repetitive back-and-forth (summarize the outcome)',
+        '',
+        '## Session Data',
+        '',
+        rawDataSources,
+      ].join('\n');
+
+      onPhase?.('summarize');
+      const summaryResult = await adapter.execute({
+        repos: [], title: 'Heartbeat Summarize', goal: 'Summarize session',
+        prompt: summarizePrompt, relevantMemories: [], model: 'opus', effort,
+      });
+      llmCalls++;
+      tokensUsed += (summaryResult.inputTokens ?? 0) + (summaryResult.outputTokens ?? 0);
+      console.error(`[shadow:summarize] status=${summaryResult.status} tokens=${(summaryResult.inputTokens ?? 0) + (summaryResult.outputTokens ?? 0)}`);
+      ctx.db.recordLlmUsage({ source: 'heartbeat_summarize', sourceId: heartbeatId ?? null, model: 'opus', inputTokens: summaryResult.inputTokens ?? 0, outputTokens: summaryResult.outputTokens ?? 0 });
+
+      if (summaryResult.status === 'success' && summaryResult.output) {
+        sessionSummary = summaryResult.output;
+      }
+    } catch (e) {
+      console.error('[shadow:summarize] LLM failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  // dataSources: summary-based context for phases 1 + 3 (extract + observe)
+  const dataSources = [
+    timeHeader,
+    repoContextSummary ? `### Repository Status\n${repoContextSummary}\n` : '',
+    systemContext,
+    projectContext,
+    sessionSummary ? `### Session Summary\n${sessionSummary}\n` : '',
+    formattedEvt ? `### Events\n${formattedEvt}\n` : '',
+    gitEventsSummary,
+    remoteSyncSummary,
+    enrichmentSummary,
+  ].filter(Boolean).join('\n');
+
+  // Load soul reflection for context in extract/observe prompts
+  const soulReflection = ctx.db.listMemories({ archived: false })
+    .find(m => m.kind === 'soul_reflection')?.bodyMd ?? '';
+  const soulSection = soulReflection ? `### Shadow's understanding of the developer\n${soulReflection}\n` : '';
 
   // ========== CALL 1: Extract (memories + mood) ==========
   try {
@@ -229,12 +309,12 @@ export async function activityAnalyze(
     onPhase?.('extract');
     const result = await adapter.execute({
       repos: [], title: 'Heartbeat Extract', goal: 'Extract knowledge + mood', prompt: extractPrompt,
-      relevantMemories, model, effort,
+      relevantMemories, model: 'opus', effort,
     });
     llmCalls++;
     tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
     console.error(`[shadow:extract] status=${result.status} tokens=${(result.inputTokens ?? 0) + (result.outputTokens ?? 0)}`);
-    ctx.db.recordLlmUsage({ source: 'heartbeat_extract', sourceId: heartbeatId ?? null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+    ctx.db.recordLlmUsage({ source: 'heartbeat_extract', sourceId: heartbeatId ?? null, model: 'opus', inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
     if (result.status === 'success' && result.output) {
       const parseResult = safeParseJson(result.output, ExtractResponseSchema, 'extract');
@@ -347,12 +427,12 @@ export async function activityAnalyze(
       onPhase?.('cleanup');
       const cleanupResult = await adapter.execute({
         repos: [], title: 'Observe Cleanup', goal: 'Resolve obsolete observations',
-        prompt: cleanupPrompt, relevantMemories: [], model, effort,
+        prompt: cleanupPrompt, relevantMemories: [], model: cleanupModel, effort,
         systemPrompt: null, // MCP access — Claude calls shadow_observation_resolve directly
       });
       llmCalls++;
       tokensUsed += (cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0);
-      ctx.db.recordLlmUsage({ source: 'heartbeat_cleanup', sourceId: heartbeatId ?? null, model, inputTokens: cleanupResult.inputTokens ?? 0, outputTokens: cleanupResult.outputTokens ?? 0 });
+      ctx.db.recordLlmUsage({ source: 'heartbeat_cleanup', sourceId: heartbeatId ?? null, model: cleanupModel, inputTokens: cleanupResult.inputTokens ?? 0, outputTokens: cleanupResult.outputTokens ?? 0 });
       console.error(`[shadow:cleanup] Completed. Tokens: ${(cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0)}`);
     }
   } catch (e) {
@@ -403,11 +483,11 @@ export async function activityAnalyze(
     onPhase?.('observe');
     const result = await adapter.execute({
       repos: [], title: 'Heartbeat Observe', goal: 'Generate observations', prompt: observePrompt,
-      relevantMemories: [], model, effort,
+      relevantMemories: [], model: 'opus', effort,
     });
     llmCalls++;
     tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
-    ctx.db.recordLlmUsage({ source: 'heartbeat_observe', sourceId: heartbeatId ?? null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+    ctx.db.recordLlmUsage({ source: 'heartbeat_observe', sourceId: heartbeatId ?? null, model: 'opus', inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
     if (result.status === 'success' && result.output) {
       const parseResult = safeParseJson(result.output, ObserveResponseSchema, 'observe');

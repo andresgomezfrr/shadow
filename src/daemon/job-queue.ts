@@ -5,7 +5,7 @@ import type { EventBus } from '../web/event-bus.js';
 import type { JobHandlerEntry, JobContext, DaemonSharedState, JobHandlerResult } from './job-handlers.js';
 import { runInJobScope, killJobAdapters } from '../backend/claude-cli.js';
 
-const JOB_TIMEOUT_MS = 8 * 60 * 1000; // 8min (< 10min stale threshold)
+const JOB_TIMEOUT_MS = 15 * 60 * 1000; // 15min — extra headroom for 4-phase heartbeat (summarize + extract + cleanup + observe)
 
 type ActiveJob = {
   jobId: string;

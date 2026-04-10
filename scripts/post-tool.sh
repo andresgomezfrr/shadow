@@ -1,6 +1,7 @@
 #!/bin/bash
 # Shadow PostToolUse hook — logs tool usage with rich detail
 # Portable version for plugin distribution
+[ "$SHADOW_JOB" = "1" ] && exit 0
 INPUT=$(cat)
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 SHADOW_DATA="${SHADOW_DATA_DIR:-$HOME/.shadow}"

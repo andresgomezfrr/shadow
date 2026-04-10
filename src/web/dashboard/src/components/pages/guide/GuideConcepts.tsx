@@ -81,7 +81,7 @@ export function GuideConcepts() {
           It follows a state machine with distinct phases:
         </p>
         <div className="space-y-2">
-          {HEARTBEAT_PHASES.map(([icon, name, desc]) => (
+          {DAEMON_JOBS.map(([icon, name, desc]) => (
             <div key={name} className="flex gap-3 items-start bg-bg rounded-lg px-4 py-3">
               <span className="text-lg flex-shrink-0">{icon}</span>
               <div>
@@ -244,10 +244,12 @@ export function GuideConcepts() {
   );
 }
 
-const HEARTBEAT_PHASES: [string, string, string][] = [
+const DAEMON_JOBS: [string, string, string][] = [
   ['\uD83D\uDC40', 'Observe', 'Collect repo context (git status, branches, recent commits)'],
+  ['\uD83D\uDCDD', 'Summarize', 'Opus reads full session data (conversations + interactions) and produces a structured text summary'],
+  ['\uD83E\uDDE0', 'Extract', 'Opus extracts durable memories + mood/energy from the session summary'],
   ['\uD83E\uDDF9', 'Cleanup', 'Resolve stale/duplicate observations via MCP'],
-  ['\uD83E\uDDE0', 'Analyze', 'LLM extracts memories + mood, detects active projects, generates observations'],
+  ['\uD83D\uDD2D', 'Observe', 'Opus generates actionable observations from the session summary'],
   ['\uD83D\uDCA1', 'Suggest', 'Project-aware suggestion generation (separate job, triggered by activity)'],
   ['\u267B\uFE0F', 'Consolidate', 'Promote/demote memory layers, synthesize meta-patterns (every 6h)'],
   ['\uD83E\uDD14', 'Reflect', 'Strategic soul reflection with developer understanding (daily, Opus)'],
