@@ -12,15 +12,17 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
                                     ├── Web dashboard (React, localhost:3700)
                                     ├── Heartbeat (every 30min)
                                     │   ├── detect active projects
-                                    │   ├── analyze (LLM, creates memories)
-                                    │   └── observe (LLM, new observations)
+                                    │   ├── summarize (Opus, text-free → session summary)
+                                    │   ├── extract (Opus, JSON → memories + mood)
+                                    │   ├── cleanup (Sonnet, MCP → resolve stale obs)
+                                    │   └── observe (Opus, JSON → new observations)
                                     ├── Daemon jobs
                                     │   ├── suggest (LLM, project-aware)
                                     │   ├── consolidate (memory maintenance, 6h)
                                     │   ├── reflect (soul reflection, daily)
                                     │   ├── remote-sync (git ls-remote, 30min)
                                     │   └── context-enrich (MCP enrichment)
-                                    ├── Hooks (conversations + tool use)
+                                    ├── Hooks (6: sessions + tool use + errors + subagents)
                                     └── launchd service (auto-start, auto-restart)
 ```
 
@@ -308,8 +310,14 @@ All memory is **on-demand** — never auto-loaded into prompts. FTS5 search find
 | Hook | Type | Purpose |
 |------|------|---------|
 | SessionStart | command | Injects personality via `shadow mcp-context` |
-| PostToolUse | command (async) | Logs Edit/Write/Read/Bash/Grep to interactions.jsonl |
+| PostToolUse | command (async) | Logs tool usage with rich detail (jq pipeline) to interactions.jsonl |
+| UserPromptSubmit | command (async) | User messages (full text) → conversations.jsonl |
+| Stop | command (async) | Claude responses (full text) → conversations.jsonl |
+| StopFailure | command (async) | API errors → events.jsonl |
+| SubagentStart | command (async) | Subagent spawns → events.jsonl |
 | StatusLine | command | Shows emoji status bar: activity + trust badge + suggestions + heartbeat countdown |
+
+All capture hooks check `$SHADOW_JOB` env var and exit early for daemon LLM calls (prevents self-traffic contamination).
 
 ## Status Line Emojis
 
@@ -405,29 +413,40 @@ SHADOW_DATA_DIR=~/.shadow        # Data directory
 ```
 1. User works in Claude CLI
 2. Hooks capture everything (all async, zero impact):
-   - UserPromptSubmit → conversations.jsonl (what user says)
-   - Stop → conversations.jsonl (what Claude responds)
-   - PostToolUse → interactions.jsonl (files edited, commands run)
-3. Heartbeat (every 15min):
-   a. collect repo context (lightweight git status, branch, recent commits)
-   b. analyze: conversations + interactions + repo context → LLM (Sonnet) → memories + observations + mood/energy
-   c. suggest: memories + profile → LLM (Opus) → suggestions
-   d. consolidate: promote/demote memory layers
-   e. notify: queue events based on proactivity level
+   - UserPromptSubmit → conversations.jsonl (full text, no cap)
+   - Stop → conversations.jsonl (full text, no cap)
+   - PostToolUse → interactions.jsonl (rich detail per tool via jq)
+   - StopFailure → events.jsonl (API errors)
+   - SubagentStart → events.jsonl (subagent spawns)
+   - All hooks skip daemon LLM calls (SHADOW_JOB=1 env filter)
+3. Heartbeat (every 30min):
+   a. consume-and-delete: rename JSONL files → .rotating (claim batch)
+   b. collect repo context (lightweight git status, branch, recent commits)
+   c. summarize: all raw data → Opus (text-free) → session summary (~1-3KB)
+   d. extract: summary + soul + memories → Opus (JSON) → insights + mood
+   e. cleanup: active observations → Sonnet (MCP) → resolve stale obs
+   f. observe: summary + feedback → Opus (JSON) → new observations
+   g. delete .rotating files
+   h. suggest (separate job): memories + profile → LLM (Opus) → suggestions
+   i. notify: queue events based on proactivity level
 4. User opens Claude CLI → SessionStart hook injects personality
 5. Claude calls shadow_check_in → gets personality, mood, pending events
 6. Claude uses MCP tools naturally based on conversation
 7. Dashboard at localhost:3700 shows everything visually
 ```
 
-## Hooks (4 active)
+## Hooks (6 active)
 
 | Hook | File | Captures |
 |------|------|----------|
 | SessionStart | `~/.shadow/session-start.sh` | Injects personality via `mcp-context` |
-| PostToolUse | `~/.shadow/post-tool.sh` | Tool usage → `interactions.jsonl` |
-| UserPromptSubmit | `~/.shadow/user-prompt.sh` | User messages → `conversations.jsonl` |
-| Stop | `~/.shadow/stop.sh` | Claude responses → `conversations.jsonl` |
+| PostToolUse | `~/.shadow/post-tool.sh` | Tool usage with rich per-tool detail (jq) → `interactions.jsonl` |
+| UserPromptSubmit | `~/.shadow/user-prompt.sh` | User messages (full text, no cap) → `conversations.jsonl` |
+| Stop | `~/.shadow/stop.sh` | Claude responses (full text, no cap) → `conversations.jsonl` |
+| StopFailure | `~/.shadow/stop-failure.sh` | API errors (rate_limit, overloaded) → `events.jsonl` |
+| SubagentStart | `~/.shadow/subagent-start.sh` | Subagent spawns → `events.jsonl` |
+
+All capture hooks filter daemon self-traffic via `SHADOW_JOB=1` env var.
 
 ## Observations (LLM-generated)
 
@@ -440,10 +459,10 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 ## Current State (as of 2026-04-06)
 
 - **53 MCP tools** (25 read + 27 write L1 + 1 write L2) — split across `src/mcp/tools/` (7 modules)
-- **4 hooks** (SessionStart, PostToolUse, UserPromptSubmit, Stop)
+- **6 hooks** (SessionStart, PostToolUse, UserPromptSubmit, Stop, StopFailure, SubagentStart) — SHADOW_JOB env filter prevents daemon self-traffic
 - **13 job types** — heartbeat, suggest, suggest-deep, suggest-project, consolidate, reflect, remote-sync, context-enrich, repo-profile, project-profile, digest-daily, digest-weekly, digest-brag. Parallel execution via JobQueue (maxConcurrentJobs=3 LLM + IO unlimited).
 - **Ghost mascot** `{•‿•}` in status line — 15 states × 3 variants, 9 ANSI colors. Thoughts system generates LLM status line phrases.
-- **Daemon** — launchd, JobQueue with 8min timeout per job, per-job adapter tracking via AsyncLocalStorage, stale job detector, graceful drain (60s), repo watcher (FS events + debounce).
+- **Daemon** — launchd, JobQueue with 15min timeout per job, per-job adapter tracking via AsyncLocalStorage, stale job detector, graceful drain (60s), repo watcher (FS events + debounce).
 - **Dashboard** — React at localhost:3700. Activity page (unified timeline + SSE), Workspace (runs), Morning brief, Profile (settings sections), Guide (tabbed reference). Sidebar grouped by intention.
 - **Corrections system** — `kind: 'correction'` memories, consumed by consolidate. `shadow_correct` MCP tool + CorrectionPanel in dashboard.
 - **Suggest v3** — 3 specialized jobs: `suggest` (incremental, reactive), `suggest-deep` (full codebase review), `suggest-project` (cross-repo analysis).
@@ -456,7 +475,7 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 All pending improvements, features, and known issues are tracked in [`BACKLOG.md`](BACKLOG.md).
 
 ### Architecture notes for new sessions
-- **Heartbeat = 3 LLM calls**: extract (memories + mood, JSON-only), observe-cleanup (MCP, resolves stale obs), observe (new observations incl. cross_project, JSON-only). Active projects + enrichment context injected.
+- **Heartbeat = 4 LLM calls**: summarize (Opus, text-free → session summary), extract (Opus, JSON → memories + mood), cleanup (Sonnet, MCP → resolve stale obs), observe (Opus, JSON → new observations). Active projects + enrichment context injected. The summarize phase reads all raw data (conversations + interactions); extract/observe receive only the summary (~1-3KB).
 - **Suggest = separate job** triggered after heartbeat with activity. Opus + effort high. Project-aware prompts.
 - **Reflect = 2-phase daily job**: Phase 1 (Sonnet) extracts deltas since last reflect. Phase 2 (Opus) evolves soul with focused change report (not full context dump). 5 sections: Developer profile, Decision patterns, Blind spots, What to watch for, Communication preferences. Soul snapshots saved before each update.
 - **Enrich = configurable job** (default 2h). 2-phase: plan (Sonnet) → execute (Opus, `mcp__*`). Results cached in `enrichment_cache` with content hash dedup + 24h TTL.
@@ -466,11 +485,11 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Prompt via stdin** — all LLM calls pass prompt via stdin pipe, not CLI args (avoids ARG_MAX).
 - **`--allowedTools "mcp__shadow__*"`** on all CLI spawns — Claude can use Shadow's own tools without permission. Execution runs also get `Edit,Write,Bash` for code changes.
 - **Confidence evaluation** — L3 runner evaluates plan with Sonnet (effort high) before auto-executing. JSON response: `{ confidence: 'high'|'medium'|'low', doubts: string[] }`. Safe fallback to low confidence on any failure.
-- **Job timeout** — integrated in `JobQueue` with `killJobAdapters(jobId)`. Per-job adapter tracking via `AsyncLocalStorage`. `cancelled` flag prevents background promise from overwriting job status. Max 8min per job.
+- **Job timeout** — integrated in `JobQueue` with `killJobAdapters(jobId)`. Per-job adapter tracking via `AsyncLocalStorage`. `cancelled` flag prevents background promise from overwriting job status. Max 15min per job.
 - **Soul reflection** injected into extract/observe prompts. Runner mentions it in briefing.
 - **Feedback** from dismiss/resolve/thumbs fed into extract + observe + suggest prompts.
 - **Models + effort configurable per phase** from dashboard /profile. `getModel(ctx, phase)` + `getEffort(ctx, phase)`.
-- **Rotation**: conversations.jsonl and interactions.jsonl rotated (keep last 2h) after each analyze. Uses atomic rename-then-append to prevent data loss from concurrent hook writes.
+- **Rotation**: consume-and-delete model. At heartbeat START, JSONL files are renamed to `.rotating` (atomic). Each heartbeat processes exactly the data since the last one (zero overlap). Orphaned `.rotating` from crashed heartbeats are detected and consumed in the next run. No 2h filter — the rename is the batch boundary.
 - **Semantic dedup**: all three knowledge systems (memories, observations, suggestions) use embeddings-based dedup via `checkDuplicate()`. Thresholds: skip >= 0.85, update >= 0.70 (calibrated per type). Suggestions also check against dismissed (>= 0.75 = blocked).
 - **Hybrid search**: `shadow_search` MCP tool combines FTS5 BM25 + vector cosine via Reciprocal Rank Fusion (k=60). Searches across all three systems.
 - **Projects**: first-class entity grouping repos + systems + contacts. Long-term, sprint, or task. CLI + MCP + dashboard.
@@ -481,7 +500,7 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Access count honesty**: heartbeat internal lookups use `touch=false`, only MCP searches increment access counts.
 - **Stale job detector** runs every daemon tick (10min threshold). Graceful drain on shutdown (60s). On startup, `cleanOrphanedJobsOnStartup()` fails ALL running jobs/runs immediately (no age threshold).
 - **Child process cleanup** — `killJobAdapters(jobId)` sends SIGTERM to spawned `claude` processes per job. `killAllActiveChildren()` on shutdown. `pkill` in daemon stop/restart kills orphaned claude processes matching `--allowedTools.*mcp__shadow`.
-- **JobQueue** — `src/daemon/job-queue.ts`. Concurrent execution with same-type mutual exclusion. LLM jobs capped by `maxConcurrentJobs`, IO jobs unlimited. Per-job timeout (8min) via `Promise.race` + `killJobAdapters`. SSE events on start/phase/complete.
+- **JobQueue** — `src/daemon/job-queue.ts`. Concurrent execution with same-type mutual exclusion. LLM jobs capped by `maxConcurrentJobs`, IO jobs unlimited. Per-job timeout (15min) via `Promise.race` + `killJobAdapters`. SSE events on start/phase/complete.
 - **Job handlers** — `src/daemon/job-handlers.ts`. 13 handlers registered by type. Category: `llm` (heartbeat, suggest*, consolidate, reflect, digest*, repo-profile, project-profile) or `io` (remote-sync, context-enrich).
 - **Worktree cleanup** — Runner creates git worktrees for execution runs, removes them after completion (success or failure). Branch kept for draft PR.
 - **Corrections** — `shadow_correct` MCP tool + `/api/corrections` endpoint. Creates `kind: 'correction'` memory in core layer. `enforceCorrections()` in consolidate job processes corrections against existing memories (archive/edit). CorrectionPanel in dashboard.

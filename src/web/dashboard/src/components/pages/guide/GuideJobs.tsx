@@ -5,7 +5,7 @@ export function GuideJobs() {
       <section>
         <h2 className="text-lg font-semibold mb-3">Job System Overview</h2>
         <div className="bg-card border border-border rounded-lg p-5 space-y-3 text-sm text-text-dim">
-          <p>Shadow runs background jobs to analyze your work, generate suggestions, and maintain its knowledge base. Jobs execute in parallel (up to 3 LLM jobs + IO jobs), with an 8-minute timeout per job.</p>
+          <p>Shadow runs background jobs to analyze your work, generate suggestions, and maintain its knowledge base. Jobs execute in parallel (up to 3 LLM jobs + IO jobs), with a 15-minute timeout per job.</p>
           <p>View all job activity in the <strong className="text-text">Activity</strong> page. Each job shows its phases, output, and token usage.</p>
           <p>Jobs are triggered by three mechanisms: <strong className="text-text">scheduled</strong> (fixed interval), <strong className="text-text">reactive</strong> (triggered by another job), or <strong className="text-text">manual</strong> (via dashboard trigger buttons).</p>
         </div>

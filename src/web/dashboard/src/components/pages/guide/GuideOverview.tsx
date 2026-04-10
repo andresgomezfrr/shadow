@@ -37,16 +37,17 @@ export function GuideOverview() {
                                     \u251C\u2500 SQLite DB (~/.shadow/shadow.db)
                                     \u251C\u2500 Web dashboard (this page)
                                     \u251C\u2500 Heartbeat (every 30min)
-                                    \u2502  \u251C\u2500 observe (git, repo context)
-                                    \u2502  \u251C\u2500 analyze (LLM, creates memories)
-                                    \u2502  \u2514\u2500 observe (LLM, new observations)
+                                    \u2502  \u251C\u2500 summarize (Opus, session summary)
+                                    \u2502  \u251C\u2500 extract (Opus, memories + mood)
+                                    \u2502  \u251C\u2500 cleanup (Sonnet, resolve stale obs)
+                                    \u2502  \u2514\u2500 observe (Opus, new observations)
                                     \u251C\u2500 Daemon jobs
                                     \u2502  \u251C\u2500 suggest (LLM, project-aware)
                                     \u2502  \u251C\u2500 consolidate (memory maintenance, 6h)
                                     \u2502  \u251C\u2500 reflect (soul reflection, daily)
                                     \u2502  \u251C\u2500 remote-sync (git ls-remote, 30min)
                                     \u2502  \u2514\u2500 enrich (MCP context gathering)
-                                    \u251C\u2500 Hooks (capture conversations + tool use)
+                                    \u251C\u2500 Hooks (6: sessions + tools + errors + subagents)
                                     \u2514\u2500 launchd service (auto-start, auto-restart)`}
         </pre>
         <p className="text-sm text-text-dim">
@@ -108,8 +109,8 @@ const STEPS: [string, string][] = [
 
 const DATA_FLOW: [string, string][] = [
   ['\uD83D\uDCBB', 'You work in Claude CLI as usual. Hooks capture your conversations and tool usage (async, zero impact).'],
-  ['\u2764\uFE0F', 'Every 30min, the heartbeat collects repo context, detects active projects, and gathers sensor data.'],
-  ['\uD83E\uDDE0', 'LLM analyzes conversations + interactions + repo context + project topology \u2192 creates memories and observations.'],
+  ['\u2764\uFE0F', 'Every 30min, the heartbeat claims the JSONL batch (consume-and-delete), collects repo context, and detects active projects.'],
+  ['\uD83E\uDDE0', 'Opus summarizes the session data, then extracts memories + mood, and generates observations from the summary.'],
   ['\uD83D\uDCA1', 'Separate suggest job generates project-aware suggestions based on observations + memories + feedback.'],
   ['\uD83D\uDD17', 'Enrichment job queries external MCP tools (calendar, monitoring, CI) for cross-system context.'],
   ['\u267B\uFE0F', 'Consolidation promotes/demotes memory layers. Daily reflect synthesizes developer understanding.'],
