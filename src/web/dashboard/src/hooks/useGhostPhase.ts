@@ -13,7 +13,7 @@ const PHASE_MAP: Record<string, PhaseInfo> = {
   idle:              { images: ['/ghost/idle.mp4', '/ghost/idle-1.png', '/ghost/idle-2.png', '/ghost/idle-3.png', '/ghost/idle-4.png', '/ghost/idle-5.png', '/ghost/idle-6.png', '/ghost/idle-7.mp4', '/ghost/idle-9.png'], label: 'idle' },
   focus:             { images: ['/ghost/focus.png'],           label: 'focus mode' },
   watching:          { images: ['/ghost/watching.mp4', '/ghost/watching-1.mp4'], label: 'watching' },
-  learning:          { images: ['/ghost/watching.mp4', '/ghost/learning-1.mp4'], label: 'learning' },
+  learning:          { images: ['/ghost/watching.mp4', '/ghost/learning.mp4'], label: 'learning' },
   heartbeat:         { images: ['/ghost/analyzing.mp4', '/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png'], label: 'analyzing...' },
   suggest:           { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'suggesting...' },
   'suggest-deep':    { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'deep suggesting...' },
