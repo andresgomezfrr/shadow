@@ -68,9 +68,6 @@ Renderizado por filtro, transiciones de estado del feed unificado y context pane
 
 ## Prioridad media — Workspace & Runs
 
-### Heartbeat dedup para observations resueltas que reaparecen
-Cuando `checkDuplicate()` encuentra match con observation resuelta, incrementar `votes` en vez de crear nueva.
-
 ### Detectar PRs creados fuera de Shadow
 Si un run tiene worktree pero no prUrl, detectar si existe un PR con `gh pr list --head shadow/{id}`.
 

@@ -371,6 +371,32 @@ export function updateObservationStatus(db: DatabaseSync, id: string, status: st
     .run(status, id);
 }
 
+export function bumpObservationVotes(db: DatabaseSync, id: string, context?: Record<string, unknown>): void {
+  const now = new Date().toISOString();
+  if (context) {
+    const row = db.prepare('SELECT context_json FROM observations WHERE id = ?').get(id) as { context_json: string } | undefined;
+    if (row) {
+      const merged = mergeContext(jsonParse(row.context_json, {} as Record<string, unknown>), context);
+      db.prepare('UPDATE observations SET votes = votes + 1, last_seen_at = ?, context_json = ? WHERE id = ?').run(now, JSON.stringify(merged), id);
+      return;
+    }
+  }
+  db.prepare('UPDATE observations SET votes = votes + 1, last_seen_at = ? WHERE id = ?').run(now, id);
+}
+
+export function reopenObservation(db: DatabaseSync, id: string, context?: Record<string, unknown>): void {
+  const now = new Date().toISOString();
+  if (context) {
+    const row = db.prepare('SELECT context_json FROM observations WHERE id = ?').get(id) as { context_json: string } | undefined;
+    if (row) {
+      const merged = mergeContext(jsonParse(row.context_json, {} as Record<string, unknown>), context);
+      db.prepare("UPDATE observations SET status = 'open', votes = votes + 1, last_seen_at = ?, context_json = ? WHERE id = ?").run(now, JSON.stringify(merged), id);
+      return;
+    }
+  }
+  db.prepare("UPDATE observations SET status = 'open', votes = votes + 1, last_seen_at = ? WHERE id = ?").run(now, id);
+}
+
 /**
  * Single canonical expiration method. Severity-aware TTLs:
  *   active:       info=7d, warning=14d, high=never

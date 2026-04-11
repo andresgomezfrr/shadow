@@ -280,6 +280,8 @@ export class ShadowDatabase {
   capObservationsPerRepo(maxPerRepo = 10): number { return knowledge.capObservationsPerRepo(this.database, maxPerRepo); }
   touchObservationLastSeen(id: string): void { return knowledge.touchObservationLastSeen(this.database, id); }
   touchObservationsLastSeen(ids: string[]): void { return knowledge.touchObservationsLastSeen(this.database, ids); }
+  bumpObservationVotes(id: string, context?: Record<string, unknown>): void { return knowledge.bumpObservationVotes(this.database, id, context); }
+  reopenObservation(id: string, context?: Record<string, unknown>): void { return knowledge.reopenObservation(this.database, id, context); }
 
   // --- Suggestions ---
 
@@ -351,6 +353,7 @@ export class ShadowDatabase {
   getThumbsState(targetKind?: string): Record<string, string> { return tracking.getThumbsState(this.database, targetKind); }
   getDismissPatterns(repoId?: string): Array<{ category: string; count: number; recentNotes: string[] }> { return tracking.getDismissPatterns(this.database, repoId); }
   getAcceptDismissRate(days = 30): { accepted: number; dismissed: number; total: number; rate: number } { return tracking.getAcceptDismissRate(this.database, days); }
+  hasResolveFeedback(observationId: string): boolean { return tracking.hasResolveFeedback(this.database, observationId); }
 
   // --- Audit Events ---
 

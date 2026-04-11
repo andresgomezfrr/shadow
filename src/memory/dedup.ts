@@ -102,13 +102,19 @@ export async function checkMemoryDuplicate(
 export async function checkObservationDuplicate(
   db: ShadowDatabase,
   entity: { kind?: string; title: string; detail?: Record<string, unknown> },
+  against: 'active' | 'resolved' | 'expired' = 'active',
 ): Promise<DedupDecision> {
+  const statusMap: Record<string, string[]> = {
+    active: ['open', 'acknowledged'],
+    resolved: ['done'],
+    expired: ['expired'],
+  };
   return checkDuplicate({
     text: embeddingText('observation', entity),
     db,
     vecTable: 'observation_vectors',
     thresholds: OBSERVATION_THRESHOLDS,
-    statusFilter: { table: 'observations', statuses: ['open', 'acknowledged'] },
+    statusFilter: { table: 'observations', statuses: statusMap[against] },
   });
 }
 

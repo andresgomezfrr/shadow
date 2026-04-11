@@ -72,7 +72,7 @@ shadow/
 │   │   │   ├── profile.ts        # user profile (3 methods)
 │   │   │   ├── enrichment.ts     # enrichment cache, digests (12 methods)
 │   │   │   └── relations.ts      # entity relations (6 methods)
-│   │   ├── migrations.ts         # Schema v1-v40 (20 tables, FTS5, triggers, vec0)
+│   │   ├── migrations.ts         # Schema v1-v46 (20 tables, FTS5, triggers, vec0)
 │   │   ├── models.ts             # Record types for all tables
 │   │   └── index.ts              # Re-exports
 │   ├── observation/
@@ -274,6 +274,7 @@ New entities go through `checkDuplicate()` before creation:
 - Searches vector table for similar entries (cosine similarity)
 - Decision: **skip** (>0.85), **update** existing (>0.70), or **create** new
 - Thresholds calibrated per entity type. Suggestions also check against dismissed (>0.75 = blocked).
+- Observations use multi-pass dedup: check active → resolved (done) → expired. Resolved observations with deliberate feedback are protected (votes++ only); auto-capped/expired observations are reopened.
 
 ## MCP Tools (66 total)
 

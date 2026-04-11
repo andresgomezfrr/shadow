@@ -497,26 +497,13 @@ export async function activityAnalyze(
         const parsed = parseResult.data;
         console.error(`[shadow:observe] ${parsed.observations.length} new observations${parseResult.repaired ? ' (repaired)' : ''}`);
 
+        const { checkObservationDuplicate } = await import('../memory/dedup.js');
+
         for (const obs of parsed.observations) {
           const firstRepoId = repoIds.size > 0 ? [...repoIds][0] : (repoContexts.length > 0 ? repoContexts[0].repoId : null);
           if (!firstRepoId) continue;
 
-          // Semantic dedup before creating observation
-          const { checkObservationDuplicate } = await import('../memory/dedup.js');
-          const decision = await checkObservationDuplicate(ctx.db, {
-            kind: obs.kind, title: obs.title, detail: { description: obs.detail },
-          });
-
-          if (decision.action === 'skip') {
-            console.error(`[shadow:observe] Skip duplicate obs (${(decision.similarity * 100).toFixed(0)}%): ${obs.title}`);
-            continue;
-          }
-          if (decision.action === 'update') {
-            console.error(`[shadow:observe] Merge into existing obs (${(decision.similarity * 100).toFixed(0)}%): ${obs.title}`);
-            // Increment votes on existing observation (dedup in DB will handle context merge)
-            continue;
-          }
-
+          // Build context early — needed for both dedup merges and creation
           const repo = repoContexts.find((rc) => rc.repoId === firstRepoId);
           const context: Record<string, unknown> = {
             repoName: repo?.repoName ?? 'unknown', branch: repo?.currentBranch ?? 'unknown',
@@ -524,6 +511,57 @@ export async function activityAnalyze(
           };
           const sessionIds = [...new Set(recentConversations.map((c) => c.session).filter(Boolean))];
           if (sessionIds.length > 0) context.sessionIds = sessionIds;
+
+          const dedupEntity = { kind: obs.kind, title: obs.title, detail: { description: obs.detail } };
+
+          // Pass 1: check vs active (open/acknowledged)
+          const vsActive = await checkObservationDuplicate(ctx.db, dedupEntity, 'active');
+          if (vsActive.action === 'skip') {
+            console.error(`[shadow:observe] Skip duplicate obs (${(vsActive.similarity * 100).toFixed(0)}%): ${obs.title}`);
+            continue;
+          }
+          if (vsActive.action === 'update') {
+            ctx.db.bumpObservationVotes(vsActive.existingId, context);
+            console.error(`[shadow:observe] Merge into existing obs (${(vsActive.similarity * 100).toFixed(0)}%): ${obs.title}`);
+            continue;
+          }
+
+          // Pass 2: check vs resolved (done)
+          const vsResolved = await checkObservationDuplicate(ctx.db, dedupEntity, 'resolved');
+          if (vsResolved.action === 'skip' || vsResolved.action === 'update') {
+            const matched = ctx.db.getObservation(vsResolved.existingId);
+            if (matched && matched.repoId === firstRepoId) {
+              if (ctx.db.hasResolveFeedback(vsResolved.existingId)) {
+                // Protected: deliberately resolved by user or cleanup
+                ctx.db.bumpObservationVotes(vsResolved.existingId, context);
+                console.error(`[shadow:observe] Protected resolved obs, votes++ (${(vsResolved.similarity * 100).toFixed(0)}%): ${obs.title}`);
+              } else {
+                // Safe to reopen: was capped by overflow, not deliberately resolved
+                ctx.db.reopenObservation(vsResolved.existingId, context);
+                const obsEntities = buildEntityLinks(ctx.db, firstRepoId, `${obs.title} ${obs.detail}`, entityCache);
+                if (obsEntities.length > 0) persistEntityLinks(ctx.db, 'observations', vsResolved.existingId, obsEntities);
+                ctx.db.createAuditEvent({ actor: 'shadow', interface: 'heartbeat', action: 'observation_reopen', targetKind: 'observation', targetId: vsResolved.existingId, detail: { reason: 'reappeared_in_heartbeat', similarity: vsResolved.similarity } });
+                console.error(`[shadow:observe] Reopened resolved obs (${(vsResolved.similarity * 100).toFixed(0)}%): ${obs.title}`);
+              }
+              continue;
+            }
+          }
+
+          // Pass 3: check vs expired
+          const vsExpired = await checkObservationDuplicate(ctx.db, dedupEntity, 'expired');
+          if (vsExpired.action === 'skip' || vsExpired.action === 'update') {
+            const matched = ctx.db.getObservation(vsExpired.existingId);
+            if (matched && matched.repoId === firstRepoId) {
+              ctx.db.reopenObservation(vsExpired.existingId, context);
+              const obsEntities = buildEntityLinks(ctx.db, firstRepoId, `${obs.title} ${obs.detail}`, entityCache);
+              if (obsEntities.length > 0) persistEntityLinks(ctx.db, 'observations', vsExpired.existingId, obsEntities);
+              ctx.db.createAuditEvent({ actor: 'shadow', interface: 'heartbeat', action: 'observation_reopen', targetKind: 'observation', targetId: vsExpired.existingId, detail: { reason: 'reappeared_after_expiry', similarity: vsExpired.similarity } });
+              console.error(`[shadow:observe] Reopened expired obs (${(vsExpired.similarity * 100).toFixed(0)}%): ${obs.title}`);
+              continue;
+            }
+          }
+
+          // Create new observation
           const created = ctx.db.createObservation({
             repoId: firstRepoId, sourceKind: 'llm', sourceId: null,
             kind: obs.kind, severity: obs.severity,

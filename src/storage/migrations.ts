@@ -873,6 +873,20 @@ export const migrations: Migration[] = [
       WHERE t.entities_json IS NOT NULL AND t.entities_json != '[]' AND t.entities_json != '';
     `,
   },
+  {
+    version: 45,
+    name: 'feedback_target_id_index',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_feedback_target_id ON feedback(target_kind, target_id, action);
+    `,
+  },
+  {
+    version: 46,
+    name: 'normalize_resolved_observations',
+    sql: `
+      UPDATE observations SET status = 'done' WHERE status = 'resolved';
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

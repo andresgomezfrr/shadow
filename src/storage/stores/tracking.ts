@@ -163,6 +163,13 @@ export function getThumbsState(db: DatabaseSync, targetKind?: string): Record<st
   return state;
 }
 
+export function hasResolveFeedback(db: DatabaseSync, observationId: string): boolean {
+  const row = db
+    .prepare(`SELECT 1 FROM feedback WHERE target_kind = 'observation' AND target_id = ? AND action = 'resolve' LIMIT 1`)
+    .get(observationId);
+  return !!row;
+}
+
 export function getDismissPatterns(db: DatabaseSync, repoId?: string): Array<{ category: string; count: number; recentNotes: string[] }> {
   const sql = repoId
     ? `SELECT f.category, COUNT(*) as cnt, GROUP_CONCAT(f.note, '|||') as notes
