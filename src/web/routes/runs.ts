@@ -277,11 +277,31 @@ export async function handleRunRoutes(
       if (!body) return true;
       if (body.note) db.updateRun(runId, { closedNote: body.note });
       db.createFeedback({ targetKind: 'run', targetId: runId, action: 'close', note: body.note });
-      // Also close pending child runs
+      // Also close pending child runs — kill active processes and clean worktrees
       const children = db.listRuns({ parentRunId: runId, archived: undefined });
       for (const child of children) {
         if (!['dismissed', 'failed', 'done'].includes(child.status)) {
+          // Kill active Claude CLI processes for running children
+          if (child.status === 'running' || child.status === 'queued') {
+            try {
+              const { killJobAdapters } = await import('../../backend/claude-cli.js');
+              killJobAdapters(child.id);
+            } catch { /* best-effort */ }
+          }
           try { db.transitionRun(child.id, 'done'); db.updateRun(child.id, { outcome: 'closed' }); } catch { /* skip non-closeable children */ }
+          // Clean worktree if exists
+          if (child.worktreePath) {
+            try {
+              const repo = db.getRepo(child.repoId);
+              if (repo) {
+                const { execSync } = await import('node:child_process');
+                execSync(`git worktree remove "${child.worktreePath}" --force`, { cwd: repo.path, timeout: 10_000, stdio: 'pipe' });
+                const branchName = `shadow/${child.id.slice(0, 8)}`;
+                execSync(`git branch -D "${branchName}"`, { cwd: repo.path, timeout: 5_000, stdio: 'pipe' });
+              }
+              db.updateRun(child.id, { worktreePath: null as unknown as string });
+            } catch { /* best-effort cleanup */ }
+          }
         }
       }
       return json(res, { ok: true, status: 'done' }), true;

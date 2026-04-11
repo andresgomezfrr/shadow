@@ -319,7 +319,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
     function cleanStaleJobs(): void {
       const staleJobs = _db.listJobs({ status: 'running' });
-      const staleThresholdMs = 10 * 60 * 1000; // 10min — no job should take longer
+      const staleThresholdMs = 16 * 60 * 1000; // 16min — must exceed JOB_TIMEOUT_MS (15min) so only orphaned jobs from crashes are caught, not jobs still being managed by JobQueue
       for (const job of staleJobs) {
         const age = Date.now() - new Date(job.startedAt).getTime();
         if (age > staleThresholdMs) {

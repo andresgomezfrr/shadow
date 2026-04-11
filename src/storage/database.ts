@@ -303,7 +303,7 @@ export class ShadowDatabase {
 
   // --- Event Queue ---
 
-  createEvent(input: { kind: string; priority?: number; payload?: Record<string, unknown> }): EventRecord { return tracking.createEvent(this.database, input); }
+  createEvent(input: { kind: string; priority?: number; payload?: Record<string, unknown> }): EventRecord | null { return tracking.createEvent(this.database, input); }
   getEvent(id: string): EventRecord | null { return tracking.getEvent(this.database, id); }
   listPendingEvents(minPriority?: number): EventRecord[] { return tracking.listPendingEvents(this.database, minPriority); }
   deliverEvent(id: string): void { return tracking.deliverEvent(this.database, id); }
@@ -370,7 +370,7 @@ export class ShadowDatabase {
   listEnrichment(filters?: { source?: string; entityType?: string; entityId?: string; reported?: boolean; createdSince?: string; limit?: number; offset?: number }): EnrichmentCacheRecord[] { return enrichmentStore.listEnrichment(this.database, filters); }
   countEnrichment(filters?: { source?: string; entityType?: string; entityId?: string; reported?: boolean }): number { return enrichmentStore.countEnrichment(this.database, filters); }
   markEnrichmentReported(id: string): void { return enrichmentStore.markEnrichmentReported(this.database, id); }
-  expireStaleEnrichment(): number { return enrichmentStore.expireStaleEnrichment(this.database); }
+  expireStaleEnrichment(): { marked: number; deleted: number } { return enrichmentStore.expireStaleEnrichment(this.database); }
   touchEnrichment(id: string): void { return enrichmentStore.touchEnrichment(this.database, id); }
   updateEnrichmentStats(id: string, stats: { refreshCount?: number; changeCount?: number; ttlCategory?: string }): void { return enrichmentStore.updateEnrichmentStats(this.database, id, stats); }
 

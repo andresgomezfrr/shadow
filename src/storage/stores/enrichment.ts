@@ -67,10 +67,28 @@ export function markEnrichmentReported(db: DatabaseSync, id: string): void {
   db.prepare('UPDATE enrichment_cache SET reported = 1, updated_at = ? WHERE id = ?').run(new Date().toISOString(), id);
 }
 
-export function expireStaleEnrichment(db: DatabaseSync): number {
+export function expireStaleEnrichment(db: DatabaseSync): { marked: number; deleted: number } {
   const now = new Date().toISOString();
-  const result = db.prepare('UPDATE enrichment_cache SET stale = 1, updated_at = ? WHERE stale = 0 AND expires_at IS NOT NULL AND expires_at < ?').run(now, now);
-  return Number(result.changes);
+
+  // 1. Mark expired entries as stale (TTL-based)
+  const marked = db.prepare('UPDATE enrichment_cache SET stale = 1, updated_at = ? WHERE stale = 0 AND expires_at IS NOT NULL AND expires_at < ?').run(now, now);
+
+  // 2. Mark entries without TTL as stale if older than 30 days (default TTL for orphaned entries)
+  const cutoff30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  db.prepare('UPDATE enrichment_cache SET stale = 1, updated_at = ? WHERE stale = 0 AND expires_at IS NULL AND created_at < ?').run(now, cutoff30d);
+
+  // 3. Collect stale IDs for vector cleanup, then DELETE
+  const staleIds = db.prepare('SELECT id FROM enrichment_cache WHERE stale = 1').all() as { id: string }[];
+  let deleted = 0;
+  if (staleIds.length > 0) {
+    for (const { id } of staleIds) {
+      try { db.prepare('DELETE FROM enrichment_vectors WHERE rowid IN (SELECT rowid FROM enrichment_vectors WHERE id = ?)').run(id); } catch { /* vec table may not exist */ }
+    }
+    const ph = staleIds.map(() => '?').join(',');
+    deleted = Number(db.prepare(`DELETE FROM enrichment_cache WHERE id IN (${ph})`).run(...staleIds.map(r => r.id)).changes);
+  }
+
+  return { marked: Number(marked.changes), deleted };
 }
 
 export function touchEnrichment(db: DatabaseSync, id: string): void {

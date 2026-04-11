@@ -56,7 +56,19 @@ export function listRecentInteractions(db: DatabaseSync, limit = 20): Interactio
 
 // --- Event Queue ---
 
-export function createEvent(db: DatabaseSync, input: { kind: string; priority?: number; payload?: Record<string, unknown> }): EventRecord {
+const EVENT_DEDUP_WINDOW_MS = 15 * 60 * 1000; // 15min — skip duplicate events within this window
+
+export function createEvent(db: DatabaseSync, input: { kind: string; priority?: number; payload?: Record<string, unknown> }): EventRecord | null {
+  // Dedup: check for recent event with same kind + target within window
+  const targetId = (input.payload?.runId ?? input.payload?.suggestionId ?? input.payload?.observationId ?? null) as string | null;
+  if (targetId) {
+    const cutoff = new Date(Date.now() - EVENT_DEDUP_WINDOW_MS).toISOString();
+    const existing = db
+      .prepare('SELECT id FROM event_queue WHERE kind = ? AND payload_json LIKE ? AND created_at > ? LIMIT 1')
+      .get(input.kind, `%${targetId}%`, cutoff) as { id: string } | undefined;
+    if (existing) return null;
+  }
+
   const id = randomUUID();
   const now = new Date().toISOString();
   db

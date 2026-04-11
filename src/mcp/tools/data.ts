@@ -360,7 +360,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       description: 'Store an enrichment finding from an external MCP server query. Used by the enrichment agent to persist discoveries. Requires trust level >= 1.',
       inputSchema: mcpSchema(z.object({
         projectId: z.string().describe('Project ID this finding relates to'),
-        source: z.string().describe('MCP server name that provided the data (e.g. oliver, atlassian-mcp)'),
+        source: z.string().describe('MCP server name that provided the data'),
         summary: z.string().describe('Concise 1-2 sentence finding'),
         detail: z.record(z.string(), z.unknown()).describe('Optional structured data').optional(),
       })),

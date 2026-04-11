@@ -236,6 +236,9 @@ export async function activityEnrich(
   activeProjects?: ActiveProjectInput[],
   onProgress?: (name: string, index: number, total: number) => void,
 ): Promise<EnrichResult> {
+  // Clean expired entries before planning — stale items won't pollute listEnrichment during planning
+  db.expireStaleEnrichment();
+
   const enrichStartTime = new Date().toISOString();
   const allServers = discoverMcpServerNames();
   const profile = db.ensureProfile();
@@ -403,7 +406,7 @@ export async function activityEnrich(
     serverDescriptions,
     '',
     '## Instructions',
-    '1. Use shadow_memory_search to find memories about tools, workflows, JIRA projects.',
+    '1. Use shadow_memory_search to find memories about tools, workflows, and projects.',
     '2. Decide which MCP servers are relevant and query them.',
     '3. For each useful finding, call shadow_enrichment_write with the relevant projectId.',
     '   Use shadow_projects to find project IDs if needed.',
