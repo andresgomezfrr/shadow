@@ -137,94 +137,43 @@ export async function activityReflect(
     'Blind spots, neglected areas, stated priorities vs actual activity.',
     'Items Shadow should proactively watch for. Priority conflicts.',
     '',
-    'Output ONLY the markdown soul, no preamble or explanation.',
+    'When done, call shadow_soul_update with the complete evolved soul markdown.',
   ].filter(Boolean).join('\n');
 
   const expectedSections = ['## Shadow\'s voice', '## Developer profile', '## Decision patterns', '## Tensions & gaps'];
-  let phase2Output: string | null = null;
-  let phase2Error: string | null = null;
-  let retryHint: string | null = null;
+  const originalSoulMd = existingSoul?.bodyMd ?? null;
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const promptToUse = attempt === 0
-        ? evolvePrompt
-        : evolvePrompt + `\n\nIMPORTANT: Your previous output was missing these required sections: ${retryHint}. You MUST include ALL four sections exactly as specified.`;
-
-      const result = await adapter.execute({
-        repos: [], title: 'Shadow Reflect', goal: 'Evolve soul reflection',
-        prompt: promptToUse, relevantMemories: [], model: 'opus', effort: 'high',
-        systemPrompt: null, allowedTools: ['mcp__shadow__*'],
-      });
-      llmCalls++;
-      tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
-      ctx.db.recordLlmUsage({
-        source: attempt === 0 ? 'reflect_evolve' : 'reflect_evolve_retry',
-        sourceId: null, model: 'opus',
-        inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0,
-      });
-
-      if (result.status === 'success' && result.output) {
-        const missing = expectedSections.filter(s => !result.output!.includes(s));
-        if (missing.length === 0) {
-          phase2Output = result.output;
-          break;
-        }
-        if (attempt === 0) {
-          console.error(`[shadow:reflect] Attempt 1 rejected: missing sections: ${missing.join(', ')} — retrying`);
-          retryHint = missing.join(', ');
-          continue;
-        }
-        phase2Error = `malformed output after retry: missing ${missing.join(', ')}`;
-        console.error(`[shadow:reflect] Attempt 2 also rejected: ${phase2Error}`);
-      } else {
-        if (attempt === 0) {
-          console.error(`[shadow:reflect] Attempt 1 failed (status=${result.status}) — retrying`);
-          retryHint = expectedSections.map(s => s.replace('## ', '')).join(', ');
-          continue;
-        }
-        phase2Error = `Phase 2 returned status: ${result.status}`;
-        console.error(`[shadow:reflect] Attempt 2 also failed (status=${result.status})`);
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (attempt === 0) {
-        console.error(`[shadow:reflect] Attempt 1 error: ${msg} — retrying`);
-        retryHint = expectedSections.map(s => s.replace('## ', '')).join(', ');
-        continue;
-      }
-      phase2Error = `Phase 2 threw: ${msg}`;
-      console.error(`[shadow:reflect] Attempt 2 error: ${msg}`);
-    }
+  try {
+    const result = await adapter.execute({
+      repos: [], title: 'Shadow Reflect', goal: 'Evolve soul reflection',
+      prompt: evolvePrompt, relevantMemories: [], model: 'opus', effort: 'high',
+      systemPrompt: null, allowedTools: ['mcp__shadow__*'],
+    });
+    llmCalls++;
+    tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+    ctx.db.recordLlmUsage({
+      source: 'reflect_evolve', sourceId: null, model: 'opus',
+      inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[shadow:reflect] Phase 2 error: ${msg}`);
   }
 
-  if (phase2Output) {
-    // Save snapshot of previous soul before updating
-    if (existingSoul) {
-      const snapshotDate = new Date().toISOString().split('T')[0];
-      const snapshot = ctx.db.createMemory({
-        layer: 'core', scope: 'personal', kind: 'soul_snapshot',
-        title: `Soul reflection snapshot — ${snapshotDate}`,
-        bodyMd: existingSoul.bodyMd,
-        sourceType: 'reflect', confidenceScore: 95, relevanceScore: 0.3,
-      });
-      ctx.db.updateMemory(snapshot.id, { archivedAt: new Date().toISOString() });
-      ctx.db.updateMemory(existingSoul.id, { bodyMd: phase2Output });
-    } else {
-      ctx.db.createMemory({
-        layer: 'core', scope: 'personal', kind: 'soul_reflection',
-        title: 'Shadow soul reflection', bodyMd: phase2Output,
-        sourceType: 'reflect', confidenceScore: 95, relevanceScore: 1.0,
-      });
+  // Validate: check if soul was updated in DB (LLM uses shadow_soul_update MCP tool)
+  opts?.onPhase?.('reflect-validate');
+  const currentSoul = ctx.db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
+  if (currentSoul && currentSoul.bodyMd !== originalSoulMd) {
+    const missing = expectedSections.filter(s => !currentSoul.bodyMd.includes(s));
+    if (missing.length > 0) {
+      console.error(`[shadow:reflect] Soul updated but missing sections: ${missing.join(', ')} — reverting`);
+      if (originalSoulMd) ctx.db.updateMemory(currentSoul.id, { bodyMd: originalSoulMd });
+      return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: `Soul missing sections: ${missing.join(', ')}` };
     }
-    console.error(`[shadow:reflect] Soul reflection saved (2-phase). Tokens: ${tokensUsed}`);
+    console.error(`[shadow:reflect] Soul evolved (${originalSoulMd?.length ?? 0} → ${currentSoul.bodyMd.length} chars). Tokens: ${tokensUsed}`);
     return { llmCalls, tokensUsed, skipped: false, soulUpdated: true };
   }
 
-  if (phase2Error) {
-    // Job failure event created by job-queue.ts on handler throw/error
-    return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: phase2Error };
-  }
-
-  return { llmCalls, tokensUsed, skipped: false };
+  console.error('[shadow:reflect] Soul not updated — LLM did not call shadow_soul_update');
+  return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: 'LLM did not update the soul' };
 }

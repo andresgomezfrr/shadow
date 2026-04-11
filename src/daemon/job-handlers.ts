@@ -362,7 +362,7 @@ async function handleReflect(ctx: JobContext): Promise<JobHandlerResult> {
 
   return {
     llmCalls: reflectResult.llmCalls, tokensUsed: reflectResult.tokensUsed,
-    phases: reflectResult.skipped ? ['reflect', 'skip'] : ['reflect-delta', 'reflect-evolve'],
+    phases: reflectResult.skipped ? ['reflect', 'skip'] : ['reflect-delta', 'reflect-evolve', 'reflect-validate'],
     result: {
       skipped: reflectResult.skipped,
       soulUpdated: reflectResult.soulUpdated ?? !reflectResult.skipped,
