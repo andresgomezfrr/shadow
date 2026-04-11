@@ -7,6 +7,7 @@ import type { ShadowConfig } from '../config/load-config.js';
 import type { ShadowDatabase } from '../storage/database.js';
 import type { RunRecord } from '../storage/models.js';
 import type { ObjectivePack, RepoPack } from '../backend/types.js';
+import type { EventBus } from '../web/event-bus.js';
 import { selectAdapter } from '../backend/index.js';
 import { ConfidenceEvaluationSchema, type ConfidenceEvaluation } from './schemas.js';
 import { aggregateParentStatus } from './state-machine.js';
@@ -21,7 +22,13 @@ export class RunnerService {
   constructor(
     private readonly config: ShadowConfig,
     private readonly db: ShadowDatabase,
+    private readonly eventBus?: EventBus,
   ) {}
+
+  private setActivity(runId: string, kind: string, activity: string | null): void {
+    try { this.db.updateRun(runId, { activity }); } catch { /* best-effort */ }
+    this.eventBus?.emit({ type: 'run:phase', data: { runId, runType: kind === 'execution' ? 'run:execute' : 'run:plan', activity } });
+  }
 
   /**
    * Process the next queued run (thin wrapper for processRun).
@@ -52,6 +59,7 @@ export class RunnerService {
     // Claim it
     this.db.transitionRun(run.id, 'running');
     this.db.updateRun(run.id, { startedAt: now });
+    this.setActivity(run.id, run.kind, 'preparing');
 
     // Declared outside try so cleanup can access them in catch
     let worktreePath: string | null = null;
@@ -191,14 +199,34 @@ export class RunnerService {
       }
 
       // 5. Execute via backend adapter
+      this.setActivity(run.id, run.kind, planOnly ? 'planning' : 'executing');
       const adapter = selectAdapter(this.config);
       const result = await adapter.execute(pack);
 
-      // 5b. Evaluate confidence on plans (signal for the user, no auto-execute)
+      // 5a. Capture plan from session transcript (plan mode writes to ~/.claude/plans/)
+      // The JSON result field is empty in plan mode — the real plan is in the file.
       const isSuccess = result.status === 'success';
-      if (planOnly && isSuccess) {
+      let effectivePlan: string = result.output;
+
+      if (planOnly && isSuccess && result.sessionId) {
         try {
-          const evaluation = await this.evaluateConfidence(result.output, pack);
+          const { capturePlanFromSession } = await import('./plan-capture.js');
+          const capture = capturePlanFromSession(result.sessionId, executionCwd);
+          if (capture.content) {
+            effectivePlan = capture.content;
+            writeFileSync(join(artifactDir, 'plan.md'), capture.content, 'utf-8');
+            console.error(`[runner] Captured plan from session: ${capture.filePath} (${capture.content.length} chars)`);
+          }
+        } catch (err) {
+          console.error('[runner] Plan capture failed (non-fatal):', err instanceof Error ? err.message : err);
+        }
+      }
+
+      // 5b. Evaluate confidence on plans (signal for the user, no auto-execute)
+      if (planOnly && isSuccess) {
+        this.setActivity(run.id, run.kind, 'evaluating');
+        try {
+          const evaluation = await this.evaluateConfidence(effectivePlan, pack);
           this.db.updateRun(run.id, {
             confidence: evaluation.confidence,
             doubts: evaluation.doubts,
@@ -213,6 +241,7 @@ export class RunnerService {
       const finishedAt = new Date().toISOString();
 
       // Write summary artifact
+      const outputForSummary = planOnly ? effectivePlan : result.output;
       const summaryContent = [
         `# Run Summary: ${run.id}`,
         '',
@@ -223,7 +252,7 @@ export class RunnerService {
         '',
         '## Output',
         '',
-        result.output,
+        outputForSummary,
         '',
         result.summaryHint ? `## Summary\n\n${result.summaryHint}` : '',
       ].join('\n');
@@ -234,7 +263,7 @@ export class RunnerService {
       const finalStatus = isSuccess ? (run.parentRunId ? 'executed' : 'completed') : 'failed';
       this.db.transitionRun(run.id, finalStatus);
       this.db.updateRun(run.id, {
-        resultSummaryMd: result.summaryHint ?? result.output,
+        resultSummaryMd: (planOnly ? effectivePlan : null) || result.summaryHint || result.output,
         errorSummary: isSuccess ? null : (result.output.slice(0, 500) || 'Execution failed'),
         artifactDir,
         sessionId: result.sessionId ?? null,
@@ -255,6 +284,7 @@ export class RunnerService {
 
       // 6c. Post-execution verification (build/lint/test)
       if (run.kind === 'execution' && isSuccess) {
+        this.setActivity(run.id, run.kind, 'verifying');
         try {
           const { results: verificationResults, allPassed } = this.runVerification(run.repoId, executionCwd);
           const hasCommands = Object.keys(verificationResults).length > 0;
@@ -317,11 +347,13 @@ export class RunnerService {
         this.db.createEvent({ kind: 'run_completed', priority: 6, payload: { message: `Plan ready: ${run.prompt.slice(0, 80)}`, runId: run.id, repoId: run.repoId } });
       }
 
+      this.setActivity(run.id, run.kind, null);
       const updatedRun = this.db.getRun(run.id)!;
       this.cleanupWorktree(worktreePath, mainRepoCwd);
       return { processed: true, run: updatedRun };
     } catch (error) {
       // Handle unexpected errors
+      this.setActivity(run.id, run.kind, null);
       const finishedAt = new Date().toISOString();
       const errorMessage = error instanceof Error ? error.message : String(error);
 

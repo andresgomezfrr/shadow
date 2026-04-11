@@ -30,6 +30,10 @@ const RunViewSchema = z.object({
   runId: z.string().describe('Run ID to view'),
 });
 
+const RunArchiveSchema = z.object({
+  runId: z.string().describe('Run ID to archive'),
+});
+
 const UsageSchema = z.object({
   period: z.string().describe('Time period: day, week, month (default: day)').optional(),
 });
@@ -174,6 +178,21 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         if (!repo) return { isError: true, message: `Repo not found: ${repoId}` };
         const run = db.createRun({ repoId, repoIds: [repoId], kind: kind ?? 'task', prompt });
         return { ok: true, runId: run.id, status: run.status };
+      },
+    },
+
+    {
+      name: 'shadow_run_archive',
+      description: 'Archive a run so it no longer appears in the default workspace view. Requires trust level >= 1.',
+      inputSchema: mcpSchema(RunArchiveSchema),
+      handler: async (params) => {
+        const gate = trustGate(1);
+        if (!gate.ok) return gate.error;
+        const { runId } = RunArchiveSchema.parse(params);
+        const run = db.getRun(runId);
+        if (!run) return { isError: true, message: `Run not found: ${runId}` };
+        db.updateRun(runId, { archived: true });
+        return { ok: true, runId, archived: true };
       },
     },
 

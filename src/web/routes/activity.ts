@@ -114,10 +114,10 @@ export async function handleActivityRoutes(
         merged.push({
           id: r.id,
           source: 'run',
-          type: `run:${r.kind}`,
+          type: r.kind === 'execution' ? 'run:execute' : 'run:plan',
           status: r.status,
           phases: [],
-          activity: null,
+          activity: r.activity ?? null,
           llmCalls: 0,
           tokensUsed: 0,
           durationMs: r.startedAt && r.finishedAt ? new Date(r.finishedAt).getTime() - new Date(r.startedAt).getTime() : null,
