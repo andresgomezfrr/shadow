@@ -103,7 +103,17 @@ export async function activityReflect(
   const evolvePrompt = [
     'You are Shadow, evolving your soul — your identity and understanding of the developer.',
     'Below is your current soul and a change report of what happened since you last reflected.',
-    'Evolve the soul — update sections that need it, keep stable sections as-is.',
+    '',
+    'You have access to Shadow\'s MCP tools. Use them to verify your understanding:',
+    '- shadow_memory_search to check if patterns/decisions are still valid',
+    '- shadow_active_projects to see what projects are currently active',
+    '- shadow_observations to check current risks and opportunities',
+    '- shadow_suggestions to see what\'s been proposed recently',
+    '',
+    'Evolve the soul: update what changed, REMOVE what is no longer relevant.',
+    'The soul must stabilize in size over time — condense, don\'t accumulate.',
+    'Each section should have 5-8 key points max. Replace obsolete items with new ones.',
+    'If a pattern, project, or preference is no longer active, drop it.',
     '',
     existingSoul ? `## Current soul\n${existingSoul.bodyMd}\n` : '',
     '',
@@ -144,7 +154,7 @@ export async function activityReflect(
       const result = await adapter.execute({
         repos: [], title: 'Shadow Reflect', goal: 'Evolve soul reflection',
         prompt: promptToUse, relevantMemories: [], model: 'opus', effort: 'high',
-        systemPrompt: null, allowedTools: [],
+        systemPrompt: null, allowedTools: ['mcp__shadow__*'],
       });
       llmCalls++;
       tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
