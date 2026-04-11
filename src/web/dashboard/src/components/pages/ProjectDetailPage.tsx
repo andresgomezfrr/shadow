@@ -10,26 +10,8 @@ import { ScoreBar } from '../common/ScoreBar';
 import { Toggle } from '../common/Toggle';
 import { SEVERITY_COLORS, LAYER_COLORS } from '../../api/types';
 import { timeAgo } from '../../utils/format';
-
-const KIND_COLORS: Record<string, string> = {
-  'long-term': 'text-blue bg-blue/15',
-  sprint: 'text-orange bg-orange/15',
-  task: 'text-green bg-green/15',
-};
-
-const SUG_KIND_COLORS: Record<string, string> = {
-  refactor: 'text-purple bg-purple/15',
-  bug: 'text-red bg-red/15',
-  improvement: 'text-blue bg-blue/15',
-  feature: 'text-green bg-green/15',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  active: 'text-green bg-green/15',
-  completed: 'text-text-dim bg-text-dim/15',
-  'on-hold': 'text-orange bg-orange/15',
-  archived: 'text-text-dim bg-text-dim/10',
-};
+import { PROJECT_KIND_COLORS, PROJECT_KIND_COLOR_DEFAULT, PROJECT_STATUS_COLORS } from '../../utils/project-colors';
+import { SUG_KIND_COLORS, SUG_KIND_COLOR_DEFAULT } from '../../utils/suggestion-colors';
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -78,8 +60,8 @@ export function ProjectDetailPage() {
         <Link to="/projects" className="text-text-dim text-xs hover:text-accent mb-2 inline-block">&larr; Projects</Link>
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold">{data.name}</h1>
-          <Badge className={KIND_COLORS[data.kind] ?? 'text-text-dim bg-text-dim/15'}>{data.kind}</Badge>
-          <Badge className={STATUS_COLORS[data.status] ?? 'text-text-dim bg-text-dim/15'}>{data.status}</Badge>
+          <Badge className={PROJECT_KIND_COLORS[data.kind] ?? PROJECT_KIND_COLOR_DEFAULT}>{data.kind}</Badge>
+          <Badge className={PROJECT_STATUS_COLORS[data.status] ?? PROJECT_STATUS_COLOR_DEFAULT}>{data.status}</Badge>
           <div className="ml-auto flex gap-2">
             <button
               onClick={handleProfile}
@@ -276,7 +258,7 @@ export function ProjectDetailPage() {
               {data.suggestions.map((s) => (
                 <Link key={s.id} to={`/suggestions?highlight=${s.id}`} className="bg-card border border-border rounded p-3 block hover:border-accent/50 transition-colors no-underline">
                   <div className="flex items-center gap-2">
-                    <Badge className={SUG_KIND_COLORS[s.kind] ?? 'text-text-dim bg-text-dim/10'}>{s.kind}</Badge>
+                    <Badge className={SUG_KIND_COLORS[s.kind] ?? SUG_KIND_COLOR_DEFAULT}>{s.kind}</Badge>
                     <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} compact />
                   </div>
                   <div className="text-sm mt-1 text-text">{s.title}</div>

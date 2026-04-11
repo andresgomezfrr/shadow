@@ -1,11 +1,6 @@
 import { Badge } from '../../common/Badge';
 import type { ActiveProjectSummary } from '../../../api/types';
-
-const KIND_COLORS: Record<string, string> = {
-  'long-term': 'text-blue bg-blue/15',
-  sprint: 'text-orange bg-orange/15',
-  task: 'text-green bg-green/15',
-};
+import { PROJECT_KIND_COLORS, PROJECT_KIND_COLOR_DEFAULT } from '../../../utils/project-colors';
 
 export function MorningProjects({ projects }: { projects: ActiveProjectSummary[] }) {
   if (projects.length === 0) return null;
@@ -25,7 +20,7 @@ export function MorningProjects({ projects }: { projects: ActiveProjectSummary[]
           >
             <div className="flex items-center gap-2 mb-1">
               <span className="font-medium text-sm">{p.name}</span>
-              <Badge className={KIND_COLORS[p.kind] ?? 'text-text-dim bg-text-dim/15'}>{p.kind}</Badge>
+              <Badge className={PROJECT_KIND_COLORS[p.kind] ?? PROJECT_KIND_COLOR_DEFAULT}>{p.kind}</Badge>
             </div>
             <div className="flex items-center gap-4 text-xs text-text-dim">
               <span>{p.repoCount} repos</span>

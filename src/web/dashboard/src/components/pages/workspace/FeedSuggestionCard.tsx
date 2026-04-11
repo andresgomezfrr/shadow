@@ -2,14 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { timeAgo } from '../../../utils/format';
 import { Badge } from '../../common/Badge';
 import { ScoreBar } from '../../common/ScoreBar';
-import { SUG_KIND_COLORS, SUG_KIND_COLOR_DEFAULT } from '../../../utils/suggestion-colors';
+import { SUG_KIND_COLORS, SUG_KIND_COLOR_DEFAULT, SUG_STATUS_BORDER } from '../../../utils/suggestion-colors';
 import type { Suggestion } from '../../../api/types';
 import type { SelectedItem } from './WorkspaceContext';
-
-const STATUS_BORDER: Record<string, string> = {
-  open: 'border-l-orange', snoozed: 'border-l-blue',
-  accepted: 'border-l-green', dismissed: 'border-l-text-muted',
-};
 
 const ACCEPT_OPTIONS = [
   { label: 'Execute', category: 'execute' },
@@ -27,7 +22,7 @@ type Props = {
 };
 
 export function FeedSuggestionCard({ suggestion: s, selected, onSelect, onAccept, onDismiss, onSnooze }: Props) {
-  const border = STATUS_BORDER[s.status] ?? 'border-l-border';
+  const border = SUG_STATUS_BORDER[s.status] ?? 'border-l-border';
   const isOpen = s.status === 'open';
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);

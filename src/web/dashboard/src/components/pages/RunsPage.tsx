@@ -13,34 +13,7 @@ import { RunPipeline } from '../common/RunPipeline';
 import { useState, useCallback } from 'react';
 import type { Run } from '../../api/types';
 
-// --- Status visual config ---
-
-const STATUS_BORDER: Record<string, string> = {
-  queued: 'border-l-orange',
-  running: 'border-l-blue',
-  planned: 'border-l-green',
-  done: 'border-l-purple',
-  dismissed: 'border-l-text-muted',
-  failed: 'border-l-red',
-};
-
-const STATUS_ICON: Record<string, string> = {
-  queued: '○',
-  running: '⟳',
-  planned: '✓',
-  done: '✓',
-  dismissed: '—',
-  failed: '✕',
-};
-
-const STATUS_ICON_COLOR: Record<string, string> = {
-  queued: 'text-orange',
-  running: 'text-blue animate-spin',
-  planned: 'text-green',
-  done: 'text-purple',
-  dismissed: 'text-text-muted',
-  failed: 'text-red',
-};
+import { RUN_STATUS_BORDER, RUN_STATUS_ICON, RUN_STATUS_ICON_COLOR } from '../../utils/run-colors';
 
 const STATUS_FILTERS = [
   { label: 'To review', value: 'planned', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
@@ -194,9 +167,9 @@ export function RunsPage() {
             const isTerminal = TERMINAL_STATUSES.has(run.status);
             const duration = run.startedAt && run.finishedAt ? formatDuration(run.startedAt, run.finishedAt) : null;
             const pipeline = getPipelineStatus(run, childRun);
-            const borderColor = STATUS_BORDER[run.status] ?? 'border-l-border';
-            const icon = STATUS_ICON[run.status] ?? '○';
-            const iconColor = STATUS_ICON_COLOR[run.status] ?? 'text-text-muted';
+            const borderColor = RUN_STATUS_BORDER[run.status] ?? 'border-l-border';
+            const icon = RUN_STATUS_ICON[run.status] ?? '○';
+            const iconColor = RUN_STATUS_ICON_COLOR[run.status] ?? 'text-text-muted';
             // Determine the "active" run for worktree/PR (child if exists, otherwise parent)
             const activeRun = childRun ?? run;
 
@@ -414,8 +387,8 @@ export function RunsPage() {
                       className={`bg-card/60 border rounded-lg px-3 py-2 cursor-pointer transition-colors hover:border-accent/50 ${pulseId === childRun.id ? 'border-accent ring-2 ring-accent/30' : 'border-border'}`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`text-xs font-mono w-3 text-center ${STATUS_ICON_COLOR[childRun.status] ?? 'text-text-muted'}`}>
-                          {STATUS_ICON[childRun.status] ?? '○'}
+                        <span className={`text-xs font-mono w-3 text-center ${RUN_STATUS_ICON_COLOR[childRun.status] ?? 'text-text-muted'}`}>
+                          {RUN_STATUS_ICON[childRun.status] ?? '○'}
                         </span>
                         <span className="text-xs text-text-muted">execution</span>
                         {childRun.worktreePath && (

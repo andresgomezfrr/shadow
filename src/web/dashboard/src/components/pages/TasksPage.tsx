@@ -8,13 +8,7 @@ import { Markdown } from '../common/Markdown';
 import { timeAgo } from '../../utils/format';
 import { useState, useCallback } from 'react';
 import type { Task } from '../../api/types';
-
-const STATUS_COLORS: Record<string, string> = {
-  open: 'text-text-muted bg-border',
-  active: 'text-blue bg-blue/15',
-  blocked: 'text-red bg-red/15',
-  done: 'text-green bg-green/15',
-};
+import { TASK_STATUS_COLORS, TASK_STATUS_COLOR_DEFAULT } from '../../utils/task-colors';
 
 const ALL_STATUSES = ['open', 'active', 'blocked', 'done'] as const;
 const PAGE_SIZE = 20;
@@ -158,7 +152,7 @@ function TaskCard({ task: t, expanded, onToggle, onStatusChange, onDelete, repoN
     <div className="bg-card border border-border rounded-lg p-4 transition-colors hover:border-accent/30">
       <div className="flex items-center gap-2 cursor-pointer" onClick={onToggle}>
         <span className={`text-[10px] text-text-muted transition-transform ${expanded ? 'rotate-90' : ''}`}>▶</span>
-        <Badge className={STATUS_COLORS[t.status] ?? 'text-text-dim bg-border'}>{t.status.replace('_', ' ')}</Badge>
+        <Badge className={TASK_STATUS_COLORS[t.status] ?? TASK_STATUS_COLOR_DEFAULT}>{t.status.replace('_', ' ')}</Badge>
         {t.externalRefs.map((ref, i) => (
           <a key={i} href={ref.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="no-underline">
             <Badge className="text-purple bg-purple/15 hover:bg-purple/25 cursor-pointer">{ref.source.toUpperCase()} {ref.key}</Badge>

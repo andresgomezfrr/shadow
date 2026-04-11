@@ -10,20 +10,7 @@ function RunSpinner({ className = '' }: { className?: string }) {
   );
 }
 
-const STATUS_ICON: Record<string, string> = {
-  queued: '○', planned: '✓', done: '✓',
-  dismissed: '—', failed: '✕',
-};
-const STATUS_ICON_COLOR: Record<string, string> = {
-  queued: 'text-orange', planned: 'text-green',
-  done: 'text-purple', dismissed: 'text-text-muted',
-  failed: 'text-red',
-};
-const STATUS_BORDER: Record<string, string> = {
-  queued: 'border-l-orange', running: 'border-l-blue', planned: 'border-l-green',
-  done: 'border-l-purple', dismissed: 'border-l-text-muted',
-  failed: 'border-l-red',
-};
+import { RUN_STATUS_BORDER, RUN_STATUS_ICON, RUN_STATUS_ICON_COLOR } from '../../../utils/run-colors';
 
 type Props = {
   run: Run;
@@ -37,7 +24,7 @@ type Props = {
 };
 
 export function FeedRunCard({ run, selected, onSelect, onExecute, onSession, onDiscard, onRetry, onArchive }: Props) {
-  const border = STATUS_BORDER[run.status] ?? 'border-l-border';
+  const border = RUN_STATUS_BORDER[run.status] ?? 'border-l-border';
   const isPlan = run.status === 'planned' && run.kind !== 'execution';
   const isActive = run.status === 'running' || run.status === 'queued';
   const isFailed = run.status === 'failed';
@@ -54,8 +41,8 @@ export function FeedRunCard({ run, selected, onSelect, onExecute, onSession, onD
         {isRunning ? (
           <RunSpinner />
         ) : (
-          <span className={`text-sm font-mono w-4 text-center ${STATUS_ICON_COLOR[run.status] ?? 'text-text-muted'}`} title={run.status}>
-            {STATUS_ICON[run.status] ?? '○'}
+          <span className={`text-sm font-mono w-4 text-center ${RUN_STATUS_ICON_COLOR[run.status] ?? 'text-text-muted'}`} title={run.status}>
+            {RUN_STATUS_ICON[run.status] ?? '○'}
           </span>
         )}
         <Badge className="text-text-dim bg-border">{run.kind}</Badge>

@@ -11,16 +11,8 @@ import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
 import { ScoreBar } from '../common/ScoreBar';
-import { SUG_KIND_COLORS, SUG_KIND_COLOR_DEFAULT, SUG_KIND_OPTIONS } from '../../utils/suggestion-colors';
+import { SUG_KIND_COLORS, SUG_KIND_COLOR_DEFAULT, SUG_KIND_OPTIONS, SUG_STATUS_BORDER } from '../../utils/suggestion-colors';
 import type { Repo } from '../../api/types';
-
-const STATUS_BORDER: Record<string, string> = {
-  open: 'border-l-orange',
-  snoozed: 'border-l-blue',
-  accepted: 'border-l-green',
-  dismissed: 'border-l-text-muted',
-  expired: 'border-l-text-muted',
-};
 
 const STATUSES = [
   { label: 'Open', value: 'open', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
@@ -280,7 +272,7 @@ export function SuggestionsPage() {
             const linkedRun = runs?.items?.find((r) => r.suggestionId === s.id);
             const isOpen = expanded.has(s.id);
             const isTerminal = TERMINAL_STATUSES.has(s.status);
-            const borderColor = STATUS_BORDER[s.status] ?? 'border-l-border';
+            const borderColor = SUG_STATUS_BORDER[s.status] ?? 'border-l-border';
 
             return (
               <div

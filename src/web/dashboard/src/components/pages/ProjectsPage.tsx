@@ -3,19 +3,7 @@ import { useApi } from '../../hooks/useApi';
 import { fetchProjects, fetchRepos, fetchSystems, fetchObservations, fetchSuggestions } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
-
-const KIND_COLORS: Record<string, string> = {
-  'long-term': 'text-blue bg-blue/15',
-  sprint: 'text-orange bg-orange/15',
-  task: 'text-green bg-green/15',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  active: 'text-green bg-green/15',
-  completed: 'text-text-dim bg-text-dim/15',
-  'on-hold': 'text-orange bg-orange/15',
-  archived: 'text-text-dim bg-text-dim/10',
-};
+import { PROJECT_KIND_COLORS, PROJECT_KIND_COLOR_DEFAULT, PROJECT_STATUS_COLORS, PROJECT_STATUS_COLOR_DEFAULT } from '../../utils/project-colors';
 
 export function ProjectsPage() {
   const { data: projects } = useApi(fetchProjects, [], 30_000);
@@ -59,10 +47,10 @@ export function ProjectsPage() {
               >
                 <div className="flex items-center gap-2 mb-2">
                   <span className="font-medium">{p.name}</span>
-                  <Badge className={KIND_COLORS[p.kind] ?? 'text-text-dim bg-text-dim/15'}>
+                  <Badge className={PROJECT_KIND_COLORS[p.kind] ?? PROJECT_KIND_COLOR_DEFAULT}>
                     {p.kind}
                   </Badge>
-                  <Badge className={STATUS_COLORS[p.status] ?? 'text-text-dim bg-text-dim/15'}>
+                  <Badge className={PROJECT_STATUS_COLORS[p.status] ?? PROJECT_STATUS_COLOR_DEFAULT}>
                     {p.status}
                   </Badge>
                 </div>

@@ -2,7 +2,7 @@ import { timeAgo, formatTokens, useNow, formatCountdown } from '../../utils/form
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchJobs, fetchStatus, triggerHeartbeat } from '../../api/client';
-import { JOB_JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../utils/job-colors';
+import { JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
 import { MetricCard } from '../common/MetricCard';
 import { EmptyState } from '../common/EmptyState';

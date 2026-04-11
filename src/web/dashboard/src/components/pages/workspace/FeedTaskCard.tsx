@@ -2,20 +2,7 @@ import { timeAgo } from '../../../utils/format';
 import { Badge } from '../../common/Badge';
 import type { Task } from '../../../api/types';
 import type { SelectedItem } from './WorkspaceContext';
-
-const STATUS_COLORS: Record<string, string> = {
-  open: 'text-teal-300 bg-teal-500/15',
-  active: 'text-teal-300 bg-teal-500/15',
-  blocked: 'text-red bg-red/15',
-  done: 'text-teal-600 bg-teal-500/10',
-};
-
-const STATUS_BORDER: Record<string, string> = {
-  open: 'border-l-teal-500/50',
-  active: 'border-l-teal-400',
-  blocked: 'border-l-red',
-  done: 'border-l-teal-600/40',
-};
+import { TASK_FEED_STATUS_COLORS, TASK_FEED_STATUS_BORDER } from '../../../utils/task-colors';
 
 type Props = {
   task: Task;
@@ -24,7 +11,7 @@ type Props = {
 };
 
 export function FeedTaskCard({ task, selected, onSelect }: Props) {
-  const border = STATUS_BORDER[task.status] ?? 'border-l-border';
+  const border = TASK_FEED_STATUS_BORDER[task.status] ?? 'border-l-border';
 
   return (
     <div
@@ -35,7 +22,7 @@ export function FeedTaskCard({ task, selected, onSelect }: Props) {
     >
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm">📋</span>
-        <Badge className={STATUS_COLORS[task.status] ?? 'text-text-dim bg-border'}>{task.status.replace('_', ' ')}</Badge>
+        <Badge className={TASK_FEED_STATUS_COLORS[task.status] ?? 'text-text-dim bg-border'}>{task.status.replace('_', ' ')}</Badge>
         {task.externalRefs.map((ref, i) => (
           <Badge key={i} className="text-purple bg-purple/15">{ref.source.toUpperCase()} {ref.key}</Badge>
         ))}

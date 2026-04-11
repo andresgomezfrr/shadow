@@ -19,3 +19,12 @@ export const SUG_KIND_OPTIONS = [
     label: v.label, value: k, dotColor: v.dot, activeClass: v.active,
   })),
 ];
+
+/** Suggestion status → left border color. */
+export const SUG_STATUS_BORDER: Record<string, string> = {
+  open: 'border-l-orange',
+  snoozed: 'border-l-blue',
+  accepted: 'border-l-green',
+  dismissed: 'border-l-text-muted',
+  expired: 'border-l-text-muted',
+};

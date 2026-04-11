@@ -5,13 +5,7 @@ import { Markdown } from '../../common/Markdown';
 import { timeAgo } from '../../../utils/format';
 import { useState, useCallback } from 'react';
 import { useWorkspace } from './WorkspaceContext';
-
-const STATUS_COLORS: Record<string, string> = {
-  open: 'text-text-muted bg-border',
-  active: 'text-blue bg-blue/15',
-  blocked: 'text-red bg-red/15',
-  done: 'text-green bg-green/15',
-};
+import { TASK_STATUS_COLORS, TASK_STATUS_COLOR_DEFAULT } from '../../../utils/task-colors';
 
 const ALL_STATUSES = ['open', 'active', 'blocked', 'done'] as const;
 
@@ -50,7 +44,7 @@ export function TaskDetail({ taskId, onRefresh }: { taskId: string; onRefresh?: 
       {/* Header */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-lg">📋</span>
-        <Badge className={STATUS_COLORS[task.status] ?? 'text-text-dim bg-border'}>{task.status.replace('_', ' ')}</Badge>
+        <Badge className={TASK_STATUS_COLORS[task.status] ?? TASK_STATUS_COLOR_DEFAULT}>{task.status.replace('_', ' ')}</Badge>
         {task.externalRefs.map((ref, i) => (
           <a key={i} href={ref.url} target="_blank" rel="noopener noreferrer"
             className="no-underline">
