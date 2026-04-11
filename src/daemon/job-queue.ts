@@ -197,21 +197,22 @@ export class JobQueue {
     })();
 
     // Race against timeout (unref so timer doesn't prevent process exit)
-    const timeoutPromise = new Promise<'timeout'>(r => { const t = setTimeout(() => r('timeout'), JOB_TIMEOUT_MS); t.unref(); });
+    const jobTimeoutMs = entry.timeoutMs ?? JOB_TIMEOUT_MS;
+    const timeoutPromise = new Promise<'timeout'>(r => { const t = setTimeout(() => r('timeout'), jobTimeoutMs); t.unref(); });
     Promise.race([jobPromise.then(() => 'done' as const), timeoutPromise]).then(winner => {
       if (winner === 'timeout' && this.active.has(job.id)) {
         cancelled = true;
-        abort.abort(new Error(`timeout (${Math.round(JOB_TIMEOUT_MS / 60000)}min)`));
+        abort.abort(new Error(`timeout (${Math.round(jobTimeoutMs / 60000)}min)`));
         killJobAdapters(job.id);
         this.db.updateJob(job.id, {
           status: 'failed',
-          result: { error: `timeout (${Math.round(JOB_TIMEOUT_MS / 60000)}min)` },
-          durationMs: JOB_TIMEOUT_MS,
+          result: { error: `timeout (${Math.round(jobTimeoutMs / 60000)}min)` },
+          durationMs: jobTimeoutMs,
           finishedAt: new Date().toISOString(),
         });
         this.eventBus.emit({
           type: 'job:complete',
-          data: { jobId: job.id, type: job.type, status: 'failed', durationMs: JOB_TIMEOUT_MS, error: 'timeout' },
+          data: { jobId: job.id, type: job.type, status: 'failed', durationMs: jobTimeoutMs, error: 'timeout' },
         });
         console.error(`[job-queue] Job ${job.type}/${job.id.slice(0, 8)} timed out — killed adapters`);
         this.db.createEvent({ kind: 'job_failed', priority: 7, payload: { message: `${job.type} timed out`, jobType: job.type, detail: 'Job exceeded timeout limit' } });

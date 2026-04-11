@@ -33,7 +33,7 @@ const SoulUpdateSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export function profileTools(ctx: ToolContext): McpTool[] {
-  const { db, trustGate } = ctx;
+  const { db } = ctx;
 
   return [
     // -----------------------------------------------------------------------
@@ -56,8 +56,6 @@ export function profileTools(ctx: ToolContext): McpTool[] {
       description: 'Update a user profile field. Requires trust level >= 1. Fields: proactivityLevel (1-10), timezone, displayName.',
       inputSchema: mcpSchema(ProfileSetSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { key, value: rawValue } = ProfileSetSchema.parse(params);
         const parsed = ProfileUpdateSchema.safeParse({ [key]: rawValue });
@@ -79,8 +77,6 @@ export function profileTools(ctx: ToolContext): McpTool[] {
       description: 'Enter focus mode — sets proactivity to 1 (silent). Optionally specify a duration like "2h" or "30m". Requires trust level >= 1.',
       inputSchema: mcpSchema(FocusSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { duration } = FocusSchema.parse(params);
         let focusUntil: string | null = null;
@@ -146,8 +142,6 @@ export function profileTools(ctx: ToolContext): McpTool[] {
       description: 'Update Shadow\'s soul reflection. Creates if first time, updates if exists. Requires trust level >= 1.',
       inputSchema: mcpSchema(SoulUpdateSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { body } = SoulUpdateSchema.parse(params);
         const all = db.listMemories({ archived: false });

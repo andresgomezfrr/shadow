@@ -473,6 +473,26 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       // Suggest: reactive only (triggered by heartbeat handler when activity detected)
       // No scheduled timer — activity score determines when to suggest
 
+      // Autonomy: auto-plan + auto-execute (periodic, only if enabled + repos configured)
+      try {
+        const { loadAutonomyConfig } = await import('../autonomy/rules.js');
+        const autonomy = loadAutonomyConfig(_db);
+
+        // Auto-plan: every 3h
+        if (autonomy.planRules.enabled && autonomy.planRules.repoIds.length > 0 && shouldEnqueue('auto-plan', 3 * 60 * 60 * 1000)) {
+          _db.enqueueJob('auto-plan', { priority: 4 });
+        }
+
+        // Auto-execute: every 3h, offset 1.5h from last auto-plan
+        if (autonomy.executeRules.enabled && autonomy.executeRules.repoIds.length > 0 && shouldEnqueue('auto-execute', 3 * 60 * 60 * 1000)) {
+          const lastPlan = _db.getLastJob('auto-plan');
+          const elapsed = lastPlan ? Date.now() - new Date(lastPlan.startedAt).getTime() : Infinity;
+          if (elapsed >= 1.5 * 60 * 60 * 1000) {
+            _db.enqueueJob('auto-execute', { priority: 4 });
+          }
+        }
+      } catch { /* autonomy module not available or config invalid — skip */ }
+
       // Digests: clock-time scheduled, timezone-aware, with backfill for missed days
       const userTz = _db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
       const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: userTz }); // YYYY-MM-DD

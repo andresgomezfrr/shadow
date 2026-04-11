@@ -33,6 +33,11 @@ suggest-project (reactive, 7d gap, 2+ repos)
 
 consolidate (6h) \u2192 reflect (24h) \u2192 digests (clock-time)
 
+auto-plan (3h, LLM)
+  \u2193 valid suggestions \u2192 plan runs
+auto-execute (3h, offset 1.5h, LLM)
+  \u2193 high-confidence plans \u2192 worktree execution
+
 version-check (12h, IO) \u2014 queues event if newer tag on remote
 
 revalidate-suggestion (on-demand from Workspace)`}</pre>
@@ -173,6 +178,30 @@ revalidate-suggestion (on-demand from Workspace)`}</pre>
             output="Updates suggestion content, scores, and verdict (valid/partial/outdated)"
             reactive={false}
             note="Uses tool access to read repo files. Outdated suggestions get a pre-filled dismiss note."
+          />
+
+          <JobCard
+            name="auto-plan"
+            color="bg-violet-500/20 text-violet-300"
+            purpose="Scans open suggestions older than the configured min age, revalidates them against the codebase, auto-dismisses outdated ones, and creates plan runs for valid suggestions"
+            trigger="Every ~3h (configurable via Autonomy rules)"
+            model="Opus high"
+            phases={['filtering', 'revalidating', 'planning']}
+            output="Plan runs for valid suggestions, auto-dismissed outdated suggestions"
+            reactive={false}
+            note="Controlled by plan rules in Settings → Autonomy. Per-repo opt-in (off by default). Only processes suggestions matching configured effort, risk, impact, confidence, kind, and repo filters."
+          />
+
+          <JobCard
+            name="auto-execute"
+            color="bg-violet-600/20 text-violet-400"
+            purpose="Scans planned runs with confidence evaluation, auto-executes in worktree if confidence is high with zero doubts, marks as needs_review otherwise"
+            trigger="Every ~3h, offset 1.5h from auto-plan"
+            model="Opus high"
+            phases={['filtering', 'executing', 'verifying']}
+            output="Executed runs in worktrees, or runs marked as needs_review"
+            reactive={false}
+            note="Controlled by execute rules in Settings → Autonomy (stricter than plan rules). Hardcoded safety gate: confidence must be HIGH with zero doubts — not configurable. Per-repo opt-in required."
           />
 
           <JobCard

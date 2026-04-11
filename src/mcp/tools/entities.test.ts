@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
-import { createTestToolContext, callTool, setTrustLevel, assertTrustBlocked, assertNotFound, seedRepo, seedProject, seedContact, seedSystem, seedObservation } from './_test-helpers.js';
+import { createTestToolContext, callTool, assertNotFound, seedRepo, seedProject, seedContact, seedSystem, seedObservation } from './_test-helpers.js';
 import { entityTools } from './entities.js';
 import type { McpTool } from './types.js';
 
@@ -54,13 +54,6 @@ describe('shadow_repo_add', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_repo_add', { path: '/tmp' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('rejects nonexistent path', async () => {
     const result = await callTool(tools, 'shadow_repo_add', { path: '/nonexistent/path/xyz' }) as Record<string, unknown>;
     assert.equal(result.isError, true);
@@ -94,13 +87,6 @@ describe('shadow_repo_update', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_repo_update', { repoId: 'x', name: 'y' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('returns not-found', async () => {
     const result = await callTool(tools, 'shadow_repo_update', { repoId: 'nonexistent', name: 'x' });
     assertNotFound(result);
@@ -132,13 +118,6 @@ describe('shadow_repo_remove', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_repo_remove', { repoId: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns not-found', async () => {
     const result = await callTool(tools, 'shadow_repo_remove', { repoId: 'nonexistent' });
@@ -201,13 +180,6 @@ describe('shadow_contact_add', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_contact_add', { name: 'Test' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('creates contact with all fields', async () => {
     const result = await callTool(tools, 'shadow_contact_add', {
@@ -322,13 +294,6 @@ describe('shadow_system_add', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_system_add', { name: 'x', kind: 'service' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('creates system with all fields', async () => {
     const result = await callTool(tools, 'shadow_system_add', {
       name: 'Kafka', kind: 'queue', url: 'kafka://localhost:9092',
@@ -412,13 +377,6 @@ describe('shadow_project_add', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_project_add', { name: 'test' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('creates project with defaults', async () => {
     const result = await callTool(tools, 'shadow_project_add', { name: 'My Project' }) as any;
@@ -573,15 +531,6 @@ describe('shadow_relation_add', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_relation_add', {
-      sourceType: 'repo', sourceId: 'a', relation: 'depends_on', targetType: 'system', targetId: 'b',
-    });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('creates relation', async () => {
     const repo = seedRepo(db);
     const system = seedSystem(db);
@@ -637,13 +586,6 @@ describe('shadow_relation_remove', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_relation_remove', { relationId: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('removes relation', async () => {
     const repo = seedRepo(db);

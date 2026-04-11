@@ -16,7 +16,6 @@ export type ToolContext = {
   db: ShadowDatabase;
   config: ShadowConfig;
   getTrustLevel: () => number;
-  trustGate: (required: number) => { ok: true } | { ok: false; error: { isError: true; message: string } };
   deriveMood: () => string;
   deriveGreeting: (profile: UserProfileRecord) => string;
   trustNames: Record<number, string>;

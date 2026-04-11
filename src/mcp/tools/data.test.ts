@@ -1,6 +1,6 @@
 import { describe, it, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestToolContext, callTool, setTrustLevel, assertTrustBlocked, assertNotFound, seedRepo, seedProject, seedMemory, seedObservation, seedSuggestion } from './_test-helpers.js';
+import { createTestToolContext, callTool, assertNotFound, seedRepo, seedProject, seedMemory, seedObservation, seedSuggestion } from './_test-helpers.js';
 import type { McpTool } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -90,13 +90,6 @@ describe('shadow_events_ack', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_events_ack', {});
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('acknowledges all events', async () => {
     db.createEvent({ kind: 'new_suggestion', priority: 3, payload: { message: 'e1' } });
@@ -217,13 +210,6 @@ describe('shadow_run_create', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 1 (requires 2)', async () => {
-    setTrustLevel(db, 1);
-    const result = await callTool(tools, 'shadow_run_create', { repoId: 'x', prompt: 'y' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 2);
-  });
-
   it('returns not-found for nonexistent repo', async () => {
     const result = await callTool(tools, 'shadow_run_create', { repoId: 'nonexistent', prompt: 'test' });
     assertNotFound(result);
@@ -255,13 +241,6 @@ describe('shadow_run_archive', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_run_archive', { runId: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns not-found', async () => {
     const result = await callTool(tools, 'shadow_run_archive', { runId: 'nonexistent' });
@@ -347,13 +326,6 @@ describe('shadow_digest', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_digest', { kind: 'daily' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('generates daily digest', async () => {
     const result = await callTool(tools, 'shadow_digest', { kind: 'daily' }) as Record<string, unknown>;
@@ -482,15 +454,6 @@ describe('shadow_enrichment_write', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_enrichment_write', {
-      projectId: 'x', source: 'test', summary: 'test',
-    });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns error for nonexistent project', async () => {
     const result = await callTool(tools, 'shadow_enrichment_write', {

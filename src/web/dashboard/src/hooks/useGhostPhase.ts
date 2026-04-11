@@ -27,8 +27,8 @@ const PHASE_MAP: Record<string, PhaseInfo> = {
   'digest-daily':    { images: ['/ghost/reflecting.mp4'],      label: 'writing digest...' },
   'digest-weekly':   { images: ['/ghost/reflecting.mp4'],      label: 'writing digest...' },
   'digest-brag':     { images: ['/ghost/reflecting.mp4'],      label: 'writing digest...' },
-  'auto-plan':       { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'auto-planning...' },
-  'auto-execute':    { images: ['/ghost/analyzing.mp4', '/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png'], label: 'auto-executing...' },
+  'auto-plan':       { images: ['/ghost/autonomy-placeholder.png'], label: 'planning...' },
+  'auto-execute':    { images: ['/ghost/autonomy-placeholder.png'], label: 'executing...' },
 };
 
 // Higher index = higher priority for display

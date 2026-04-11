@@ -45,7 +45,8 @@ export function GuideConcepts() {
         <p className="text-sm text-text-dim mb-4">
           Trust grows organically with usage. Each interaction earns trust points:
           check-in (+0.3), memory taught (+1.0), heartbeat completed (+0.5), suggestion accepted (+2.0).
-          Higher trust unlocks more autonomous capabilities.
+          Trust is used for <span className="text-text">gamification and narrative</span> &mdash; it no longer gates tool access or capabilities.
+          All MCP tools are available regardless of trust level.
         </p>
         <div className="overflow-hidden rounded-lg border border-border">
           <table className="w-full text-sm">
@@ -178,6 +179,69 @@ export function GuideConcepts() {
           A journey can be <span className="text-text">done</span> (closed) at any point — not everything needs a PR.
           Runs can also be created directly via the <code className="text-accent bg-bg px-1.5 py-0.5 rounded text-xs">shadow_run_create</code> MCP tool.
         </p>
+      </section>
+
+      {/* Autonomy */}
+      <section className="bg-card border border-border rounded-lg p-5 mb-6">
+        <h2 className="text-base font-semibold mb-3">Autonomy</h2>
+        <p className="text-sm text-text-dim mb-4">
+          Shadow can autonomously plan and execute suggestions without human intervention, using a
+          <span className="text-text"> two-job pipeline</span> with a wide-funnel/narrow-gate design.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div className="bg-bg rounded-lg p-4">
+            <h3 className="text-sm font-medium mb-2">auto-plan (wider funnel)</h3>
+            <p className="text-xs text-text-dim mb-2">
+              Runs every ~3h. Scans open suggestions older than a configurable <span className="text-text">min age</span> (default 5h),
+              revalidates them against the codebase, auto-dismisses outdated ones, and creates plan runs for valid ones.
+              The maturity filter prevents acting on suggestions created during active work sessions.
+            </p>
+            <p className="text-xs text-text-muted">
+              Plan rules: effort, risk, impact, confidence, min age, suggestion kinds, allowed repos.
+            </p>
+          </div>
+          <div className="bg-bg rounded-lg p-4">
+            <h3 className="text-sm font-medium mb-2">auto-execute (strict gate)</h3>
+            <p className="text-xs text-text-dim mb-2">
+              Runs every ~3h (offset 1.5h from planner). Scans planned runs, evaluates confidence,
+              and auto-executes in an isolated worktree only if conditions are met.
+              Runs that don&apos;t pass are marked as <span className="text-text">needs_review</span>.
+            </p>
+            <p className="text-xs text-text-muted">
+              Execute rules: same fields as plan rules but with tighter defaults.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex gap-3 items-start bg-bg rounded-lg px-4 py-3">
+            <span className="text-lg flex-shrink-0">{'\uD83D\uDD12'}</span>
+            <div>
+              <span className="text-sm font-medium text-text">Hardcoded safety gate</span>
+              <span className="text-sm text-text-dim ml-2">
+                Confidence must be HIGH with zero doubts for auto-execution. This is not configurable — even if all other rules pass.
+              </span>
+            </div>
+          </div>
+          <div className="flex gap-3 items-start bg-bg rounded-lg px-4 py-3">
+            <span className="text-lg flex-shrink-0">{'\uD83D\uDCE6'}</span>
+            <div>
+              <span className="text-sm font-medium text-text">Per-repo opt-in</span>
+              <span className="text-sm text-text-dim ml-2">
+                Autonomy is off by default for all repos. Each repo must be explicitly enabled in Settings &rarr; Autonomy.
+              </span>
+            </div>
+          </div>
+          <div className="flex gap-3 items-start bg-bg rounded-lg px-4 py-3">
+            <span className="text-lg flex-shrink-0">{'\u23F3'}</span>
+            <div>
+              <span className="text-sm font-medium text-text">Maturity filter</span>
+              <span className="text-sm text-text-dim ml-2">
+                The min age setting (default 5h) ensures Shadow doesn&apos;t act on suggestions generated during active work,
+                giving the developer time to address things themselves first.
+              </span>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Proactivity & Focus */}

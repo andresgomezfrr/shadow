@@ -86,7 +86,7 @@ export function countRuns(db: DatabaseSync, filters?: { status?: string; archive
   return (db.prepare(`SELECT COUNT(*) as total FROM runs ${where}`).get(...values) as { total: number }).total;
 }
 
-export function updateRun(db: DatabaseSync, id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'closedNote' | 'archived' | 'activity' | 'outcome' | 'taskId' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void {
+export function updateRun(db: DatabaseSync, id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'closedNote' | 'autoEvalAt' | 'archived' | 'activity' | 'outcome' | 'taskId' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void {
   const sets: string[] = [];
   const values: SQLValue[] = [];
   for (const [key, value] of Object.entries(updates)) {
@@ -97,6 +97,14 @@ export function updateRun(db: DatabaseSync, id: string, updates: Partial<Pick<Ru
   if (sets.length === 0) return;
   values.push(id);
   db.prepare(`UPDATE runs SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+}
+
+/** List planned runs eligible for auto-execution: planned, confidence evaluated, not yet reviewed by auto-execute. */
+export function listPlannedRunsForAutoExec(db: DatabaseSync): RunRecord[] {
+  return db
+    .prepare(`SELECT * FROM runs WHERE status = 'planned' AND confidence IS NOT NULL AND auto_eval_at IS NULL AND archived = 0 ORDER BY created_at ASC`)
+    .all()
+    .map(mapRun);
 }
 
 /**

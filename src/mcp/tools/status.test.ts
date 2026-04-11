@@ -2,7 +2,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createTestToolContext, callTool, setTrustLevel, assertTrustBlocked, seedRepo, seedObservation, seedProject } from './_test-helpers.js';
+import { createTestToolContext, callTool, seedRepo, seedObservation, seedProject } from './_test-helpers.js';
 import { statusTools } from './status.js';
 import type { McpTool } from './types.js';
 
@@ -134,13 +134,6 @@ describe('shadow_available', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_available', {});
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('clears focus mode', async () => {
     db.updateProfile('default', { focusMode: 'focus', focusUntil: new Date().toISOString() });
     const result = await callTool(tools, 'shadow_available', {}) as Record<string, unknown>;
@@ -209,13 +202,6 @@ describe('shadow_alert_ack', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_alert_ack', { id: 'test_ack' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('returns error for nonexistent alert', async () => {
     const result = await callTool(tools, 'shadow_alert_ack', { id: 'nonexistent' }) as Record<string, unknown>;
     assert.equal(result.ok, false);
@@ -256,13 +242,6 @@ describe('shadow_alert_resolve', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_alert_resolve', { id: 'test_resolve' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns error for nonexistent alert', async () => {
     const result = await callTool(tools, 'shadow_alert_resolve', { id: 'nonexistent' }) as Record<string, unknown>;

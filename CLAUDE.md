@@ -280,26 +280,25 @@ New entities go through `checkDuplicate()` before creation:
 
 Tools split across `src/mcp/tools/`: status.ts, memory.ts, observations.ts, suggestions.ts, entities.ts, profile.ts, data.ts, tasks.ts (8 modules).
 
-### Read-only (27, no trust gate)
+### Read-only (27)
 `shadow_check_in`, `shadow_status`, `shadow_alerts`, `shadow_repos`, `shadow_projects`, `shadow_active_projects`, `shadow_project_detail`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_search`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`, `shadow_daily_summary`, `shadow_feedback`, `shadow_soul`, `shadow_digests`, `shadow_enrichment_config`, `shadow_enrichment_query`, `shadow_relation_list`, `shadow_tasks`
 
-### Write (37, trust >= 1)
-`shadow_repo_add`, `shadow_repo_update`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_update`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_correct`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`, `shadow_relation_add`, `shadow_relation_remove`, `shadow_alert_ack`, `shadow_alert_resolve`, `shadow_run_archive`, `shadow_digest`, `shadow_enrichment_write`, `shadow_task_create`, `shadow_task_update`, `shadow_task_close`, `shadow_task_archive`, `shadow_task_remove`
-
-### Write (3, trust >= 2)
-`shadow_observe`, `shadow_run_create`, `shadow_task_execute`
+### Write (40)
+`shadow_repo_add`, `shadow_repo_update`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_update`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_correct`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_observe`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`, `shadow_relation_add`, `shadow_relation_remove`, `shadow_alert_ack`, `shadow_alert_resolve`, `shadow_run_archive`, `shadow_run_create`, `shadow_digest`, `shadow_enrichment_write`, `shadow_task_create`, `shadow_task_update`, `shadow_task_close`, `shadow_task_archive`, `shadow_task_remove`, `shadow_task_execute`
 
 ## Trust System
 
-| Level | Score | Name | Capabilities |
-|-------|-------|------|-------------|
-| 1 | 0-15 | observer | Read + teach memories |
-| 2 | 15-35 | advisor | + trigger observations |
-| 3 | 35-60 | assistant | + execute small tasks, communicate |
-| 4 | 60-85 | partner | + auto-fix, medium tasks |
-| 5 | 85-100 | shadow | + create branches, propose PRs |
+Trust levels are **narrative/gamification only** — no capability gating. All MCP tools are available regardless of trust level.
 
-Trust grows with usage: check_in (+0.3), memory_taught (+1.0), heartbeat_completed (+0.5), suggestion_accepted (+2.0).
+| Level | Score | Name |
+|-------|-------|------|
+| 1 | 0-15 | observer |
+| 2 | 15-35 | advisor |
+| 3 | 35-60 | assistant |
+| 4 | 60-85 | partner |
+| 5 | 85-100 | shadow |
+
+Trust score grows with usage: check_in (+0.3), memory_taught (+1.0), heartbeat_completed (+0.5), suggestion_accepted (+2.0).
 
 ## Memory Layers
 
@@ -467,15 +466,16 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 
 ## Current State (as of 2026-04-11)
 
-- **66 MCP tools** (27 read + 37 write L1 + 2 write L2) — split across `src/mcp/tools/` (8 modules)
+- **67 MCP tools** (27 read + 40 write, no trust gating) — split across `src/mcp/tools/` (8 modules)
 - **6 hooks** (SessionStart, PostToolUse, UserPromptSubmit, Stop, StopFailure, SubagentStart) — SHADOW_JOB env filter prevents daemon self-traffic
-- **13 job types** — heartbeat, suggest, suggest-deep, suggest-project, consolidate, reflect, remote-sync, context-enrich, repo-profile, project-profile, digest-daily, digest-weekly, digest-brag. Parallel execution via JobQueue (maxConcurrentJobs=3 LLM + IO unlimited).
+- **15 job types** — heartbeat, suggest, suggest-deep, suggest-project, consolidate, reflect, remote-sync, context-enrich, repo-profile, project-profile, digest-daily, digest-weekly, digest-brag, auto-plan, auto-execute. Parallel execution via JobQueue (maxConcurrentJobs=3 LLM + IO unlimited). Per-job timeout support (default 15min, auto-plan 30min, auto-execute 60min).
 - **Ghost mascot** `{•‿•}` in status line — 15 states × 3 variants, 9 ANSI colors. Thoughts system generates LLM status line phrases.
-- **Daemon** — launchd, JobQueue with 15min timeout per job, per-job adapter tracking via AsyncLocalStorage, stale job detector, graceful drain (60s), repo watcher (FS events + debounce).
+- **Daemon** — launchd, JobQueue with per-job timeout (default 15min), per-job adapter tracking via AsyncLocalStorage, stale job detector, graceful drain (60s), repo watcher (FS events + debounce).
 - **Dashboard** — React at localhost:3700. Activity page (unified timeline + SSE), Workspace (tasks + runs), Morning brief, Profile (settings sections), Guide (tabbed reference). Sidebar grouped by intention.
 - **Corrections system** — `kind: 'correction'` memories, consumed by consolidate. `shadow_correct` MCP tool + CorrectionPanel in dashboard.
 - **Suggest v3** — 3 specialized jobs: `suggest` (incremental, reactive), `suggest-deep` (full codebase review), `suggest-project` (cross-repo analysis).
-- **Runner** — worktree isolation for execution runs, confidence evaluation (Sonnet), draft PR via `gh`, auto-cleanup on completion.
+- **Runner** — worktree isolation for execution runs, confidence evaluation (Opus), draft PR via `gh`, auto-cleanup on completion.
+- **Autonomy** — two-job autonomous execution: `auto-plan` (3h, revalidates open suggestions, auto-dismisses stale, creates plan runs) + `auto-execute` (3h offset 1.5h, executes planned runs with high confidence + 0 doubts). Configurable rules (plan rules + execute rules) stored in `preferences_json.autonomy`. Per-repo opt-in, OFF by default. Settings UI section in dashboard Profile page.
 - **API validation** — Zod schemas on POST endpoints, `clampLimit`/`clampOffset` on all pagination, SSE event bus for real-time updates.
 - **JSONL rotation** — atomic rename-then-append pattern to prevent data loss from concurrent hook writes.
 
@@ -526,3 +526,8 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Run state machine** — `src/runner/state-machine.ts`. Directed graph: queued→running/failed, running→completed/done/failed, completed→done/dismissed/failed. Terminal: done, dismissed, failed. Parent aggregation from children.
 - **Tasks** — First-class work containers (`src/mcp/tools/tasks.ts`, `src/storage/stores/execution.ts`). Link to suggestions via `suggestion_id` (created from accept "plan"), to projects via `project_id`, to repos via `repo_ids_json`. Runs link back to tasks via `task_id`. External refs (Jira, GitHub) and session resume support.
 - **Run outcome** — When a run reaches `done`, the `outcome` field records how it got there (e.g., executed, executed_manual, closed). This replaces the old status-as-outcome pattern where executed/executed_manual/closed were separate statuses.
+- **Autonomy system** — `src/autonomy/rules.ts` defines Zod schemas for plan/execute rules. `src/daemon/handlers/autonomy.ts` implements both job handlers. Auto-plan: filters open suggestions by rules (DB-level, 0 tokens), revalidates each against code (LLM), auto-dismisses outdated, accepts valid ones as plan runs. Auto-execute: filters planned runs by rules + hardcoded confidence gate (high + 0 doubts), creates child execution runs in worktree. Config stored in `user_profile.preferences_json.autonomy`. Per-repo opt-in, OFF by default.
+- **Trust gates removed** — `trustGate()` removed from all MCP tool handlers (`src/mcp/server.ts`, `src/mcp/tools/types.ts`). Trust score and deltas still tracked for gamification/narrative but no longer gate capabilities. All tools available regardless of trust level.
+- **Per-job timeout** — `JobHandlerEntry` now supports optional `timeoutMs` field. JobQueue uses per-job timeout when set, falls back to global 15min default. Auto-plan: 30min, auto-execute: 60min.
+- **Suggestion effort field** — `effort` (small/medium/large) now persisted in DB (migration v47). Generated by LLM in suggest pipeline, used by autonomy rules for filtering.
+- **Confidence eval model** — Changed from hardcoded Sonnet to `config.models.runner` (default Opus). Critical gate decision for autonomous execution warrants highest quality model.

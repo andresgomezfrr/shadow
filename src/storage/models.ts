@@ -189,6 +189,7 @@ export type SuggestionRecord = {
   lastRevalidatedAt: string | null;
   revalidationVerdict: string | null;
   revalidationNote: string | null;
+  effort: string;
   createdAt: string;
   expiresAt: string | null;
 };
@@ -249,6 +250,7 @@ export type RunRecord = {
   verified: 'verified' | 'needs_review' | 'unverified' | null;
   activity: string | null;
   closedNote: string | null;
+  autoEvalAt: string | null;
   archived: boolean;
   startedAt: string | null;
   finishedAt: string | null;
@@ -387,6 +389,20 @@ export type DigestJobResult = {
   wordCount: number;
 };
 
+export type AutoPlanJobResult = {
+  autoPlanned: number;
+  autoDismissed: number;
+  skipped: number;
+  candidates: Array<{ suggestionId: string; title: string; action: string }>;
+};
+
+export type AutoExecuteJobResult = {
+  autoExecuted: number;
+  needsReview: number;
+  filtered: number;
+  candidates: Array<{ runId: string; action: string; reason?: string }>;
+};
+
 export type JobResultMap = {
   heartbeat: HeartbeatJobResult;
   suggest: SuggestJobResult;
@@ -401,6 +417,8 @@ export type JobResultMap = {
   'digest-daily': DigestJobResult;
   'digest-weekly': DigestJobResult;
   'digest-brag': DigestJobResult;
+  'auto-plan': AutoPlanJobResult;
+  'auto-execute': AutoExecuteJobResult;
 };
 
 export type JobType = keyof JobResultMap;

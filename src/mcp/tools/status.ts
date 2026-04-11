@@ -30,7 +30,7 @@ const AvailableSchema = z.object({});
 // ---------------------------------------------------------------------------
 
 export function statusTools(ctx: ToolContext): McpTool[] {
-  const { db, config, trustGate, deriveMood, deriveGreeting, trustNames } = ctx;
+  const { db, config, deriveMood, deriveGreeting, trustNames } = ctx;
 
   return [
     // -----------------------------------------------------------------------
@@ -197,8 +197,6 @@ export function statusTools(ctx: ToolContext): McpTool[] {
       description: 'Exit focus mode, restore previous proactivity level. Requires trust level >= 1.',
       inputSchema: mcpSchema(AvailableSchema),
       handler: async () => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         db.updateProfile('default', { focusMode: null, focusUntil: null });
         const profile = db.ensureProfile();
@@ -227,8 +225,6 @@ export function statusTools(ctx: ToolContext): McpTool[] {
       description: 'Acknowledge an alert — dims it on the status line but keeps it visible. Requires trust level >= 1.',
       inputSchema: mcpSchema(AlertAckSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
         const { id } = AlertAckSchema.parse(params);
         const alerts = getDaemonState(config).alerts ?? [];
         const alert = alerts.find(a => a.id === id);
@@ -247,8 +243,6 @@ export function statusTools(ctx: ToolContext): McpTool[] {
       description: 'Manually resolve/dismiss an alert — removes it. Auto-managed alerts may reappear if the condition persists. Requires trust level >= 1.',
       inputSchema: mcpSchema(AlertResolveSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
         const { id } = AlertResolveSchema.parse(params);
         const alerts = getDaemonState(config).alerts ?? [];
         const alert = alerts.find(a => a.id === id);

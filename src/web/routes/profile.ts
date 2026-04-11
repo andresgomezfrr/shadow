@@ -7,6 +7,7 @@ import { json, readBody, parseBody, FocusSchema, FeedbackSchema } from '../helpe
 import { ProfileUpdateSchema } from '../../config/schema.js';
 import { DIGEST_SCHEDULES, nextScheduledAt } from '../../daemon/schedules.js';
 import { loadConfig } from '../../config/load-config.js';
+import { loadAutonomyConfig } from '../../autonomy/rules.js';
 
 export async function handleProfileRoutes(
   req: IncomingMessage, res: ServerResponse,
@@ -101,6 +102,22 @@ export async function handleProfileRoutes(
             const lastDiscover = db.getLastJob('mcp-discover');
             const nextAt = enabled && lastDiscover ? new Date(new Date(lastDiscover.startedAt).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
             return { intervalMs: 24 * 60 * 60 * 1000, nextAt, enabled };
+          })(),
+          'auto-plan': (() => {
+            const autonomy = loadAutonomyConfig(db);
+            const enabled = autonomy.planRules.enabled && autonomy.planRules.repoIds.length > 0;
+            const lastAp = db.getLastJob('auto-plan');
+            const intervalMs = 3 * 60 * 60 * 1000;
+            const nextAt = enabled && lastAp ? new Date(new Date(lastAp.startedAt).getTime() + intervalMs).toISOString() : null;
+            return { intervalMs, nextAt, enabled };
+          })(),
+          'auto-execute': (() => {
+            const autonomy = loadAutonomyConfig(db);
+            const enabled = autonomy.executeRules.enabled && autonomy.executeRules.repoIds.length > 0;
+            const lastAe = db.getLastJob('auto-execute');
+            const intervalMs = 3 * 60 * 60 * 1000;
+            const nextAt = enabled && lastAe ? new Date(new Date(lastAe.startedAt).getTime() + intervalMs).toISOString() : null;
+            return { intervalMs, nextAt, enabled, trigger: 'offset 1.5h from auto-plan' };
           })(),
           ...Object.fromEntries(Object.entries(DIGEST_SCHEDULES).map(([type, sched]) => {
             const tz = db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;

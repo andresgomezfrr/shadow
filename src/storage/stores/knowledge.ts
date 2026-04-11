@@ -477,14 +477,14 @@ export function touchObservationsLastSeen(db: DatabaseSync, ids: string[]): void
 
 // --- Suggestions ---
 
-export function createSuggestion(db: DatabaseSync, input: { repoId?: string | null; repoIds?: string[]; sourceObservationId?: string | null; kind: string; title: string; summaryMd: string; reasoningMd?: string | null; impactScore?: number; confidenceScore?: number; riskScore?: number; requiredTrustLevel?: number }): SuggestionRecord {
+export function createSuggestion(db: DatabaseSync, input: { repoId?: string | null; repoIds?: string[]; sourceObservationId?: string | null; kind: string; title: string; summaryMd: string; reasoningMd?: string | null; impactScore?: number; confidenceScore?: number; riskScore?: number; requiredTrustLevel?: number; effort?: string }): SuggestionRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db
     .prepare(
       `INSERT INTO suggestions (id, repo_id, repo_ids_json, source_observation_id, kind, title, summary_md,
-       reasoning_md, impact_score, confidence_score, risk_score, required_trust_level, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       reasoning_md, impact_score, confidence_score, risk_score, required_trust_level, effort, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -499,6 +499,7 @@ export function createSuggestion(db: DatabaseSync, input: { repoId?: string | nu
       input.confidenceScore ?? 70,
       input.riskScore ?? 2,
       input.requiredTrustLevel ?? 5,
+      input.effort ?? 'medium',
       'open',
       now,
     );

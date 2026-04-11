@@ -16,6 +16,71 @@ export function GuideConfig() {
       <ConfigSection title="Effort Levels" description="Effort level per phase. Options: low, medium, high." vars={CONFIG_EFFORTS} />
       <ConfigSection title="Advanced" vars={CONFIG_ADVANCED} />
 
+      {/* Autonomy */}
+      <section className="bg-card border border-border rounded-lg p-5 mb-6">
+        <h2 className="text-base font-semibold mb-2">Autonomy</h2>
+        <p className="text-xs text-text-muted mb-3">
+          Configured in <strong className="text-text-dim">Settings &rarr; Autonomy</strong>. Controls autonomous planning and execution of suggestions.
+          Per-repo opt-in &mdash; repos must be explicitly enabled.
+        </p>
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-medium text-text mb-2">Plan Rules (wider funnel)</h3>
+            <div className="overflow-hidden rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-bg">
+                    <th className="text-left px-4 py-2 text-text-dim font-medium">Field</th>
+                    <th className="text-left px-4 py-2 text-text-dim font-medium">Description</th>
+                    <th className="text-left px-4 py-2 text-text-dim font-medium w-36">Default</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {AUTONOMY_PLAN_RULES.map((r) => (
+                    <tr key={r.field} className="border-t border-border hover:bg-card-hover transition-colors">
+                      <td className="px-4 py-2.5 font-mono text-xs text-accent whitespace-nowrap">{r.field}</td>
+                      <td className="px-4 py-2.5 text-text-dim text-xs">{r.description}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-text-muted">{r.defaultVal}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium text-text mb-2">Execute Rules (strict gate)</h3>
+            <p className="text-xs text-text-muted mb-2">Same fields as plan rules, with tighter defaults. Plus a hardcoded safety gate: confidence must be HIGH with zero doubts (not configurable).</p>
+            <div className="overflow-hidden rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-bg">
+                    <th className="text-left px-4 py-2 text-text-dim font-medium">Field</th>
+                    <th className="text-left px-4 py-2 text-text-dim font-medium">Description</th>
+                    <th className="text-left px-4 py-2 text-text-dim font-medium w-36">Default</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {AUTONOMY_EXECUTE_RULES.map((r) => (
+                    <tr key={r.field} className="border-t border-border hover:bg-card-hover transition-colors">
+                      <td className="px-4 py-2.5 font-mono text-xs text-accent whitespace-nowrap">{r.field}</td>
+                      <td className="px-4 py-2.5 text-text-dim text-xs">{r.description}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-text-muted">{r.defaultVal}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium text-text mb-2">Per-Repo Toggle</h3>
+            <p className="text-xs text-text-dim">
+              Each repo has an autonomy toggle (off by default). Only repos explicitly enabled will be considered by auto-plan and auto-execute jobs.
+              Toggle repos in <strong className="text-text">Settings &rarr; Autonomy</strong>.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Tuning Tips */}
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-4">Tuning Tips</h2>
@@ -41,6 +106,26 @@ export function GuideConfig() {
     </>
   );
 }
+
+type AutonomyRule = { field: string; description: string; defaultVal: string };
+
+const AUTONOMY_PLAN_RULES: AutonomyRule[] = [
+  { field: 'maxEffort', description: 'Maximum effort level for suggestions to auto-plan', defaultVal: 'low' },
+  { field: 'maxRisk', description: 'Maximum risk score (0-10)', defaultVal: '3' },
+  { field: 'minImpact', description: 'Minimum impact score (0-10)', defaultVal: '5' },
+  { field: 'minConfidence', description: 'Minimum confidence score (0-10)', defaultVal: '7' },
+  { field: 'minAgeHours', description: 'Minimum age before a suggestion is eligible (maturity filter)', defaultVal: '5' },
+  { field: 'kinds', description: 'Allowed suggestion kinds (e.g. improvement, risk, pattern)', defaultVal: 'all' },
+  { field: 'repos', description: 'Allowed repo IDs (per-repo opt-in)', defaultVal: 'none' },
+];
+
+const AUTONOMY_EXECUTE_RULES: AutonomyRule[] = [
+  { field: 'maxEffort', description: 'Maximum effort level for plans to auto-execute', defaultVal: 'low' },
+  { field: 'maxRisk', description: 'Maximum risk score (0-10)', defaultVal: '2' },
+  { field: 'minImpact', description: 'Minimum impact score (0-10)', defaultVal: '6' },
+  { field: 'minConfidence', description: 'Minimum confidence score (0-10)', defaultVal: '8' },
+  { field: 'repos', description: 'Allowed repo IDs (per-repo opt-in)', defaultVal: 'none' },
+];
 
 function ConfigSection({ title, description, vars }: { title: string; description?: string; vars: ConfigVar[] }) {
   return (

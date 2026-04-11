@@ -15,6 +15,7 @@ import { SectionLLMModels } from './settings/SectionLLMModels';
 import { SectionThoughts } from './settings/SectionThoughts';
 import { SectionFocusMode } from './settings/SectionFocusMode';
 import { SectionEnrichment } from './settings/SectionEnrichment';
+import { SectionAutonomy } from './settings/SectionAutonomy';
 import { SectionSoul } from './settings/SectionSoul';
 import { SectionSystemConfig } from './settings/SectionSystemConfig';
 
@@ -120,6 +121,7 @@ export function ProfilePage() {
         <SectionThoughts profile={profile} saved={saved} onSavePreference={savePreference} visible={isSectionVisible('thoughts')} />
         <SectionFocusMode profile={profile} onRefresh={refresh} visible={isSectionVisible('focus')} />
         <SectionEnrichment profile={profile} saved={saved} onSavePreference={savePreference} visible={isSectionVisible('enrichment')} />
+        <SectionAutonomy profile={profile} saved={saved} onSavePreference={savePreference} visible={isSectionVisible('autonomy')} />
 
         {/* About */}
         <SectionSoul visible={isSectionVisible('soul')} />

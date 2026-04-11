@@ -65,7 +65,7 @@ const EnrichmentQuerySchema = z.object({
 // ---------------------------------------------------------------------------
 
 export function dataTools(ctx: ToolContext): McpTool[] {
-  const { db, config, trustGate } = ctx;
+  const { db, config } = ctx;
 
   return [
     // ---- Events ----
@@ -82,8 +82,6 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       description: 'Acknowledge all pending events. Requires trust level >= 1.',
       inputSchema: mcpSchema(z.object({})),
       handler: async () => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const count = db.deliverAllEvents();
         return { ok: true, acknowledged: count };
@@ -171,8 +169,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       description: 'Create a new run directly (without a suggestion). Use this to register implementation work in Shadow so it is trackable in the workspace. Requires trust level >= 2.',
       inputSchema: mcpSchema(RunCreateSchema),
       handler: async (params) => {
-        const gate = trustGate(2);
-        if (!gate.ok) return gate.error;
+
         const { repoId, prompt, kind } = RunCreateSchema.parse(params);
         const repo = db.getRepo(repoId);
         if (!repo) return { isError: true, message: `Repo not found: ${repoId}` };
@@ -186,8 +183,6 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       description: 'Archive a run so it no longer appears in the default workspace view. Requires trust level >= 1.',
       inputSchema: mcpSchema(RunArchiveSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
         const { runId } = RunArchiveSchema.parse(params);
         const run = db.getRun(runId);
         if (!run) return { isError: true, message: `Run not found: ${runId}` };
@@ -259,8 +254,6 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       description: 'Generate a digest on demand: daily (standup), weekly (1:1), or brag (performance review). Requires trust level >= 1.',
       inputSchema: mcpSchema(DigestSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { kind } = DigestSchema.parse(params);
         const { activityDailyDigest, activityWeeklyDigest, activityBragDoc } = await import('../../analysis/digests.js');
@@ -365,8 +358,6 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         detail: z.record(z.string(), z.unknown()).describe('Optional structured data').optional(),
       })),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const parsed = z.object({
           projectId: z.string(),

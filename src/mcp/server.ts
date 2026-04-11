@@ -25,20 +25,6 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: 
     return profile?.trustLevel ?? 0;
   }
 
-  function trustGate(required: number): { ok: true } | { ok: false; error: { isError: true; message: string } } {
-    const current = getTrustLevel();
-    if (current < required) {
-      return {
-        ok: false,
-        error: {
-          isError: true,
-          message: `Insufficient trust level: current ${current}, required >= ${required}`,
-        },
-      };
-    }
-    return { ok: true };
-  }
-
   function deriveMood(): string {
     const recent = db.listRecentInteractions(10);
     if (recent.length === 0) return 'neutral';
@@ -65,7 +51,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: 
     1: 'observer', 2: 'advisor', 3: 'assistant', 4: 'partner', 5: 'shadow',
   };
 
-  const ctx: ToolContext = { db, config, getTrustLevel, trustGate, deriveMood, deriveGreeting, trustNames, daemonState: opts?.daemonState };
+  const ctx: ToolContext = { db, config, getTrustLevel, deriveMood, deriveGreeting, trustNames, daemonState: opts?.daemonState };
 
   return [
     ...statusTools(ctx),

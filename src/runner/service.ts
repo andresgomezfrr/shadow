@@ -471,7 +471,7 @@ export class RunnerService {
 
   /**
    * Evaluate a generated plan's confidence level and identify doubts.
-   * Uses Sonnet with effort high — this is a critical gate decision.
+   * Uses Opus with effort high — this is a critical gate decision for autonomous execution.
    * Falls back to low confidence on any failure.
    */
   private async evaluateConfidence(
@@ -521,10 +521,10 @@ export class RunnerService {
         goal: 'Evaluate plan confidence',
         prompt: evaluationPrompt,
         relevantMemories: [],
-        model: 'sonnet',
+        model: this.config.models.runner,
         effort: 'high',
         systemPrompt: 'Respond with ONLY valid JSON. No markdown, no explanation, no code fences.',
-        timeoutMs: 60_000,
+        timeoutMs: 90_000,
       };
 
       const evalResult = await adapter.execute(evalPack);
@@ -539,7 +539,7 @@ export class RunnerService {
         this.db.recordLlmUsage({
           source: 'runner-eval',
           sourceId: pack.runId ?? null,
-          model: 'sonnet',
+          model: this.config.models.runner,
           inputTokens: evalResult.inputTokens ?? 0,
           outputTokens: evalResult.outputTokens ?? 0,
         });

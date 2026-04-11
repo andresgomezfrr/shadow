@@ -15,6 +15,8 @@ export const JOB_TYPE_COLORS: Record<string, string> = {
   'digest-weekly': 'bg-cyan-500/20 text-cyan-300',
   'digest-brag': 'bg-cyan-500/20 text-cyan-300',
   'revalidate-suggestion': 'bg-sky-400/20 text-sky-300',
+  'auto-plan': 'bg-lime-500/20 text-lime-300',
+  'auto-execute': 'bg-rose-500/20 text-rose-300',
   'run:plan': 'bg-indigo-500/20 text-indigo-300',
   'run:execute': 'bg-violet-500/20 text-violet-300',
 };

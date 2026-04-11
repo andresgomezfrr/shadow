@@ -228,6 +228,34 @@ export function JobOutputSummary({ entry }: Props) {
     );
   }
 
+  if (type === 'auto-plan') {
+    const planned = num(r, 'autoPlanned');
+    const dismissed = num(r, 'autoDismissed');
+    const skipped = num(r, 'skipped');
+    if (r.skipped === true) return <span className="text-text-muted text-xs">{str(r, 'reason') || 'skipped'}</span>;
+    if (planned === 0 && dismissed === 0) return <span className="text-text-muted text-xs">no candidates</span>;
+    return (
+      <span className="inline-flex items-center gap-1.5 flex-wrap">
+        {planned > 0 && chip(`${planned} planned`, 'text-lime-300 bg-lime-500/15')}
+        {dismissed > 0 && chip(`${dismissed} dismissed`, 'text-orange bg-orange/15')}
+        {skipped > 0 && <span className="text-xs text-text-muted">{skipped} skipped</span>}
+      </span>
+    );
+  }
+
+  if (type === 'auto-execute') {
+    const executed = num(r, 'autoExecuted');
+    const review = num(r, 'needsReview');
+    if (r.skipped === true) return <span className="text-text-muted text-xs">{str(r, 'reason') || 'skipped'}</span>;
+    if (executed === 0 && review === 0) return <span className="text-text-muted text-xs">no candidates</span>;
+    return (
+      <span className="inline-flex items-center gap-1.5 flex-wrap">
+        {executed > 0 && chip(`${executed} executed`, 'text-rose-300 bg-rose-500/15')}
+        {review > 0 && chip(`${review} need review`, 'text-amber-300 bg-amber-400/15')}
+      </span>
+    );
+  }
+
   if (type === 'run:plan' || type === 'run:execute') {
     return null; // repoName + confidence already shown by ActivityEntry
   }

@@ -1,6 +1,6 @@
 import { describe, it, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestToolContext, callTool, setTrustLevel, assertTrustBlocked, assertNotFound, seedSuggestion } from './_test-helpers.js';
+import { createTestToolContext, callTool, assertNotFound, seedSuggestion } from './_test-helpers.js';
 import type { McpTool } from './types.js';
 
 // Mock the suggestion engine — must be before importing suggestionTools
@@ -96,13 +96,6 @@ describe('shadow_suggest_accept', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_suggest_accept', { suggestionId: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('returns not-found for nonexistent suggestion', async () => {
     const result = await callTool(tools, 'shadow_suggest_accept', { suggestionId: 'nonexistent' });
     assertNotFound(result);
@@ -132,13 +125,6 @@ describe('shadow_suggest_dismiss', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_suggest_dismiss', { suggestionId: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns not-found for nonexistent suggestion', async () => {
     const result = await callTool(tools, 'shadow_suggest_dismiss', { suggestionId: 'nonexistent' });
@@ -171,13 +157,6 @@ describe('shadow_suggest_snooze', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_suggest_snooze', { suggestionId: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns not-found for nonexistent suggestion', async () => {
     const result = await callTool(tools, 'shadow_suggest_snooze', { suggestionId: 'nonexistent' });

@@ -315,6 +315,12 @@ elif [ -n "$HEARTBEAT_PHASE" ] && [ "$HEARTBEAT_PHASE" != "null" ] && [ "$HEARTB
     *repo-profile*)
       case $V in 0) MASCOT="{•_•}📋" ;; 1) MASCOT="{•‿•}📋" ;; *) MASCOT="{•_•}🔍" ;; esac
       MCOLOR="$CT"; ACTIVITY_TEXT="profiling" ;;
+    *auto-plan*)
+      case $V in 0) MASCOT="{•_•}📋" ;; 1) MASCOT="{•‿•}📋" ;; *) MASCOT="{•_•}🗂️" ;; esac
+      MCOLOR="$CG"; ACTIVITY_TEXT="planning" ;;
+    *auto-execute*)
+      case $V in 0) MASCOT="{•_•}⚡" ;; 1) MASCOT="{•‿•}⚡" ;; *) MASCOT="{•_•}🔧" ;; esac
+      MCOLOR="$CY"; ACTIVITY_TEXT="executing" ;;
     *digest*)
       case $V in 0) MASCOT="{-‿-}📝" ;; 1) MASCOT="{-_-}✍️" ;; *) MASCOT="{-‿-}📄" ;; esac
       MCOLOR="$CC"; ACTIVITY_TEXT="writing" ;;

@@ -42,8 +42,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         sessionRepoPath: z.string().optional().describe('Working directory path for the session'),
       })),
       handler: async (params) => {
-        const gate = ctx.trustGate(1);
-        if (!gate.ok) return gate.error;
+
         const task = ctx.db.createTask({
           title: params.title as string,
           status: (params.status as string) ?? 'open',
@@ -78,8 +77,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         prUrls: z.array(z.string()).optional().describe('Replace all PR URLs'),
       })),
       handler: async (params) => {
-        const gate = ctx.trustGate(1);
-        if (!gate.ok) return gate.error;
+
         const id = params.id as string;
         const task = ctx.db.getTask(id);
         if (!task) return { isError: true, message: `Task ${id} not found` };
@@ -100,8 +98,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         id: z.string().describe('Task ID'),
       })),
       handler: async (params) => {
-        const gate = ctx.trustGate(1);
-        if (!gate.ok) return gate.error;
+
         const id = params.id as string;
         const task = ctx.db.getTask(id);
         if (!task) return { isError: true, message: `Task ${id} not found` };
@@ -116,8 +113,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         id: z.string().describe('Task ID'),
       })),
       handler: async (params) => {
-        const gate = ctx.trustGate(1);
-        if (!gate.ok) return gate.error;
+
         const id = params.id as string;
         const task = ctx.db.getTask(id);
         if (!task) return { isError: true, message: `Task ${id} not found` };
@@ -132,8 +128,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         id: z.string().describe('Task ID'),
       })),
       handler: async (params) => {
-        const gate = ctx.trustGate(2);
-        if (!gate.ok) return gate.error;
+
         const id = params.id as string;
         const task = ctx.db.getTask(id);
         if (!task) return { isError: true, message: `Task ${id} not found` };
@@ -157,8 +152,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         id: z.string().describe('Task ID'),
       })),
       handler: async (params) => {
-        const gate = ctx.trustGate(1);
-        if (!gate.ok) return gate.error;
+
         const id = params.id as string;
         const task = ctx.db.getTask(id);
         if (!task) return { isError: true, message: `Task ${id} not found` };

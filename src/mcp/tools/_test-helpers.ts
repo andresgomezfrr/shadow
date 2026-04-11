@@ -50,14 +50,6 @@ export function createTestToolContext(opts?: { trustLevel?: number }): TestToolE
     return profile?.trustLevel ?? 0;
   }
 
-  function trustGate(required: number): { ok: true } | { ok: false; error: { isError: true; message: string } } {
-    const current = getTrustLevel();
-    if (current < required) {
-      return { ok: false, error: { isError: true, message: `Insufficient trust level: current ${current}, required >= ${required}` } };
-    }
-    return { ok: true };
-  }
-
   function deriveMood(): string {
     const recent = db.listRecentInteractions(10);
     if (recent.length === 0) return 'neutral';
@@ -84,7 +76,7 @@ export function createTestToolContext(opts?: { trustLevel?: number }): TestToolE
     1: 'observer', 2: 'advisor', 3: 'assistant', 4: 'partner', 5: 'shadow',
   };
 
-  const ctx: ToolContext = { db, config, getTrustLevel, trustGate, deriveMood, deriveGreeting, trustNames };
+  const ctx: ToolContext = { db, config, getTrustLevel, deriveMood, deriveGreeting, trustNames };
 
   // Lazy tool assembly — tools are created on first access to allow mocks to register first
   let _tools: McpTool[] | null = null;
@@ -129,13 +121,6 @@ export async function callTool(tools: McpTool[], name: string, params: Record<st
   const tool = tools.find(t => t.name === name);
   if (!tool) throw new Error(`Tool not found: ${name}. Available: ${tools.map(t => t.name).join(', ')}`);
   return tool.handler(params);
-}
-
-/** Assert that a result is a trust gate block. */
-export function assertTrustBlocked(result: unknown): void {
-  const r = result as { isError?: boolean; message?: string };
-  assert.equal(r.isError, true, 'Expected isError: true');
-  assert.ok(r.message?.toLowerCase().includes('insufficient trust'), `Expected trust error, got: ${r.message}`);
 }
 
 /** Assert that a result is a not-found error. */

@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestToolContext, callTool, setTrustLevel, assertTrustBlocked, assertNotFound, seedRepo, seedObservation } from './_test-helpers.js';
+import { createTestToolContext, callTool, assertNotFound, seedRepo, seedObservation } from './_test-helpers.js';
 import { observationTools } from './observations.js';
 import type { McpTool } from './types.js';
 
@@ -101,13 +101,6 @@ describe('shadow_observe', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 1 (requires 2)', async () => {
-    setTrustLevel(db, 1);
-    const result = await callTool(tools, 'shadow_observe', {});
-    assertTrustBlocked(result);
-    setTrustLevel(db, 2);
-  });
-
   it('observes specific repo', async () => {
     const result = await callTool(tools, 'shadow_observe', { repoId }) as Record<string, unknown>;
     assert.equal(result.triggered, true);
@@ -147,13 +140,6 @@ describe('shadow_observation_ack', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_observation_ack', { observationId: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns error for nonexistent observation', async () => {
     const result = await callTool(tools, 'shadow_observation_ack', { observationId: 'nonexistent' });

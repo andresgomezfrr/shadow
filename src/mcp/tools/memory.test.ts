@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestToolContext, callTool, setTrustLevel, assertTrustBlocked, assertNotFound, seedMemory, seedRepo } from './_test-helpers.js';
+import { createTestToolContext, callTool, assertNotFound, seedMemory, seedRepo } from './_test-helpers.js';
 import { memoryTools } from './memory.js';
 import type { McpTool } from './types.js';
 
@@ -61,13 +61,6 @@ describe('shadow_memory_teach', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_memory_teach', { title: 'test', body: 'test' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('creates memory with defaults', async () => {
     const result = await callTool(tools, 'shadow_memory_teach', {
       title: 'Port config', body: 'Shadow daemon runs on port 3700',
@@ -126,13 +119,6 @@ describe('shadow_memory_forget', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_memory_forget', { memoryId: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('returns not-found', async () => {
     const result = await callTool(tools, 'shadow_memory_forget', { memoryId: 'nonexistent' });
     assertNotFound(result);
@@ -166,13 +152,6 @@ describe('shadow_memory_update', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_memory_update', { memoryId: 'x', layer: 'hot' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns not-found', async () => {
     const result = await callTool(tools, 'shadow_memory_update', { memoryId: 'nonexistent', layer: 'hot' });
@@ -277,13 +256,6 @@ describe('shadow_correct', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_correct', { body: 'correction', scope: 'personal' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('creates core-layer correction memory', async () => {
     const result = await callTool(tools, 'shadow_correct', {

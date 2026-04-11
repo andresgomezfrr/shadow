@@ -149,7 +149,7 @@ const RelationRemoveSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export function entityTools(ctx: ToolContext): McpTool[] {
-  const { db, config, trustGate } = ctx;
+  const { db, config } = ctx;
 
   return [
     // ---- Repos ----
@@ -172,8 +172,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Register a new repository for Shadow to watch. Requires trust level >= 1.',
       inputSchema: mcpSchema(RepoAddSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { path: rawPath, name, defaultBranch, languageHint } = RepoAddSchema.parse(params);
         const repoPath = resolve(rawPath);
@@ -208,8 +206,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Update a tracked repository (name, commands, branch, etc). Requires trust level >= 1.',
       inputSchema: mcpSchema(RepoUpdateSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const p = RepoUpdateSchema.parse(params);
         const repo = db.getRepo(p.repoId);
@@ -231,8 +227,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Stop watching a repository. Requires trust level >= 1.',
       inputSchema: mcpSchema(RepoRemoveSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { repoId } = RepoRemoveSchema.parse(params);
         const repo = db.getRepo(repoId);
@@ -258,8 +252,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Add a team member to Shadow\'s contacts. Requires trust level >= 1.',
       inputSchema: mcpSchema(ContactAddSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const p = ContactAddSchema.parse(params);
         const existing = db.findContactByName(p.name);
@@ -281,8 +273,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Update an existing contact. Requires trust level >= 1.',
       inputSchema: mcpSchema(ContactUpdateSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { contactId, ...updates } = ContactUpdateSchema.parse(params);
         const contact = db.getContact(contactId);
@@ -300,8 +290,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Remove a contact. Requires trust level >= 1.',
       inputSchema: mcpSchema(ContactRemoveSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { contactId } = ContactRemoveSchema.parse(params);
         const contact = db.getContact(contactId);
@@ -327,8 +315,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Register an infrastructure system or service with operational knowledge. Requires trust level >= 1.',
       inputSchema: mcpSchema(SystemAddSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const p = SystemAddSchema.parse(params);
         return db.createSystem({
@@ -349,8 +335,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Remove a registered system. Requires trust level >= 1.',
       inputSchema: mcpSchema(SystemRemoveSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { systemId } = SystemRemoveSchema.parse(params);
         const system = db.getSystem(systemId);
@@ -376,8 +360,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Create a project that groups repos, systems, and contacts. Requires trust level >= 1.',
       inputSchema: mcpSchema(ProjectAddSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const p = ProjectAddSchema.parse(params);
         return db.createProject({
@@ -397,8 +379,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Remove a project. Requires trust level >= 1.',
       inputSchema: mcpSchema(ProjectRemoveSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { projectId } = ProjectRemoveSchema.parse(params);
         const project = db.getProject(projectId);
@@ -413,8 +393,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Update a project (repos, systems, contacts, status, etc). Requires trust level >= 1.',
       inputSchema: mcpSchema(ProjectUpdateSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const p = ProjectUpdateSchema.parse(params);
         const project = db.getProject(p.projectId);
@@ -527,8 +505,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Add a relationship between two entities (e.g., "repo X depends_on system Y"). Requires trust >= 1.',
       inputSchema: mcpSchema(RelationAddSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
         const p = RelationAddSchema.parse(params);
         return db.createRelation({
           sourceType: p.sourceType,
@@ -560,8 +536,6 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       description: 'Remove an entity relationship by ID. Requires trust >= 1.',
       inputSchema: mcpSchema(RelationRemoveSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
         const { relationId } = RelationRemoveSchema.parse(params);
         db.deleteRelation(relationId);
         return { ok: true };

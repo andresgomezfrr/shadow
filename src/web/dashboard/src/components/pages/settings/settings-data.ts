@@ -17,6 +17,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'thoughts', label: 'Thoughts', group: 'features', keywords: ['thought', 'ambient', 'status line', 'frequency', 'duration'] },
   { id: 'focus', label: 'Focus Mode', group: 'features', keywords: ['focus', 'mode', 'do not disturb', 'dnd', 'quiet'] },
   { id: 'enrichment', label: 'Enrichment', group: 'features', keywords: ['enrichment', 'mcp', 'calendar', 'ci', 'monitoring', 'external', 'context'] },
+  { id: 'autonomy', label: 'Autonomy', group: 'features', keywords: ['autonomy', 'auto', 'plan', 'execute', 'autonomous', 'safety', 'gate', 'opt-in', 'L4'] },
   { id: 'soul', label: 'Soul', group: 'about', keywords: ['soul', 'reflection', 'personality', 'evolution', 'snapshot', 'understand'] },
   { id: 'config', label: 'System Config', group: 'about', keywords: ['config', 'env', 'environment', 'heartbeat', 'daemon', 'timeout', 'runner', 'sync', 'interval'] },
 ] as const;

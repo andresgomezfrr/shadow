@@ -281,6 +281,7 @@ export function mapSuggestion(row: unknown): SuggestionRecord {
     lastRevalidatedAt: strOrNull(d.last_revalidated_at),
     revalidationVerdict: strOrNull(d.revalidation_verdict),
     revalidationNote: strOrNull(d.revalidation_note),
+    effort: str(d.effort ?? 'medium'),
     createdAt: str(d.created_at),
     expiresAt: strOrNull(d.expires_at),
   };
@@ -343,6 +344,7 @@ export function mapRun(row: unknown): RunRecord {
     verified: strOrNull(d.verified) as RunRecord['verified'],
     activity: strOrNull(d.activity),
     closedNote: strOrNull(d.closed_note),
+    autoEvalAt: strOrNull(d.auto_eval_at),
     archived: bool(d.archived),
     startedAt: strOrNull(d.started_at),
     finishedAt: strOrNull(d.finished_at),

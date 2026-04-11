@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestToolContext, callTool, setTrustLevel, assertTrustBlocked, seedMemory } from './_test-helpers.js';
+import { createTestToolContext, callTool, seedMemory } from './_test-helpers.js';
 import { profileTools } from './profile.js';
 import type { McpTool } from './types.js';
 
@@ -44,13 +44,6 @@ describe('shadow_profile_set', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_profile_set', { key: 'displayName', value: 'Test' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('sets displayName', async () => {
     const result = await callTool(tools, 'shadow_profile_set', { key: 'displayName', value: 'TestUser' }) as Record<string, unknown>;
     assert.equal(result.ok, true);
@@ -88,13 +81,6 @@ describe('shadow_focus', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_focus', {});
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('sets indefinite focus mode', async () => {
     const result = await callTool(tools, 'shadow_focus', {}) as Record<string, unknown>;
@@ -199,13 +185,6 @@ describe('shadow_soul_update', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_soul_update', { body: 'test soul' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('creates soul on first call', async () => {
     const result = await callTool(tools, 'shadow_soul_update', { body: 'My soul reflection content' }) as Record<string, unknown>;

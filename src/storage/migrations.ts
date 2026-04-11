@@ -887,6 +887,14 @@ export const migrations: Migration[] = [
       UPDATE observations SET status = 'done' WHERE status = 'resolved';
     `,
   },
+  {
+    version: 47,
+    name: 'autonomy_fields',
+    sql: `
+      ALTER TABLE runs ADD COLUMN auto_eval_at TEXT;
+      ALTER TABLE suggestions ADD COLUMN effort TEXT DEFAULT 'medium';
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

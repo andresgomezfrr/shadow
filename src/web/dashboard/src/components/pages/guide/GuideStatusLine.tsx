@@ -37,6 +37,8 @@ export function GuideStatusLine() {
           ['pink', '{•_•}\uD83D\uDD04', '{•\u203F•}\u2B07\uFE0F', '{•_•}\uD83D\uDCE5', 'syncing', 'Remote-sync: git ls-remote to detect new commits (every 30m)'],
           ['teal', '{•_•}\uD83D\uDCCB', '{•\u203F•}\uD83D\uDCCB', '{•_•}\uD83D\uDD0D', 'profiling', 'Repo-profile: LLM analysis of repo context (reactive)'],
           ['teal', '{°_°}\uD83D\uDCD0', '{°\u203F°}\uD83D\uDCCA', '{°.°}\uD83D\uDDFA\uFE0F', 'mapping', 'Project-profile: cross-repo project context (reactive)'],
+          ['violet', '{•_•}\uD83D\uDCCB', '{•\u203F•}\uD83D\uDCDD', '{•_•}\uD83D\uDCC2', 'planning', 'Auto-plan: revalidating suggestions and creating plan runs'],
+          ['violet', '{°_°}\u25B6\uFE0F', '{°\u203F°}\u2699\uFE0F', '{°_°}\uD83D\uDE80', 'auto-executing', 'Auto-execute: executing high-confidence plans in worktrees'],
           ['cyan', '{-\u203F-}\uD83D\uDCDD', '{-_-}\u270D\uFE0F', '{-\u203F-}\uD83D\uDCC4', 'writing', 'Digest jobs: generating standup / weekly / brag doc'],
           // --- Idle states ---
           ['purple', '{•\u203F•}', '{•_•}', '{•\u203F•}\u266A', 'ready', 'Daemon idle, no jobs running'],
@@ -57,7 +59,7 @@ export function GuideStatusLine() {
       {/* Trust Badge */}
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-4">Trust Badge</h2>
-        <p className="text-sm text-text-dim mb-3">Your trust level with Shadow. Grows with usage.</p>
+        <p className="text-sm text-text-dim mb-3">Your trust level with Shadow. Grows with usage. Trust is narrative/gamification only &mdash; it no longer gates tool access.</p>
         <Table rows={[
           ['\uD83D\uDD0D', 'observer (0-15)', 'Read-only. Teach memories, view observations.'],
           ['\uD83D\uDCAC', 'advisor (15-35)', 'Generate suggestions. Accept \u2192 run plans.'],
@@ -146,6 +148,7 @@ const COLOR_CLASSES: Record<string, string> = {
   red: 'text-red',
   dim: 'text-text-muted',
   teal: 'text-cyan',
+  violet: 'text-violet-400',
   pink: 'text-pink-400',
 };
 
@@ -209,7 +212,7 @@ function GhostTable({ rows }: { rows: [string, string, string, string, string, s
             return (
               <tr key={i} className="border-t border-border hover:bg-card-hover transition-colors">
                 <td className="px-4 py-2.5">
-                  <span className={`inline-block w-3 h-3 rounded-full ${color === 'purple' ? 'bg-purple' : color === 'cyan' ? 'bg-cyan' : color === 'yellow' ? 'bg-orange' : color === 'green' ? 'bg-green' : color === 'blue' ? 'bg-blue' : color === 'red' ? 'bg-red' : color === 'teal' ? 'bg-cyan' : color === 'pink' ? 'bg-pink-400' : 'bg-text-muted'}`} />
+                  <span className={`inline-block w-3 h-3 rounded-full ${color === 'purple' ? 'bg-purple' : color === 'cyan' ? 'bg-cyan' : color === 'yellow' ? 'bg-orange' : color === 'green' ? 'bg-green' : color === 'blue' ? 'bg-blue' : color === 'red' ? 'bg-red' : color === 'teal' ? 'bg-cyan' : color === 'violet' ? 'bg-violet-400' : color === 'pink' ? 'bg-pink-400' : 'bg-text-muted'}`} />
                 </td>
                 <td className={`px-4 py-2.5 font-mono ${cls}`}>{v1}</td>
                 <td className={`px-4 py-2.5 font-mono ${cls}`}>{v2}</td>

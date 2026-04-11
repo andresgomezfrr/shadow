@@ -57,7 +57,7 @@ const MemoryListSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export function memoryTools(ctx: ToolContext): McpTool[] {
-  const { db, trustGate } = ctx;
+  const { db } = ctx;
 
   return [
     // -----------------------------------------------------------------------
@@ -81,8 +81,6 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
       description: 'Teach Shadow something new by creating a memory entry. Requires trust level >= 1.',
       inputSchema: mcpSchema(MemoryTeachSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { title, body, layer, scope, kind, tags, entityType, entityId } = MemoryTeachSchema.parse(params);
 
@@ -118,8 +116,6 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
       description: 'Archive (forget) a memory by ID with a reason. Requires trust level >= 1.',
       inputSchema: mcpSchema(MemoryForgetSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { memoryId, reason } = MemoryForgetSchema.parse(params);
         const memory = db.getMemory(memoryId);
@@ -140,8 +136,6 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
       description: 'Update a memory: change layer, body, tags, kind, or scope. Requires trust level >= 1.',
       inputSchema: mcpSchema(MemoryUpdateSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { memoryId, layer, body, kind, scope, tags, reason } = MemoryUpdateSchema.parse(params);
         const memory = db.getMemory(memoryId);
@@ -196,8 +190,6 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
       description: 'Correct wrong information Shadow has learned. Creates a permanent correction that overrides learned knowledge and will be enforced by the consolidation job.',
       inputSchema: mcpSchema(MemoryCorrectSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const parsed = MemoryCorrectSchema.parse(params);
         const title = parsed.title || parsed.body.slice(0, 60) + (parsed.body.length > 60 ? '...' : '');

@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestToolContext, callTool, setTrustLevel, assertTrustBlocked, assertNotFound, seedRepo, seedTask, seedProject } from './_test-helpers.js';
+import { createTestToolContext, callTool, assertNotFound, seedRepo, seedTask, seedProject } from './_test-helpers.js';
 import { taskTools } from './tasks.js';
 import type { McpTool } from './types.js';
 
@@ -70,13 +70,6 @@ describe('shadow_task_create', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_task_create', { title: 'test' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('creates task with minimal fields', async () => {
     const result = await callTool(tools, 'shadow_task_create', { title: 'Simple task' }) as { task: any; message: string };
     assert.ok(result.task.id);
@@ -125,13 +118,6 @@ describe('shadow_task_update', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_task_update', { id: 'x', title: 'y' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns not-found for nonexistent task', async () => {
     const result = await callTool(tools, 'shadow_task_update', { id: 'nonexistent', title: 'x' });
@@ -183,13 +169,6 @@ describe('shadow_task_close', () => {
   });
   after(() => cleanup());
 
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_task_close', { id: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
-
   it('returns not-found', async () => {
     const result = await callTool(tools, 'shadow_task_close', { id: 'nonexistent' });
     assertNotFound(result);
@@ -220,13 +199,6 @@ describe('shadow_task_archive', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_task_archive', { id: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns not-found', async () => {
     const result = await callTool(tools, 'shadow_task_archive', { id: 'nonexistent' });
@@ -261,13 +233,6 @@ describe('shadow_task_execute', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 1 (requires 2)', async () => {
-    setTrustLevel(db, 1);
-    const result = await callTool(tools, 'shadow_task_execute', { id: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 2);
-  });
 
   it('returns not-found', async () => {
     const result = await callTool(tools, 'shadow_task_execute', { id: 'nonexistent' });
@@ -309,13 +274,6 @@ describe('shadow_task_remove', () => {
     cleanup = env.cleanup;
   });
   after(() => cleanup());
-
-  it('blocks at trust level 0', async () => {
-    setTrustLevel(db, 0);
-    const result = await callTool(tools, 'shadow_task_remove', { id: 'x' });
-    assertTrustBlocked(result);
-    setTrustLevel(db, 1);
-  });
 
   it('returns not-found', async () => {
     const result = await callTool(tools, 'shadow_task_remove', { id: 'nonexistent' });

@@ -27,7 +27,7 @@ const SuggestSnoozeSchema = z.object({
 });
 
 export function suggestionTools(ctx: ToolContext): McpTool[] {
-  const { db, trustGate } = ctx;
+  const { db } = ctx;
 
   return [
     {
@@ -58,8 +58,6 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
       description: 'Accept a suggestion by ID. Requires trust level >= 1.',
       inputSchema: mcpSchema(SuggestAcceptSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { suggestionId, category: rawCategory } = SuggestAcceptSchema.parse(params);
         const category = rawCategory ?? 'execute';
@@ -80,8 +78,6 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
       description: 'Dismiss a suggestion by ID with an optional note. Requires trust level >= 1.',
       inputSchema: mcpSchema(SuggestDismissSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { suggestionId, note, category } = SuggestDismissSchema.parse(params);
         const suggestion = db.getSuggestion(suggestionId);
@@ -101,8 +97,6 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
       description: 'Snooze a suggestion for a given number of hours. Requires trust level >= 1.',
       inputSchema: mcpSchema(SuggestSnoozeSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
 
         const { suggestionId, hours: rawHours } = SuggestSnoozeSchema.parse(params);
         const hours = rawHours ?? 72;

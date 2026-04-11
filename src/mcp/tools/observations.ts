@@ -25,7 +25,7 @@ const ObservationResolveSchema = z.object({
 });
 
 export function observationTools(ctx: ToolContext): McpTool[] {
-  const { db, trustGate } = ctx;
+  const { db } = ctx;
 
   return [
     {
@@ -61,8 +61,6 @@ export function observationTools(ctx: ToolContext): McpTool[] {
       description: 'Trigger an observation cycle. Optionally specify a repoId. Requires trust level >= 2.',
       inputSchema: mcpSchema(ObserveSchema),
       handler: async (params) => {
-        const gate = trustGate(2);
-        if (!gate.ok) return gate.error;
 
         const { repoId } = ObserveSchema.parse(params);
 
@@ -98,8 +96,7 @@ export function observationTools(ctx: ToolContext): McpTool[] {
       description: 'Acknowledge an observation by ID, marking it as seen. Requires trust level >= 1.',
       inputSchema: mcpSchema(ObservationIdSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
+
         const { observationId: id } = ObservationIdSchema.parse(params);
         const obs = db.getObservation(id);
         if (!obs) return { isError: true, message: `Observation not found: ${id}` };
@@ -114,8 +111,7 @@ export function observationTools(ctx: ToolContext): McpTool[] {
       description: 'Resolve an observation by ID with an optional reason. Requires trust level >= 1.',
       inputSchema: mcpSchema(ObservationResolveSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
+
         const { observationId: id, reason } = ObservationResolveSchema.parse(params);
         const obs = db.getObservation(id);
         if (!obs) return { isError: true, message: `Observation not found: ${id}` };
@@ -131,8 +127,7 @@ export function observationTools(ctx: ToolContext): McpTool[] {
       description: 'Reopen a done or acknowledged observation, setting it back to open. Requires trust level >= 1.',
       inputSchema: mcpSchema(ObservationIdSchema),
       handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
+
         const { observationId: id } = ObservationIdSchema.parse(params);
         const obs = db.getObservation(id);
         if (!obs) return { isError: true, message: `Observation not found: ${id}` };
