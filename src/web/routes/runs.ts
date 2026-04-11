@@ -260,7 +260,7 @@ export async function handleRunRoutes(
         try {
           const out = JSON.parse(result.stdout || '{}') as { session_id?: string };
           if (out.session_id) finalSessionId = out.session_id;
-        } catch { /* use generated */ }
+        } catch (e) { console.error('[runs] Failed to parse session output:', e instanceof Error ? e.message : e); }
         db.updateRun(runId, { sessionId: finalSessionId });
         return json(res, { sessionId: finalSessionId, command: `cd ${cwd} && claude --resume ${finalSessionId}` }), true;
       }
@@ -374,7 +374,7 @@ export async function handleRunRoutes(
           // Diff from branch vs main (already committed)
           diff = execCheck(`git diff ${repo.defaultBranch}...${branchName}`, { cwd: repo.path, stdio: 'pipe', timeout: 10_000, encoding: 'utf-8' }).toString().trim();
         }
-      } catch { /* non-fatal */ }
+      } catch (e) { console.error('[runs] Failed to get diff for PR:', e instanceof Error ? e.message : e); }
 
       if (!diff) {
         return json(res, { error: 'No changes to create a PR from' }, 400), true;
@@ -455,8 +455,8 @@ export async function handleRunRoutes(
             outputTokens: result.outputTokens ?? 0,
           });
         }
-      } catch {
-        // Fallback: no LLM, use raw context
+      } catch (e) {
+        console.error('[runs] LLM PR generation failed, using fallback:', e instanceof Error ? e.message : e);
         title = (suggestion?.title ?? contextRun.prompt).slice(0, 70);
         body = suggestion?.summaryMd ?? contextRun.prompt;
         commitMessage = title;

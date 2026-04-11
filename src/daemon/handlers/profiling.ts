@@ -1,0 +1,222 @@
+import type { JobContext, JobHandlerResult, DaemonSharedState } from '../job-handlers.js';
+import { errorHint } from '../job-handlers.js';
+
+export async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedState): Promise<JobHandlerResult> {
+  ctx.setPhase('remote-sync');
+
+  // If a specific repoId was passed (manual trigger), only sync that repo
+  const job = ctx.db.getJob(ctx.jobId);
+  const targetRepoId = (job?.result as Record<string, unknown>)?.repoId as string | undefined;
+
+  const { remoteSyncRepos } = await import('../../observation/remote-sync.js');
+  const results = remoteSyncRepos(ctx.db, ctx.config.remoteSyncBatchSize, targetRepoId, (name, i, total) => {
+    ctx.setPhase(`remote-sync: ${name} (${i}/${total})`);
+  });
+  const withChanges = results.filter(r => r.newRemoteCommits > 0);
+  if (withChanges.length > 0) {
+    shared.pendingRemoteSyncResults.push(...withChanges);
+  }
+
+  // Reactive repo-profile: trigger if changed repos need re-profiling (2h min gap)
+  if (withChanges.length > 0 && !ctx.db.hasQueuedOrRunning('repo-profile')) {
+    const lastProfile = ctx.db.getLastJob('repo-profile');
+    const gapMs = lastProfile ? Date.now() - new Date(lastProfile.startedAt).getTime() : Infinity;
+    const minGapMs = 2 * 60 * 60 * 1000; // 2h minimum between profiles
+    if (gapMs >= minGapMs) {
+      ctx.db.enqueueJob('repo-profile', { priority: 3, triggerSource: 'reactive' });
+      console.error(`[daemon] Reactive repo-profile triggered: ${withChanges.length} repos with changes`);
+    }
+  }
+
+  return {
+    llmCalls: 0, tokensUsed: 0, phases: ['remote-sync'],
+    result: {
+      reposSynced: results.length,
+      reposWithChanges: withChanges.length,
+      repoSummaries: results.map(r => ({ name: r.repoName, newCommits: r.newRemoteCommits })),
+    },
+  };
+}
+
+export async function handleRepoProfile(ctx: JobContext): Promise<JobHandlerResult> {
+  ctx.setPhase('repo-profile');
+
+  // Check if this was a manual trigger — force re-profile all repos
+  const job = ctx.db.getJob(ctx.jobId);
+  const force = job?.triggerSource === 'manual';
+
+  const { profileRepos } = await import('../../observation/repo-profile.js');
+  const result = await profileRepos(ctx.db, ctx.config, ctx.config.repoProfileBatchSize, force, (name, i, total) => {
+    ctx.setPhase(`repo-profile: ${name} (${i}/${total})`);
+  });
+
+  // Get names of recently profiled repos
+  const repoNames = ctx.db.listRepos()
+    .filter(r => r.contextUpdatedAt && new Date(r.contextUpdatedAt).getTime() > Date.now() - 5 * 60 * 1000)
+    .map(r => r.name);
+
+  // Reactive triggers after profiling
+
+  // 1. First-time suggest-deep trigger for newly profiled repos
+  try {
+    const allRepos = ctx.db.listRepos();
+    for (const rName of repoNames) {
+      const r = allRepos.find(rr => rr.name === rName);
+      if (!r) continue;
+      const prevDeepScans = ctx.db.listJobs({ type: 'suggest-deep', limit: 50 })
+        .filter(j => (j.result as Record<string, unknown>)?.repoId === r.id);
+      if (prevDeepScans.length === 0 && !ctx.db.hasQueuedOrRunning('suggest-deep')) {
+        ctx.db.enqueueJob('suggest-deep', { priority: 6, triggerSource: 'first-scan', params: { repoId: r.id } });
+        console.error(`[daemon] First-time suggest-deep triggered for ${r.name}`);
+        break; // one at a time
+      }
+    }
+  } catch { /* best-effort */ }
+
+  // 2. Reactive project-profile trigger
+  try {
+    const projects = ctx.db.listProjects().filter(p => {
+      const rIds: string[] = p.repoIds ?? [];
+      return rIds.length >= 2;
+    });
+    for (const project of projects) {
+      if (!ctx.db.hasQueuedOrRunning('project-profile')) {
+        const lastPp = ctx.db.getLastJob('project-profile');
+        const gap = lastPp ? Date.now() - new Date(lastPp.startedAt).getTime() : Infinity;
+        if (gap >= ctx.config.projectProfileMinGapMs) {
+          ctx.db.enqueueJob('project-profile', { priority: 4, triggerSource: 'reactive', params: { projectId: project.id } });
+          console.error(`[daemon] Reactive project-profile triggered for ${project.name}`);
+          break;
+        }
+      }
+    }
+  } catch { /* best-effort */ }
+
+  return {
+    llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
+    phases: ['repo-profile'],
+    result: { reposProfiled: result.reposProfiled, repoNames },
+  };
+}
+
+export async function handleContextEnrich(ctx: JobContext, shared: DaemonSharedState): Promise<JobHandlerResult> {
+  ctx.setPhase('enrich');
+
+  const { activityEnrich } = await import('../../analysis/enrichment.js');
+  const activeProjects = shared.activeProjects.length > 0 ? shared.activeProjects : undefined;
+  const result = await activityEnrich(ctx.db, ctx.config, activeProjects, (name, i, total) => {
+    ctx.setPhase(`enrich: ${name} (${i}/${total})`);
+  });
+
+  return {
+    llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
+    phases: ['enrich'],
+    result: {
+      itemsCollected: result.itemsCollected,
+      projectResults: result.projectResults,
+    },
+  };
+}
+
+export async function handleMcpDiscover(ctx: JobContext): Promise<JobHandlerResult> {
+  ctx.setPhase('discover');
+
+  const { activityMcpDiscover } = await import('../../analysis/mcp-discover.js');
+  const result = await activityMcpDiscover(ctx.db, ctx.config);
+
+  return {
+    llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
+    phases: ['discover'],
+    result: {
+      serversDescribed: result.serversDescribed,
+      serversTotal: result.serversTotal,
+      serverNames: result.serverNames,
+    },
+  };
+}
+
+export async function handleProjectProfile(ctx: JobContext): Promise<JobHandlerResult> {
+  ctx.setPhase('profile');
+
+  const job = ctx.db.getJob(ctx.jobId);
+  const projectId = (job?.result as Record<string, unknown>)?.projectId as string;
+  if (!projectId) return { llmCalls: 0, tokensUsed: 0, phases: ['profile'], result: { error: 'no projectId' } };
+
+  const project = ctx.db.getProject(projectId);
+  if (!project) return { llmCalls: 0, tokensUsed: 0, phases: ['profile'], result: { error: 'project not found' } };
+
+  const repoIds: string[] = project.repoIds ?? [];
+  const repos = repoIds.map(id => ctx.db.getRepo(id)).filter(Boolean);
+  const repoProfiles = repos.map(r => r!.contextMd ? `### ${r!.name}\n${r!.contextMd}` : `### ${r!.name}\nNo profile yet.`);
+
+  // Gather project context
+  const observations = ctx.db.listObservations({ entityType: 'project', entityId: projectId, limit: 20 });
+  const memories = ctx.db.listMemories({ archived: false, entityType: 'project', entityId: projectId, limit: 20 });
+  const systems = (project.systemIds ?? []).map(id => ctx.db.getSystem(id)).filter(Boolean);
+
+  // External context from enrichment
+  const { getEnrichmentSummary: getEnrichForProfile } = await import('../../analysis/enrichment.js');
+  const profileEnrichSummary = getEnrichForProfile(ctx.db, { projectId });
+  const profileEnrichSection = profileEnrichSummary ? `## External Context (from MCP enrichment)\n${profileEnrichSummary}` : '';
+
+  const prompt = `You are Shadow, analyzing project "${project.name}" to create a cross-repo context profile.
+This profile will be used to calibrate cross-repo suggestions and understand the project holistically.
+
+## Repos in this project (${repos.length})
+${repoProfiles.join('\n\n')}
+
+${systems.length > 0 ? `## Systems\n${systems.map(s => `- ${s!.name} (${s!.kind}): ${s!.description ?? 'no description'}`).join('\n')}` : ''}
+
+${observations.length > 0 ? `## Active Observations\n${observations.map(o => `- [${o.severity}] ${o.title}`).join('\n')}` : ''}
+
+${memories.length > 0 ? `## Relevant Memories\n${memories.map(m => `- ${m.title}`).join('\n')}` : ''}
+
+${profileEnrichSection}
+
+Produce a structured project profile in markdown with EXACTLY this format:
+
+## ${project.name}
+**Summary**: (2-3 sentences: what this project is, why it exists, how the repos work together)
+**Architecture**: (how repos relate — who calls whom, shared infrastructure, deployment model)
+**Cross-repo patterns**: (shared tech, conventions, design patterns across repos)
+**Integration points**: (runtime deps, shared DBs, APIs between repos, config sharing)
+**Active tensions**: (divergence, parity gaps, naming drift, version mismatches)
+**Valuable cross-repo suggestions**: (what would help this project as a whole — be specific)
+
+Be concise. Each field 1-3 lines max. Respond with JSON: { "contextMd": "..." }`;
+
+  const { selectAdapter } = await import('../../backend/index.js');
+  const adapter = selectAdapter(ctx.config);
+  const model = ctx.config.models.projectProfile;
+  const effort = ctx.config.efforts.projectProfile;
+
+  const result = await adapter.execute({
+    repos: repos.map(r => ({ id: r!.id, name: r!.name, path: r!.path })),
+    title: `Project Profile: ${project.name}`,
+    goal: 'Analyze project cross-repo context',
+    prompt,
+    relevantMemories: [],
+    model,
+    effort,
+    allowedTools: ['Read', 'Grep', 'Glob'],
+  });
+
+  const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+
+  if (result.status === 'success' && result.output) {
+    const { safeParseJson } = await import('../../backend/json-repair.js');
+    const { z } = await import('zod');
+    const parsed = safeParseJson(result.output, z.object({ contextMd: z.string() }), 'project-profile');
+    const contextMd = parsed.success ? parsed.data.contextMd : (result.output.includes('**Summary**') ? result.output.trim() : '');
+
+    if (contextMd) {
+      ctx.db.updateProject(projectId, { contextMd, contextUpdatedAt: new Date().toISOString() });
+    }
+  }
+
+  return {
+    llmCalls: 1, tokensUsed: tokens, phases: ['profile'],
+    result: { projectName: project.name, repoCount: repos.length },
+    lastError: errorHint(result),
+  };
+}

@@ -27,8 +27,14 @@ function touchLastMessage() {
   for (const cb of staleCallbacks) cb();
 }
 
+const MAX_RECONNECT_ATTEMPTS = 10;
+
 function scheduleReconnect() {
   if (reconnectTimer) return;
+  if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+    notifyConnected(false);
+    return;
+  }
   const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30000);
   reconnectAttempt++;
   reconnectTimer = setTimeout(() => {
@@ -40,6 +46,8 @@ function scheduleReconnect() {
 
 function getOrCreateSource(): EventSource {
   if (sharedSource && sharedSource.readyState !== EventSource.CLOSED) return sharedSource;
+  // Reset reconnect counter when explicitly creating a new source (e.g., tab regains focus)
+  if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) reconnectAttempt = 0;
 
   const source = new EventSource('/api/events/stream');
 

@@ -90,6 +90,9 @@ export function profileTools(ctx: ToolContext): McpTool[] {
           if (match) {
             const amount = parseInt(match[1], 10);
             const unit = match[2].toLowerCase();
+            const maxHours = 168; // 1 week
+            const hours = unit.startsWith('h') ? amount : amount / 60;
+            if (hours > maxHours) return { isError: true, message: `Duration too long (max ${maxHours}h)` };
             const ms = unit.startsWith('h') ? amount * 60 * 60 * 1000 : amount * 60 * 1000;
             focusUntil = new Date(Date.now() + ms).toISOString();
           }

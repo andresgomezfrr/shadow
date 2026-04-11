@@ -53,10 +53,12 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
   // Preload offline image as blob URL so it works without server
   const [offlineBlobUrl, setOfflineBlobUrl] = useState<string | null>(null);
   useEffect(() => {
+    let url: string | null = null;
     fetch('/ghost/offline.png')
       .then(r => r.blob())
-      .then(blob => setOfflineBlobUrl(URL.createObjectURL(blob)))
+      .then(blob => { url = URL.createObjectURL(blob); setOfflineBlobUrl(url); })
       .catch(() => {});
+    return () => { if (url) URL.revokeObjectURL(url); };
   }, []);
 
   // Reset image error when source changes

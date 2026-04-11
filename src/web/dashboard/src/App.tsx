@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { AppShell } from './components/layout/AppShell';
 import { MorningPage } from './components/pages/MorningPage';
 import { DashboardPage } from './components/pages/DashboardPage';
@@ -25,6 +26,7 @@ import { NotFoundPage } from './components/pages/NotFoundPage';
 
 export function App() {
   return (
+    <ErrorBoundary>
     <AppShell>
       <Routes>
         <Route path="/" element={<Navigate to="/morning" replace />} />
@@ -53,5 +55,6 @@ export function App() {
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </AppShell>
+    </ErrorBoundary>
   );
 }

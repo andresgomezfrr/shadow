@@ -222,15 +222,16 @@ export async function activitySuggest(
           // Filter candidates to only kept ones
           candidates = candidates.filter(c => kept.has(c.title));
         } else {
-          console.error(`[shadow:suggest] Phase 2 parse failed (${repo.name}): ${valParsed.error}`);
-          // On parse failure, keep all candidates (fail-open)
+          console.error(`[shadow:suggest] Phase 2 parse failed (${repo.name}): ${valParsed.error} — discarding all candidates (fail-close)`);
+          candidates = [];
         }
       } else {
-        console.error(`[shadow:suggest] Phase 2 LLM failed (${repo.name}): status=${valResult.status}`);
+        console.error(`[shadow:suggest] Phase 2 LLM failed (${repo.name}): status=${valResult.status} — discarding all candidates (fail-close)`);
+        candidates = [];
       }
     } catch (e) {
-      console.error(`[shadow:suggest] Phase 2 failed (${repo.name}):`, e instanceof Error ? e.message : e);
-      // On failure, keep all candidates (fail-open)
+      console.error(`[shadow:suggest] Phase 2 failed (${repo.name}):`, e instanceof Error ? e.message : e, '— discarding all candidates (fail-close)');
+      candidates = [];
     }
 
     // --- Persist kept candidates (with semantic dedup) ---

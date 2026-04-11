@@ -7,24 +7,40 @@ export function useApi<T>(
 ) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
   const refresh = useCallback(async () => {
-    const result = await fetcherRef.current();
-    setData(result);
-    setLoading(false);
-    return result;
+    try {
+      const result = await fetcherRef.current();
+      setData(result);
+      setError(result === null ? 'Request failed' : null);
+      setLoading(false);
+      return result;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unknown error');
+      setLoading(false);
+      return null;
+    }
   }, []);
 
   useEffect(() => {
     let mounted = true;
     let timer: ReturnType<typeof setInterval> | null = null;
     const load = async () => {
-      const result = await fetcherRef.current();
-      if (mounted) {
-        setData(result);
-        setLoading(false);
+      try {
+        const result = await fetcherRef.current();
+        if (mounted) {
+          setData(result);
+          setError(result === null ? 'Request failed' : null);
+          setLoading(false);
+        }
+      } catch (e) {
+        if (mounted) {
+          setError(e instanceof Error ? e.message : 'Unknown error');
+          setLoading(false);
+        }
       }
     };
     const startPolling = () => {
@@ -50,5 +66,5 @@ export function useApi<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  return { data, loading, refresh };
+  return { data, loading, error, refresh };
 }

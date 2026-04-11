@@ -4,6 +4,38 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-11 (audit #2 — 14 findings fixed)
+
+Second comprehensive codebase audit. 6 exploration agents across runner, migrations, analysis pipeline, backend adapters, watcher, web server, dashboard (memory leaks, SSE, state management), storage (transactions, model consistency, FTS/vector sync, concurrency, data lifecycle, dedup). ~20 false positives dismissed. 14 verified findings fixed in 4 sessions:
+
+**S1 — Backend quick fixes:**
+- **jobs.ts JSON parse** — replaced silent `.catch(()=>({}))` with `parseOptionalBody` + Zod schema on job trigger endpoint.
+- **Focus duration bounds** — added max 168h (1 week) validation on `shadow_focus` MCP tool.
+- **Request body size limit** — `readBody()` now enforces MAX_BODY_SIZE (10MB), destroys request on exceed.
+- **runs.ts silent catches** — added `console.error` to 3 catch blocks (session ID parse, git diff, LLM title gen).
+
+**S2 — Data integrity:**
+- **Entity deletes with transactions** — wrapped deleteRepo/System/Project/Contact in `BEGIN IMMEDIATE / COMMIT / ROLLBACK`.
+- **Embedding regeneration after merge** — `consolidate.ts` now calls `generateAndStoreEmbedding()` after `mergeMemoryBody()`.
+- **Suggest fail-close** — validation failure now discards all candidates instead of passing them through unfiltered.
+
+**S3 — Dashboard resilience:**
+- **ErrorBoundary** — new class component wrapping all routes in App.tsx with Ghost-themed fallback UI.
+- **useApi error state** — hook returns `{ data, loading, error, refresh }`. Backward compatible (error is new field).
+- **Duplicate fetch fix** — `getActiveRevalidations` reduced from 2 identical API calls to 1.
+- **SSE reconnect limit** — max 10 attempts before stopping. Resets on tab focus or successful connection.
+- **Blob URL revoke** — Sidebar offline image blob URL properly revoked in useEffect cleanup.
+
+**S4 — job-handlers.ts split (1266 → 3 files):**
+- `daemon/handlers/suggest.ts` (568 lines) — handleSuggest, handleSuggestDeep, handleSuggestProject, handleRevalidateSuggestion.
+- `daemon/handlers/profiling.ts` (222 lines) — handleRemoteSync, handleRepoProfile, handleContextEnrich, handleMcpDiscover, handleProjectProfile.
+- `daemon/job-handlers.ts` (471 lines) — types, helpers, handleHeartbeat, handleConsolidate, handleReflect, createDigestHandler, handleVersionCheck, buildHandlerRegistry.
+- Zero breaking changes — all external imports unchanged, registry imports from sub-modules.
+
+**Remaining in backlog:** data retention cleanup job (P3, deferred).
+
+---
+
 ## Session 2026-04-11 (observation dedup for resolved/expired)
 
 - **Heartbeat dedup for resolved/expired observations** — 3-pass semantic dedup: active → resolved → expired. Observations that reappear after resolution get reopened (with votes++) instead of created as duplicates. Deliberately resolved observations (with feedback) are protected — only silent votes++ without reopen. Cap overflow and expired observations safe to reopen.

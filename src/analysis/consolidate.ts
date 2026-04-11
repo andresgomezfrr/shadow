@@ -85,6 +85,10 @@ export async function activityConsolidate(
               }
               if (decision.action === 'update') {
                 ctx.db.mergeMemoryBody(decision.existingId, pattern.bodyMd, pattern.tags);
+                const merged = ctx.db.getMemory(decision.existingId);
+                if (merged) {
+                  await generateAndStoreEmbedding(ctx.db, 'memory', merged.id, { kind: merged.kind, title: merged.title, bodyMd: merged.bodyMd });
+                }
                 console.error(`[shadow:consolidate] Updated existing meta_pattern: ${pattern.title}`);
                 continue;
               }

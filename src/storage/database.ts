@@ -202,9 +202,16 @@ export class ShadowDatabase {
   countRepos(): number { return entities.countRepos(this.database); }
   updateRepo(id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt' | 'lastFetchedAt' | 'lastRemoteHead' | 'contextMd' | 'contextUpdatedAt'>>): void { return entities.updateRepo(this.database, id, updates); }
   deleteRepo(id: string): void {
-    entities.deleteRepo(this.database, id);
-    knowledge.removeEntityReferences(this.database, 'repo', id);
-    relations.deleteRelationsFor(this.database, 'repo', id);
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      entities.deleteRepo(this.database, id);
+      knowledge.removeEntityReferences(this.database, 'repo', id);
+      relations.deleteRelationsFor(this.database, 'repo', id);
+      this.database.exec('COMMIT');
+    } catch (e) {
+      this.database.exec('ROLLBACK');
+      throw e;
+    }
   }
 
   // --- Systems ---
@@ -217,9 +224,16 @@ export class ShadowDatabase {
   countSystems(): number { return entities.countSystems(this.database); }
   updateSystem(id: string, updates: Partial<Pick<SystemRecord, 'name' | 'kind' | 'url' | 'description' | 'accessMethod' | 'healthCheck' | 'logsLocation' | 'deployMethod' | 'debugGuide' | 'lastCheckedAt'>>): void { return entities.updateSystem(this.database, id, updates); }
   deleteSystem(id: string): void {
-    entities.deleteSystem(this.database, id);
-    knowledge.removeEntityReferences(this.database, 'system', id);
-    relations.deleteRelationsFor(this.database, 'system', id);
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      entities.deleteSystem(this.database, id);
+      knowledge.removeEntityReferences(this.database, 'system', id);
+      relations.deleteRelationsFor(this.database, 'system', id);
+      this.database.exec('COMMIT');
+    } catch (e) {
+      this.database.exec('ROLLBACK');
+      throw e;
+    }
   }
 
   // --- Projects ---
@@ -230,9 +244,16 @@ export class ShadowDatabase {
   listProjects(filters?: { status?: string }): ProjectRecord[] { return entities.listProjects(this.database, filters); }
   updateProject(id: string, updates: Partial<Pick<ProjectRecord, 'name' | 'kind' | 'description' | 'status' | 'repoIds' | 'systemIds' | 'contactIds' | 'startDate' | 'endDate' | 'notesMd' | 'contextMd' | 'contextUpdatedAt'>>): ProjectRecord { return entities.updateProject(this.database, id, updates); }
   deleteProject(id: string): void {
-    entities.deleteProject(this.database, id);
-    knowledge.removeEntityReferences(this.database, 'project', id);
-    relations.deleteRelationsFor(this.database, 'project', id);
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      entities.deleteProject(this.database, id);
+      knowledge.removeEntityReferences(this.database, 'project', id);
+      relations.deleteRelationsFor(this.database, 'project', id);
+      this.database.exec('COMMIT');
+    } catch (e) {
+      this.database.exec('ROLLBACK');
+      throw e;
+    }
   }
   findProjectsForRepo(repoId: string): ProjectRecord[] { return entities.findProjectsForRepo(this.database, repoId); }
 
@@ -245,9 +266,16 @@ export class ShadowDatabase {
   countContacts(): number { return entities.countContacts(this.database); }
   updateContact(id: string, updates: Partial<Pick<ContactRecord, 'name' | 'role' | 'team' | 'email' | 'slackId' | 'githubHandle' | 'notesMd' | 'preferredChannel' | 'lastMentionedAt'>>): void { return entities.updateContact(this.database, id, updates); }
   deleteContact(id: string): void {
-    entities.deleteContact(this.database, id);
-    knowledge.removeEntityReferences(this.database, 'contact', id);
-    relations.deleteRelationsFor(this.database, 'contact', id);
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      entities.deleteContact(this.database, id);
+      knowledge.removeEntityReferences(this.database, 'contact', id);
+      relations.deleteRelationsFor(this.database, 'contact', id);
+      this.database.exec('COMMIT');
+    } catch (e) {
+      this.database.exec('ROLLBACK');
+      throw e;
+    }
   }
 
   // --- User Profile ---

@@ -299,11 +299,8 @@ export const revalidateSuggestion = (id: string) =>
 /** Check if there are active (queued/running) revalidation jobs for given suggestion IDs */
 export async function getActiveRevalidations(suggestionIds?: string[]): Promise<Set<string>> {
   const active = new Set<string>();
-  const [queued, running] = await Promise.all([
-    fetchJobs({ type: 'revalidate-suggestion', limit: 20 }),
-    fetchJobs({ type: 'revalidate-suggestion', limit: 20 }),
-  ]);
-  const all = [...(queued?.items ?? []), ...(running?.items ?? [])];
+  const result = await fetchJobs({ type: 'revalidate-suggestion', limit: 40 });
+  const all = result?.items ?? [];
   for (const job of all) {
     if (job.status !== 'queued' && job.status !== 'running') continue;
     const sid = (job.result as Record<string, unknown>)?.suggestionId as string | undefined;

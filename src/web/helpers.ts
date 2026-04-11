@@ -31,10 +31,21 @@ export function clampOffset(raw: string | null): number {
   return Number.isNaN(n) || n < 0 ? 0 : n;
 }
 
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
+
 export function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (c: Buffer) => chunks.push(c));
+    let totalSize = 0;
+    req.on('data', (c: Buffer) => {
+      totalSize += c.length;
+      if (totalSize > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error('Request body too large'));
+      } else {
+        chunks.push(c);
+      }
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString()));
     req.on('error', reject);
   });
@@ -89,3 +100,4 @@ export const FocusSchema = z.object({ mode: z.string(), duration: z.string().opt
 export const FeedbackSchema = z.object({ targetKind: z.string().min(1), targetId: z.string().min(1), action: z.string().min(1), note: z.string().max(500).optional() });
 export const CorrectionSchema = z.object({ body: z.string().min(1), scope: z.string().min(1), title: z.string().max(200).optional(), entityType: z.enum(['repo', 'project', 'system']).optional(), entityId: z.string().optional() });
 export const DigestTriggerSchema = z.object({ periodStart: z.string().optional() });
+export const JobTriggerParamsSchema = z.record(z.string(), z.unknown()).default({});

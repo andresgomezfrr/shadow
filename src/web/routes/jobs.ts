@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
-import { json, clampLimit, clampOffset, readBody, parseOptionalBody, DigestTriggerSchema } from '../helpers.js';
+import { json, clampLimit, clampOffset, parseOptionalBody, DigestTriggerSchema, JobTriggerParamsSchema } from '../helpers.js';
 
 export async function handleJobRoutes(
   req: IncomingMessage, res: ServerResponse,
@@ -57,7 +57,8 @@ export async function handleJobRoutes(
         heartbeat: 10, suggest: 8, 'suggest-deep': 6, 'suggest-project': 5, reflect: 5, 'digest-daily': 5, 'digest-weekly': 5, 'digest-brag': 5,
         'context-enrich': 4, 'project-profile': 4, consolidate: 3, 'repo-profile': 3, 'mcp-discover': 2, 'remote-sync': 2,
       };
-      const body = await readBody(req).then(b => b ? JSON.parse(b) : {}).catch(() => ({}));
+      const body = await parseOptionalBody(req, res, JobTriggerParamsSchema);
+      if (!body) return true;
       db.enqueueJob(type, { priority: PRIORITIES[type] ?? 5, triggerSource: 'manual', params: Object.keys(body).length > 0 ? body : undefined });
       return json(res, { triggered: true, type }), true;
     }
