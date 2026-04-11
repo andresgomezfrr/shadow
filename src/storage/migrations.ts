@@ -797,6 +797,44 @@ export const migrations: Migration[] = [
       ALTER TABLE runs ADD COLUMN activity TEXT;
     `,
   },
+  {
+    version: 42,
+    name: 'unified_lifecycle',
+    sql: `
+      -- New fields
+      ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE tasks ADD COLUMN suggestion_id TEXT;
+      ALTER TABLE runs ADD COLUMN task_id TEXT;
+      ALTER TABLE runs ADD COLUMN outcome TEXT;
+
+      -- Observation renames
+      UPDATE observations SET status = 'open' WHERE status = 'active';
+      UPDATE observations SET status = 'done' WHERE status = 'resolved';
+
+      -- Suggestion renames
+      UPDATE suggestions SET status = 'open' WHERE status = 'pending';
+      UPDATE suggestions SET status = 'accepted' WHERE status = 'backlog';
+
+      -- Task renames
+      UPDATE tasks SET status = 'open' WHERE status = 'todo';
+      UPDATE tasks SET status = 'active' WHERE status = 'in_progress';
+      UPDATE tasks SET status = 'done' WHERE status = 'closed';
+
+      -- Run renames + outcome
+      UPDATE runs SET outcome = 'executed' WHERE status = 'executed';
+      UPDATE runs SET outcome = 'executed_manual' WHERE status = 'executed_manual';
+      UPDATE runs SET outcome = 'closed' WHERE status = 'closed';
+      UPDATE runs SET status = 'done' WHERE status IN ('executed', 'executed_manual', 'closed');
+      UPDATE runs SET status = 'dismissed' WHERE status = 'discarded';
+    `,
+  },
+  {
+    version: 43,
+    name: 'run_planned_status',
+    sql: `
+      UPDATE runs SET status = 'planned' WHERE status = 'completed';
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

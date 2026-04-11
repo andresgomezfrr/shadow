@@ -64,7 +64,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
         }
 
         // Filter observations: prefer context repo, fallback to all active
-        let recentObs = db.listObservations({ status: 'active', limit: 10 });
+        let recentObs = db.listObservations({ status: 'open', limit: 10 });
         if (contextRepoId) {
           const repoObs = recentObs.filter(o => o.repoId === contextRepoId || o.repoIds.includes(contextRepoId!));
           recentObs = [...repoObs, ...recentObs.filter(o => !repoObs.includes(o))].slice(0, 5);

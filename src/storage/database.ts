@@ -136,6 +136,7 @@ export type CreateRunInput = {
   repoId: string;
   repoIds?: string[];
   suggestionId?: string | null;
+  taskId?: string | null;
   parentRunId?: string | null;
   kind: string;
   prompt: string;
@@ -317,7 +318,7 @@ export class ShadowDatabase {
   getRun(id: string): RunRecord | null { return execution.getRun(this.database, id); }
   listRuns(filters?: { status?: string; repoId?: string; parentRunId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] { return execution.listRuns(this.database, filters); }
   countRuns(filters?: { status?: string; archived?: boolean }): number { return execution.countRuns(this.database, filters); }
-  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'closedNote' | 'archived' | 'activity' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void { return execution.updateRun(this.database, id, updates); }
+  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'closedNote' | 'archived' | 'activity' | 'outcome' | 'taskId' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void { return execution.updateRun(this.database, id, updates); }
   transitionRun(id: string, to: import('./models.js').RunRecord['status']): void { return execution.transitionRun(this.database, id, to); }
 
   // --- Entity Relations ---
@@ -385,7 +386,7 @@ export class ShadowDatabase {
 
   createTask(input: Parameters<typeof tasksStore.createTask>[1]): TaskRecord { return tasksStore.createTask(this.database, input); }
   getTask(id: string): TaskRecord | null { return tasksStore.getTask(this.database, id); }
-  listTasks(filters?: { status?: string; repoId?: string; projectId?: string; limit?: number; offset?: number }): TaskRecord[] { return tasksStore.listTasks(this.database, filters); }
+  listTasks(filters?: { status?: string; repoId?: string; projectId?: string; archived?: boolean; limit?: number; offset?: number }): TaskRecord[] { return tasksStore.listTasks(this.database, filters); }
   countTasks(filters?: { status?: string; repoId?: string; projectId?: string }): number { return tasksStore.countTasks(this.database, filters); }
   updateTask(id: string, updates: Parameters<typeof tasksStore.updateTask>[2]): void { return tasksStore.updateTask(this.database, id, updates); }
   deleteTask(id: string): void { return tasksStore.deleteTask(this.database, id); }

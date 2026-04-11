@@ -8,7 +8,7 @@ export function registerTaskCommands(program: Command, _config: ShadowConfig, wi
   task
     .command('list')
     .description('list tasks')
-    .option('--status <status>', 'filter by status (todo, in_progress, blocked, closed)')
+    .option('--status <status>', 'filter by status (open, active, blocked, done)')
     .option('--limit <n>', 'max results', '20')
     .action((options: { status?: string; limit: string }) =>
       withDb((db) => {
@@ -68,7 +68,7 @@ export function registerTaskCommands(program: Command, _config: ShadowConfig, wi
         const updates: Record<string, unknown> = {};
         if (options.status) {
           updates.status = options.status;
-          if (options.status === 'closed') updates.closedAt = new Date().toISOString();
+          if (options.status === 'done') updates.closedAt = new Date().toISOString();
           else updates.closedAt = null;
         }
         if (options.title) updates.title = options.title;
@@ -92,8 +92,8 @@ export function registerTaskCommands(program: Command, _config: ShadowConfig, wi
       withDb((db) => {
         const task = db.getTask(id);
         if (!task) throw new Error(`Task ${id} not found`);
-        db.updateTask(id, { status: 'closed', closedAt: new Date().toISOString() });
-        return { id, status: 'closed' };
+        db.updateTask(id, { status: 'done', closedAt: new Date().toISOString() });
+        return { id, status: 'done' };
       }),
     );
 

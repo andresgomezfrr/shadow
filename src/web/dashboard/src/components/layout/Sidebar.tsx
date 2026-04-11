@@ -10,7 +10,7 @@ import { useSSEConnected } from '../../hooks/useEventStream';
 type Counts = StatusResponse['counts'];
 
 type NavItem = { to: string; icon: string; label: string; countKey?: keyof Counts };
-type NavDivider = { divider: true };
+type NavDivider = { divider: true; groupLabel?: string };
 type NavEntry = NavItem | NavDivider;
 
 const NAV: NavEntry[] = [
@@ -18,21 +18,22 @@ const NAV: NavEntry[] = [
   { to: '/morning', icon: '☀️', label: 'Morning' },
 
   // Action
-  { divider: true },
-  { to: '/workspace', icon: '▶', label: 'Workspace', countKey: 'runsToReview' },
-  { to: '/tasks', icon: '✅', label: 'Tasks' },
-  { to: '/suggestions', icon: '💡', label: 'Suggestions', countKey: 'pendingSuggestions' },
+  { divider: true, groupLabel: 'ACTION' },
+  { to: '/workspace', icon: '📥', label: 'Workspace', countKey: 'runsToReview' },
   { to: '/observations', icon: '👁', label: 'Observations', countKey: 'activeObservations' },
+  { to: '/suggestions', icon: '💡', label: 'Suggestions', countKey: 'pendingSuggestions' },
+  { to: '/tasks', icon: '✅', label: 'Tasks', countKey: 'activeTasks' },
+  { to: '/runs', icon: '🚀', label: 'Runs' },
 
   // System
-  { divider: true },
+  { divider: true, groupLabel: 'SYSTEM' },
   { to: '/activity', icon: '⚡', label: 'Activity' },
   { to: '/digests', icon: '📝', label: 'Digests' },
   { to: '/projects', icon: '📋', label: 'Projects' },
   { to: '/memories', icon: '🧠', label: 'Memories' },
 
   // Configure
-  { divider: true },
+  { divider: true, groupLabel: 'CONFIG' },
   { to: '/repos', icon: '📦', label: 'Repos' },
   { to: '/systems', icon: '🔧', label: 'Systems' },
   { to: '/team', icon: '👥', label: 'Team' },
@@ -117,7 +118,14 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
 
       {NAV.map((entry, i) => {
         if ('divider' in entry) {
-          return <div key={`div-${i}`} className="border-t border-border/30 w-8 my-1" />;
+          return (
+            <div key={`div-${i}`} className="flex flex-col items-center my-1">
+              <div className="border-t border-border/30 w-8" />
+              {entry.groupLabel && (
+                <span className="text-[7px] tracking-[0.1em] text-text-muted/50 mt-1 select-none">{entry.groupLabel}</span>
+              )}
+            </div>
+          );
         }
         const item = entry;
         const count = item.countKey && counts ? counts[item.countKey] : 0;

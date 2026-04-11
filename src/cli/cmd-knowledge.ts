@@ -100,7 +100,7 @@ export function registerKnowledgeCommands(program: Command, _config: ShadowConfi
   suggest
     .command('list')
     .description('list pending suggestions')
-    .option('--status <status>', 'filter by status', 'pending')
+    .option('--status <status>', 'filter by status', 'open')
     .action((options: { status: string }) =>
       withDb((db) => db.listSuggestions({ status: options.status })),
     );

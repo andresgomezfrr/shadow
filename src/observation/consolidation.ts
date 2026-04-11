@@ -9,7 +9,7 @@ const MERGE_THRESHOLD = 0.65; // Cosine similarity above which observations are 
  * Runs periodically (e.g., after each heartbeat) to prevent accumulation.
  */
 export async function consolidateObservations(db: ShadowDatabase): Promise<number> {
-  const active = db.listObservations({ status: 'active', limit: 50 });
+  const active = db.listObservations({ status: 'open', limit: 50 });
   if (active.length < 2) return 0;
 
   let merged = 0;
@@ -42,7 +42,7 @@ export async function consolidateObservations(db: ShadowDatabase): Promise<numbe
 
       // Check that the candidate is also active
       const other = db.getObservation(candidate.id);
-      if (!other || other.status !== 'active') continue;
+      if (!other || other.status !== 'open') continue;
 
       // Merge: keep the one with more votes, resolve the other
       const [keeper, loser] = obs.votes >= other.votes ? [obs, other] : [other, obs];
@@ -60,7 +60,7 @@ export async function consolidateObservations(db: ShadowDatabase): Promise<numbe
         `UPDATE observations SET votes = votes + ?, repo_ids_json = ?, entities_json = ?, last_seen_at = ? WHERE id = ?`,
       ).run(loser.votes, JSON.stringify(mergedRepoIds), JSON.stringify(mergedEntities), new Date().toISOString(), keeper.id);
 
-      db.updateObservationStatus(loser.id, 'resolved');
+      db.updateObservationStatus(loser.id, 'done');
       db.deleteEmbedding('observation_vectors', loser.id);
 
       // Record feedback for audit

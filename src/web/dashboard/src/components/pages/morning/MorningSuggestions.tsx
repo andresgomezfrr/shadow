@@ -91,11 +91,11 @@ export function MorningSuggestions({
   return (
     <section className="mb-8">
       <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-        💡 Pending suggestions
+        💡 Open suggestions
         {suggestions.length > 0 && <Badge>{suggestions.length}</Badge>}
       </h2>
       {suggestions.length === 0 ? (
-        <EmptyState title="All caught up" description="No pending suggestions to review" />
+        <EmptyState title="All caught up" description="No open suggestions to review" />
       ) : (
         <div className="flex flex-col gap-2">
           {suggestions.map((s) => (

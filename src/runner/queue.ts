@@ -12,7 +12,7 @@ type ActiveRun = {
   promise: Promise<void>;
 };
 
-const TERMINAL_STATUSES = new Set(['completed', 'executed', 'executed_manual', 'failed', 'discarded']);
+const TERMINAL_STATUSES = new Set(['done', 'failed', 'dismissed']);
 
 export class RunQueue {
   private active = new Map<string, ActiveRun>();

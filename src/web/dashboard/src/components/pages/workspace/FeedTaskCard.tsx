@@ -4,17 +4,17 @@ import type { Task } from '../../../api/types';
 import type { SelectedItem } from './WorkspaceContext';
 
 const STATUS_COLORS: Record<string, string> = {
-  todo: 'text-teal-300 bg-teal-500/15',
-  in_progress: 'text-teal-300 bg-teal-500/15',
+  open: 'text-teal-300 bg-teal-500/15',
+  active: 'text-teal-300 bg-teal-500/15',
   blocked: 'text-red bg-red/15',
-  closed: 'text-teal-600 bg-teal-500/10',
+  done: 'text-teal-600 bg-teal-500/10',
 };
 
 const STATUS_BORDER: Record<string, string> = {
-  todo: 'border-l-teal-500/50',
-  in_progress: 'border-l-teal-400',
+  open: 'border-l-teal-500/50',
+  active: 'border-l-teal-400',
   blocked: 'border-l-red',
-  closed: 'border-l-teal-600/40',
+  done: 'border-l-teal-600/40',
 };
 
 type Props = {

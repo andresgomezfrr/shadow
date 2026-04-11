@@ -64,10 +64,10 @@ export async function activityDailyDigest(
   const memoriesCreated = db.listMemories({ archived: false, limit: 100 })
     .filter(m => m.createdAt >= yesterday && m.sourceType === 'heartbeat')
     .map(m => `- [${m.kind}] ${m.title}`);
-  const obsCreated = db.listObservations({ status: 'active', limit: 50 })
+  const obsCreated = db.listObservations({ status: 'open', limit: 50 })
     .filter(o => o.createdAt >= yesterday)
     .map(o => `- [${o.severity}/${o.kind}] ${o.title}`);
-  const obsResolved = db.listObservations({ status: 'resolved', limit: 50 })
+  const obsResolved = db.listObservations({ status: 'done', limit: 50 })
     .filter(o => o.createdAt >= yesterday);
   const sugAccepted = db.listSuggestions({ status: 'accepted' })
     .filter(s => s.resolvedAt && s.resolvedAt >= yesterday);
@@ -149,7 +149,7 @@ export async function activityWeeklyDigest(
     .map(m => `- [${m.kind}] ${m.title}`);
   const sugAccepted = db.listSuggestions({ status: 'accepted' })
     .filter(s => s.resolvedAt && s.resolvedAt >= weekAgo);
-  const highObs = db.listObservations({ status: 'active', limit: 20 })
+  const highObs = db.listObservations({ status: 'open', limit: 20 })
     .filter(o => o.severity === 'high' || o.severity === 'warning');
 
   const prompt = [

@@ -20,7 +20,7 @@ export async function handleSuggestionRoutes(
       const limit = clampLimit(params.get('limit'), 30);
       const offset = clampOffset(params.get('offset'));
       // score sort needs post-query ranking (momentum context), others use SQL ORDER BY
-      const useScoreSort = sortBy === 'score' || (status === 'pending' && !sortBy);
+      const useScoreSort = sortBy === 'score' || (status === 'open' && !sortBy);
       let items = db.listSuggestions({ status, kind, repoId, projectId, sortBy: useScoreSort ? undefined : sortBy, limit: useScoreSort ? undefined : limit, offset: useScoreSort ? undefined : offset });
       // Compute rank scores
       const { computeRankScore } = await import('../../suggestion/ranking.js');
@@ -57,7 +57,7 @@ export async function handleSuggestionRoutes(
       const rankScore = Math.round(computeRankScore(suggestion, profile, { projectMomentum }) * 10) / 10;
 
       // Warning if source observation already resolved
-      const warning = sourceObservation?.status === 'resolved' ? 'The source observation has been resolved' : undefined;
+      const warning = sourceObservation?.status === 'done' ? 'The source observation has been resolved' : undefined;
 
       return json(res, { suggestion, sourceObservation, linkedRuns, rankScore, warning }), true;
     }
@@ -88,12 +88,6 @@ export async function handleSuggestionRoutes(
           const result = snoozeSuggestion(db, id, until);
           if (result.ok) processed++;
         }
-      } else if (body.action === 'update') {
-        const { updateSuggestionCategory } = await import('../../suggestion/engine.js');
-        for (const id of body.ids) {
-          const result = updateSuggestionCategory(db, id, body.category ?? 'manual');
-          if (result.ok) processed++;
-        }
       }
       return json(res, { processed, total: body.ids.length }), true;
     }
@@ -108,7 +102,7 @@ export async function handleSuggestionRoutes(
       return json(res, { ok: true, jobId: job.id }), true;
     }
 
-    const match = pathname.match(/^\/api\/suggestions\/([^/]+)\/(accept|dismiss|snooze|update)$/);
+    const match = pathname.match(/^\/api\/suggestions\/([^/]+)\/(accept|dismiss|snooze)$/);
     if (match) {
       const [, id, action] = match;
       if (action === 'accept') {
@@ -116,7 +110,7 @@ export async function handleSuggestionRoutes(
         const body = await parseOptionalBody(req, res, OptionalCategorySchema);
         if (!body) return true;
         const result = acceptSuggestion(db, id, body.category);
-        if (!result.ok) return json(res, { error: 'Cannot accept — suggestion not pending' }, 400), true;
+        if (!result.ok) return json(res, { error: 'Cannot accept — suggestion not open' }, 400), true;
         const updated = db.getSuggestion(id);
         return json(res, { ...updated, runId: result.runCreated }), true;
       } else if (action === 'dismiss') {
@@ -131,24 +125,16 @@ export async function handleSuggestionRoutes(
         if (!body) return true;
         if (body.hours === 0) {
           // Unsnooze: wake immediately
-          db.updateSuggestion(id, { status: 'pending', expiresAt: null });
+          db.updateSuggestion(id, { status: 'open', expiresAt: null });
           const updated = db.getSuggestion(id);
           return json(res, updated), true;
         }
         const { snoozeSuggestion } = await import('../../suggestion/engine.js');
         const until = new Date(Date.now() + body.hours * 60 * 60 * 1000).toISOString();
         const result = snoozeSuggestion(db, id, until);
-        if (!result.ok) return json(res, { error: 'Cannot snooze — suggestion not pending' }, 400), true;
+        if (!result.ok) return json(res, { error: 'Cannot snooze — suggestion not open' }, 400), true;
         const updated = db.getSuggestion(id);
         return json(res, updated), true;
-      } else if (action === 'update') {
-        const { updateSuggestionCategory } = await import('../../suggestion/engine.js');
-        const body = await parseBody(req, res, OptionalCategorySchema);
-        if (!body) return true;
-        const result = updateSuggestionCategory(db, id, body.category ?? 'manual');
-        if (!result.ok) return json(res, { error: 'Cannot update — suggestion not in backlog or accepted status' }, 400), true;
-        const updated = db.getSuggestion(id);
-        return json(res, { ...updated, runId: result.runCreated }), true;
       }
     }
   }

@@ -259,14 +259,15 @@ export class RunnerService {
 
       writeFileSync(join(artifactDir, 'summary.md'), summaryContent, 'utf-8');
 
-      // Update run status — child execution runs go straight to 'executed' (no review needed)
-      const finalStatus = isSuccess ? (run.parentRunId ? 'executed' : 'completed') : 'failed';
+      // Update run status — child execution runs go straight to 'done' (no review needed)
+      const finalStatus = isSuccess ? (run.parentRunId ? 'done' : 'planned') : 'failed';
       this.db.transitionRun(run.id, finalStatus);
       this.db.updateRun(run.id, {
         resultSummaryMd: (planOnly ? effectivePlan : null) || result.summaryHint || result.output,
         errorSummary: isSuccess ? null : (result.output.slice(0, 500) || 'Execution failed'),
         artifactDir,
         sessionId: result.sessionId ?? null,
+        outcome: run.parentRunId && isSuccess ? 'executed' : undefined,
         finishedAt,
       });
 

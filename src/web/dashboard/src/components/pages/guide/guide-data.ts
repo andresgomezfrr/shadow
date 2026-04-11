@@ -86,7 +86,7 @@ export const CLI_GROUPS: CliGroup[] = [
     name: 'suggest',
     description: 'Manage suggestions',
     commands: [
-      { command: 'shadow suggest list', description: 'List pending suggestions' },
+      { command: 'shadow suggest list', description: 'List open suggestions' },
       { command: 'shadow suggest view', args: '<suggestionId>', description: 'View suggestion detail' },
       { command: 'shadow suggest accept', args: '<suggestionId>', description: 'Accept a suggestion (creates a run)' },
       { command: 'shadow suggest dismiss', args: '<suggestionId>', description: 'Dismiss a suggestion' },
@@ -128,7 +128,7 @@ export const CLI_GROUPS: CliGroup[] = [
     name: 'task',
     description: 'Manage work tasks (containers for ongoing work)',
     commands: [
-      { command: 'shadow task list', description: 'List tasks (filter by --status todo|in_progress|blocked|closed)' },
+      { command: 'shadow task list', description: 'List tasks (filter by --status open|active|blocked|done)' },
       { command: 'shadow task create', args: '<title>', description: 'Create a new task (--ref <url>, --repo <path>, --session <id>)' },
       { command: 'shadow task update', args: '<id>', description: 'Update a task (--status, --title, --add-ref, --add-pr, --session)' },
       { command: 'shadow task close', args: '<id>', description: 'Close a task' },
@@ -176,13 +176,13 @@ export const MCP_CATEGORIES: McpCategory[] = [
       { name: 'shadow_observe', description: 'Trigger an observation cycle on repos.', trust: 2, readOnly: false },
       { name: 'shadow_observation_ack', description: 'Acknowledge an observation (mark as seen).', trust: 1, readOnly: false },
       { name: 'shadow_observation_resolve', description: 'Resolve an observation with optional reason.', trust: 1, readOnly: false },
-      { name: 'shadow_observation_reopen', description: 'Reopen a resolved/acknowledged observation.', trust: 1, readOnly: false },
+      { name: 'shadow_observation_reopen', description: 'Reopen a done/acknowledged observation.', trust: 1, readOnly: false },
     ],
   },
   {
     name: 'Suggestions',
     tools: [
-      { name: 'shadow_suggestions', description: 'List suggestions with pagination. Filter by status, projectId, repoId. Default: pending, limit 20.', trust: 0, readOnly: true },
+      { name: 'shadow_suggestions', description: 'List suggestions with pagination. Filter by status, projectId, repoId. Default: open, limit 20.', trust: 0, readOnly: true },
       { name: 'shadow_suggest_accept', description: 'Accept a suggestion (creates a run).', trust: 1, readOnly: false },
       { name: 'shadow_suggest_dismiss', description: 'Dismiss a suggestion with optional note.', trust: 1, readOnly: false },
       { name: 'shadow_suggest_snooze', description: 'Snooze a suggestion for a given number of hours.', trust: 1, readOnly: false },
@@ -195,6 +195,8 @@ export const MCP_CATEGORIES: McpCategory[] = [
       { name: 'shadow_task_create', description: 'Create a work task — link to external tickets, repos, projects, and a Claude session.', trust: 1, readOnly: false },
       { name: 'shadow_task_update', description: 'Update a task — change status, context, session, PRs, external refs. All states transition freely.', trust: 1, readOnly: false },
       { name: 'shadow_task_close', description: 'Close a task (mark as done).', trust: 1, readOnly: false },
+      { name: 'shadow_task_archive', description: 'Archive a task to hide it from the workspace view.', trust: 1, readOnly: false },
+      { name: 'shadow_task_execute', description: 'Create a run from a task — triggers automated execution.', trust: 2, readOnly: false },
       { name: 'shadow_task_remove', description: 'Permanently delete a task.', trust: 1, readOnly: false },
     ],
   },

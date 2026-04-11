@@ -114,8 +114,8 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
 
   if (!ctx || !run) return <div className="text-text-dim text-sm p-4">Loading journey...</div>;
 
-  const isPlanCompleted = run.status === 'completed';
-  const isTerminal = ['executed_manual', 'discarded', 'closed'].includes(run.status);
+  const isPlanCompleted = run.status === 'planned';
+  const isTerminal = ['done', 'dismissed'].includes(run.status);
   const hasWorktree = !!activeRun?.worktreePath;
   const hasPr = !!activeRun?.prUrl;
 
@@ -123,13 +123,13 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
   const planStatus: 'done' | 'active' | 'pending' | 'failed' =
     run.status === 'failed' ? 'failed' :
     run.status === 'running' ? 'active' :
-    ['completed', 'executed', 'executed_manual', 'closed'].includes(run.status) ? 'done' : 'pending';
+    ['planned', 'done', 'dismissed'].includes(run.status) ? 'done' : 'pending';
 
   const execStatus: 'done' | 'active' | 'pending' | 'failed' =
     activeChild?.status === 'failed' ? 'failed' :
     activeChild?.status === 'running' ? 'active' :
-    activeChild && ['completed', 'executed'].includes(activeChild.status) ? 'done' :
-    run.status === 'executed' || run.status === 'executed_manual' ? 'done' : 'pending';
+    activeChild && ['planned', 'done'].includes(activeChild.status) ? 'done' :
+    run.status === 'done' && (run.outcome === 'executed' || run.outcome === 'executed_manual') ? 'done' : 'pending';
 
   return (
     <div className="space-y-2">
@@ -153,9 +153,6 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
           <div className="text-xs text-text-dim">
             💡 {sourceSuggestion.title}
           </div>
-          {sourceSuggestion.status === 'backlog' && sourceSuggestion.resolvedAt && (
-            <div className="text-xs text-text-muted mt-0.5">In backlog since {timeAgo(sourceSuggestion.resolvedAt)}</div>
-          )}
           <button
             onClick={() => drillToItem(sourceSuggestion.id, 'suggestion')}
             className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer mt-0.5"
@@ -218,7 +215,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
       )}
 
       {/* Manual execution note */}
-      {run.status === 'executed_manual' && childRuns.length === 0 && (
+      {run.status === 'done' && run.outcome === 'executed_manual' && childRuns.length === 0 && (
         <Step status="done" label="Execution">
           <div className="text-xs text-text-dim">Implemented manually</div>
         </Step>
@@ -308,7 +305,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
           <button onClick={handleClose} className="text-xs text-text-muted hover:text-text bg-transparent border-none cursor-pointer">Close journey</button>
         </div>
       )}
-      {run.status === 'closed' && run.closedNote && (
+      {run.status === 'done' && run.outcome === 'closed' && run.closedNote && (
         <div className="text-xs text-text-muted italic">Closed: "{run.closedNote}"</div>
       )}
     </div>

@@ -108,17 +108,17 @@ export async function checkObservationDuplicate(
     db,
     vecTable: 'observation_vectors',
     thresholds: OBSERVATION_THRESHOLDS,
-    statusFilter: { table: 'observations', statuses: ['active', 'acknowledged'] },
+    statusFilter: { table: 'observations', statuses: ['open', 'acknowledged'] },
   });
 }
 
 export async function checkSuggestionDuplicate(
   db: ShadowDatabase,
   entity: { kind?: string; title: string; summaryMd?: string },
-  against: 'pending' | 'dismissed' | 'accepted',
+  against: 'open' | 'dismissed' | 'accepted',
 ): Promise<DedupDecision> {
   const statusMap: Record<string, string[]> = {
-    pending: ['pending', 'snoozed'],
+    open: ['open', 'snoozed'],
     dismissed: ['dismissed'],
     accepted: ['accepted'],
   };

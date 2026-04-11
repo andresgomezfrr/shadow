@@ -8,7 +8,7 @@ export function MorningObservations({ observations }: { observations: Observatio
   return (
     <section className="mb-8">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">👀 Active observations</h2>
+        <h2 className="text-lg font-semibold">👀 Open observations</h2>
         <a href="/observations" className="text-xs text-accent hover:underline">View all</a>
       </div>
       <div className="flex flex-col gap-1.5">

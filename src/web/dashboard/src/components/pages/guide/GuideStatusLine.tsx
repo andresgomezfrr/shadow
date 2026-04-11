@@ -90,7 +90,7 @@ export function GuideStatusLine() {
         <h2 className="text-base font-semibold mb-4">Notifications</h2>
         <p className="text-sm text-text-dim mb-3">Shown at the end of the status line when there&apos;s something pending.</p>
         <Table rows={[
-          ['\uD83D\uDCA13', 'suggestions', '3 pending suggestions to review'],
+          ['\uD83D\uDCA13', 'suggestions', '3 open suggestions to review'],
           ['\u2665 12m', 'heartbeat', 'Next heartbeat in 12 minutes'],
           ['\u2665 now', 'heartbeat', 'Heartbeat running right now'],
         ]} />

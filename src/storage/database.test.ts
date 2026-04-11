@@ -247,7 +247,7 @@ describe('observations CRUD + dedup', () => {
     assert.equal(obs.kind, 'improvement');
     assert.equal(obs.title, 'Missing error handling in API routes');
     assert.equal(obs.votes, 1);
-    assert.equal(obs.status, 'active');
+    assert.equal(obs.status, 'open');
     assert.equal(obs.severity, 'warning');
 
     const fetched = db.getObservation(obs.id);
@@ -280,14 +280,14 @@ describe('observations CRUD + dedup', () => {
       kind: 'pattern',
       title: 'Consistent use of async/await',
     });
-    db.updateObservationStatus(obs.id, 'resolved');
+    db.updateObservationStatus(obs.id, 'done');
 
-    const active = db.listObservations({ status: 'active' });
-    assert.ok(active.every(o => o.status === 'active'));
+    const open = db.listObservations({ status: 'open' });
+    assert.ok(open.every(o => o.status === 'open'));
 
-    const resolved = db.listObservations({ status: 'resolved' });
-    assert.ok(resolved.length >= 1);
-    assert.ok(resolved.every(o => o.status === 'resolved'));
+    const done = db.listObservations({ status: 'done' });
+    assert.ok(done.length >= 1);
+    assert.ok(done.every(o => o.status === 'done'));
   });
 });
 
@@ -316,7 +316,7 @@ describe('suggestions CRUD', () => {
     assert.ok(sug.id);
     assert.equal(sug.kind, 'refactor');
     assert.equal(sug.title, 'Extract database mapper functions into separate module');
-    assert.equal(sug.status, 'pending');
+    assert.equal(sug.status, 'open');
     assert.equal(sug.impactScore, 4);
     assert.equal(sug.confidenceScore, 85);
     assert.equal(sug.riskScore, 1);
@@ -333,7 +333,7 @@ describe('suggestions CRUD', () => {
       title: 'Add FTS5 snippet highlighting to search results',
       summaryMd: 'Use FTS5 snippet() function for better search result previews.',
     });
-    assert.equal(sug.status, 'pending');
+    assert.equal(sug.status, 'open');
 
     db.updateSuggestion(sug.id, { status: 'accepted' });
     const updated = db.getSuggestion(sug.id)!;

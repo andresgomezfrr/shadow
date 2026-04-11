@@ -2,7 +2,7 @@ import { timeAgo } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
 import { useHighlight } from '../../hooks/useHighlight';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, markRunExecutedManual, archiveRun, retryRun, rollbackRun, createDraftPr } from '../../api/client';
+import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, closeRun, archiveRun, retryRun, rollbackRun, createDraftPr } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
@@ -18,60 +18,56 @@ import type { Run } from '../../api/types';
 const STATUS_BORDER: Record<string, string> = {
   queued: 'border-l-orange',
   running: 'border-l-blue',
-  completed: 'border-l-green',
-  executed: 'border-l-purple',
-  executed_manual: 'border-l-blue',
-  discarded: 'border-l-text-muted',
+  planned: 'border-l-green',
+  done: 'border-l-purple',
+  dismissed: 'border-l-text-muted',
   failed: 'border-l-red',
 };
 
 const STATUS_ICON: Record<string, string> = {
   queued: '○',
   running: '⟳',
-  completed: '✓',
-  executed: '✓',
-  executed_manual: '✓',
-  discarded: '—',
+  planned: '✓',
+  done: '✓',
+  dismissed: '—',
   failed: '✕',
 };
 
 const STATUS_ICON_COLOR: Record<string, string> = {
   queued: 'text-orange',
   running: 'text-blue animate-spin',
-  completed: 'text-green',
-  executed: 'text-purple',
-  executed_manual: 'text-blue',
-  discarded: 'text-text-muted',
+  planned: 'text-green',
+  done: 'text-purple',
+  dismissed: 'text-text-muted',
   failed: 'text-red',
 };
 
 const STATUS_FILTERS = [
-  { label: 'To review', value: 'completed', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
+  { label: 'To review', value: 'planned', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
   { label: 'All', value: '' },
   { label: 'Queued', value: 'queued', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
   { label: 'Running', value: 'running', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
-  { label: 'Executed', value: 'executed', dotColor: 'bg-purple', activeClass: 'bg-purple/15 text-purple' },
-  { label: 'Manual', value: 'executed_manual', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
-  { label: 'Discarded', value: 'discarded', dotColor: 'bg-text-muted', activeClass: 'bg-text-muted/15 text-text-muted' },
+  { label: 'Done', value: 'done', dotColor: 'bg-purple', activeClass: 'bg-purple/15 text-purple' },
+  { label: 'Dismissed', value: 'dismissed', dotColor: 'bg-text-muted', activeClass: 'bg-text-muted/15 text-text-muted' },
   { label: 'Failed', value: 'failed', dotColor: 'bg-red', activeClass: 'bg-red/15 text-red' },
   { label: 'Archived', value: 'archived' },
 ];
 
-const TERMINAL_STATUSES = new Set(['discarded', 'executed_manual']);
+const TERMINAL_STATUSES = new Set(['done', 'dismissed', 'failed']);
 const PAGE_SIZE = 20;
 
 // --- Helpers ---
 
 function getPipelineStatus(run: Run, childRun?: Run): { plan: 'done' | 'running' | 'failed' | 'pending'; exec: 'done' | 'running' | 'failed' | 'pending'; pr: 'done' | 'pending' } {
-  const planDone = ['completed', 'executed', 'executed_manual'].includes(run.status);
+  const planDone = ['planned', 'done'].includes(run.status);
   const plan = run.status === 'running' ? 'running' : run.status === 'failed' ? 'failed' : planDone ? 'done' : 'pending';
 
   let exec: 'done' | 'running' | 'failed' | 'pending' = 'pending';
   if (childRun) {
     if (childRun.status === 'running') exec = 'running';
     else if (childRun.status === 'failed') exec = 'failed';
-    else if (['executed', 'completed'].includes(childRun.status)) exec = 'done';
-  } else if (run.status === 'executed' || run.status === 'executed_manual') {
+    else if (['done', 'planned'].includes(childRun.status)) exec = 'done';
+  } else if (run.status === 'done') {
     exec = 'done';
   }
 
@@ -89,7 +85,7 @@ function formatDuration(startedAt: string, finishedAt: string): string {
 
 export function RunsPage() {
   const hasHighlight = new URLSearchParams(window.location.search).has('highlight');
-  const { params, setParam } = useFilterParams({ status: hasHighlight ? '' : 'completed', offset: '0' });
+  const { params, setParam } = useFilterParams({ status: hasHighlight ? '' : 'planned', offset: '0' });
   const { data: rawData, refresh } = useApi(
     () => fetchRuns({
       status: params.status === 'archived' ? undefined : (params.status || undefined),
@@ -147,7 +143,7 @@ export function RunsPage() {
     setConfirmDiscard(null);
     refresh();
   }, [refresh]);
-  const handleExecutedManual = useCallback(async (id: string) => { await markRunExecutedManual(id); refresh(); }, [refresh]);
+  const handleClose = useCallback(async (id: string, note?: string) => { await closeRun(id, note); refresh(); }, [refresh]);
   const handleArchive = useCallback(async (id: string) => { await archiveRun(id); refresh(); }, [refresh]);
   const handleRetry = useCallback(async (id: string) => { await retryRun(id); refresh(); }, [refresh]);
   const handleRollback = useCallback(async (id: string) => {
@@ -185,15 +181,15 @@ export function RunsPage() {
         <div className="text-text-dim">Loading...</div>
       ) : topLevelRuns.length === 0 ? (
         <EmptyState
-          title={params.status === 'completed' ? 'All caught up' : 'No runs'}
-          description={params.status === 'completed' ? 'No runs waiting for review' : 'Accept a suggestion to create a run'}
+          title={params.status === 'planned' ? 'All caught up' : 'No runs'}
+          description={params.status === 'planned' ? 'No runs waiting for review' : 'Accept a suggestion to create a run'}
         />
       ) : (
         <div className="flex flex-col gap-2">
           {topLevelRuns.map((run) => {
             const childRun = childByParent.get(run.id);
             const isOpen = expanded.has(run.id);
-            const isCompleted = run.status === 'completed';
+            const isCompleted = run.status === 'planned';
             const isPlan = isCompleted && run.kind !== 'execution';
             const isTerminal = TERMINAL_STATUSES.has(run.status);
             const duration = run.startedAt && run.finishedAt ? formatDuration(run.startedAt, run.finishedAt) : null;
@@ -208,7 +204,7 @@ export function RunsPage() {
               <div
                 key={run.id}
                 ref={scrollRef(run.id)}
-                className={`${isTerminal ? 'opacity-60' : ''}`}
+                className={`${run.status === 'dismissed' ? 'opacity-60' : ''}`}
               >
                 {/* --- Parent card --- */}
                 <div
@@ -225,7 +221,7 @@ export function RunsPage() {
                         title={run.verified === 'verified' ? 'Build/lint/test passed' : run.verified === 'needs_review' ? 'Verification failed' : 'No verification commands'}
                       >{run.verified === 'verified' ? '�� verified' : run.verified === 'needs_review' ? '⚠ needs review' : '— unverified'}</span>
                     )}
-                    {(childRun || run.status === 'executed') && (
+                    {(childRun || run.status === 'done') && (
                       <RunPipeline plan={pipeline.plan} exec={pipeline.exec} pr={pipeline.pr} />
                     )}
                     <span className="text-[13px] flex-1 min-w-0 truncate">{run.prompt}</span>
@@ -250,7 +246,7 @@ export function RunsPage() {
                             className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                           >{sessionLoading === run.id ? 'Creating...' : 'Open session'}</button>
                           <span className="text-text-muted">·</span>
-                          <button onClick={() => handleExecutedManual(run.id)} className="text-xs text-text-dim hover:text-text bg-transparent border-none cursor-pointer">Manual</button>
+                          <button onClick={() => handleClose(run.id, 'executed manually')} className="text-xs text-text-dim hover:text-text bg-transparent border-none cursor-pointer">Manual</button>
                           <span className="text-text-muted">·</span>
                           {confirmDiscard === run.id ? (
                             <span className="flex items-center gap-2">
@@ -280,7 +276,7 @@ export function RunsPage() {
                         </div>
                       )}
 
-                      {['executed', 'executed_manual', 'discarded'].includes(run.status) && (
+                      {['done', 'dismissed'].includes(run.status) && (
                         <div className="flex items-center gap-3">
                           {activeRun.worktreePath && !activeRun.prUrl && (
                             <button
@@ -290,7 +286,7 @@ export function RunsPage() {
                               className="px-4 py-2 rounded-lg text-xs font-semibold bg-purple text-bg border-none cursor-pointer transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
                             >{prLoading === activeRun.id ? 'Creating PR...' : 'Create draft PR'}</button>
                           )}
-                          {run.status === 'discarded' && run.snapshotRef && (
+                          {run.status === 'dismissed' && run.snapshotRef && (
                             confirmRollback === run.id ? (
                               <span className="flex items-center gap-2">
                                 <button onClick={() => handleRollback(run.id)} className="text-xs text-orange font-medium bg-transparent border-none cursor-pointer">Confirm restore?</button>

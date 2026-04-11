@@ -81,8 +81,8 @@ export async function handleTaskRoutes(
     for (const key of ['title', 'status', 'contextMd', 'externalRefs', 'repoIds', 'projectId', 'sessionId', 'sessionRepoPath', 'prUrls']) {
       if (body[key] !== undefined) updates[key] = body[key];
     }
-    if (updates.status === 'closed' && !task.closedAt) updates.closedAt = new Date().toISOString();
-    if (updates.status && updates.status !== 'closed') updates.closedAt = null;
+    if (updates.status === 'done' && !task.closedAt) updates.closedAt = new Date().toISOString();
+    if (updates.status && updates.status !== 'done') updates.closedAt = null;
     db.updateTask(task.id, updates as Parameters<typeof db.updateTask>[1]);
     return json(res, db.getTask(task.id)), true;
   }
@@ -92,8 +92,17 @@ export async function handleTaskRoutes(
   if (req.method === 'POST' && closeMatch) {
     const task = db.getTask(closeMatch[1]);
     if (!task) return json(res, { error: 'Not found' }, 404), true;
-    db.updateTask(task.id, { status: 'closed', closedAt: new Date().toISOString() });
+    db.updateTask(task.id, { status: 'done', closedAt: new Date().toISOString() });
     return json(res, db.getTask(task.id)), true;
+  }
+
+  // POST /api/tasks/:id/archive
+  const archiveMatch = pathname.match(/^\/api\/tasks\/([^/]+)\/archive$/);
+  if (req.method === 'POST' && archiveMatch) {
+    const task = db.getTask(archiveMatch[1]);
+    if (!task) return json(res, { error: 'Not found' }, 404), true;
+    db.updateTask(task.id, { archived: true });
+    return json(res, { ok: true }), true;
   }
 
   // DELETE /api/tasks/:id

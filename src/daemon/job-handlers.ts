@@ -754,7 +754,7 @@ Generate 1-5 suggestions. Quality over quantity.`;
         if (s.impactScore < 3 || s.confidenceScore < 50) continue;
 
         // Dedup vs existing suggestions
-        const dedupPending = await checkSuggestionDuplicate(ctx.db, { kind: s.kind, title: s.title, summaryMd: s.summaryMd }, 'pending');
+        const dedupPending = await checkSuggestionDuplicate(ctx.db, { kind: s.kind, title: s.title, summaryMd: s.summaryMd }, 'open');
         if (dedupPending.action === 'skip') continue;
         const dedupDismissed = await checkSuggestionDuplicate(ctx.db, { kind: s.kind, title: s.title, summaryMd: s.summaryMd }, 'dismissed');
         if (dedupDismissed.action === 'skip') continue;
@@ -945,7 +945,7 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
       for (const s of parsed.data.suggestions) {
         if (s.impactScore < 3 || s.confidenceScore < 50) continue;
 
-        const dedupPending = await checkSuggestionDuplicate(ctx.db, { kind: s.kind, title: s.title, summaryMd: s.summaryMd }, 'pending');
+        const dedupPending = await checkSuggestionDuplicate(ctx.db, { kind: s.kind, title: s.title, summaryMd: s.summaryMd }, 'open');
         if (dedupPending.action === 'skip') continue;
         const dedupDismissed = await checkSuggestionDuplicate(ctx.db, { kind: s.kind, title: s.title, summaryMd: s.summaryMd }, 'dismissed');
         if (dedupDismissed.action === 'skip') continue;

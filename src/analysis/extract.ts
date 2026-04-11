@@ -121,7 +121,7 @@ export async function activityAnalyze(
         if (!project) return '';
         const projRepos = project.repoIds.map(id => ctx.db.getRepo(id)?.name).filter(Boolean);
         const projSystems = project.systemIds.map(id => ctx.db.getSystem(id)?.name).filter(Boolean);
-        const projObs = ctx.db.listObservations({ status: 'active', limit: 5 })
+        const projObs = ctx.db.listObservations({ status: 'open', limit: 5 })
           .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
         const contextSection = project.contextMd ? `\n  Project profile:\n${project.contextMd.split('\n').map(l => '    ' + l).join('\n')}` : '';
         return `- **${project.name}** (${project.kind}, score=${ap.score.toFixed(0)}): repos=[${projRepos.join(', ')}], systems=[${projSystems.join(', ')}]\n  Active observations: ${projObs.map(o => o.title).join('; ') || 'none'}${contextSection}`;
@@ -402,7 +402,7 @@ export async function activityAnalyze(
 
   // ========== CALL 2: Observe-cleanup (MCP — resolve obsolete/duplicate observations) ==========
   try {
-    const preCleanupObs = ctx.db.listObservations({ status: 'active', limit: 30 });
+    const preCleanupObs = ctx.db.listObservations({ status: 'open', limit: 30 });
     if (preCleanupObs.length > 5) {
       const cleanupPrompt = [
         'You are Shadow\'s observation cleanup phase.',
@@ -441,7 +441,7 @@ export async function activityAnalyze(
 
   // ========== CALL 3: Observe (generate new observations — JSON-only) ==========
   try {
-    const activeObservations = ctx.db.listObservations({ status: 'active', limit: 20 });
+    const activeObservations = ctx.db.listObservations({ status: 'open', limit: 20 });
     // Touch last_seen_at — observations still relevant to heartbeat stay alive longer
     ctx.db.touchObservationsLastSeen(activeObservations.map(o => o.id));
     const activeObsSummary = activeObservations.map(o => `- [${o.severity}/${o.kind}] ${o.title} (${o.votes}x, ${o.createdAt.slice(0, 10)})`).join('\n');

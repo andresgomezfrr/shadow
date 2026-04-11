@@ -27,8 +27,9 @@ export async function handleProfileRoutes(
       const systemsCount = db.countSystems();
       const lastHeartbeat = db.getLastJob('heartbeat');
       const usage = db.getUsageSummary('day');
-      const activeObservations = db.countObservations({ status: 'active' });
-      const runsToReview = db.countRuns({ status: 'completed' });
+      const activeObservations = db.countObservations({ status: 'open' });
+      const runsToReview = db.countRuns({ status: 'planned' });
+      const activeTasks = db.countTasks({ status: 'open' }) + db.countTasks({ status: 'active' }) + db.countTasks({ status: 'blocked' });
       return json(res, {
         profile,
         counts: {
@@ -36,6 +37,7 @@ export async function handleProfileRoutes(
           pendingSuggestions,
           activeObservations,
           runsToReview,
+          activeTasks,
           repos: reposCount,
           contacts: contactsCount,
           systems: systemsCount,

@@ -360,7 +360,7 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         const todayObs = observations.filter(o => o.createdAt > sinceIso);
         const memories = db.listMemories({ archived: false });
         const todayMemories = memories.filter(m => m.createdAt > sinceIso);
-        const suggestions = db.listSuggestions({ status: 'pending' });
+        const suggestions = db.listSuggestions({ status: 'open' });
         const usage = db.getUsageSummary('day');
         const events = db.listPendingEvents();
 

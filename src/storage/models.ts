@@ -228,9 +228,11 @@ export type RunRecord = {
   repoId: string;
   repoIds: string[];
   suggestionId: string | null;
+  taskId: string | null;
   parentRunId: string | null;
   kind: string;
   status: string;
+  outcome: string | null;
   prompt: string;
   resultSummaryMd: string | null;
   errorSummary: string | null;
@@ -475,9 +477,11 @@ export type TaskRecord = {
   repoIds: string[];
   projectId: string | null;
   entities: EntityLink[];
+  suggestionId: string | null;
   sessionId: string | null;
   sessionRepoPath: string | null;
   prUrls: string[];
+  archived: boolean;
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;

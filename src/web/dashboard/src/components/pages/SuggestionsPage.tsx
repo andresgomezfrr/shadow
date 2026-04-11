@@ -3,7 +3,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchSuggestions, fetchSuggestionContext, fetchRepos, fetchRuns, fetchProjects, acceptSuggestion, dismissSuggestion, snoozeSuggestion, updateSuggestionCategory, bulkSuggestionAction, revalidateSuggestion, getActiveRevalidations } from '../../api/client';
+import { fetchSuggestions, fetchSuggestionContext, fetchRepos, fetchRuns, fetchProjects, acceptSuggestion, dismissSuggestion, snoozeSuggestion, bulkSuggestionAction, revalidateSuggestion, getActiveRevalidations } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { FilterTabs } from '../common/FilterTabs';
 import { Pagination } from '../common/Pagination';
@@ -15,8 +15,7 @@ import { SUG_KIND_COLORS, SUG_KIND_COLOR_DEFAULT, SUG_KIND_OPTIONS } from '../..
 import type { Repo } from '../../api/types';
 
 const STATUS_BORDER: Record<string, string> = {
-  pending: 'border-l-orange',
-  backlog: 'border-l-purple',
+  open: 'border-l-orange',
   snoozed: 'border-l-blue',
   accepted: 'border-l-green',
   dismissed: 'border-l-text-muted',
@@ -24,8 +23,7 @@ const STATUS_BORDER: Record<string, string> = {
 };
 
 const STATUSES = [
-  { label: 'Pending', value: 'pending', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
-  { label: 'Backlog', value: 'backlog', dotColor: 'bg-purple', activeClass: 'bg-purple/15 text-purple' },
+  { label: 'Open', value: 'open', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
   { label: 'Snoozed', value: 'snoozed', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
   { label: 'Accepted', value: 'accepted', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
   { label: 'Dismissed', value: 'dismissed', dotColor: 'bg-text-muted', activeClass: 'bg-text-muted/15 text-text-muted' },
@@ -62,11 +60,7 @@ const DISMISS_CATEGORIES: Array<{ label: string; category: string }> = [
 const ACCEPT_OPTIONS: Array<{ label: string; category: string }> = [
   { label: 'Execute', category: 'execute' },
   { label: 'Already done', category: 'manual' },
-  { label: 'Backlog', category: 'planned' },
-];
-const BACKLOG_MOVE_OPTIONS: Array<{ label: string; category: string }> = [
-  { label: 'Execute', category: 'execute' },
-  { label: 'Implemented', category: 'manual' },
+  { label: 'Plan', category: 'planned' },
 ];
 
 function repoName(repos: Repo[] | null, repoId: string | null): string | null {
@@ -81,7 +75,7 @@ export function SuggestionsPage() {
   const scrolledRef = useRef(false);
 
   const PAGE_SIZE = 20;
-  const { params, setParam } = useFilterParams({ status: highlightId ? '' : 'pending', kind: '', sort: 'score', repoId: '', projectId: '', offset: '0' });
+  const { params, setParam } = useFilterParams({ status: highlightId ? '' : 'open', kind: '', sort: 'score', repoId: '', projectId: '', offset: '0' });
   const { data: rawData, refresh } = useApi(
     () => fetchSuggestions({ status: params.status || undefined, kind: params.kind || undefined, sort: params.sort || undefined, repoId: params.repoId || undefined, projectId: params.projectId || undefined, limit: PAGE_SIZE, offset: Number(params.offset) || 0 }),
     [params.status, params.kind, params.sort, params.repoId, params.projectId, params.offset],
@@ -203,29 +197,10 @@ export function SuggestionsPage() {
     refresh();
   }, [refresh]);
 
-  const handleUpdateCategory = useCallback(async (id: string, category: string) => {
-    const result = await updateSuggestionCategory(id, category);
-    if (result && 'runId' in (result as Record<string, unknown>)) {
-      setRunCreated((result as Record<string, unknown>).runId as string);
-      setTimeout(() => setRunCreated(null), 8000);
-    }
-    refresh();
-  }, [refresh]);
-
   const handleBulkAccept = useCallback(async (category: string) => {
     const result = await bulkSuggestionAction('accept', [...selected], { category });
     if (result) {
       setBulkMessage(`Accepted ${result.processed}/${result.total}`);
-      setTimeout(() => setBulkMessage(null), 4000);
-    }
-    setSelected(new Set());
-    refresh();
-  }, [selected, refresh]);
-
-  const handleBulkUpdate = useCallback(async (category: string) => {
-    const result = await bulkSuggestionAction('update', [...selected], { category });
-    if (result) {
-      setBulkMessage(`Updated ${result.processed}/${result.total}`);
       setTimeout(() => setBulkMessage(null), 4000);
     }
     setSelected(new Set());
@@ -250,7 +225,7 @@ export function SuggestionsPage() {
         <img src="/ghost/suggestions-header.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
         <h1 className="text-xl font-semibold">Suggestions</h1>
         <FilterTabs options={STATUSES} active={params.status} onChange={(v) => { setParam('status', v); setSelected(new Set()); }} />
-        {(params.status === 'pending' || params.status === 'backlog') && data && data.length > 0 && (
+        {params.status === 'open' && data && data.length > 0 && (
           <label className="flex items-center gap-1.5 text-xs text-text-dim cursor-pointer ml-auto">
             <input
               type="checkbox"
@@ -295,8 +270,8 @@ export function SuggestionsPage() {
         <div className="text-text-dim">Loading...</div>
       ) : data.length === 0 ? (
         <EmptyState
-          title={params.status === 'pending' ? 'All caught up' : 'No suggestions'}
-          description={params.status === 'pending' ? 'No pending suggestions to review' : 'Shadow has no suggestions in this category'}
+          title={params.status === 'open' ? 'All caught up' : 'No suggestions'}
+          description={params.status === 'open' ? 'No open suggestions to review' : 'Shadow has no suggestions in this category'}
         />
       ) : (
         <div className="flex flex-col gap-2">
@@ -316,7 +291,7 @@ export function SuggestionsPage() {
               >
                 {/* Collapsed row */}
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  {(params.status === 'pending' || params.status === 'backlog') && (
+                  {params.status === 'open' && (
                     <input
                       type="checkbox"
                       checked={selected.has(s.id)}
@@ -348,7 +323,7 @@ export function SuggestionsPage() {
                   <div className="mt-3 animate-fade-in space-y-3" onClick={(e) => e.stopPropagation()}>
 
                     {/* Actions */}
-                    {s.status === 'pending' && (
+                    {s.status === 'open' && (
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <button
@@ -415,57 +390,6 @@ export function SuggestionsPage() {
                       </div>
                     )}
 
-                    {s.status === 'backlog' && (
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <button
-                            onClick={() => setAcceptOpen(acceptOpen === s.id ? null : s.id)}
-                            className="px-4 py-2 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer transition-all hover:brightness-110"
-                          >Move</button>
-                          {acceptOpen === s.id && (
-                            <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 overflow-hidden min-w-40">
-                              {BACKLOG_MOVE_OPTIONS.map((opt) => (
-                                <button
-                                  key={opt.category}
-                                  onClick={() => { handleUpdateCategory(s.id, opt.category); setAcceptOpen(null); }}
-                                  className="block w-full px-4 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer border-none bg-transparent"
-                                >{opt.label}</button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-text-muted">·</span>
-                        <div className="relative">
-                          <button
-                            onClick={() => setDismissOpen(dismissOpen === s.id ? null : s.id)}
-                            className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer"
-                          >Dismiss</button>
-                          {dismissOpen === s.id && (
-                            <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 p-2 space-y-1 min-w-48">
-                              {DISMISS_CATEGORIES.map((dc) => (
-                                <button
-                                  key={dc.category}
-                                  onClick={() => handleDismiss(s.id, dc.category)}
-                                  className="block w-full px-3 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer rounded border-none bg-transparent"
-                                >{dc.label}</button>
-                              ))}
-                              <div className="pt-1 border-t border-border mt-1">
-                                <input
-                                  type="text"
-                                  placeholder="Note (optional)..."
-                                  value={dismissNote}
-                                  onChange={(e) => setDismissNote(e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === 'Enter' && dismissNote) handleDismiss(s.id, 'wont_do', dismissNote); }}
-                                  className="w-full px-2 py-1 text-xs bg-bg border border-border rounded outline-none focus:border-accent"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        {s.resolvedAt && <span className="text-xs text-text-muted">In backlog {timeAgo(s.resolvedAt)}</span>}
-                      </div>
-                    )}
-
                     {s.status === 'snoozed' && (
                       <div className="flex items-center gap-3 text-xs">
                         <span className="text-blue">Snoozed — wakes {s.expiresAt ? timeAgo(s.expiresAt) : 'soon'}</span>
@@ -480,10 +404,7 @@ export function SuggestionsPage() {
                           <span className="text-green">Implemented</span>
                         )}
                         {s.feedbackNote === 'execute' && !linkedRun && (
-                          <button
-                            onClick={() => handleUpdateCategory(s.id, 'manual')}
-                            className="text-green hover:underline bg-transparent border-none cursor-pointer"
-                          >Mark as implemented</button>
+                          <span className="text-text-dim">Awaiting execution</span>
                         )}
                         {s.resolvedAt && <span className="text-text-muted">Accepted {timeAgo(s.resolvedAt)}</span>}
                       </div>
@@ -547,37 +468,10 @@ export function SuggestionsPage() {
         <div className="sticky bottom-4 mx-auto w-fit bg-card border border-accent/30 rounded-xl px-5 py-2.5 shadow-lg flex items-center gap-3 z-50 mt-4">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <span className="text-border">|</span>
-          {params.status === 'pending' && (
+          {params.status === 'open' && (
             <>
               <button onClick={() => handleBulkAccept('manual')} className="text-xs text-green hover:underline bg-transparent border-none cursor-pointer">Accept (manual)</button>
-              <button onClick={() => handleBulkAccept('planned')} className="text-xs text-purple hover:underline bg-transparent border-none cursor-pointer">Backlog</button>
-              <div className="relative">
-                <button onClick={() => setBulkDismissOpen(!bulkDismissOpen)} className="text-xs text-red hover:underline bg-transparent border-none cursor-pointer">Dismiss</button>
-                {bulkDismissOpen && (
-                  <div className="absolute bottom-full left-0 mb-1 bg-card border border-border rounded-lg shadow-lg z-10 p-2 min-w-52">
-                    <textarea
-                      value={bulkDismissNote}
-                      onChange={(e) => setBulkDismissNote(e.target.value)}
-                      placeholder="Shared note (optional)"
-                      rows={2}
-                      className="w-full text-xs bg-bg border border-border rounded p-1.5 mb-1 resize-none"
-                    />
-                    {DISMISS_CATEGORIES.map((dc) => (
-                      <button
-                        key={dc.category}
-                        onClick={() => handleBulkDismiss(dc.category)}
-                        className="block w-full px-3 py-1.5 text-xs text-left hover:bg-accent-soft cursor-pointer rounded border-none bg-transparent"
-                      >{dc.label}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-          {params.status === 'backlog' && (
-            <>
-              <button onClick={() => handleBulkUpdate('manual')} className="text-xs text-green hover:underline bg-transparent border-none cursor-pointer">Implemented</button>
-              <button onClick={() => handleBulkUpdate('execute')} className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer">Execute</button>
+              <button onClick={() => handleBulkAccept('planned')} className="text-xs text-purple hover:underline bg-transparent border-none cursor-pointer">Plan</button>
               <div className="relative">
                 <button onClick={() => setBulkDismissOpen(!bulkDismissOpen)} className="text-xs text-red hover:underline bg-transparent border-none cursor-pointer">Dismiss</button>
                 {bulkDismissOpen && (

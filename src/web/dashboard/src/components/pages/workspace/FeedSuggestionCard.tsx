@@ -7,19 +7,14 @@ import type { Suggestion } from '../../../api/types';
 import type { SelectedItem } from './WorkspaceContext';
 
 const STATUS_BORDER: Record<string, string> = {
-  pending: 'border-l-orange', backlog: 'border-l-purple', snoozed: 'border-l-blue',
+  open: 'border-l-orange', snoozed: 'border-l-blue',
   accepted: 'border-l-green', dismissed: 'border-l-text-muted',
 };
 
 const ACCEPT_OPTIONS = [
   { label: 'Execute', category: 'execute' },
   { label: 'Already done', category: 'manual' },
-  { label: 'Backlog', category: 'planned' },
-];
-
-const BACKLOG_MOVE_OPTIONS = [
-  { label: 'Execute', category: 'execute' },
-  { label: 'Already done', category: 'manual' },
+  { label: 'Plan', category: 'planned' },
 ];
 
 type Props = {
@@ -33,8 +28,7 @@ type Props = {
 
 export function FeedSuggestionCard({ suggestion: s, selected, onSelect, onAccept, onDismiss, onSnooze }: Props) {
   const border = STATUS_BORDER[s.status] ?? 'border-l-border';
-  const isPending = s.status === 'pending';
-  const isBacklog = s.status === 'backlog';
+  const isOpen = s.status === 'open';
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -45,8 +39,8 @@ export function FeedSuggestionCard({ suggestion: s, selected, onSelect, onAccept
     return () => document.removeEventListener('mousedown', close);
   }, [menuOpen]);
 
-  const options = isBacklog ? BACKLOG_MOVE_OPTIONS : ACCEPT_OPTIONS;
-  const buttonLabel = isBacklog ? 'Move' : '✓ Accept';
+  const options = ACCEPT_OPTIONS;
+  const buttonLabel = '✓ Accept';
 
   return (
     <div
@@ -58,12 +52,11 @@ export function FeedSuggestionCard({ suggestion: s, selected, onSelect, onAccept
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm">💡</span>
         <Badge className={SUG_KIND_COLORS[s.kind] ?? SUG_KIND_COLOR_DEFAULT}>{s.kind}</Badge>
-        {isBacklog && <Badge className="text-purple bg-purple/15">backlog</Badge>}
         {s.revalidationVerdict === 'outdated' && <Badge className="text-red bg-red/15">outdated</Badge>}
         <span className="font-medium text-[13px] flex-1 min-w-0 truncate">{s.title}</span>
         <ScoreBar impact={s.impactScore} confidence={s.confidenceScore} risk={s.riskScore} compact />
 
-        {(isPending || isBacklog) && onAccept && (
+        {isOpen && onAccept && (
           <div className="relative" ref={menuRef}>
             <button
               onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
@@ -82,13 +75,13 @@ export function FeedSuggestionCard({ suggestion: s, selected, onSelect, onAccept
             )}
           </div>
         )}
-        {isPending && onSnooze && (
+        {isOpen && onSnooze && (
           <button
             onClick={e => { e.stopPropagation(); onSnooze(s.id); }}
             className="text-xs text-blue hover:underline bg-transparent border-none cursor-pointer"
           >Snooze</button>
         )}
-        {(isPending || isBacklog) && onDismiss && (
+        {isOpen && onDismiss && (
           <button
             onClick={e => { e.stopPropagation(); onDismiss(s.id); }}
             className="text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer"

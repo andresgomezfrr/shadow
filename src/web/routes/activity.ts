@@ -208,16 +208,16 @@ export async function handleActivityRoutes(
     const sinceIso = todayStart.toISOString();
     const profile = db.ensureProfile();
     const repos = db.listRepos();
-    const todayObs = db.listObservations({ status: 'active', limit: 10 });
+    const todayObs = db.listObservations({ status: 'open', limit: 10 });
     const todayMemories = db.listMemories({ archived: false, createdSince: sinceIso, limit: 50 });
-    const suggestions = db.listSuggestions({ status: 'pending', limit: 20 });
+    const suggestions = db.listSuggestions({ status: 'open', limit: 20 });
     const usage = db.getUsageSummary('day');
     const events = db.listPendingEvents();
-    const runsToReview = db.listRuns({ status: 'completed', limit: 5 });
+    const runsToReview = db.listRuns({ status: 'planned', limit: 5 });
     const recentJobs = db.listJobs({ limit: 5 });
     // Active projects with observation/suggestion counts
     const activeProjects = db.listProjects({ status: 'active' }).map(p => {
-      const projObs = db.listObservations({ status: 'active', limit: 50 })
+      const projObs = db.listObservations({ status: 'open', limit: 50 })
         .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === p.id));
       const projSugs = suggestions
         .filter(s => (s.entities ?? []).some(e => e.type === 'project' && e.id === p.id));
@@ -241,10 +241,10 @@ export async function handleActivityRoutes(
       date: todayStart.toISOString().split('T')[0],
       profile,
       activity: {
-        observationsToday: db.countObservations({ status: 'active' }),
+        observationsToday: db.countObservations({ status: 'open' }),
         memoriesCreatedToday: db.countMemories({ archived: false, createdSince: sinceIso }),
         pendingSuggestions: db.countPendingSuggestions(),
-        runsToReview: db.countRuns({ status: 'completed' }),
+        runsToReview: db.countRuns({ status: 'planned' }),
         pendingEvents: events.length,
       },
       topObservations: todayObs,

@@ -12,19 +12,20 @@ import { assertTransition, type RunStatus } from '../../runner/state-machine.js'
 
 // --- Runs ---
 
-export function createRun(db: DatabaseSync, input: { repoId: string; repoIds?: string[]; suggestionId?: string | null; parentRunId?: string | null; kind: string; prompt: string }): RunRecord {
+export function createRun(db: DatabaseSync, input: { repoId: string; repoIds?: string[]; suggestionId?: string | null; taskId?: string | null; parentRunId?: string | null; kind: string; prompt: string }): RunRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db
     .prepare(
-      `INSERT INTO runs (id, repo_id, repo_ids_json, suggestion_id, parent_run_id, kind, prompt, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO runs (id, repo_id, repo_ids_json, suggestion_id, task_id, parent_run_id, kind, prompt, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
       input.repoId,
       JSON.stringify(input.repoIds ?? []),
       input.suggestionId ?? null,
+      input.taskId ?? null,
       input.parentRunId ?? null,
       input.kind,
       input.prompt,
@@ -85,7 +86,7 @@ export function countRuns(db: DatabaseSync, filters?: { status?: string; archive
   return (db.prepare(`SELECT COUNT(*) as total FROM runs ${where}`).get(...values) as { total: number }).total;
 }
 
-export function updateRun(db: DatabaseSync, id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'closedNote' | 'archived' | 'activity' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void {
+export function updateRun(db: DatabaseSync, id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'closedNote' | 'archived' | 'activity' | 'outcome' | 'taskId' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void {
   const sets: string[] = [];
   const values: SQLValue[] = [];
   for (const [key, value] of Object.entries(updates)) {

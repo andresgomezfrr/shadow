@@ -45,7 +45,7 @@ export async function handleObservationRoutes(
       const [, obsId, action] = obsMatch;
       const obs = db.getObservation(obsId);
       if (!obs) return json(res, { error: 'Not found' }, 404), true;
-      const statusMap: Record<string, string> = { acknowledge: 'acknowledged', resolve: 'resolved', reopen: 'active' };
+      const statusMap: Record<string, string> = { acknowledge: 'acknowledged', resolve: 'done', reopen: 'open' };
       db.updateObservationStatus(obsId, statusMap[action]);
       const obsBody = await parseOptionalBody(req, res, OptionalNoteSchema);
       if (!obsBody) return true;

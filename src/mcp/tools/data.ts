@@ -13,7 +13,7 @@ const SearchSchema = z.object({
 });
 
 const RunListSchema = z.object({
-  status: z.string().describe('Filter by status: queued, running, completed, executed, executed_manual, failed, closed, discarded').optional(),
+  status: z.string().describe('Filter by status: queued, running, planned, done, dismissed, failed').optional(),
   repoId: z.string().describe('Filter by repo ID').optional(),
   archived: z.boolean().describe('Include archived runs (default false)').optional(),
   limit: z.number().describe('Max results (default 20)').optional(),
@@ -220,11 +220,11 @@ export function dataTools(ctx: ToolContext): McpTool[] {
 
         const profile = db.ensureProfile();
         const repos = db.listRepos();
-        const observations = db.listObservations({ status: 'active', limit: 100 });
+        const observations = db.listObservations({ status: 'open', limit: 100 });
         const todayObs = observations.filter(o => o.createdAt > sinceIso);
         const memories = db.listMemories({ archived: false });
         const todayMemories = memories.filter(m => m.createdAt > sinceIso);
-        const suggestions = db.listSuggestions({ status: 'pending' });
+        const suggestions = db.listSuggestions({ status: 'open' });
         const usage = db.getUsageSummary('day');
         const events = db.listPendingEvents();
 

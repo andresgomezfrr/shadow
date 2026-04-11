@@ -13,9 +13,8 @@ const STATUS_BADGE: Record<string, string> = {
   running: 'text-blue bg-blue/15',
   failed: 'text-red bg-red/15',
   queued: 'text-orange bg-orange/15',
-  executed: 'text-purple bg-purple/15',
-  executed_manual: 'text-blue bg-blue/15',
-  discarded: 'text-text-muted bg-text-muted/10',
+  done: 'text-purple bg-purple/15',
+  dismissed: 'text-text-muted bg-text-muted/10',
 };
 
 const PHASE_DOT: Record<string, string> = {

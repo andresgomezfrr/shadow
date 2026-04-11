@@ -16,7 +16,7 @@ export function FeedObservationCard({ observation: obs, selected, onSelect, onRe
   const border = OBS_SEVERITY_BORDER[obs.severity] ?? 'border-l-border';
   const icon = OBS_SEVERITY_ICON[obs.severity] ?? '○';
   const iconColor = OBS_SEVERITY_ICON_COLOR[obs.severity] ?? 'text-text-muted';
-  const isActive = obs.status === 'active';
+  const isActive = obs.status === 'open';
 
   return (
     <div

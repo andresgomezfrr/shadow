@@ -40,7 +40,7 @@ export function DashboardPage() {
 
         <MetricCard label="Repos" value={counts.repos} href="/repos" />
         <MetricCard label="Memories" value={counts.memories} href="/memories" />
-        <MetricCard label="Pending suggestions" value={counts.pendingSuggestions} accent href="/suggestions?status=pending" />
+        <MetricCard label="Open suggestions" value={counts.pendingSuggestions} accent href="/suggestions?status=open" />
         <MetricCard label="Contacts" value={counts.contacts} href="/team" />
         <MetricCard label="Systems" value={counts.systems} href="/systems" />
 

@@ -5,7 +5,7 @@ const ObservationsSchema = z.object({
   repoId: z.string().describe('Filter by repository ID').optional(),
   projectId: z.string().describe('Filter by project ID (returns observations linked to this project via entities)').optional(),
   kind: z.string().describe('Filter by kind: improvement, risk, opportunity, pattern, infrastructure, cross_project').optional(),
-  status: z.string().describe('Filter by status: active (default), acknowledged, resolved, expired, all').optional(),
+  status: z.string().describe('Filter by status: open (default), acknowledged, done, expired, all').optional(),
   limit: z.number().describe('Max results (default 20)').optional(),
   offset: z.number().describe('Offset for pagination (default 0)').optional(),
   detail: z.boolean().describe('Include full detail and context JSON (default false)').optional(),
@@ -30,18 +30,18 @@ export function observationTools(ctx: ToolContext): McpTool[] {
   return [
     {
       name: 'shadow_observations',
-      description: 'Returns observations with pagination. Default: active, limit 20, compact. Use detail=true for full context. Filter by projectId to see all observations linked to a project.',
+      description: 'Returns observations with pagination. Default: open, limit 20, compact. Use detail=true for full context. Filter by projectId to see all observations linked to a project.',
       inputSchema: mcpSchema(ObservationsSchema),
       handler: async (params) => {
         const { repoId, projectId, kind, status: rawStatus, limit: rawLimit, offset: rawOffset, detail: rawDetail } = ObservationsSchema.parse(params);
-        const status = rawStatus ?? 'active';
+        const status = rawStatus ?? 'open';
         const limit = rawLimit ?? 20;
         const offset = rawOffset ?? 0;
         const detail = rawDetail ?? false;
         const items = db.listObservations({ repoId, status, kind, projectId, limit, offset });
         const total = db.countObservations({ status: status !== 'all' ? status : undefined, kind, projectId });
         // Touch last_seen_at for active/acknowledged observations being queried
-        const touchable = items.filter(o => o.status === 'active' || o.status === 'acknowledged');
+        const touchable = items.filter(o => o.status === 'open' || o.status === 'acknowledged');
         if (touchable.length > 0) {
           db.touchObservationsLastSeen(touchable.map(o => o.id));
         }
@@ -103,7 +103,7 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         const { observationId: id } = ObservationIdSchema.parse(params);
         const obs = db.getObservation(id);
         if (!obs) return { isError: true, message: `Observation not found: ${id}` };
-        if (obs.status !== 'active') return { isError: true, message: `Observation is ${obs.status}, not active` };
+        if (obs.status !== 'open') return { isError: true, message: `Observation is ${obs.status}, not open` };
         db.updateObservationStatus(id, 'acknowledged');
         db.touchObservationLastSeen(id);
         return { ok: true, observationId: id, status: 'acknowledged' };
@@ -119,15 +119,15 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         const { observationId: id, reason } = ObservationResolveSchema.parse(params);
         const obs = db.getObservation(id);
         if (!obs) return { isError: true, message: `Observation not found: ${id}` };
-        if (obs.status === 'resolved') return { isError: true, message: 'Already resolved' };
-        db.updateObservationStatus(id, 'resolved');
+        if (obs.status === 'done') return { isError: true, message: 'Already done' };
+        db.updateObservationStatus(id, 'done');
         db.createFeedback({ targetKind: 'observation', targetId: id, action: 'resolve', note: reason });
-        return { ok: true, observationId: id, status: 'resolved' };
+        return { ok: true, observationId: id, status: 'done' };
       },
     },
     {
       name: 'shadow_observation_reopen',
-      description: 'Reopen a resolved or acknowledged observation, setting it back to active. Requires trust level >= 1.',
+      description: 'Reopen a done or acknowledged observation, setting it back to open. Requires trust level >= 1.',
       inputSchema: mcpSchema(ObservationIdSchema),
       handler: async (params) => {
         const gate = trustGate(1);
@@ -135,10 +135,10 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         const { observationId: id } = ObservationIdSchema.parse(params);
         const obs = db.getObservation(id);
         if (!obs) return { isError: true, message: `Observation not found: ${id}` };
-        if (obs.status === 'active') return { isError: true, message: 'Already active' };
-        db.updateObservationStatus(id, 'active');
+        if (obs.status === 'open') return { isError: true, message: 'Already open' };
+        db.updateObservationStatus(id, 'open');
         db.touchObservationLastSeen(id);
-        return { ok: true, observationId: id, status: 'active' };
+        return { ok: true, observationId: id, status: 'open' };
       },
     },
   ];

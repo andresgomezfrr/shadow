@@ -24,11 +24,11 @@ export async function activityReflect(
     .filter(f => f.note && f.createdAt > sinceIso)
     .map(f => `- [${f.targetKind}] ${f.action}: ${f.note}`);
 
-  const newObservations = ctx.db.listObservations({ status: 'active', limit: 20 })
+  const newObservations = ctx.db.listObservations({ status: 'open', limit: 20 })
     .filter(o => o.createdAt > sinceIso)
     .map(o => `- [${o.kind}/${o.severity}] ${o.title}`);
 
-  const resolvedObs = ctx.db.listObservations({ status: 'resolved', limit: 10 })
+  const resolvedObs = ctx.db.listObservations({ status: 'done', limit: 10 })
     .filter(o => o.createdAt > sinceIso)
     .map(o => `- [resolved] ${o.title}`);
 

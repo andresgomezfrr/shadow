@@ -8,19 +8,15 @@
 export type RunStatus =
   | 'queued'
   | 'running'
-  | 'completed'
-  | 'executed'
-  | 'executed_manual'
-  | 'discarded'
-  | 'failed'
-  | 'closed';
+  | 'planned'
+  | 'done'
+  | 'dismissed'
+  | 'failed';
 
 export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
-  'executed',
-  'executed_manual',
-  'discarded',
+  'done',
+  'dismissed',
   'failed',
-  'closed',
 ]);
 
 /**
@@ -28,14 +24,12 @@ export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
  * Each key maps to the set of statuses it can transition TO.
  */
 const TRANSITIONS: Record<RunStatus, ReadonlySet<RunStatus>> = {
-  queued:          new Set(['running', 'failed']),
-  running:         new Set(['completed', 'executed', 'failed']),
-  completed:       new Set(['executed', 'executed_manual', 'discarded', 'closed']),
-  executed:        new Set(['closed']),
-  executed_manual: new Set(['closed']),
-  discarded:       new Set(),  // terminal
-  failed:          new Set(),  // terminal
-  closed:          new Set(),  // terminal
+  queued:    new Set(['running', 'failed']),
+  running:   new Set(['planned', 'done', 'failed']),
+  planned:   new Set(['done', 'dismissed', 'failed']),
+  done:      new Set(),  // terminal
+  dismissed: new Set(),  // terminal
+  failed:    new Set(),  // terminal
 };
 
 export class RunTransitionError extends Error {
@@ -63,9 +57,9 @@ export function assertTransition(from: string, to: RunStatus): void {
  *
  * Rules:
  * - If ANY child is 'failed' → parent = 'failed'
- * - Children in 'discarded' are excluded from aggregation
- * - If ALL non-discarded children are terminal → parent = 'executed'
- * - If all children are 'discarded' (none left) → parent = 'discarded'
+ * - Children in 'dismissed' are excluded from aggregation
+ * - If ALL non-dismissed children are terminal → parent = 'done'
+ * - If all children are 'dismissed' (none left) → parent = 'dismissed'
  * - Otherwise (some children still pending/running) → null (don't update yet)
  */
 export function aggregateParentStatus(
@@ -73,20 +67,20 @@ export function aggregateParentStatus(
 ): RunStatus | null {
   if (children.length === 0) return null;
 
-  const nonDiscarded = children.filter((c) => c.status !== 'discarded');
+  const nonDismissed = children.filter((c) => c.status !== 'dismissed');
 
-  // All children discarded → parent is discarded too
-  if (nonDiscarded.length === 0) return 'discarded';
+  // All children dismissed → parent is dismissed too
+  if (nonDismissed.length === 0) return 'dismissed';
 
   // Any child failed → parent fails
-  if (nonDiscarded.some((c) => c.status === 'failed')) return 'failed';
+  if (nonDismissed.some((c) => c.status === 'failed')) return 'failed';
 
-  // Check if all non-discarded children are terminal
-  const allTerminal = nonDiscarded.every((c) =>
+  // Check if all non-dismissed children are terminal
+  const allTerminal = nonDismissed.every((c) =>
     TERMINAL_STATUSES.has(c.status as RunStatus),
   );
 
-  if (allTerminal) return 'executed';
+  if (allTerminal) return 'done';
 
   // Some children still in progress
   return null;

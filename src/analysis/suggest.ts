@@ -54,7 +54,7 @@ export async function activitySuggest(
     const globalDismissPatterns = ctx.db.getDismissPatterns();
     const allPatterns = globalDismissPatterns.length > dismissPatterns.length ? globalDismissPatterns : dismissPatterns;
     const acceptDismissRate = ctx.db.getAcceptDismissRate(30);
-    const pendingSuggestions = ctx.db.listSuggestions({ status: 'pending', repoId });
+    const pendingSuggestions = ctx.db.listSuggestions({ status: 'open', repoId });
     const recentDismissed = ctx.db.listSuggestions({ status: 'dismissed' }).slice(0, 10);
     const recentAccepted = ctx.db.listSuggestions({ status: 'accepted' }).slice(0, 5);
 
@@ -235,7 +235,7 @@ export async function activitySuggest(
 
     // --- Persist kept candidates (with semantic dedup) ---
     for (const sug of candidates) {
-      const vsPending = await checkSuggestionDuplicate(ctx.db, { kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd }, 'pending');
+      const vsPending = await checkSuggestionDuplicate(ctx.db, { kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd }, 'open');
       if (vsPending.action !== 'create') {
         console.error(`[shadow:suggest] Skip (similar to pending, ${(vsPending.similarity * 100).toFixed(0)}%): ${sug.title}`);
         continue;

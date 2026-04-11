@@ -8,7 +8,7 @@ export type SelectedItem = {
   data: Run | Suggestion | Observation | Task;
 };
 
-export type ActiveFilter = 'all' | 'run' | 'task' | 'task-todo' | 'task-in-progress' | 'task-blocked' | 'task-closed' | 'suggestion' | 'observation' | 'backlog' | 'snoozed' | 'acknowledged';
+export type ActiveFilter = 'all' | 'run' | 'run-active' | 'run-done' | 'run-failed' | 'task' | 'task-open' | 'task-active' | 'task-blocked' | 'task-done' | 'suggestion' | 'snoozed' | 'sug-accepted' | 'observation' | 'acknowledged' | 'obs-done';
 
 type WorkspaceState = {
   selectedProjectId: string | null;

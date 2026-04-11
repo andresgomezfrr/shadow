@@ -10,13 +10,13 @@ import { useState, useCallback } from 'react';
 import type { Task } from '../../api/types';
 
 const STATUS_COLORS: Record<string, string> = {
-  todo: 'text-text-muted bg-border',
-  in_progress: 'text-blue bg-blue/15',
+  open: 'text-text-muted bg-border',
+  active: 'text-blue bg-blue/15',
   blocked: 'text-red bg-red/15',
-  closed: 'text-green bg-green/15',
+  done: 'text-green bg-green/15',
 };
 
-const ALL_STATUSES = ['todo', 'in_progress', 'blocked', 'closed'] as const;
+const ALL_STATUSES = ['open', 'active', 'blocked', 'done'] as const;
 const PAGE_SIZE = 20;
 
 export function TasksPage() {
@@ -53,7 +53,7 @@ export function TasksPage() {
   }, [newTitle, newRef, refresh]);
 
   const handleStatusChange = useCallback(async (id: string, newStatus: string) => {
-    await updateTask(id, { status: newStatus, ...(newStatus === 'closed' ? { closedAt: new Date().toISOString() } : { closedAt: null }) });
+    await updateTask(id, { status: newStatus, ...(newStatus === 'done' ? { closedAt: new Date().toISOString() } : { closedAt: null }) });
     refresh();
   }, [refresh]);
 
@@ -65,10 +65,10 @@ export function TasksPage() {
 
   const filterOptions = [
     { label: 'All', value: 'all' },
-    { label: 'Todo', value: 'todo' },
-    { label: 'In Progress', value: 'in_progress', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
+    { label: 'Open', value: 'open' },
+    { label: 'Active', value: 'active', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
     { label: 'Blocked', value: 'blocked', dotColor: 'bg-red', activeClass: 'bg-red/15 text-red' },
-    { label: 'Closed', value: 'closed', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
+    { label: 'Done', value: 'done', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
   ];
 
   return (
@@ -212,12 +212,12 @@ function TaskCard({ task: t, expanded, onToggle, onStatusChange, onDelete, repoN
                 key={s}
                 onClick={() => onStatusChange(t.id, s)}
                 className={`px-3 py-1 rounded-lg text-xs font-medium border-none cursor-pointer transition-all hover:brightness-110 ${
-                  s === 'closed' ? 'bg-green text-bg' :
-                  s === 'in_progress' ? 'bg-blue text-bg' :
+                  s === 'done' ? 'bg-green text-bg' :
+                  s === 'active' ? 'bg-blue text-bg' :
                   s === 'blocked' ? 'bg-red text-bg' :
                   'bg-border text-text'
                 }`}
-              >{s === 'in_progress' ? 'Start' : s === 'blocked' ? 'Block' : s === 'closed' ? 'Close' : 'Todo'}</button>
+              >{s === 'active' ? 'Start' : s === 'blocked' ? 'Block' : s === 'done' ? 'Done' : 'Open'}</button>
             ))}
             <button onClick={() => onDelete(t.id)} className="ml-auto text-xs text-text-muted hover:text-red bg-transparent border-none cursor-pointer">Delete</button>
           </div>

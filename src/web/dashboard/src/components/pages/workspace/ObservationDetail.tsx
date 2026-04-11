@@ -109,7 +109,7 @@ export function ObservationDetail({ observationId, onRefresh }: { observationId:
 
       {/* Actions */}
       <div className="flex items-center gap-3 border-t border-border pt-3">
-        {obs.status === 'active' && (
+        {obs.status === 'open' && (
           <>
             <button onClick={handleResolve} className="px-4 py-2 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer hover:brightness-110">Resolve</button>
             <button onClick={handleAck} className="text-xs text-blue hover:underline bg-transparent border-none cursor-pointer">Acknowledge</button>
@@ -121,7 +121,7 @@ export function ObservationDetail({ observationId, onRefresh }: { observationId:
             <button onClick={handleReopen} className="text-xs text-orange hover:underline bg-transparent border-none cursor-pointer">Reopen</button>
           </>
         )}
-        {obs.status === 'resolved' && (
+        {obs.status === 'done' && (
           <button onClick={handleReopen} className="text-xs text-text-muted hover:text-orange bg-transparent border-none cursor-pointer">Reopen</button>
         )}
       </div>

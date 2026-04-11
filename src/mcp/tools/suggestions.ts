@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpSchema, type McpTool, type ToolContext } from './types.js';
 
 const SuggestionsSchema = z.object({
-  status: z.string().describe('Filter by status: pending (default), accepted, dismissed, snoozed').optional(),
+  status: z.string().describe('Filter by status: open (default), accepted, dismissed, snoozed').optional(),
   projectId: z.string().describe('Filter by project ID (returns suggestions linked to this project via entities)').optional(),
   repoId: z.string().describe('Filter by repository ID').optional(),
   limit: z.number().describe('Max results (default 20)').optional(),
@@ -13,11 +13,6 @@ const SuggestionsSchema = z.object({
 const SuggestAcceptSchema = z.object({
   suggestionId: z.string().describe('The suggestion ID to accept'),
   category: z.string().describe('Accept category: execute (run via runner, default), manual (already implemented), planned (add to backlog)').optional(),
-});
-
-const SuggestUpdateSchema = z.object({
-  suggestionId: z.string().describe('The suggestion ID to update'),
-  category: z.enum(['execute', 'manual', 'planned']).describe('New category: execute (run via runner), manual (already implemented), planned (backlog)'),
 });
 
 const SuggestDismissSchema = z.object({
@@ -37,11 +32,11 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
   return [
     {
       name: 'shadow_suggestions',
-      description: 'Returns suggestions with pagination. Default: pending, limit 20, compact (no body). Use detail=true for full response. Filter by projectId to see suggestions linked to a project.',
+      description: 'Returns suggestions with pagination. Default: open, limit 20, compact (no body). Use detail=true for full response. Filter by projectId to see suggestions linked to a project.',
       inputSchema: mcpSchema(SuggestionsSchema),
       handler: async (params) => {
         const { status: rawStatus, projectId, repoId, limit: rawLimit, offset: rawOffset, detail: rawDetail } = SuggestionsSchema.parse(params);
-        const status = rawStatus ?? 'pending';
+        const status = rawStatus ?? 'open';
         const limit = rawLimit ?? 20;
         const offset = rawOffset ?? 0;
         const detail = rawDetail ?? false;
@@ -75,7 +70,7 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
 
         const { acceptSuggestion } = await import('../../suggestion/engine.js');
         const result = acceptSuggestion(db, suggestionId, category);
-        if (!result.ok) return { isError: true, message: 'Cannot accept — suggestion not pending' };
+        if (!result.ok) return { isError: true, message: 'Cannot accept — suggestion not open' };
 
         return { accepted: true, suggestionId, runCreated: result.runCreated };
       },
@@ -96,7 +91,7 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
 
         const { dismissSuggestion } = await import('../../suggestion/engine.js');
         const result = await dismissSuggestion(db, suggestionId, note, category);
-        if (!result.ok) return { isError: true, message: 'Cannot dismiss — suggestion not pending' };
+        if (!result.ok) return { isError: true, message: 'Cannot dismiss — suggestion not open' };
 
         return { dismissed: true, suggestionId };
       },
@@ -119,30 +114,9 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
         const { snoozeSuggestion } = await import('../../suggestion/engine.js');
         const until = new Date(Date.now() + hours * 3600_000).toISOString();
         const result = snoozeSuggestion(db, suggestionId, until);
-        if (!result.ok) return { isError: true, message: 'Cannot snooze — suggestion not pending' };
+        if (!result.ok) return { isError: true, message: 'Cannot snooze — suggestion not open' };
 
         return { snoozed: true, suggestionId, until };
-      },
-    },
-    {
-      name: 'shadow_suggest_update',
-      description: 'Update category of an accepted/backlog suggestion (e.g. move from backlog to implemented). Requires trust level >= 1.',
-      inputSchema: mcpSchema(SuggestUpdateSchema),
-      handler: async (params) => {
-        const gate = trustGate(1);
-        if (!gate.ok) return gate.error;
-
-        const { suggestionId, category } = SuggestUpdateSchema.parse(params);
-        const suggestion = db.getSuggestion(suggestionId);
-        if (!suggestion) {
-          return { isError: true, message: `Suggestion not found: ${suggestionId}` };
-        }
-
-        const { updateSuggestionCategory } = await import('../../suggestion/engine.js');
-        const result = updateSuggestionCategory(db, suggestionId, category);
-        if (!result.ok) return { isError: true, message: 'Cannot update — suggestion not in backlog or accepted status' };
-
-        return { updated: true, suggestionId, category, ...(result.runCreated ? { runCreated: result.runCreated } : {}) };
       },
     },
   ];

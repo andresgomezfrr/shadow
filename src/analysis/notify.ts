@@ -9,7 +9,7 @@ export async function activityNotify(
   const proactivityLevel = ctx.profile.proactivityLevel;
 
   // Check for pending suggestions that haven't been shown yet
-  const pendingSuggestions = ctx.db.listSuggestions({ status: 'pending' });
+  const pendingSuggestions = ctx.db.listSuggestions({ status: 'open' });
   const unshownSuggestions = pendingSuggestions.filter((s) => !s.shownAt);
 
   for (const suggestion of unshownSuggestions) {
@@ -33,7 +33,7 @@ export async function activityNotify(
   }
 
   // Check for high-severity active observations that should trigger immediate notifications
-  const recentObservations = ctx.db.listObservations({ status: 'active', limit: 50 });
+  const recentObservations = ctx.db.listObservations({ status: 'open', limit: 50 });
   const criticalObservations = recentObservations.filter(
     (obs) => obs.severity === 'high' || obs.severity === 'critical',
   );

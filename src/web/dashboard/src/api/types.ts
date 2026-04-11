@@ -83,6 +83,7 @@ export type StatusResponse = {
     pendingSuggestions: number;
     activeObservations: number;
     runsToReview: number;
+    activeTasks: number;
     repos: number;
     contacts: number;
     systems: number;
@@ -173,7 +174,7 @@ export type FeedItem = {
 export type FeedResponse = {
   items: FeedItem[];
   total: number;
-  counts: { runs: number; tasks: number; tasksTodo: number; tasksInProgress: number; tasksBlocked: number; tasksClosed: number; suggestions: number; observations: number; backlog: number; snoozed: number; acknowledged: number };
+  counts: { runs: number; runsActive: number; runsDone: number; runsFailed: number; tasks: number; tasksOpen: number; tasksActive: number; tasksBlocked: number; tasksDone: number; suggestions: number; sugAccepted: number; observations: number; obsDone: number; snoozed: number; acknowledged: number };
 };
 
 export type RunContext = {
@@ -252,8 +253,8 @@ export const SEVERITY_COLORS: Record<string, string> = {
 };
 
 export const STATUS_COLORS: Record<string, string> = {
-  active: 'text-green bg-green/15',
+  open: 'text-green bg-green/15',
   acknowledged: 'text-blue bg-blue/15',
-  resolved: 'text-text-dim bg-text-muted/15',
+  done: 'text-text-dim bg-text-muted/15',
   expired: 'text-text-muted bg-text-muted/10',
 };

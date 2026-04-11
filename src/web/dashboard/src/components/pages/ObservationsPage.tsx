@@ -12,9 +12,9 @@ import { useHighlight } from '../../hooks/useHighlight';
 import { timeAgo } from '../../utils/format';
 
 const STATUS_OPTIONS = [
-  { label: 'Active', value: 'active', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
+  { label: 'Open', value: 'open', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
   { label: 'Acknowledged', value: 'acknowledged', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
-  { label: 'Resolved', value: 'resolved', dotColor: 'bg-text-muted', activeClass: 'bg-text-muted/15 text-text-muted' },
+  { label: 'Done', value: 'done', dotColor: 'bg-text-muted', activeClass: 'bg-text-muted/15 text-text-muted' },
   { label: 'All', value: 'all' },
 ];
 
@@ -26,11 +26,11 @@ const SEVERITY_OPTIONS = [
 ];
 
 
-const TERMINAL_STATUSES = new Set(['resolved']);
+const TERMINAL_STATUSES = new Set(['done']);
 const PAGE_SIZE = 20;
 
 export function ObservationsPage() {
-  const { params, setParam } = useFilterParams({ status: 'active', severity: '', kind: '', repoId: '', projectId: '', offset: '0' });
+  const { params, setParam } = useFilterParams({ status: 'open', severity: '', kind: '', repoId: '', projectId: '', offset: '0' });
   const { data: rawData, refresh } = useApi(
     () => fetchObservations({ limit: PAGE_SIZE, offset: Number(params.offset) || 0, status: params.status, severity: params.severity || undefined, kind: params.kind || undefined, repoId: params.repoId || undefined, projectId: params.projectId || undefined }),
     [params.status, params.severity, params.kind, params.repoId, params.projectId, params.offset],
@@ -91,8 +91,8 @@ export function ObservationsPage() {
         <div className="text-text-dim">Loading...</div>
       ) : data.length === 0 ? (
         <EmptyState
-          title={params.status === 'active' ? 'All clear' : 'No observations'}
-          description={params.status === 'active' ? 'No active observations' : `No ${params.status === 'all' ? '' : params.status + ' '}observations found`}
+          title={params.status === 'open' ? 'All clear' : 'No observations'}
+          description={params.status === 'open' ? 'No open observations' : `No ${params.status === 'all' ? '' : params.status + ' '}observations found`}
         />
       ) : (
         <div className="flex flex-col gap-2">
@@ -118,7 +118,7 @@ export function ObservationsPage() {
                   {obs.votes > 1 && <Badge title="Times seen" className="text-orange bg-orange/15">{obs.votes}x</Badge>}
 
                   {/* Inline actions */}
-                  {obs.status === 'active' && (
+                  {obs.status === 'open' && (
                     <>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleResolve(obs.id); }}
@@ -142,7 +142,7 @@ export function ObservationsPage() {
                       >Reopen</button>
                     </>
                   )}
-                  {obs.status === 'resolved' && (
+                  {obs.status === 'done' && (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleReopen(obs.id); }}
                       className="text-xs text-text-muted hover:text-orange bg-transparent border-none cursor-pointer"

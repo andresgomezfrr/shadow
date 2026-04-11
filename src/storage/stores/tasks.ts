@@ -11,6 +11,7 @@ type CreateTaskInput = {
   repoIds?: string[];
   projectId?: string | null;
   entities?: { type: string; id: string }[];
+  suggestionId?: string | null;
   sessionId?: string | null;
   sessionRepoPath?: string | null;
   prUrls?: string[];
@@ -20,17 +21,18 @@ export function createTask(db: DatabaseSync, input: CreateTaskInput): TaskRecord
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO tasks (id, title, status, context_md, external_refs_json, repo_ids_json, project_id, entities_json, session_id, session_repo_path, pr_urls_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (id, title, status, context_md, external_refs_json, repo_ids_json, project_id, entities_json, suggestion_id, session_id, session_repo_path, pr_urls_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     input.title,
-    input.status ?? 'todo',
+    input.status ?? 'open',
     input.contextMd ?? null,
     JSON.stringify(input.externalRefs ?? []),
     JSON.stringify(input.repoIds ?? []),
     input.projectId ?? null,
     JSON.stringify(input.entities ?? []),
+    input.suggestionId ?? null,
     input.sessionId ?? null,
     input.sessionRepoPath ?? null,
     JSON.stringify(input.prUrls ?? []),
@@ -45,12 +47,14 @@ export function getTask(db: DatabaseSync, id: string): TaskRecord | null {
   return row ? mapTask(row) : null;
 }
 
-export function listTasks(db: DatabaseSync, filters?: { status?: string; repoId?: string; projectId?: string; limit?: number; offset?: number }): TaskRecord[] {
+export function listTasks(db: DatabaseSync, filters?: { status?: string; repoId?: string; projectId?: string; archived?: boolean; limit?: number; offset?: number }): TaskRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
   if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
   if (filters?.repoId) { clauses.push('repo_ids_json LIKE ?'); values.push(`%${filters.repoId}%`); }
   if (filters?.projectId) { clauses.push('project_id = ?'); values.push(filters.projectId); }
+  if (filters?.archived === true) { clauses.push('archived = 1'); }
+  else if (filters?.archived === false) { clauses.push('archived = 0'); }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
   const pagination = ` LIMIT ${filters?.limit ?? 50} OFFSET ${filters?.offset ?? 0}`;
   return db
@@ -69,11 +73,11 @@ export function countTasks(db: DatabaseSync, filters?: { status?: string; repoId
   return (db.prepare(`SELECT COUNT(*) as total FROM tasks ${where}`).get(...values) as { total: number }).total;
 }
 
-export function updateTask(db: DatabaseSync, id: string, updates: Partial<Pick<TaskRecord, 'title' | 'status' | 'contextMd' | 'externalRefs' | 'repoIds' | 'projectId' | 'entities' | 'sessionId' | 'sessionRepoPath' | 'prUrls' | 'closedAt'>>): void {
+export function updateTask(db: DatabaseSync, id: string, updates: Partial<Pick<TaskRecord, 'title' | 'status' | 'contextMd' | 'externalRefs' | 'repoIds' | 'projectId' | 'entities' | 'suggestionId' | 'sessionId' | 'sessionRepoPath' | 'prUrls' | 'archived' | 'closedAt'>>): void {
   const columnMap: Record<string, string> = {
     title: 'title', status: 'status', contextMd: 'context_md', externalRefs: 'external_refs_json',
-    repoIds: 'repo_ids_json', projectId: 'project_id', entities: 'entities_json',
-    sessionId: 'session_id', sessionRepoPath: 'session_repo_path', prUrls: 'pr_urls_json', closedAt: 'closed_at',
+    repoIds: 'repo_ids_json', projectId: 'project_id', entities: 'entities_json', suggestionId: 'suggestion_id',
+    sessionId: 'session_id', sessionRepoPath: 'session_repo_path', prUrls: 'pr_urls_json', archived: 'archived', closedAt: 'closed_at',
   };
   const sets: string[] = ['updated_at = ?'];
   const values: SQLValue[] = [new Date().toISOString()];

@@ -246,7 +246,7 @@ export function ProjectDetailPage() {
         <div>
           <h2 className="text-lg font-medium mb-3">Observations ({data.counts.observations})</h2>
           {data.observations.length === 0 ? (
-            <div className="text-text-dim text-sm">No active observations</div>
+            <div className="text-text-dim text-sm">No open observations</div>
           ) : (
             <div className="space-y-2">
               {data.observations.map((o) => (
@@ -270,7 +270,7 @@ export function ProjectDetailPage() {
         <div>
           <h2 className="text-lg font-medium mb-3">Suggestions ({data.counts.suggestions})</h2>
           {data.suggestions.length === 0 ? (
-            <div className="text-text-dim text-sm">No pending suggestions</div>
+            <div className="text-text-dim text-sm">No open suggestions</div>
           ) : (
             <div className="space-y-2">
               {data.suggestions.map((s) => (

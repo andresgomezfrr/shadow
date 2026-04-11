@@ -21,8 +21,8 @@ export function ProjectsPage() {
   const { data: projects } = useApi(fetchProjects, [], 30_000);
   const { data: repos } = useApi(fetchRepos, [], 60_000);
   const { data: systems } = useApi(fetchSystems, [], 60_000);
-  const { data: obsData } = useApi(() => fetchObservations({ status: 'active', limit: 100 }), [], 60_000);
-  const { data: sugData } = useApi(() => fetchSuggestions({ status: 'pending', limit: 100 }), [], 60_000);
+  const { data: obsData } = useApi(() => fetchObservations({ status: 'open', limit: 100 }), [], 60_000);
+  const { data: sugData } = useApi(() => fetchSuggestions({ status: 'open', limit: 100 }), [], 60_000);
 
   const repoName = (id: string) => repos?.find((r) => r.id === id)?.name ?? id.slice(0, 8);
   const systemName = (id: string) => systems?.find((s) => s.id === id)?.name ?? id.slice(0, 8);

@@ -114,8 +114,8 @@ export function GuideConcepts() {
           ))}
         </div>
         <p className="text-sm text-text-dim">
-          Lifecycle: <span className="text-text">active</span> &rarr; <span className="text-text">acknowledged</span> (seen)
-          &rarr; <span className="text-text">resolved</span> (fixed). Auto-expires by severity:
+          Lifecycle: <span className="text-text">open</span> &rarr; <span className="text-text">acknowledged</span> (seen)
+          &rarr; <span className="text-text">done</span> (resolved). Auto-expires by severity:
           info = 7 days, warning = 14 days, high = never.
           You can vote, acknowledge, resolve, or reopen observations.
         </p>
@@ -129,7 +129,7 @@ export function GuideConcepts() {
           after the heartbeat. They&apos;re scored on impact, confidence, and risk.
         </p>
         <p className="text-sm text-text-dim mb-3">
-          Lifecycle: <span className="text-text">pending</span> &rarr;
+          Lifecycle: <span className="text-text">open</span> &rarr;
           <span className="text-text"> accepted</span> (creates a run) |
           <span className="text-text"> dismissed</span> (with reason) |
           <span className="text-text"> snoozed</span> (delay for N hours).
@@ -155,7 +155,7 @@ export function GuideConcepts() {
         <p className="text-sm text-text-dim mb-3">
           The <span className="text-text">Workspace</span> is the developer command center — a unified feed of all
           pending runs, tasks, suggestions, and observations sorted by priority. Quick filter tabs let you focus on one type,
-          with sub-filters per status (e.g. Suggestions: Pending/Backlog/Snoozed, Tasks: Todo/In Progress/Blocked/Closed).
+          with sub-filters per status (e.g. Suggestions: Open/Snoozed, Tasks: Open/Active/Blocked/Done).
           Project chips filter by active project.
         </p>
         <p className="text-sm text-text-dim mb-3">
@@ -175,7 +175,7 @@ export function GuideConcepts() {
         <p className="text-sm text-text-dim">
           Run lifecycle: <span className="text-text">Plan</span> &rarr; <span className="text-text">Execute</span> (creates worktree) &rarr;
           <span className="text-text"> Verify</span> (build/lint/test) &rarr; <span className="text-text">PR</span> (draft via gh CLI).
-          A journey can be <span className="text-text">closed</span> at any point — not everything needs a PR.
+          A journey can be <span className="text-text">done</span> (closed) at any point — not everything needs a PR.
           Runs can also be created directly via the <code className="text-accent bg-bg px-1.5 py-0.5 rounded text-xs">shadow_run_create</code> MCP tool.
         </p>
       </section>
@@ -269,8 +269,8 @@ const OBSERVATION_KINDS: [string, string][] = [
 
 const CONTEXT_PANEL_TYPES: [string, string, string][] = [
   ['▶', 'Run Journey', 'Vertical timeline: origin observation → suggestion → plan → execution attempts → verification → PR. Session and worktree info always visible.'],
-  ['📋', 'Task Detail', 'Work container: context, external refs (Jira, etc.), session resume command, PRs, related observations/suggestions/runs. Status: todo → in_progress → blocked → closed (free transitions).'],
-  ['💡', 'Suggestion Detail', 'Full summary, reasoning, scores, source observation, linked runs. Re-evaluate button to check freshness. Accept dropdown: Execute/Already done/Backlog.'],
+  ['📋', 'Task Detail', 'Work container: context, external refs (Jira, etc.), session resume command, PRs, related observations/suggestions/runs. Status: open → active → blocked → done (free transitions).'],
+  ['💡', 'Suggestion Detail', 'Full summary, reasoning, scores, source observation, linked runs. Re-evaluate button to check freshness. Accept dropdown: Execute/Already done/Plan.'],
   ['👁', 'Observation Detail', 'Description, context, severity, generated suggestions (1:N), linked runs.'],
 ];
 

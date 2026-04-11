@@ -35,7 +35,7 @@ export function WorkspaceFeed() {
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
-  const counts = data?.counts ?? { runs: 0, tasks: 0, tasksTodo: 0, tasksInProgress: 0, tasksBlocked: 0, tasksClosed: 0, suggestions: 0, observations: 0, backlog: 0, snoozed: 0, acknowledged: 0 };
+  const counts = data?.counts ?? { runs: 0, runsActive: 0, runsDone: 0, runsFailed: 0, tasks: 0, tasksOpen: 0, tasksActive: 0, tasksBlocked: 0, tasksDone: 0, suggestions: 0, sugAccepted: 0, observations: 0, obsDone: 0, snoozed: 0, acknowledged: 0 };
   const allCount = counts.runs + counts.tasks + counts.suggestions + counts.observations;
 
   const handleSelect = useCallback((id: string, type: string) => {
@@ -76,37 +76,44 @@ export function WorkspaceFeed() {
 
   // Map sub-filter values to their parent for highlight
   const parentFilter: Record<string, string> = {
-    all: 'all', run: 'run',
-    task: 'task', 'task-todo': 'task', 'task-in-progress': 'task', 'task-blocked': 'task', 'task-closed': 'task',
-    suggestion: 'suggestion', backlog: 'suggestion', snoozed: 'suggestion',
-    observation: 'observation', acknowledged: 'observation',
+    all: 'all', run: 'run', 'run-active': 'run', 'run-done': 'run', 'run-failed': 'run',
+    task: 'task', 'task-open': 'task', 'task-active': 'task', 'task-blocked': 'task', 'task-done': 'task',
+    suggestion: 'suggestion', snoozed: 'suggestion', 'sug-accepted': 'suggestion',
+    observation: 'observation', acknowledged: 'observation', 'obs-done': 'observation',
   };
   const activeParent = parentFilter[state.activeFilter] ?? 'all';
 
   const filterOptions = [
     { label: `All (${allCount})`, value: 'all' },
     { label: `Runs (${counts.runs})`, value: 'run', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
-    { label: `Tasks (${counts.tasks + counts.tasksClosed})`, value: 'task', dotColor: 'bg-teal-400', activeClass: 'bg-teal-500/15 text-teal-300' },
-    { label: `Suggestions (${counts.suggestions + counts.backlog + counts.snoozed})`, value: 'suggestion', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
+    { label: `Tasks (${counts.tasks + counts.tasksDone})`, value: 'task', dotColor: 'bg-teal-400', activeClass: 'bg-teal-500/15 text-teal-300' },
+    { label: `Suggestions (${counts.suggestions + counts.snoozed})`, value: 'suggestion', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
     { label: `Observations (${counts.observations + counts.acknowledged})`, value: 'observation', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
   ];
 
+  const runSubTabs = [
+    { label: `Active (${counts.runsActive})`, value: 'run-active' },
+    { label: `Done (${counts.runsDone})`, value: 'run-done' },
+    { label: `Failed (${counts.runsFailed})`, value: 'run-failed' },
+  ];
+
   const taskSubTabs = [
-    { label: `Todo (${counts.tasksTodo})`, value: 'task-todo' },
-    { label: `In Progress (${counts.tasksInProgress})`, value: 'task-in-progress' },
+    { label: `Open (${counts.tasksOpen})`, value: 'task-open' },
+    { label: `Active (${counts.tasksActive})`, value: 'task-active' },
     { label: `Blocked (${counts.tasksBlocked})`, value: 'task-blocked' },
-    { label: `Closed (${counts.tasksClosed})`, value: 'task-closed' },
+    { label: `Done (${counts.tasksDone})`, value: 'task-done' },
   ];
 
   const suggestionSubTabs = [
-    { label: `Pending (${counts.suggestions})`, value: 'suggestion' },
-    { label: `Backlog (${counts.backlog})`, value: 'backlog' },
+    { label: `Open (${counts.suggestions})`, value: 'suggestion' },
     { label: `Snoozed (${counts.snoozed})`, value: 'snoozed' },
+    { label: `Accepted (${counts.sugAccepted})`, value: 'sug-accepted' },
   ];
 
   const observationSubTabs = [
-    { label: `Active (${counts.observations})`, value: 'observation' },
+    { label: `Open (${counts.observations})`, value: 'observation' },
     { label: `Acknowledged (${counts.acknowledged})`, value: 'acknowledged' },
+    { label: `Done (${counts.obsDone})`, value: 'obs-done' },
   ];
 
   return (
@@ -116,6 +123,23 @@ export function WorkspaceFeed() {
         active={activeParent}
         onChange={v => setFilter(v as typeof state.activeFilter)}
       />
+
+      {/* Sub-tabs for runs */}
+      {(activeParent === 'run') && (
+        <div className="flex gap-1 ml-1">
+          {runSubTabs.map(t => (
+            <button
+              key={t.value}
+              onClick={() => setFilter(t.value as typeof state.activeFilter)}
+              className={`px-2.5 py-1 rounded text-[11px] border-none cursor-pointer transition-colors ${
+                state.activeFilter === t.value
+                  ? 'bg-green/15 text-green font-medium'
+                  : 'bg-transparent text-text-muted hover:text-text'
+              }`}
+            >{t.label}</button>
+          ))}
+        </div>
+      )}
 
       {/* Sub-tabs for tasks */}
       {(activeParent === 'task') && (

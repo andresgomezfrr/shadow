@@ -1,5 +1,5 @@
 import { useApi } from '../../../hooks/useApi';
-import { fetchTaskContext, updateTask, closeTask } from '../../../api/client';
+import { fetchTaskContext, updateTask, closeTask, archiveTask } from '../../../api/client';
 import { Badge } from '../../common/Badge';
 import { Markdown } from '../../common/Markdown';
 import { timeAgo } from '../../../utils/format';
@@ -7,13 +7,13 @@ import { useState, useCallback } from 'react';
 import { useWorkspace } from './WorkspaceContext';
 
 const STATUS_COLORS: Record<string, string> = {
-  todo: 'text-text-muted bg-border',
-  in_progress: 'text-blue bg-blue/15',
+  open: 'text-text-muted bg-border',
+  active: 'text-blue bg-blue/15',
   blocked: 'text-red bg-red/15',
-  closed: 'text-green bg-green/15',
+  done: 'text-green bg-green/15',
 };
 
-const ALL_STATUSES = ['todo', 'in_progress', 'blocked', 'closed'] as const;
+const ALL_STATUSES = ['open', 'active', 'blocked', 'done'] as const;
 
 export function TaskDetail({ taskId, onRefresh }: { taskId: string; onRefresh?: () => void }) {
   const { data: ctx, refresh } = useApi(() => fetchTaskContext(taskId), [taskId], 30_000);
@@ -23,11 +23,16 @@ export function TaskDetail({ taskId, onRefresh }: { taskId: string; onRefresh?: 
   const doRefresh = useCallback(() => { refresh(); onRefresh?.(); }, [refresh, onRefresh]);
 
   const handleStatusChange = useCallback(async (status: string) => {
-    if (status === 'closed') {
+    if (status === 'done') {
       await closeTask(taskId);
     } else {
       await updateTask(taskId, { status });
     }
+    doRefresh();
+  }, [taskId, doRefresh]);
+
+  const handleArchive = useCallback(async () => {
+    await archiveTask(taskId);
     doRefresh();
   }, [taskId, doRefresh]);
 
@@ -150,20 +155,23 @@ export function TaskDetail({ taskId, onRefresh }: { taskId: string; onRefresh?: 
         </div>
       )}
 
-      {/* Actions — status change */}
+      {/* Actions — status change + archive */}
       <div className="flex items-center gap-2 border-t border-border pt-3 flex-wrap">
         {ALL_STATUSES.filter(s => s !== task.status).map(s => (
           <button
             key={s}
             onClick={() => handleStatusChange(s)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium border-none cursor-pointer transition-all hover:brightness-110 ${
-              s === 'closed' ? 'bg-green text-bg' :
-              s === 'in_progress' ? 'bg-blue text-bg' :
+              s === 'done' ? 'bg-green text-bg' :
+              s === 'active' ? 'bg-blue text-bg' :
               s === 'blocked' ? 'bg-red text-bg' :
               'bg-border text-text'
             }`}
-          >{s === 'in_progress' ? 'Start' : s === 'blocked' ? 'Block' : s === 'closed' ? 'Close' : 'Todo'}</button>
+          >{s === 'active' ? 'Start' : s === 'blocked' ? 'Block' : s === 'done' ? 'Done' : 'Open'}</button>
         ))}
+        {!task.archived && (
+          <button onClick={handleArchive} className="text-xs text-text-muted hover:text-text bg-transparent border-none cursor-pointer ml-auto">Archive</button>
+        )}
       </div>
     </div>
   );

@@ -42,7 +42,7 @@ export function App() {
         <Route path="/systems/:id" element={<SystemDetailPage />} />
         <Route path="/usage" element={<UsagePage />} />
         <Route path="/jobs" element={<Navigate to="/activity" replace />} />
-        <Route path="/runs" element={<Navigate to="/workspace" replace />} />
+        <Route path="/runs" element={<RunsPage />} />
         <Route path="/workspace" element={<WorkspacePage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/activity" element={<ActivityPage />} />

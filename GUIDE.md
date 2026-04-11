@@ -99,7 +99,7 @@ El daemon genera sugerencias automaticamente analizando tus repos.
 
 ```
 "Tienes alguna sugerencia?"
-"Muestrame las sugerencias pendientes"
+"Muestrame las sugerencias abiertas"
 "Acepta la sugerencia del refactor"
 "Rechaza esa sugerencia, no aplica a nuestro caso"
 ```
@@ -135,10 +135,21 @@ El daemon genera sugerencias automaticamente analizando tus repos.
 "Cuanto has gastado esta semana?"
 ```
 
+### Tasks (contenedores de trabajo)
+
+```
+"Que tareas tengo abiertas?"
+"Crea una tarea para el refactor de auth"
+"Cierra la tarea del deploy"
+"Archiva esa tarea"
+```
+
+Las tareas se crean automaticamente al aceptar una sugerencia con categoria "plan". Tambien se pueden crear manualmente.
+
 ### Runs (ejecucion de tareas)
 
 ```
-"Hay algun run pendiente?"
+"Hay algun run abierto?"
 "Muestrame el detalle del ultimo run"
 ```
 
@@ -236,13 +247,16 @@ Cuando abres Claude CLI, Shadow se presenta segun su personalidad porque:
 
 ---
 
-## 52 MCP Tools disponibles
+## 66 MCP Tools disponibles
 
 ### Personalidad
 `shadow_check_in` — personalidad, mood, contexto, eventos pendientes. Claude lo llama automaticamente.
 
-### Lectura (25)
-`shadow_status`, `shadow_repos`, `shadow_projects`, `shadow_active_projects`, `shadow_project_detail`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_search`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`, `shadow_daily_summary`, `shadow_feedback`, `shadow_soul`, `shadow_digests`, `shadow_digest`, `shadow_enrichment_config`, `shadow_enrichment_query`, `shadow_relation_list`
+### Lectura (27)
+`shadow_status`, `shadow_alerts`, `shadow_repos`, `shadow_projects`, `shadow_active_projects`, `shadow_project_detail`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_search`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`, `shadow_daily_summary`, `shadow_feedback`, `shadow_soul`, `shadow_digests`, `shadow_enrichment_config`, `shadow_enrichment_query`, `shadow_relation_list`, `shadow_tasks`
 
-### Escritura (26)
-`shadow_repo_add`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_observe`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`, `shadow_relation_add`, `shadow_relation_remove`
+### Escritura (38 nivel 1 + 3 nivel 2)
+`shadow_repo_add`, `shadow_repo_update`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_update`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_correct`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`, `shadow_relation_add`, `shadow_relation_remove`, `shadow_alert_ack`, `shadow_alert_resolve`, `shadow_run_archive`, `shadow_digest`, `shadow_enrichment_write`, `shadow_task_create`, `shadow_task_update`, `shadow_task_close`, `shadow_task_archive`, `shadow_task_remove`
+
+### Escritura nivel 2
+`shadow_observe`, `shadow_run_create`, `shadow_task_execute`

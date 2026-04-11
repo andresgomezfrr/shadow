@@ -24,9 +24,9 @@ export function acceptSuggestion(
   db: ShadowDatabase,
   suggestionId: string,
   category?: string,
-): { ok: boolean; runCreated?: string } {
+): { ok: boolean; runCreated?: string; taskCreated?: string } {
   const suggestion = db.getSuggestion(suggestionId);
-  if (!suggestion || suggestion.status !== 'pending') {
+  if (!suggestion || suggestion.status !== 'open') {
     return { ok: false };
   }
 
@@ -35,7 +35,7 @@ export function acceptSuggestion(
 
   // Mark suggestion as accepted — store category in feedbackNote for filtering
   db.updateSuggestion(suggestionId, {
-    status: acceptCategory === 'planned' ? 'backlog' : 'accepted',
+    status: 'accepted',
     feedbackNote: acceptCategory,
     resolvedAt: now,
   });
@@ -44,21 +44,34 @@ export function acceptSuggestion(
   // Apply positive trust delta
   applyTrustDelta(db, TRUST_ACCEPT);
 
-  // Only create a Run for 'execute' category (default behavior)
   let runId: string | undefined;
-  if (acceptCategory === 'execute') {
-    const primaryRepoId = suggestion.repoIds.length > 0
-      ? suggestion.repoIds[0]
-      : suggestion.repoId ?? 'unknown';
+  let taskId: string | undefined;
 
+  const primaryRepoId = suggestion.repoIds.length > 0
+    ? suggestion.repoIds[0]
+    : suggestion.repoId ?? 'unknown';
+  const repoIds = suggestion.repoIds.length > 0 ? suggestion.repoIds : (suggestion.repoId ? [suggestion.repoId] : []);
+
+  if (acceptCategory === 'execute') {
+    // Create a Run directly
     const run = db.createRun({
       repoId: primaryRepoId,
-      repoIds: suggestion.repoIds.length > 0 ? suggestion.repoIds : (suggestion.repoId ? [suggestion.repoId] : []),
+      repoIds,
       suggestionId: suggestion.id,
       kind: suggestion.kind,
       prompt: suggestion.summaryMd,
     });
     runId = run.id;
+  } else if (acceptCategory === 'planned') {
+    // Create a Task linked to this suggestion
+    const task = db.createTask({
+      title: suggestion.title,
+      contextMd: suggestion.summaryMd,
+      repoIds,
+      suggestionId: suggestion.id,
+      entities: suggestion.entities,
+    });
+    taskId = task.id;
   }
 
   // Audit trail
@@ -67,59 +80,10 @@ export function acceptSuggestion(
     action: 'accept-suggestion',
     targetKind: 'suggestion',
     targetId: suggestionId,
-    detail: { category: acceptCategory, runId: runId ?? null },
+    detail: { category: acceptCategory, runId: runId ?? null, taskId: taskId ?? null },
   });
 
-  return { ok: true, runCreated: runId };
-}
-
-// ---------------------------------------------------------------------------
-// Update category (backlog/accepted transitions)
-// ---------------------------------------------------------------------------
-
-export function updateSuggestionCategory(
-  db: ShadowDatabase,
-  suggestionId: string,
-  category: string,
-): { ok: boolean; runCreated?: string } {
-  const suggestion = db.getSuggestion(suggestionId);
-  if (!suggestion || (suggestion.status !== 'backlog' && suggestion.status !== 'accepted')) {
-    return { ok: false };
-  }
-
-  const newStatus = category === 'planned' ? 'backlog' : 'accepted';
-  db.updateSuggestion(suggestionId, {
-    status: newStatus,
-    feedbackNote: category,
-  });
-  db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'update_category', category });
-
-  // Create a Run only when transitioning to 'execute'
-  let runId: string | undefined;
-  if (category === 'execute') {
-    const primaryRepoId = suggestion.repoIds.length > 0
-      ? suggestion.repoIds[0]
-      : suggestion.repoId ?? 'unknown';
-
-    const run = db.createRun({
-      repoId: primaryRepoId,
-      repoIds: suggestion.repoIds.length > 0 ? suggestion.repoIds : (suggestion.repoId ? [suggestion.repoId] : []),
-      suggestionId: suggestion.id,
-      kind: suggestion.kind,
-      prompt: suggestion.summaryMd,
-    });
-    runId = run.id;
-  }
-
-  db.createAuditEvent({
-    interface: 'suggestion-engine',
-    action: 'update-suggestion-category',
-    targetKind: 'suggestion',
-    targetId: suggestionId,
-    detail: { category, previousCategory: suggestion.feedbackNote, runId: runId ?? null },
-  });
-
-  return { ok: true, runCreated: runId };
+  return { ok: true, runCreated: runId, taskCreated: taskId };
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +102,7 @@ export async function dismissSuggestion(
   category?: string,
 ): Promise<{ ok: boolean }> {
   const suggestion = db.getSuggestion(suggestionId);
-  if (!suggestion || (suggestion.status !== 'pending' && suggestion.status !== 'backlog')) {
+  if (!suggestion || suggestion.status !== 'open') {
     return { ok: false };
   }
 
@@ -236,7 +200,7 @@ export function snoozeSuggestion(
   until: string,
 ): { ok: boolean } {
   const suggestion = db.getSuggestion(suggestionId);
-  if (!suggestion || suggestion.status !== 'pending') {
+  if (!suggestion || suggestion.status !== 'open') {
     return { ok: false };
   }
 
@@ -273,7 +237,7 @@ export function reactivateSnoozed(db: ShadowDatabase): number {
 
   for (const s of snoozed) {
     if (s.expiresAt && s.expiresAt <= now) {
-      db.updateSuggestion(s.id, { status: 'pending', expiresAt: null });
+      db.updateSuggestion(s.id, { status: 'open', expiresAt: null });
       count++;
     }
   }
@@ -307,7 +271,7 @@ function getStaleDays(impactScore: number): number {
  * Returns the count of expired suggestions.
  */
 export function expireStale(db: ShadowDatabase): number {
-  const pending = db.listSuggestions({ status: 'pending' });
+  const pending = db.listSuggestions({ status: 'open' });
   const now = new Date().toISOString();
 
   let expiredCount = 0;
@@ -344,7 +308,7 @@ export function expireStale(db: ShadowDatabase): number {
  * Only notifies once per suggestion (checks if event already exists).
  */
 export function notifyExpiringSoon(db: ShadowDatabase): number {
-  const pending = db.listSuggestions({ status: 'pending' });
+  const pending = db.listSuggestions({ status: 'open' });
 
   let count = 0;
   for (const s of pending) {
@@ -380,7 +344,7 @@ export function getDismissalStreak(db: ShadowDatabase): number {
 
   for (const s of all) {
     // Skip suggestions that haven't been resolved yet
-    if (s.status === 'pending' || s.status === 'snoozed') {
+    if (s.status === 'open' || s.status === 'snoozed') {
       continue;
     }
     if (s.status === 'dismissed') {

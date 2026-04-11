@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
-import { json, clampLimit, clampOffset, parseOptionalBody, readBody, OptionalNoteSchema } from '../helpers.js';
+import { json, clampLimit, clampOffset, parseOptionalBody, OptionalNoteSchema } from '../helpers.js';
 import { loadConfig } from '../../config/load-config.js';
 
 export async function handleRunRoutes(
@@ -153,14 +153,14 @@ export async function handleRunRoutes(
       return json(res, { ok: true, newRunId: newRun.id }), true;
     }
 
-    const runMatch = pathname.match(/^\/api\/runs\/([^/]+)\/(execute|session|discard|executed-manual)$/);
+    const runMatch = pathname.match(/^\/api\/runs\/([^/]+)\/(execute|session|discard)$/);
     if (runMatch) {
       const [, runId, action] = runMatch;
       const run = db.getRun(runId);
       if (!run) return json(res, { error: 'Run not found' }, 404), true;
 
       if (action === 'discard') {
-        try { db.transitionRun(runId, 'discarded'); } catch { return json(res, { error: 'Run must be completed to discard' }, 400), true; }
+        try { db.transitionRun(runId, 'dismissed'); } catch { return json(res, { error: 'Run must be completed to discard' }, 400), true; }
         const discardBody = await parseOptionalBody(req, res, OptionalNoteSchema);
         if (!discardBody) return true;
         db.createFeedback({ targetKind: 'run', targetId: runId, action: 'discard', note: discardBody.note });
@@ -187,16 +187,11 @@ export async function handleRunRoutes(
           } catch { /* best-effort cleanup */ }
         }
 
-        return json(res, { ok: true, status: 'discarded' }), true;
-      }
-
-      if (action === 'executed-manual') {
-        try { db.transitionRun(runId, 'executed_manual'); } catch { return json(res, { error: 'Run must be completed' }, 400), true; }
-        return json(res, { ok: true, status: 'executed_manual' }), true;
+        return json(res, { ok: true, status: 'dismissed' }), true;
       }
 
       if (action === 'execute') {
-        try { db.transitionRun(runId, 'executed'); } catch { return json(res, { error: 'Run must be completed to execute' }, 400), true; }
+        try { db.transitionRun(runId, 'done'); db.updateRun(runId, { outcome: 'executed' }); } catch { return json(res, { error: 'Run must be completed to execute' }, 400), true; }
         const childRun = db.createRun({
           repoId: run.repoId,
           repoIds: run.repoIds,
@@ -277,7 +272,7 @@ export async function handleRunRoutes(
       const runId = closeMatch[1];
       const run = db.getRun(runId);
       if (!run) return json(res, { error: 'Run not found' }, 404), true;
-      try { db.transitionRun(runId, 'closed'); } catch { return json(res, { error: 'Cannot close run in current status' }, 400), true; }
+      try { db.transitionRun(runId, 'done'); db.updateRun(runId, { outcome: 'closed' }); } catch { return json(res, { error: 'Cannot close run in current status' }, 400), true; }
       const body = await parseOptionalBody(req, res, OptionalNoteSchema);
       if (!body) return true;
       if (body.note) db.updateRun(runId, { closedNote: body.note });
@@ -285,11 +280,11 @@ export async function handleRunRoutes(
       // Also close pending child runs
       const children = db.listRuns({ parentRunId: runId, archived: undefined });
       for (const child of children) {
-        if (!['discarded', 'failed', 'closed'].includes(child.status)) {
-          try { db.transitionRun(child.id, 'closed'); } catch { /* skip non-closeable children */ }
+        if (!['dismissed', 'failed', 'done'].includes(child.status)) {
+          try { db.transitionRun(child.id, 'done'); db.updateRun(child.id, { outcome: 'closed' }); } catch { /* skip non-closeable children */ }
         }
       }
-      return json(res, { ok: true, status: 'closed' }), true;
+      return json(res, { ok: true, status: 'done' }), true;
     }
 
     // Cleanup worktree — remove orphaned worktree + branch

@@ -163,8 +163,12 @@ export const discardRun = (id: string, note?: string) =>
     body: note ? JSON.stringify({ note }) : undefined,
   });
 
-export const markRunExecutedManual = (id: string) =>
-  api<{ ok: boolean }>(`/api/runs/${id}/executed-manual`, { method: 'POST' });
+export const closeRun = (id: string, note?: string) =>
+  api<{ ok: boolean }>(`/api/runs/${id}/close`, {
+    method: 'POST',
+    headers: note ? { 'Content-Type': 'application/json' } : undefined,
+    body: note ? JSON.stringify({ note }) : undefined,
+  });
 
 export const archiveRun = (id: string) =>
   api<{ ok: boolean }>(`/api/runs/${id}/archive`, { method: 'POST' });
@@ -235,13 +239,6 @@ export const dismissSuggestion = (id: string, note?: string, category?: string) 
     method: 'POST',
     headers: (note || category) ? { 'Content-Type': 'application/json' } : undefined,
     body: (note || category) ? JSON.stringify({ note, category }) : undefined,
-  });
-
-export const updateSuggestionCategory = (id: string, category: string) =>
-  api<Suggestion>(`/api/suggestions/${id}/update`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ category }),
   });
 
 export const bulkSuggestionAction = (action: 'accept' | 'dismiss' | 'snooze' | 'update', ids: string[], opts?: { category?: string; note?: string; hours?: number }) =>
@@ -327,13 +324,6 @@ export const markNotificationsRead = (ids: string[]) =>
 export const markAllNotificationsRead = () =>
   api<{ ok: boolean; read: number }>('/api/notifications/read-all', { method: 'POST' });
 
-export const closeRun = (id: string, note?: string) =>
-  api<{ ok: boolean }>(`/api/runs/${id}/close`, {
-    method: 'POST',
-    headers: note ? { 'Content-Type': 'application/json' } : undefined,
-    body: note ? JSON.stringify({ note }) : undefined,
-  });
-
 export const cleanupWorktree = (id: string) =>
   api<{ ok: boolean }>(`/api/runs/${id}/cleanup-worktree`, { method: 'POST' });
 
@@ -358,6 +348,9 @@ export const updateTask = (id: string, updates: Record<string, unknown>) =>
 
 export const closeTask = (id: string) =>
   api<Task>(`/api/tasks/${id}/close`, { method: 'POST' });
+
+export const archiveTask = (id: string) =>
+  api<{ ok: boolean }>(`/api/tasks/${id}/archive`, { method: 'POST' });
 
 export const deleteTask = (id: string) =>
   api<{ ok: boolean }>(`/api/tasks/${id}`, { method: 'DELETE' });

@@ -202,7 +202,7 @@ function gatherBriefContext(ctx: ThoughtContext): string {
   }
 
   try {
-    const obs = ctx.db.listObservations({ status: 'active', limit: 2 });
+    const obs = ctx.db.listObservations({ status: 'open', limit: 2 });
     if (obs.length > 0) {
       parts.push(`recent observations: ${obs.map(o => o.title).join(', ')}`);
     }

@@ -227,7 +227,7 @@ export function createObservation(db: DatabaseSync, input: { repoId: string; sou
   const existing = db
     .prepare(
       `SELECT id, votes, context_json FROM observations
-       WHERE repo_id = ? AND kind = ? AND title = ? AND status IN ('active', 'acknowledged')
+       WHERE repo_id = ? AND kind = ? AND title = ? AND status IN ('open', 'acknowledged')
        LIMIT 1`,
     )
     .get(input.repoId, input.kind, input.title) as
@@ -249,7 +249,7 @@ export function createObservation(db: DatabaseSync, input: { repoId: string; sou
       `INSERT INTO observations
        (id, repo_id, source_kind, source_id, kind, severity, title, detail_json, context_json,
         votes, status, first_seen_at, last_seen_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'open', ?, ?, ?)`,
     )
     .run(
       id,
@@ -356,8 +356,8 @@ export function expireObservationsBySeverity(db: DatabaseSync): number {
   let expired = 0;
 
   const runs: { status: string; severity: string; days: number }[] = [
-    { status: 'active', severity: 'info', days: 7 },
-    { status: 'active', severity: 'warning', days: 14 },
+    { status: 'open', severity: 'info', days: 7 },
+    { status: 'open', severity: 'warning', days: 14 },
     { status: 'acknowledged', severity: 'info', days: 14 },
     { status: 'acknowledged', severity: 'warning', days: 28 },
   ];
@@ -376,7 +376,7 @@ export function expireObservationsBySeverity(db: DatabaseSync): number {
 /** Enforce max active observations per repo. Protects high-severity from cap. */
 export function capObservationsPerRepo(db: DatabaseSync, maxPerRepo = 10): number {
   const repos = db
-    .prepare(`SELECT repo_id, COUNT(*) as cnt FROM observations WHERE status = 'active' GROUP BY repo_id HAVING cnt > ?`)
+    .prepare(`SELECT repo_id, COUNT(*) as cnt FROM observations WHERE status = 'open' GROUP BY repo_id HAVING cnt > ?`)
     .all(maxPerRepo) as { repo_id: string; cnt: number }[];
 
   let resolved = 0;
@@ -384,7 +384,7 @@ export function capObservationsPerRepo(db: DatabaseSync, maxPerRepo = 10): numbe
     const excess = cnt - maxPerRepo;
     const toResolve = db
       .prepare(
-        `SELECT id FROM observations WHERE status = 'active' AND repo_id = ? AND severity != 'high'
+        `SELECT id FROM observations WHERE status = 'open' AND repo_id = ? AND severity != 'high'
          ORDER BY CASE severity WHEN 'info' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END ASC,
                   votes ASC, last_seen_at ASC
          LIMIT ?`,
@@ -393,7 +393,7 @@ export function capObservationsPerRepo(db: DatabaseSync, maxPerRepo = 10): numbe
     if (toResolve.length > 0) {
       const ids = toResolve.map(r => r.id);
       const ph = ids.map(() => '?').join(',');
-      db.prepare(`UPDATE observations SET status = 'resolved' WHERE id IN (${ph})`).run(...ids);
+      db.prepare(`UPDATE observations SET status = 'done' WHERE id IN (${ph})`).run(...ids);
       resolved += ids.length;
     }
   }
@@ -511,7 +511,7 @@ export function updateSuggestion(db: DatabaseSync, id: string, updates: Partial<
 
 export function countPendingSuggestions(db: DatabaseSync): number {
   const row = db
-    .prepare("SELECT COUNT(*) as count FROM suggestions WHERE status = 'pending'")
+    .prepare("SELECT COUNT(*) as count FROM suggestions WHERE status = 'open'")
     .get() as { count: number };
   return row.count;
 }

@@ -45,8 +45,8 @@ export async function handleEntityRoutes(
     const systems = project.systemIds.length > 0 ? db.getSystemsByIds(project.systemIds) : [];
     const contacts = project.contactIds.map(id => db.getContact(id)).filter(Boolean);
 
-    const observations = db.listObservations({ status: 'active', projectId: project.id, limit: 50 });
-    const suggestions = db.listSuggestions({ status: 'pending', projectId: project.id, limit: 50 });
+    const observations = db.listObservations({ status: 'open', projectId: project.id, limit: 50 });
+    const suggestions = db.listSuggestions({ status: 'open', projectId: project.id, limit: 50 });
     const memories = db.listMemories({ archived: false, limit: 500 })
       .filter(m => (m.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
 
@@ -70,8 +70,8 @@ export async function handleEntityRoutes(
       enrichment,
       enrichmentTotal,
       counts: {
-        observations: db.countObservations({ status: 'active', projectId: project.id }),
-        suggestions: db.countSuggestions({ status: 'pending', projectId: project.id }),
+        observations: db.countObservations({ status: 'open', projectId: project.id }),
+        suggestions: db.countSuggestions({ status: 'open', projectId: project.id }),
         memories: memories.length,
       },
     }), true;
@@ -83,7 +83,7 @@ export async function handleEntityRoutes(
     const system = db.getSystem(systemDetailMatch[1]);
     if (!system) return json(res, { error: 'System not found' }, 404), true;
 
-    const observations = db.listObservations({ status: 'active', limit: 50 })
+    const observations = db.listObservations({ status: 'open', limit: 50 })
       .filter(o => (o.entities ?? []).some(e => e.type === 'system' && e.id === system.id));
     const memories = db.listMemories({ archived: false })
       .filter(m => (m.entities ?? []).some(e => e.type === 'system' && e.id === system.id));

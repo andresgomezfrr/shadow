@@ -11,18 +11,18 @@ function RunSpinner({ className = '' }: { className?: string }) {
 }
 
 const STATUS_ICON: Record<string, string> = {
-  queued: '○', completed: '✓', executed: '✓',
-  executed_manual: '✓', discarded: '—', failed: '✕', closed: '●',
+  queued: '○', planned: '✓', done: '✓',
+  dismissed: '—', failed: '✕',
 };
 const STATUS_ICON_COLOR: Record<string, string> = {
-  queued: 'text-orange', completed: 'text-green',
-  executed: 'text-purple', executed_manual: 'text-blue', discarded: 'text-text-muted',
-  failed: 'text-red', closed: 'text-text-muted',
+  queued: 'text-orange', planned: 'text-green',
+  done: 'text-purple', dismissed: 'text-text-muted',
+  failed: 'text-red',
 };
 const STATUS_BORDER: Record<string, string> = {
-  queued: 'border-l-orange', running: 'border-l-blue', completed: 'border-l-green',
-  executed: 'border-l-purple', executed_manual: 'border-l-blue', discarded: 'border-l-text-muted',
-  failed: 'border-l-red', closed: 'border-l-text-muted',
+  queued: 'border-l-orange', running: 'border-l-blue', planned: 'border-l-green',
+  done: 'border-l-purple', dismissed: 'border-l-text-muted',
+  failed: 'border-l-red',
 };
 
 type Props = {
@@ -38,7 +38,7 @@ type Props = {
 
 export function FeedRunCard({ run, selected, onSelect, onExecute, onSession, onDiscard, onRetry, onArchive }: Props) {
   const border = STATUS_BORDER[run.status] ?? 'border-l-border';
-  const isPlan = run.status === 'completed' && run.kind !== 'execution';
+  const isPlan = run.status === 'planned' && run.kind !== 'execution';
   const isActive = run.status === 'running' || run.status === 'queued';
   const isFailed = run.status === 'failed';
   const isRunning = run.status === 'running';
@@ -59,6 +59,9 @@ export function FeedRunCard({ run, selected, onSelect, onExecute, onSession, onD
           </span>
         )}
         <Badge className="text-text-dim bg-border">{run.kind}</Badge>
+        {run.status === 'done' && run.outcome && run.outcome !== 'executed' && (
+          <Badge className="text-purple bg-purple/15">done:{run.outcome === 'executed_manual' ? 'manual' : run.outcome}</Badge>
+        )}
         {run.confidence && <ConfidenceIndicator confidence={run.confidence} doubts={run.doubts?.length} compact />}
         <span className="text-[13px] flex-1 min-w-0 truncate">{run.prompt}</span>
 

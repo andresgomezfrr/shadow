@@ -87,7 +87,7 @@ export function detectActiveProjects(
   }
 
   // Signal 3: Active observations linked to projects (weight 0.5)
-  const activeObs = db.listObservations({ status: 'active', limit: 30 });
+  const activeObs = db.listObservations({ status: 'open', limit: 30 });
   for (const obs of activeObs) {
     const projectLinks = (obs.entities ?? []).filter(e => e.type === 'project');
     for (const link of projectLinks) {
@@ -156,7 +156,7 @@ export function computeProjectMomentum(
     ).length;
 
   // Count observations linked to this project in the window
-  const recentObs = db.listObservations({ status: 'active', limit: 50 })
+  const recentObs = db.listObservations({ status: 'open', limit: 50 })
     .filter(o =>
       o.createdAt > since &&
       (o.entities ?? []).some(e => e.type === 'project' && e.id === projectId),
