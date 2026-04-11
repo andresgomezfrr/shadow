@@ -1,95 +1,79 @@
 # Shadow — Backlog
 
-Actualizado 2026-04-09. Items completados en [COMPLETED.md](COMPLETED.md).
+Actualizado 2026-04-11. Items completados en [COMPLETED.md](COMPLETED.md).
+
+---
+
+## Prioridad alta — CLI
+
+### `shadow job <type>` — comando genérico para lanzar jobs
+Reemplazar los comandos individuales (`shadow heartbeat`, `shadow reflect`) con un solo comando: `shadow job <type>`. Soportar todos los job types registrados. Ejemplo: `shadow job reflect`, `shadow job suggest`, `shadow job consolidate`.
 
 ---
 
 ## Prioridad media — Tests
 
 ### Tests MCP tools
-54 tools (incl. shadow_run_create), 0 tests. La interfaz principal de Shadow con Claude.
+66 tools, 0 tests. La interfaz principal de Shadow con Claude.
 
 ### Tests WorkspacePage filtros + lifecycle
 Renderizado por filtro, transiciones de estado del feed unificado y context panel.
 
 ---
 
-## Prioridad alta — Runner plan→execute flow *(2026-04-10, en evaluación)*
-
-### Contexto
-El runner ahora sigue un flujo de 2 fases obligatorio: plan primero (plan mode, read-only, todos los MCPs) → revisión manual → execute (acceptEdits, edit tools, todos MCPs). Trust level ya no afecta el flujo. Confidence se evalúa como señal visual pero sin auto-execute.
-
-Cambios ya deployados:
-- `planOnly = run.kind !== 'execution'` (siempre plan-first, sin gate de trust)
-- `--permission-mode plan` para planes, `acceptEdits` para ejecución
-- `--allowedTools mcp__*` en ambos modos (todos los MCPs disponibles)
-- Modelo por defecto del runner: opus (antes sonnet)
-- SIGKILL fallback 5s después de SIGTERM (fix proceso zombie)
-- Dashboard: runs running/queued/failed visibles en workspace, spinner, retry/archive, session oculta en running
+## Prioridad media — Runner
 
 ### Pendiente de evaluar
 - **Auto-accept de planes**: planes de alta confidence que se auto-ejecutan sin revisión. Necesita UI para configurar umbral y tipos de sugerencia que pueden auto-aceptarse.
-- **Plan demasiado largo**: flyte-monitoring tiene un `bundle.yaml` de 3.7MB que satura el contexto de Claude. Evaluar file size hints en el briefing o exclusión de archivos grandes.
-- **Timeout de planes**: 10min puede ser corto para repos grandes con Opus. Evaluar si necesita timeout diferenciado para plan vs execute.
+- **Plan demasiado largo**: repos con archivos grandes pueden saturar contexto. Evaluar file size hints en briefing o exclusión de archivos grandes.
+- **Timeout de planes**: 15min puede ser corto para repos grandes con Opus. Evaluar si necesita timeout diferenciado para plan vs execute.
 
 ---
 
-## Prioridad media — Workspace & Runs *(2026-04-09)*
+## Prioridad media — Workspace & Runs
 
 ### Heartbeat dedup para observations resueltas que reaparecen
-Cuando `checkDuplicate()` encuentra match con observation resuelta, incrementar `votes` en vez de crear nueva. Feedback al heartbeat: "observation X resuelta pero reaparecida — votes incrementado a N".
+Cuando `checkDuplicate()` encuentra match con observation resuelta, incrementar `votes` en vez de crear nueva.
 
 ### Detectar PRs creados fuera de Shadow
-Si un run tiene worktree pero no prUrl, detectar si existe un PR con `gh pr list --head shadow/{id}`. Mostrar en el journey view.
+Si un run tiene worktree pero no prUrl, detectar si existe un PR con `gh pr list --head shadow/{id}`.
 
 ### Warning de worktree huerfano en workspace
-Si un run terminal tiene `worktreePath` pero el directorio ya no existe, mostrar warning visual en el journey view (no solo el cleanup button).
-
----
-
-## Prioridad media — Sugerencias lifecycle
-
-### Estado "resolved" para sugerencias
-Las sugerencias aceptadas e implementadas quedan en "accepted" para siempre (30+ acumuladas). Añadir estado `resolved` para cerrar el ciclo: accepted → implementada → resolved. Actualizar: modelo, engine, MCP tools, dashboard filters, bulk resolve.
+Si un run terminal tiene `worktreePath` pero el directorio ya no existe, mostrar warning visual.
 
 ---
 
 ## Prioridad media — Dashboard UX
 
 ### Evaluar: trust por repo en vez de global *(2026-04-08)*
-Actualmente el trust es un score global. Pero Shadow puede saber mucho de un repo y poco de otro — ¿tiene sentido que el trust sea por repo? Implicaría trust_score en la tabla `repos` en vez de `user_profile`, y gates por repo en los MCP tools. Hablar con Andrés antes de diseñar.
+Trust global vs per-repo. Shadow puede saber mucho de un repo y poco de otro. Hablar antes de diseñar.
 
 ---
 
 ## Prioridad media — Job system tuning
 
 ### Evaluar intervalos de jobs con datos reales
-Con Activity visibility, analizar: ¿consolidate LLM parte se ejecuta? ¿reflect produce cambios diarios significativos? ¿digests se consultan? Ajustar intervalos basándose en datos.
+Analizar: ¿consolidate produce cambios? ¿reflect produce cambios significativos? ¿digests se consultan?
 
 ### Consolidate timing: no consumir correcciones antes de que otros jobs las vean
-Si consolidate corre antes que repo-profile, consume la corrección y repo-profile no la ve. Evaluar si necesita coordinación.
-
-### Consolidate: auto-fix de memorias mal clasificadas *(2026-04-08)* — LOW PRIO
-Si durante consolidate el LLM detecta memorias con metadata incorrecta (repo equivocado, proyecto mal asignado, labels/kind/scope/layer inapropiados, entities_json incompleto), debería corregirlas automáticamente en vez de solo reorganizar layers. Ejemplos: memoria asociada a repo A que claramente habla de repo B, kind "pattern" que es realmente "improvement", scope incorrecto, o entidades faltantes que se pueden inferir del contenido.
-
-> **Nota (2026-04-09):** Riesgo > valor por ahora. LLM corrigiendo metadata de otro LLM puede amplificar errores. El correction system manual (`shadow_correct`) cubre los casos puntuales. Mejor invertir en mejorar la clasificación en el heartbeat extract (prevenir > corregir). Reevaluar si la frecuencia de misclassification sube.
+Si consolidate corre antes que repo-profile, consume la corrección y repo-profile no la ve.
 
 ---
 
 ## Prioridad media — Infraestructura de datos
 
 ### Junction table para knowledge entities *(2026-04-08)*
-Reemplazar queries `json_each()` sobre `entities_json` con una tabla de junction `knowledge_entities` indexada. Afecta memorias, observaciones, sugerencias. Necesario para performance a escala (>1000 memorias). Actualmente usamos `json_each()` que hace table scan — funcional pero no escalable.
+Reemplazar `json_each()` sobre `entities_json` con tabla de junction indexada. Necesario para performance a escala (>1000 memorias).
 
 ### MCP server ordering en dashboard *(2026-04-08)*
-Drag-drop para reordenar MCP servers en la sección de Enrichment del dashboard. El orden sirve como hint para el LLM de enrichment sobre qué priorizar (ej: primero documentación, luego monitoring). Actualmente el LLM decide solo basándose en las descripciones.
+Drag-drop para reordenar MCP servers en Enrichment. El orden como hint para el LLM.
 
 ---
 
 ## Prioridad baja
 
 ### Logs del daemon en dashboard
-Los `console.error` van a `daemon.stderr.log` pero no son accesibles desde el dashboard. Endpoint `/api/logs` + página.
+Los `console.error` van a `daemon.stderr.log` pero no son accesibles desde el dashboard.
 
 ---
 
@@ -105,32 +89,18 @@ Autonomía por repo/scope configurable. Shadow mergea donde tiene permiso.
 
 ## Long-term — Arquitectura
 
-### Concepto de Tarea/Iniciativa
-Agrupación temporal (1-2 semanas) con repos, PRs, docs y tickets.
-
 ### Evaluar: asegurar entity linking en memorias, observaciones, sugerencias y runs *(2026-04-08)*
-No está claro si siempre estamos asociando `entities_json` (repo, proyecto) cuando la información lo permite. Auditar: ¿los jobs de heartbeat/suggest/teach siempre vinculan al repo/proyecto activo? ¿Los runs guardan su repo? ¿Hay entidades huérfanas sin linking? Importante para que los filtros por repo/proyecto funcionen bien.
-
-### Evaluar: dónde trackear tickets de Jira — no son proyectos *(2026-04-08)*
-Los tickets de Jira son temporales y no encajan como proyectos de Shadow (que son long-term/sprint/task y agrupan repos+systems). Necesitamos un mejor sitio para trackear work items externos. Opciones a evaluar: entidad nueva (tasks/tickets), relaciones en entity_relations, enrichment_cache, o extensión de runs. Pensar qué ciclo de vida tienen y cómo se relacionan con proyectos y repos.
+Auditar si siempre estamos asociando `entities_json` cuando la información lo permite.
 
 ### Soporte monorepo: un repo, múltiples proyectos con path prefixes *(2026-04-08)*
-Un monorepo puede contener cientos de servicios/proyectos independientes (ej: 1400+ subdirectorios con BUILD.bazel como frontera). Shadow necesita:
-1. **Path prefixes por proyecto** — vincular un proyecto a un subdirectorio del repo (`repo/service-a → Proyecto A`). Así observaciones, memorias y sugerencias se asocian al proyecto correcto dentro del monorepo.
-2. **Detección de fronteras** — reconocer markers de proyecto (BUILD.bazel, package.json, pom.xml, go.mod, Cargo.toml) como delimitadores.
-3. **Heartbeat scoping** — al analizar actividad de un monorepo, filtrar commits/diffs por path prefix del proyecto activo.
-4. **Entity linking granular** — `entities_json` debería poder apuntar a repo+path, no solo repo.
-Impacta: project detection, heartbeat extract, suggest, entity linking, dashboard filters.
+Path prefixes por proyecto, detección de fronteras (BUILD.bazel, package.json), heartbeat scoping, entity linking granular.
 
 ### Agrupación por repo + búsqueda global en dashboard
-Paginación y filtros ya existen. Falta: agrupación visual por repo, barra de búsqueda global.
+Agrupación visual por repo, barra de búsqueda global.
 
 ---
 
 ## Long-term — Features (evaluar)
-
-### Evaluar: custom Claude agents para jobs *(2026-04-08)*
-Los jobs actuales usan prompts ad-hoc vía CLI/Agent SDK. Evaluar usar agentes de Claude personalizados (con system prompt, tools, y personalidad propios) para cada tipo de job. Podría mejorar consistencia y permitir iterar prompts por separado.
 
 ### Circuit breaker para LLM calls
 Tras N fallos consecutivos, abrir circuito y saltar calls por cooldown.
@@ -139,22 +109,19 @@ Tras N fallos consecutivos, abrir circuito y saltar calls por cooldown.
 Ponderar conversaciones por densidad antes del prompt de analyze.
 
 ### Seguridad: CSP headers + rate limiting
-Dashboard sin Content-Security-Policy. Sin rate limiting en API/MCP. Bajo riesgo (localhost only).
-
-### Generar BACKLOG.md desde DB con `shadow backlog`
-Comando CLI que genera backlog desde sugerencias pending + observaciones activas.
+Dashboard sin Content-Security-Policy. Sin rate limiting en API/MCP.
 
 ### `shadow docs check` — drift detection
 Comparar CLAUDE.md contra código real: tools count, routes, schema tables.
 
 ### LLM Memory Extraction post-Run
-Cuando un run completa, analizar el output con LLM para extraer memorias ("este repo necesita X para compilar"). El output se guarda pero no se analiza.
+Cuando un run completa, analizar output con LLM para extraer memorias.
 
 ### Suggestion Expiry → Preference Memory
-Cuando una sugerencia expira sin respuesta, generar memoria: "usuario ignora sugerencias de tipo X". Feedback implícito que alimenta futuras sugerencias.
+Sugerencia expirada sin respuesta → memoria de preferencia implícita.
 
 ### Configurable allowedTools → [`docs/plan-allowed-tools-config.md`](docs/plan-allowed-tools-config.md)
-User configura qué MCPs externos puede usar Shadow (GitHub, Slack, Linear).
+User configura qué MCPs externos puede usar Shadow.
 
 ### Correct button en Observations y Memories pages
-Extender CorrectionPanel contextual (ya está en Repos) a observation cards y memory cards.
+Extender CorrectionPanel contextual a observation cards y memory cards.
