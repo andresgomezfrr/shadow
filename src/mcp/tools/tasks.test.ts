@@ -1,0 +1,331 @@
+import { describe, it, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { createTestToolContext, callTool, setTrustLevel, assertTrustBlocked, assertNotFound, seedRepo, seedTask, seedProject } from './_test-helpers.js';
+import { taskTools } from './tasks.js';
+import type { McpTool } from './types.js';
+
+// ---------------------------------------------------------------------------
+// shadow_tasks (list)
+// ---------------------------------------------------------------------------
+
+describe('shadow_tasks', () => {
+  let tools: McpTool[];
+  let db: ReturnType<typeof createTestToolContext>['db'];
+  let repoId: string;
+  let cleanup: () => void;
+
+  before(() => {
+    const env = createTestToolContext({ trustLevel: 2 });
+    tools = taskTools(env.ctx);
+    db = env.db;
+    repoId = seedRepo(db).id;
+    cleanup = env.cleanup;
+  });
+  after(() => cleanup());
+
+  it('returns empty for fresh DB', async () => {
+    const result = await callTool(tools, 'shadow_tasks', {}) as { tasks: unknown[]; total: number };
+    assert.equal(result.tasks.length, 0);
+    assert.equal(result.total, 0);
+  });
+
+  it('returns tasks after creation', async () => {
+    seedTask(db, [repoId]);
+    seedTask(db, [repoId]);
+    const result = await callTool(tools, 'shadow_tasks', {}) as { tasks: any[]; total: number };
+    assert.equal(result.tasks.length, 2);
+  });
+
+  it('filters by status', async () => {
+    db.createTask({ title: 'blocked-task', status: 'blocked', repoIds: [repoId] });
+    const result = await callTool(tools, 'shadow_tasks', { status: 'blocked' }) as { tasks: any[]; total: number };
+    assert.ok(result.tasks.length >= 1);
+    assert.ok(result.tasks.every((t: any) => t.status === 'blocked'));
+  });
+
+  it('filters by projectId', async () => {
+    const project = seedProject(db);
+    db.createTask({ title: 'project-task', projectId: project.id, repoIds: [repoId] });
+    const result = await callTool(tools, 'shadow_tasks', { projectId: project.id }) as { tasks: any[] };
+    assert.ok(result.tasks.length >= 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shadow_task_create
+// ---------------------------------------------------------------------------
+
+describe('shadow_task_create', () => {
+  let tools: McpTool[];
+  let db: ReturnType<typeof createTestToolContext>['db'];
+  let repoId: string;
+  let cleanup: () => void;
+
+  before(() => {
+    const env = createTestToolContext({ trustLevel: 1 });
+    tools = taskTools(env.ctx);
+    db = env.db;
+    repoId = seedRepo(db).id;
+    cleanup = env.cleanup;
+  });
+  after(() => cleanup());
+
+  it('blocks at trust level 0', async () => {
+    setTrustLevel(db, 0);
+    const result = await callTool(tools, 'shadow_task_create', { title: 'test' });
+    assertTrustBlocked(result);
+    setTrustLevel(db, 1);
+  });
+
+  it('creates task with minimal fields', async () => {
+    const result = await callTool(tools, 'shadow_task_create', { title: 'Simple task' }) as { task: any; message: string };
+    assert.ok(result.task.id);
+    assert.equal(result.task.title, 'Simple task');
+    assert.equal(result.task.status, 'open');
+  });
+
+  it('creates task with all optional fields', async () => {
+    const result = await callTool(tools, 'shadow_task_create', {
+      title: 'Full task',
+      status: 'active',
+      contextMd: '## Context\nSome markdown',
+      repoIds: [repoId],
+      sessionId: 'session-123',
+      sessionRepoPath: '/tmp/test',
+    }) as { task: any };
+    assert.equal(result.task.title, 'Full task');
+    assert.equal(result.task.status, 'active');
+    assert.equal(result.task.contextMd, '## Context\nSome markdown');
+    assert.deepEqual(result.task.repoIds, [repoId]);
+  });
+
+  it('creates task with external refs', async () => {
+    const result = await callTool(tools, 'shadow_task_create', {
+      title: 'Jira task',
+      externalRefs: [{ source: 'jira', key: 'PROJ-123', url: 'https://jira.example.com/PROJ-123' }],
+    }) as { task: any };
+    assert.ok(result.task.externalRefs.length === 1);
+    assert.equal(result.task.externalRefs[0].source, 'jira');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shadow_task_update
+// ---------------------------------------------------------------------------
+
+describe('shadow_task_update', () => {
+  let tools: McpTool[];
+  let db: ReturnType<typeof createTestToolContext>['db'];
+  let cleanup: () => void;
+
+  before(() => {
+    const env = createTestToolContext({ trustLevel: 1 });
+    tools = taskTools(env.ctx);
+    db = env.db;
+    cleanup = env.cleanup;
+  });
+  after(() => cleanup());
+
+  it('blocks at trust level 0', async () => {
+    setTrustLevel(db, 0);
+    const result = await callTool(tools, 'shadow_task_update', { id: 'x', title: 'y' });
+    assertTrustBlocked(result);
+    setTrustLevel(db, 1);
+  });
+
+  it('returns not-found for nonexistent task', async () => {
+    const result = await callTool(tools, 'shadow_task_update', { id: 'nonexistent', title: 'x' });
+    assertNotFound(result);
+  });
+
+  it('updates status', async () => {
+    const task = seedTask(db);
+    const result = await callTool(tools, 'shadow_task_update', { id: task.id, status: 'active' }) as { task: any };
+    assert.equal(result.task.status, 'active');
+  });
+
+  it('sets closedAt when status becomes done', async () => {
+    const task = seedTask(db);
+    const result = await callTool(tools, 'shadow_task_update', { id: task.id, status: 'done' }) as { task: any };
+    assert.equal(result.task.status, 'done');
+    assert.ok(result.task.closedAt);
+  });
+
+  it('clears closedAt when reopened from done', async () => {
+    const task = seedTask(db);
+    await callTool(tools, 'shadow_task_update', { id: task.id, status: 'done' });
+    const result = await callTool(tools, 'shadow_task_update', { id: task.id, status: 'open' }) as { task: any };
+    assert.equal(result.task.status, 'open');
+    assert.equal(result.task.closedAt, null);
+  });
+
+  it('updates title', async () => {
+    const task = seedTask(db);
+    const result = await callTool(tools, 'shadow_task_update', { id: task.id, title: 'New title' }) as { task: any };
+    assert.equal(result.task.title, 'New title');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shadow_task_close
+// ---------------------------------------------------------------------------
+
+describe('shadow_task_close', () => {
+  let tools: McpTool[];
+  let db: ReturnType<typeof createTestToolContext>['db'];
+  let cleanup: () => void;
+
+  before(() => {
+    const env = createTestToolContext({ trustLevel: 1 });
+    tools = taskTools(env.ctx);
+    db = env.db;
+    cleanup = env.cleanup;
+  });
+  after(() => cleanup());
+
+  it('blocks at trust level 0', async () => {
+    setTrustLevel(db, 0);
+    const result = await callTool(tools, 'shadow_task_close', { id: 'x' });
+    assertTrustBlocked(result);
+    setTrustLevel(db, 1);
+  });
+
+  it('returns not-found', async () => {
+    const result = await callTool(tools, 'shadow_task_close', { id: 'nonexistent' });
+    assertNotFound(result);
+  });
+
+  it('closes task', async () => {
+    const task = seedTask(db);
+    const result = await callTool(tools, 'shadow_task_close', { id: task.id }) as { task: any; message: string };
+    assert.equal(result.task.status, 'done');
+    assert.ok(result.task.closedAt);
+    assert.ok(result.message.includes(task.title));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shadow_task_archive
+// ---------------------------------------------------------------------------
+
+describe('shadow_task_archive', () => {
+  let tools: McpTool[];
+  let db: ReturnType<typeof createTestToolContext>['db'];
+  let cleanup: () => void;
+
+  before(() => {
+    const env = createTestToolContext({ trustLevel: 1 });
+    tools = taskTools(env.ctx);
+    db = env.db;
+    cleanup = env.cleanup;
+  });
+  after(() => cleanup());
+
+  it('blocks at trust level 0', async () => {
+    setTrustLevel(db, 0);
+    const result = await callTool(tools, 'shadow_task_archive', { id: 'x' });
+    assertTrustBlocked(result);
+    setTrustLevel(db, 1);
+  });
+
+  it('returns not-found', async () => {
+    const result = await callTool(tools, 'shadow_task_archive', { id: 'nonexistent' });
+    assertNotFound(result);
+  });
+
+  it('archives task', async () => {
+    const task = seedTask(db);
+    const result = await callTool(tools, 'shadow_task_archive', { id: task.id }) as Record<string, unknown>;
+    assert.equal(result.ok, true);
+    assert.equal(result.archived, true);
+    const updated = db.getTask(task.id)!;
+    assert.equal(updated.archived, true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shadow_task_execute
+// ---------------------------------------------------------------------------
+
+describe('shadow_task_execute', () => {
+  let tools: McpTool[];
+  let db: ReturnType<typeof createTestToolContext>['db'];
+  let repoId: string;
+  let cleanup: () => void;
+
+  before(() => {
+    const env = createTestToolContext({ trustLevel: 2 });
+    tools = taskTools(env.ctx);
+    db = env.db;
+    repoId = seedRepo(db).id;
+    cleanup = env.cleanup;
+  });
+  after(() => cleanup());
+
+  it('blocks at trust level 1 (requires 2)', async () => {
+    setTrustLevel(db, 1);
+    const result = await callTool(tools, 'shadow_task_execute', { id: 'x' });
+    assertTrustBlocked(result);
+    setTrustLevel(db, 2);
+  });
+
+  it('returns not-found', async () => {
+    const result = await callTool(tools, 'shadow_task_execute', { id: 'nonexistent' });
+    assertNotFound(result);
+  });
+
+  it('rejects task with no repos', async () => {
+    const task = seedTask(db, []);
+    const result = await callTool(tools, 'shadow_task_execute', { id: task.id }) as Record<string, unknown>;
+    assert.equal(result.isError, true);
+    assert.ok((result.message as string).includes('no repos'));
+  });
+
+  it('creates run from task and sets task to active', async () => {
+    const task = seedTask(db, [repoId]);
+    const result = await callTool(tools, 'shadow_task_execute', { id: task.id }) as Record<string, unknown>;
+    assert.equal(result.ok, true);
+    assert.ok(result.runId);
+    const updated = db.getTask(task.id)!;
+    assert.equal(updated.status, 'active');
+    const run = db.getRun(result.runId as string)!;
+    assert.equal(run.taskId, task.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shadow_task_remove
+// ---------------------------------------------------------------------------
+
+describe('shadow_task_remove', () => {
+  let tools: McpTool[];
+  let db: ReturnType<typeof createTestToolContext>['db'];
+  let cleanup: () => void;
+
+  before(() => {
+    const env = createTestToolContext({ trustLevel: 1 });
+    tools = taskTools(env.ctx);
+    db = env.db;
+    cleanup = env.cleanup;
+  });
+  after(() => cleanup());
+
+  it('blocks at trust level 0', async () => {
+    setTrustLevel(db, 0);
+    const result = await callTool(tools, 'shadow_task_remove', { id: 'x' });
+    assertTrustBlocked(result);
+    setTrustLevel(db, 1);
+  });
+
+  it('returns not-found', async () => {
+    const result = await callTool(tools, 'shadow_task_remove', { id: 'nonexistent' });
+    assertNotFound(result);
+  });
+
+  it('deletes task', async () => {
+    const task = seedTask(db);
+    const result = await callTool(tools, 'shadow_task_remove', { id: task.id }) as Record<string, unknown>;
+    assert.ok(result.message);
+    assert.equal(db.getTask(task.id), null);
+  });
+});

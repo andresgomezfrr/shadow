@@ -4,6 +4,28 @@ Actualizado 2026-04-11. Items completados en [COMPLETED.md](COMPLETED.md).
 
 ---
 
+## Auditoría #2 — Hallazgos (2026-04-11)
+
+### P0: jobs.ts JSON parse silencioso
+`src/web/routes/jobs.ts:60` — `.catch(() => ({}))` traga JSON malformado en job trigger. Usar `parseOptionalBody` con schema Zod como ya hace el digest trigger en L72.
+
+### P1: job-handlers.ts split (1266 líneas)
+`src/daemon/job-handlers.ts` — 15 handlers en un archivo. Pasó umbral 1000-1500. Split propuesto: `handlers/suggest.ts` (~573), `handlers/profiling.ts` (~229), core lifecycle se queda (~464).
+
+### P2: Focus duration sin bounds
+`src/mcp/tools/profile.ts:91` — `parseInt(match[1])` acepta valores absurdos ("999999h"). Clamp a 168h (1 semana).
+
+### P2: Zero ErrorBoundary en dashboard
+Ningún ErrorBoundary en todo el dashboard React. Un crash en cualquier componente tumba la app.
+
+### P2: useApi sin estado de error
+`src/web/dashboard/src/hooks/useApi.ts` — devuelve `{ data, loading, refresh }` sin error state. Network errors indistinguibles de "vacío".
+
+### P2: 3 catch blocks en runs.ts deberían loguear
+`src/web/routes/runs.ts` L263, L377, L458 — catches silenciosos donde el error es diagnóstico útil (session ID parse, git diff, LLM title generation).
+
+---
+
 ## Prioridad media — Tests
 
 ### Tests MCP tools

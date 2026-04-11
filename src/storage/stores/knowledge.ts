@@ -423,8 +423,8 @@ export function createSuggestion(db: DatabaseSync, input: { repoId?: string | nu
   db
     .prepare(
       `INSERT INTO suggestions (id, repo_id, repo_ids_json, source_observation_id, kind, title, summary_md,
-       reasoning_md, impact_score, confidence_score, risk_score, required_trust_level, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       reasoning_md, impact_score, confidence_score, risk_score, required_trust_level, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -439,6 +439,7 @@ export function createSuggestion(db: DatabaseSync, input: { repoId?: string | nu
       input.confidenceScore ?? 70,
       input.riskScore ?? 2,
       input.requiredTrustLevel ?? 5,
+      'open',
       now,
     );
   return getSuggestion(db, id)!;
