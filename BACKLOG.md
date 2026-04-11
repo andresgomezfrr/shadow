@@ -68,13 +68,13 @@ Los `console.error` van a `daemon.stderr.log` pero no son accesibles desde el da
 
 ---
 
-## Long-term — Trust Levels → [`docs/plan-trust-levels.md`](docs/plan-trust-levels.md)
-
-### L4 — proactivo con LLM evaluator
-Shadow actúa sin esperar accept. LLM evaluator filtra qué sugerencias merecen auto-ejecución.
+## Long-term — Autonomy evolution
 
 ### L5 — auto-merge selectivo
-Autonomía por repo/scope configurable. Shadow mergea donde tiene permiso.
+Autonomía por repo/scope configurable. Shadow mergea donde tiene permiso. Requiere evaluación post-L4.
+
+### Trust gamification redesign
+Trust uncapped de 5, nuevos niveles, enfoque gamificación/veteranía en vez de capability gating. Score + deltas ya se mantienen.
 
 ---
 
