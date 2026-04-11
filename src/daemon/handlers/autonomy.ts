@@ -20,24 +20,41 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
   const now = Date.now();
   const minAgeMs = planRules.minAgeHours * 60 * 60 * 1000;
 
+  // Track why suggestions are filtered out
+  const rejections = { tooYoung: 0, lowImpact: 0, lowConfidence: 0, highRisk: 0, effortTooBig: 0, wrongKind: 0, repoNotEnabled: 0 };
+
   const candidates = allOpen.filter(s => {
     const ageMs = now - new Date(s.createdAt).getTime();
-    if (ageMs < minAgeMs) return false;
-    if (s.impactScore < planRules.impactMin) return false;
-    if (s.confidenceScore < planRules.confidenceMin) return false;
-    if (s.riskScore > planRules.riskMax) return false;
-    if (!effortWithinLimit(s.effort, planRules.effortMax)) return false;
-    if (planRules.kinds.length > 0 && !planRules.kinds.includes(s.kind)) return false;
+    if (ageMs < minAgeMs) { rejections.tooYoung++; return false; }
+    if (s.impactScore < planRules.impactMin) { rejections.lowImpact++; return false; }
+    if (s.confidenceScore < planRules.confidenceMin) { rejections.lowConfidence++; return false; }
+    if (s.riskScore > planRules.riskMax) { rejections.highRisk++; return false; }
+    if (!effortWithinLimit(s.effort, planRules.effortMax)) { rejections.effortTooBig++; return false; }
+    if (planRules.kinds.length > 0 && !planRules.kinds.includes(s.kind)) { rejections.wrongKind++; return false; }
     // Repo opt-in: suggestion must belong to an enabled repo
     const suggestionRepoIds = s.repoIds.length > 0 ? s.repoIds : (s.repoId ? [s.repoId] : []);
-    if (!suggestionRepoIds.some(rid => planRules.repoIds.includes(rid))) return false;
+    if (!suggestionRepoIds.some(rid => planRules.repoIds.includes(rid))) { rejections.repoNotEnabled++; return false; }
     return true;
   })
     .sort((a, b) => b.impactScore - a.impactScore)
     .slice(0, planRules.maxPerJob);
 
+  // Build rejection summary (only include non-zero reasons)
+  const rejectionReasons = Object.entries(rejections)
+    .filter(([, v]) => v > 0)
+    .map(([k, v]) => `${k}: ${v}`);
+
   if (candidates.length === 0) {
-    return { llmCalls: 0, tokensUsed: 0, phases: ['filtering'], result: { skipped: true, reason: 'no candidates after filtering', totalOpen: allOpen.length } };
+    return {
+      llmCalls: 0, tokensUsed: 0, phases: ['filtering'],
+      result: {
+        skipped: true,
+        reason: 'no candidates after filtering',
+        totalOpen: allOpen.length,
+        filtered: rejectionReasons,
+        rules: { impactMin: planRules.impactMin, confidenceMin: planRules.confidenceMin, riskMax: planRules.riskMax, effortMax: planRules.effortMax, minAgeHours: planRules.minAgeHours, kinds: planRules.kinds.length > 0 ? planRules.kinds : 'all', repos: planRules.repoIds.length },
+      },
+    };
   }
 
   console.error(`[auto-plan] ${candidates.length} candidates after filtering (from ${allOpen.length} open)`);
@@ -184,28 +201,40 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
 
   const plannedRuns = ctx.db.listPlannedRunsForAutoExec();
 
+  const rejections = { noSuggestion: 0, highRisk: 0, lowImpact: 0, lowConfidence: 0, effortTooBig: 0, wrongKind: 0, repoNotEnabled: 0 };
+
   const candidates = plannedRuns.filter(run => {
-    // Must have suggestion to check rules against
-    if (!run.suggestionId) return false;
+    if (!run.suggestionId) { rejections.noSuggestion++; return false; }
     const suggestion = ctx.db.getSuggestion(run.suggestionId);
-    if (!suggestion) return false;
+    if (!suggestion) { rejections.noSuggestion++; return false; }
 
-    // Apply execute rules against the original suggestion scores
-    if (suggestion.riskScore > executeRules.riskMax) return false;
-    if (suggestion.impactScore < executeRules.impactMin) return false;
-    if (suggestion.confidenceScore < executeRules.confidenceMin) return false;
-    if (!effortWithinLimit(suggestion.effort, executeRules.effortMax)) return false;
-    if (executeRules.kinds.length > 0 && !executeRules.kinds.includes(suggestion.kind)) return false;
+    if (suggestion.riskScore > executeRules.riskMax) { rejections.highRisk++; return false; }
+    if (suggestion.impactScore < executeRules.impactMin) { rejections.lowImpact++; return false; }
+    if (suggestion.confidenceScore < executeRules.confidenceMin) { rejections.lowConfidence++; return false; }
+    if (!effortWithinLimit(suggestion.effort, executeRules.effortMax)) { rejections.effortTooBig++; return false; }
+    if (executeRules.kinds.length > 0 && !executeRules.kinds.includes(suggestion.kind)) { rejections.wrongKind++; return false; }
 
-    // Repo opt-in
     const runRepoIds = run.repoIds.length > 0 ? run.repoIds : [run.repoId];
-    if (!runRepoIds.some(rid => executeRules.repoIds.includes(rid))) return false;
+    if (!runRepoIds.some(rid => executeRules.repoIds.includes(rid))) { rejections.repoNotEnabled++; return false; }
 
     return true;
   }).slice(0, executeRules.maxPerJob);
 
+  const rejectionReasons = Object.entries(rejections)
+    .filter(([, v]) => v > 0)
+    .map(([k, v]) => `${k}: ${v}`);
+
   if (candidates.length === 0) {
-    return { llmCalls: 0, tokensUsed: 0, phases: ['filtering'], result: { skipped: true, reason: 'no candidates after filtering', totalPlanned: plannedRuns.length } };
+    return {
+      llmCalls: 0, tokensUsed: 0, phases: ['filtering'],
+      result: {
+        skipped: true,
+        reason: 'no candidates after filtering',
+        totalPlanned: plannedRuns.length,
+        filtered: rejectionReasons,
+        rules: { impactMin: executeRules.impactMin, confidenceMin: executeRules.confidenceMin, riskMax: executeRules.riskMax, effortMax: executeRules.effortMax, kinds: executeRules.kinds.length > 0 ? executeRules.kinds : 'all', repos: executeRules.repoIds.length },
+      },
+    };
   }
 
   console.error(`[auto-execute] ${candidates.length} candidates after filtering (from ${plannedRuns.length} planned)`);

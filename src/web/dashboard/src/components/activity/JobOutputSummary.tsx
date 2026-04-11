@@ -231,14 +231,23 @@ export function JobOutputSummary({ entry }: Props) {
   if (type === 'auto-plan') {
     const planned = num(r, 'autoPlanned');
     const dismissed = num(r, 'autoDismissed');
-    const skipped = num(r, 'skipped');
-    if (r.skipped === true) return <span className="text-text-muted text-xs">{str(r, 'reason') || 'skipped'}</span>;
-    if (planned === 0 && dismissed === 0) return <span className="text-text-muted text-xs">no candidates</span>;
+    const skippedCount = num(r, 'skipped');
+    const filtered = arr(r, 'filtered');
+    const totalOpen = num(r, 'totalOpen');
+    if (r.skipped === true) {
+      const filterDetail = filtered.length > 0 ? filtered.join(', ') : null;
+      return (
+        <span className="inline-flex items-center gap-1.5 flex-wrap">
+          <span className="text-text-muted text-xs">{totalOpen} open, 0 passed filters</span>
+          {filterDetail && <span className="text-[10px] text-text-muted/70" title={filterDetail}>({filterDetail})</span>}
+        </span>
+      );
+    }
     return (
       <span className="inline-flex items-center gap-1.5 flex-wrap">
         {planned > 0 && chip(`${planned} planned`, 'text-lime-300 bg-lime-500/15')}
         {dismissed > 0 && chip(`${dismissed} dismissed`, 'text-orange bg-orange/15')}
-        {skipped > 0 && <span className="text-xs text-text-muted">{skipped} skipped</span>}
+        {skippedCount > 0 && <span className="text-xs text-text-muted">{skippedCount} skipped</span>}
       </span>
     );
   }
@@ -246,8 +255,17 @@ export function JobOutputSummary({ entry }: Props) {
   if (type === 'auto-execute') {
     const executed = num(r, 'autoExecuted');
     const review = num(r, 'needsReview');
-    if (r.skipped === true) return <span className="text-text-muted text-xs">{str(r, 'reason') || 'skipped'}</span>;
-    if (executed === 0 && review === 0) return <span className="text-text-muted text-xs">no candidates</span>;
+    const filtered = arr(r, 'filtered');
+    const totalPlanned = num(r, 'totalPlanned');
+    if (r.skipped === true) {
+      const filterDetail = filtered.length > 0 ? filtered.join(', ') : null;
+      return (
+        <span className="inline-flex items-center gap-1.5 flex-wrap">
+          <span className="text-text-muted text-xs">{totalPlanned} planned, 0 passed filters</span>
+          {filterDetail && <span className="text-[10px] text-text-muted/70" title={filterDetail}>({filterDetail})</span>}
+        </span>
+      );
+    }
     return (
       <span className="inline-flex items-center gap-1.5 flex-wrap">
         {executed > 0 && chip(`${executed} executed`, 'text-rose-300 bg-rose-500/15')}
