@@ -245,6 +245,7 @@ export type RunRecord = {
   diffStat: string | null;
   verification: Record<string, { passed: boolean; output: string; durationMs: number }>;
   verified: 'verified' | 'needs_review' | 'unverified' | null;
+  activity: string | null;
   closedNote: string | null;
   archived: boolean;
   startedAt: string | null;

@@ -317,7 +317,7 @@ export class ShadowDatabase {
   getRun(id: string): RunRecord | null { return execution.getRun(this.database, id); }
   listRuns(filters?: { status?: string; repoId?: string; parentRunId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] { return execution.listRuns(this.database, filters); }
   countRuns(filters?: { status?: string; archived?: boolean }): number { return execution.countRuns(this.database, filters); }
-  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'closedNote' | 'archived' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void { return execution.updateRun(this.database, id, updates); }
+  updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'closedNote' | 'archived' | 'activity' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void { return execution.updateRun(this.database, id, updates); }
   transitionRun(id: string, to: import('./models.js').RunRecord['status']): void { return execution.transitionRun(this.database, id, to); }
 
   // --- Entity Relations ---

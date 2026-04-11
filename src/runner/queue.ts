@@ -1,6 +1,7 @@
 import type { ShadowConfig } from '../config/schema.js';
 import type { ShadowDatabase } from '../storage/database.js';
 import type { RunRecord } from '../storage/models.js';
+import type { EventBus } from '../web/event-bus.js';
 import { ClaudeCliAdapter } from '../backend/claude-cli.js';
 import { RunnerService } from './service.js';
 
@@ -19,6 +20,7 @@ export class RunQueue {
   constructor(
     private readonly config: ShadowConfig,
     private readonly db: ShadowDatabase,
+    private readonly eventBus?: EventBus,
   ) {}
 
   /**
@@ -74,7 +76,7 @@ export class RunQueue {
 
   private startRun(run: RunRecord): void {
     const adapter = new ClaudeCliAdapter(this.config);
-    const runner = new RunnerService(this.config, this.db);
+    const runner = new RunnerService(this.config, this.db, this.eventBus);
 
     const promise = runner.processRun(run.id).then(() => {}).catch((err) => {
       console.error(`[run-queue] Run ${run.id.slice(0, 8)} error:`, err instanceof Error ? err.message : err);

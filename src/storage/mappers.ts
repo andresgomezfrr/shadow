@@ -339,6 +339,7 @@ export function mapRun(row: unknown): RunRecord {
     diffStat: strOrNull(d.diff_stat),
     verification: jsonParse(d.verification_json, {}),
     verified: strOrNull(d.verified) as RunRecord['verified'],
+    activity: strOrNull(d.activity),
     closedNote: strOrNull(d.closed_note),
     archived: bool(d.archived),
     startedAt: strOrNull(d.started_at),

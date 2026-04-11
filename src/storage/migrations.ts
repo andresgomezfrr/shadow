@@ -790,6 +790,13 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     `,
   },
+  {
+    version: 41,
+    name: 'run_activity',
+    sql: `
+      ALTER TABLE runs ADD COLUMN activity TEXT;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

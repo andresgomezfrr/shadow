@@ -307,7 +307,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     daemonShared.lastConsolidationAt = lastConsolidationAt;
 
     // Step 4b: Create concurrent run queue (after _db is assigned)
-    const runQueue = new RunQueue(config, _db);
+    const runQueue = new RunQueue(config, _db, eventBus);
     runQueueRef = runQueue;
 
     // Step 4c: Create parallel job queue (reuses daemonShared created in step 3b)
