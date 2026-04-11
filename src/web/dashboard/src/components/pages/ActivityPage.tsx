@@ -24,6 +24,8 @@ const TYPE_FILTERS = [
   { label: 'Deep scan', value: 'suggest-deep', dotColor: 'bg-green-600', activeClass: 'bg-green-600/15 text-green-600' },
   { label: 'Project suggest', value: 'suggest-project', dotColor: 'bg-emerald-400', activeClass: 'bg-emerald-400/15 text-emerald-400' },
   { label: 'Project profile', value: 'project-profile', dotColor: 'bg-emerald-400', activeClass: 'bg-emerald-400/15 text-emerald-400' },
+  { label: 'Auto-plan', value: 'auto-plan', dotColor: 'bg-lime-500', activeClass: 'bg-lime-500/15 text-lime-300' },
+  { label: 'Auto-execute', value: 'auto-execute', dotColor: 'bg-rose-500', activeClass: 'bg-rose-500/15 text-rose-300' },
   { label: 'Digest', value: '_digest', dotColor: 'bg-cyan', activeClass: 'bg-cyan/15 text-cyan' },
   { label: 'Runs', value: '_runs', dotColor: 'bg-indigo-400', activeClass: 'bg-indigo-400/15 text-indigo-400' },
 ];

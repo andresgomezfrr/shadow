@@ -34,12 +34,15 @@ const TRIGGER_COLORS: Record<string, string> = {
   'digest-daily': 'bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25',
   'digest-weekly': 'bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25',
   'digest-brag': 'bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25',
+  'auto-plan': 'bg-lime-500/15 text-lime-300 hover:bg-lime-500/25',
+  'auto-execute': 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25',
 };
 
 const JOB_GROUPS: Array<{ label: string; jobs: string[] }> = [
   { label: 'Analysis', jobs: ['heartbeat', 'suggest', 'suggest-deep', 'suggest-project'] },
   { label: 'Knowledge', jobs: ['consolidate', 'reflect'] },
   { label: 'Sync', jobs: ['remote-sync', 'repo-profile', 'project-profile', 'context-enrich', 'mcp-discover'] },
+  { label: 'Autonomy', jobs: ['auto-plan', 'auto-execute'] },
   { label: 'Digests', jobs: ['digest-daily', 'digest-weekly', 'digest-brag'] },
 ];
 
@@ -60,6 +63,8 @@ const JOB_DESCRIPTIONS: Record<string, string> = {
   'digest-daily': 'Daily standup summary (3-5 bullets)',
   'digest-weekly': 'Weekly 1:1 summary from daily digests',
   'digest-brag': 'Quarterly brag doc for performance reviews',
+  'auto-plan': 'Scans mature suggestions, revalidates against code, creates plan runs (every 3h)',
+  'auto-execute': 'Executes planned runs with high confidence + zero doubts (every 3h, offset 1.5h)',
 };
 
 function intervalLabel(entry: ScheduleEntry): string {
