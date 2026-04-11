@@ -47,6 +47,7 @@ export async function handleObservationRoutes(
       if (!obs) return json(res, { error: 'Not found' }, 404), true;
       const statusMap: Record<string, string> = { acknowledge: 'acknowledged', resolve: 'done', reopen: 'open' };
       db.updateObservationStatus(obsId, statusMap[action]);
+      if (action === 'resolve') db.deleteEmbedding('observation_vectors', obsId);
       const obsBody = await parseOptionalBody(req, res, OptionalNoteSchema);
       if (!obsBody) return true;
       if (action !== 'reopen') db.createFeedback({ targetKind: 'observation', targetId: obsId, action, note: obsBody.note });

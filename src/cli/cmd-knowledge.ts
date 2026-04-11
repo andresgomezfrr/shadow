@@ -125,6 +125,7 @@ export function registerKnowledgeCommands(program: Command, _config: ShadowConfi
         const s = db.getSuggestion(suggestionId);
         if (!s) return { error: `suggestion not found: ${suggestionId}` };
         db.updateSuggestion(suggestionId, { status: 'accepted', resolvedAt: new Date().toISOString() });
+        db.deleteEmbedding('suggestion_vectors', suggestionId);
         return { ok: true, accepted: suggestionId, title: s.title };
       }),
     );

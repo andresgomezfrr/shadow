@@ -417,10 +417,16 @@ export function expireObservationsBySeverity(db: DatabaseSync): number {
 
   for (const { status, severity, days } of runs) {
     const cutoff = new Date(now - days * DAY).toISOString();
+    // Collect IDs before UPDATE so we can clean up embeddings
+    const toExpire = db
+      .prepare(`SELECT id FROM observations WHERE status = ? AND severity = ? AND last_seen_at < ?`)
+      .all(status, severity, cutoff) as { id: string }[];
+    if (toExpire.length === 0) continue;
     const r = db
       .prepare(`UPDATE observations SET status = 'expired' WHERE status = ? AND severity = ? AND last_seen_at < ?`)
       .run(status, severity, cutoff);
     expired += (r as unknown as { changes: number }).changes;
+    for (const { id } of toExpire) deleteEmbedding(db, 'observation_vectors', id);
   }
 
   return expired;
@@ -447,6 +453,7 @@ export function capObservationsPerRepo(db: DatabaseSync, maxPerRepo = 10): numbe
       const ids = toResolve.map(r => r.id);
       const ph = ids.map(() => '?').join(',');
       db.prepare(`UPDATE observations SET status = 'done' WHERE id IN (${ph})`).run(...ids);
+      for (const id of ids) deleteEmbedding(db, 'observation_vectors', id);
       resolved += ids.length;
     }
   }

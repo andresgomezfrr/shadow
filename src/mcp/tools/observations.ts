@@ -121,6 +121,7 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         if (!obs) return { isError: true, message: `Observation not found: ${id}` };
         if (obs.status === 'done') return { isError: true, message: 'Already done' };
         db.updateObservationStatus(id, 'done');
+        db.deleteEmbedding('observation_vectors', id);
         db.createFeedback({ targetKind: 'observation', targetId: id, action: 'resolve', note: reason });
         return { ok: true, observationId: id, status: 'done' };
       },

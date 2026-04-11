@@ -39,6 +39,7 @@ export function acceptSuggestion(
     feedbackNote: acceptCategory,
     resolvedAt: now,
   });
+  db.deleteEmbedding('suggestion_vectors', suggestionId);
   db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'accept', category: acceptCategory });
 
   // Apply positive trust delta
@@ -283,6 +284,7 @@ export function expireStale(db: ShadowDatabase): number {
         status: 'expired',
         resolvedAt: now,
       });
+      db.deleteEmbedding('suggestion_vectors', suggestion.id);
       expiredCount++;
     }
   }
