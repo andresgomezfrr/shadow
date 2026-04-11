@@ -300,7 +300,7 @@ export class ShadowDatabase {
   createObservation(input: CreateObservationInput): ObservationRecord { return knowledge.createObservation(this.database, input); }
   getObservation(id: string): ObservationRecord | null { return knowledge.getObservation(this.database, id); }
   listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string; limit?: number; offset?: number }): ObservationRecord[] { return knowledge.listObservations(this.database, filters); }
-  countObservations(filters?: { repoId?: string; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string }): number { return knowledge.countObservations(this.database, filters); }
+  countObservations(filters?: { repoId?: string; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string; createdSince?: string }): number { return knowledge.countObservations(this.database, filters); }
   countObservationsSince(since: string): number { return knowledge.countObservationsSince(this.database, since); }
   markObservationProcessed(id: string, suggestionId?: string): void { return knowledge.markObservationProcessed(this.database, id, suggestionId); }
   updateObservationStatus(id: string, status: string): void { return knowledge.updateObservationStatus(this.database, id, status); }
@@ -316,7 +316,7 @@ export class ShadowDatabase {
   createSuggestion(input: CreateSuggestionInput): SuggestionRecord { return knowledge.createSuggestion(this.database, input); }
   getSuggestion(id: string): SuggestionRecord | null { return knowledge.getSuggestion(this.database, id); }
   listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] { return knowledge.listSuggestions(this.database, filters); }
-  countSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string }): number { return knowledge.countSuggestions(this.database, filters); }
+  countSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string; createdSince?: string }): number { return knowledge.countSuggestions(this.database, filters); }
   updateSuggestion(id: string, updates: Partial<Pick<SuggestionRecord, 'status' | 'feedbackNote' | 'shownAt' | 'resolvedAt' | 'expiresAt' | 'title' | 'summaryMd' | 'reasoningMd' | 'impactScore' | 'confidenceScore' | 'riskScore' | 'revalidationCount' | 'lastRevalidatedAt' | 'revalidationVerdict' | 'revalidationNote'>>): void { return knowledge.updateSuggestion(this.database, id, updates); }
   countPendingSuggestions(): number { return knowledge.countPendingSuggestions(this.database); }
 
@@ -326,6 +326,7 @@ export class ShadowDatabase {
   deleteEmbedding(table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors', id: string): void { return knowledge.deleteEmbedding(this.database, table, id); }
   removeEntityReferences(entityType: string, entityId: string): void { return knowledge.removeEntityReferences(this.database, entityType, entityId); }
   syncEntityLinks(sourceTable: string, sourceId: string, entities: EntityLink[]): void { return knowledge.syncEntityLinks(this.database, sourceTable, sourceId, entities); }
+  updateEntityLinks(sourceTable: string, sourceId: string, entities: EntityLink[]): void { return knowledge.updateEntityLinks(this.database, sourceTable, sourceId, entities); }
 
   // --- Interactions ---
 

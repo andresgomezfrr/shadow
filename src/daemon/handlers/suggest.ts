@@ -185,8 +185,7 @@ Generate 1-5 suggestions. Quality over quantity.`;
         // Persist entity links
         const entities = [{ type: 'repo' as const, id: repoId }];
         try {
-          ctx.db.rawDb.prepare('UPDATE suggestions SET entities_json = ? WHERE id = ?').run(JSON.stringify(entities), created.id);
-          ctx.db.syncEntityLinks('suggestions', created.id, entities);
+          ctx.db.updateEntityLinks('suggestions', created.id, entities);
         } catch { /* best-effort */ }
 
         // Generate embedding
@@ -382,8 +381,7 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
           ...affectedRepoIds.map(id => ({ type: 'repo' as const, id })),
         ];
         try {
-          ctx.db.rawDb.prepare('UPDATE suggestions SET entities_json = ? WHERE id = ?').run(JSON.stringify(entities), created.id);
-          ctx.db.syncEntityLinks('suggestions', created.id, entities);
+          ctx.db.updateEntityLinks('suggestions', created.id, entities);
         } catch { /* best-effort */ }
 
         // Generate embedding

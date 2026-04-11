@@ -333,7 +333,7 @@ export function listObservations(db: DatabaseSync, filters?: { repoId?: string; 
     .map(mapObservation);
 }
 
-export function countObservations(db: DatabaseSync, filters?: { repoId?: string; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string }): number {
+export function countObservations(db: DatabaseSync, filters?: { repoId?: string; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string; createdSince?: string }): number {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
   let join = '';
@@ -341,6 +341,7 @@ export function countObservations(db: DatabaseSync, filters?: { repoId?: string;
   if (filters?.status && filters.status !== 'all') { clauses.push('o.status = ?'); values.push(filters.status); }
   if (filters?.severity) { clauses.push('o.severity = ?'); values.push(filters.severity); }
   if (filters?.kind) { clauses.push('o.kind = ?'); values.push(filters.kind); }
+  if (filters?.createdSince) { clauses.push('o.created_at > ?'); values.push(filters.createdSince); }
   const eType = filters?.entityType ?? (filters?.projectId ? 'project' : undefined);
   const eId = filters?.entityId ?? filters?.projectId;
   if (eType && eId) {
@@ -543,13 +544,14 @@ export function listSuggestions(db: DatabaseSync, filters?: { status?: string; k
     .map(mapSuggestion);
 }
 
-export function countSuggestions(db: DatabaseSync, filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string }): number {
+export function countSuggestions(db: DatabaseSync, filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string; createdSince?: string }): number {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
   let join = '';
   if (filters?.status) { clauses.push('s.status = ?'); values.push(filters.status); }
   if (filters?.kind) { clauses.push('s.kind = ?'); values.push(filters.kind); }
   if (filters?.repoId) { clauses.push('s.repo_id = ?'); values.push(filters.repoId); }
+  if (filters?.createdSince) { clauses.push('s.created_at > ?'); values.push(filters.createdSince); }
   const eType = filters?.entityType ?? (filters?.projectId ? 'project' : undefined);
   const eId = filters?.entityId ?? filters?.projectId;
   if (eType && eId) {
@@ -598,32 +600,27 @@ export function deleteEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'obs
   }
 }
 
-/** Remove entity references from entity_links junction + entities_json in memories, observations, suggestions, tasks. */
+/** Remove entity references from entity_links junction + entities_json in memories, observations, suggestions, tasks.
+ *  NOTE: Caller must wrap in a transaction — this function does NOT manage its own transaction
+ *  because it's called from deleteRepo/deleteProject/etc. which already hold one. */
 export function removeEntityReferences(db: DatabaseSync, entityType: string, entityId: string): void {
-  db.exec('BEGIN');
-  try {
-    // Find affected rows via indexed junction table lookup
-    const affected = db
-      .prepare('SELECT source_table, source_id FROM entity_links WHERE entity_type = ? AND entity_id = ?')
-      .all(entityType, entityId) as { source_table: string; source_id: string }[];
+  // Find affected rows via indexed junction table lookup
+  const affected = db
+    .prepare('SELECT source_table, source_id FROM entity_links WHERE entity_type = ? AND entity_id = ?')
+    .all(entityType, entityId) as { source_table: string; source_id: string }[];
 
-    // Remove from junction table
-    db.prepare('DELETE FROM entity_links WHERE entity_type = ? AND entity_id = ?').run(entityType, entityId);
+  // Remove from junction table
+  db.prepare('DELETE FROM entity_links WHERE entity_type = ? AND entity_id = ?').run(entityType, entityId);
 
-    // Sync entities_json for consistency
-    for (const row of affected) {
-      const current = db.prepare(`SELECT entities_json FROM ${row.source_table} WHERE id = ?`).get(row.source_id) as { entities_json: string } | undefined;
-      if (current) {
-        const entities: EntityLink[] = jsonParse(current.entities_json, []);
-        const filtered = entities.filter(e => !(e.type === entityType && e.id === entityId));
-        db.prepare(`UPDATE ${row.source_table} SET entities_json = ? WHERE id = ?`)
-          .run(JSON.stringify(filtered), row.source_id);
-      }
+  // Sync entities_json for consistency
+  for (const row of affected) {
+    const current = db.prepare(`SELECT entities_json FROM ${row.source_table} WHERE id = ?`).get(row.source_id) as { entities_json: string } | undefined;
+    if (current) {
+      const entities: EntityLink[] = jsonParse(current.entities_json, []);
+      const filtered = entities.filter(e => !(e.type === entityType && e.id === entityId));
+      db.prepare(`UPDATE ${row.source_table} SET entities_json = ? WHERE id = ?`)
+        .run(JSON.stringify(filtered), row.source_id);
     }
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
   }
 }
 
@@ -633,4 +630,17 @@ export function syncEntityLinks(db: DatabaseSync, sourceTable: string, sourceId:
   if (entities.length === 0) return;
   const ins = db.prepare('INSERT OR IGNORE INTO entity_links (source_table, source_id, entity_type, entity_id) VALUES (?, ?, ?, ?)');
   for (const e of entities) ins.run(sourceTable, sourceId, e.type, e.id);
+}
+
+/** Atomically update entities_json + entity_links junction table. */
+export function updateEntityLinks(db: DatabaseSync, sourceTable: string, sourceId: string, entities: EntityLink[]): void {
+  db.exec('BEGIN');
+  try {
+    db.prepare(`UPDATE ${sourceTable} SET entities_json = ? WHERE id = ?`).run(JSON.stringify(entities), sourceId);
+    syncEntityLinks(db, sourceTable, sourceId, entities);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }

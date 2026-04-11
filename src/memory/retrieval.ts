@@ -459,12 +459,9 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
         sourceMemoryIds: allSourceIds,
       });
 
-      // Set entities via raw SQL (createMemory doesn't support entities_json)
+      // Set entities via transactional dual-write (createMemory doesn't support entities_json)
       if (allEntities.length > 0) {
-        db.rawDb
-          .prepare('UPDATE memories SET entities_json = ? WHERE id = ?')
-          .run(JSON.stringify(allEntities), newMem.id);
-        db.syncEntityLinks('memories', newMem.id, allEntities as EntityLink[]);
+        db.updateEntityLinks('memories', newMem.id, allEntities as EntityLink[]);
       }
 
       // Generate embedding for new memory

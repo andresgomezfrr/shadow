@@ -164,9 +164,7 @@ export async function dismissSuggestion(
           memoryType: 'semantic',
         });
         if (suggestion.entities?.length > 0) {
-          db.rawDb.prepare('UPDATE memories SET entities_json = ? WHERE id = ?')
-            .run(JSON.stringify(suggestion.entities), mem.id);
-          db.syncEntityLinks('memories', mem.id, suggestion.entities);
+          db.updateEntityLinks('memories', mem.id, suggestion.entities);
         }
         await generateAndStoreEmbedding(db, 'memory', mem.id, {
           kind: 'preference', title: prefTitle, bodyMd: prefBody,
