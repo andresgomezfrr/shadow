@@ -9,11 +9,12 @@ type Props = {
   defaultEntityType?: string;
   defaultEntityId?: string;
   defaultEntityName?: string;
+  defaultTitle?: string;
 };
 
 const SCOPES = ['personal', 'repo', 'project', 'system'] as const;
 
-export function CorrectionPanel({ open, onClose, defaultScope, defaultEntityType, defaultEntityId, defaultEntityName }: Props) {
+export function CorrectionPanel({ open, onClose, defaultScope, defaultEntityType, defaultEntityId, defaultEntityName, defaultTitle }: Props) {
   const [scope, setScope] = useState(defaultScope || 'personal');
   const [entityType, setEntityType] = useState(defaultEntityType || '');
   const [entityId, setEntityId] = useState(defaultEntityId || '');
@@ -52,6 +53,7 @@ export function CorrectionPanel({ open, onClose, defaultScope, defaultEntityType
       const result = await createCorrection({
         body: body.trim(),
         scope,
+        ...(defaultTitle ? { title: defaultTitle } : {}),
         ...(needsEntity && entityType && entityId ? { entityType, entityId } : {}),
       });
       if (result?.ok) {

@@ -2,6 +2,7 @@ import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchObservations, fetchRepos, fetchProjects, acknowledgeObservation, resolveObservation, reopenObservation } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
+import { CorrectionPanel } from '../common/CorrectionPanel';
 import { Pagination } from '../common/Pagination';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
@@ -42,6 +43,7 @@ export function ObservationsPage() {
   const total = rawData?.total ?? 0;
   const fbState = rawData?.feedbackState ?? null;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
   const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
 
   const toggle = (id: string) => {
@@ -149,6 +151,11 @@ export function ObservationsPage() {
                     >Reopen</button>
                   )}
 
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCorrectingId(obs.id); }}
+                    className="px-2 py-0.5 rounded text-xs bg-orange-400/15 text-orange-300 hover:bg-orange-400/25 border-none cursor-pointer"
+                  >Correct</button>
+
                   <ThumbsFeedback targetKind="observation" targetId={obs.id} initial={thumbsFromAction(fbState?.[obs.id])} />
                   <span className="text-xs text-text-muted shrink-0">{timeAgo(obs.lastSeenAt)}</span>
                 </div>
@@ -208,6 +215,24 @@ export function ObservationsPage() {
         </div>
       )}
       <Pagination total={total} offset={Number(params.offset) || 0} limit={PAGE_SIZE} onChange={(o) => setParam('offset', String(o))} />
+      {(() => {
+        const obs = data?.find(o => o.id === correctingId);
+        const repoEntity = obs?.entities?.find((e: { type: string }) => e.type === 'repo');
+        const repoName = repoEntity ? repos?.find(r => r.id === repoEntity.id)?.name : undefined;
+        return (
+          <CorrectionPanel
+            open={correctingId !== null}
+            onClose={() => setCorrectingId(null)}
+            defaultTitle={obs ? `Re: ${obs.title}` : undefined}
+            {...(repoEntity && repoName ? {
+              defaultScope: 'repo',
+              defaultEntityType: 'repo',
+              defaultEntityId: repoEntity.id,
+              defaultEntityName: repoName,
+            } : {})}
+          />
+        );
+      })()}
     </div>
   );
 }

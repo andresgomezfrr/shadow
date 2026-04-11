@@ -9,6 +9,7 @@ import { Pagination } from '../common/Pagination';
 import { SearchInput } from '../common/SearchInput';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
+import { CorrectionPanel } from '../common/CorrectionPanel';
 import { EmptyState } from '../common/EmptyState';
 
 const LAYERS = [
@@ -29,6 +30,7 @@ export function MemoriesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
   const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -143,6 +145,12 @@ export function MemoriesPage() {
                       <div>Source: {m.sourceType}{m.sourceId ? ` · ${m.sourceId.slice(0, 8)}` : ''}</div>
                       <div>Created: {new Date(m.createdAt).toLocaleString()}{m.lastAccessedAt ? ` · Last accessed: ${new Date(m.lastAccessedAt).toLocaleString()}` : ''}</div>
                     </div>
+                    <div className="mt-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setCorrectingId(m.id); }}
+                        className="px-2 py-0.5 rounded text-xs bg-orange-400/15 text-orange-300 hover:bg-orange-400/25 border-none cursor-pointer"
+                      >Correct</button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -151,6 +159,24 @@ export function MemoriesPage() {
         </div>
       )}
       <Pagination total={total} offset={Number(params.offset) || 0} limit={PAGE_SIZE} onChange={(o) => setParam('offset', String(o))} />
+      {(() => {
+        const mem = memories.find(m => m.id === correctingId);
+        const entity = mem?.entities?.[0] as { type: string; id: string } | undefined;
+        const entityScope = entity?.type === 'repo' ? 'repo' : entity?.type === 'project' ? 'project' : entity?.type === 'system' ? 'system' : undefined;
+        return (
+          <CorrectionPanel
+            open={correctingId !== null}
+            onClose={() => setCorrectingId(null)}
+            defaultTitle={mem ? `Re: ${mem.title}` : undefined}
+            {...(entity && entityScope ? {
+              defaultScope: entityScope,
+              defaultEntityType: entity.type,
+              defaultEntityId: entity.id,
+              defaultEntityName: entityNames[entity.id],
+            } : {})}
+          />
+        );
+      })()}
     </div>
   );
 }
