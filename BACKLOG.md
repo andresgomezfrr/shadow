@@ -28,9 +28,6 @@ Ningún ErrorBoundary en todo el dashboard React. Un crash en cualquier componen
 
 ## Prioridad media — Tests
 
-### Tests MCP tools
-66 tools, 0 tests. La interfaz principal de Shadow con Claude.
-
 ### Tests WorkspacePage filtros + lifecycle
 Renderizado por filtro, transiciones de estado del feed unificado y context panel.
 
