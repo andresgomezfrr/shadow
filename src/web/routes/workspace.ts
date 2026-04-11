@@ -27,10 +27,11 @@ type FeedItem = {
  * 5. Suggestions status=backlog
  * 6. Observations severity=info, status=active
  */
-function assignPriority(item: FeedItem): number {
+function assignPriority(item: FeedItem, activeParentIds: Set<string>): number {
   if (item.source === 'run') {
     const r = item.data as { status?: string };
     if (r.status === 'running') return 110;
+    if (r.status === 'executed' && activeParentIds.has(item.id)) return 108;
     if (r.status === 'queued') return 105;
     if (r.status === 'failed') return 102;
     return 100;
@@ -85,11 +86,17 @@ export async function handleWorkspaceRoutes(
     const includeAckedObs = type === 'acknowledged';
 
     // Runs: active + to review + executed (until explicitly closed), not archived, top-level only
+    const activeParentIds = new Set<string>();
     if (includeRuns) {
       for (const status of ['running', 'queued', 'completed', 'failed', 'executed'] as const) {
         const runs = db.listRuns({ status, archived: false, limit: 50 });
         for (const r of runs) {
-          if (r.parentRunId) continue; // skip children
+          if (r.parentRunId) {
+            if (r.status === 'running' || r.status === 'queued') {
+              activeParentIds.add(r.parentRunId);
+            }
+            continue; // skip children
+          }
           if (projectId) {
             const projects = db.findProjectsForRepo(r.repoId);
             if (!projects.some(p => p.id === projectId)) continue;
@@ -156,7 +163,7 @@ export async function handleWorkspaceRoutes(
     }
 
     // Assign priorities and sort
-    for (const item of items) item.priority = assignPriority(item);
+    for (const item of items) item.priority = assignPriority(item, activeParentIds);
     items.sort((a, b) => b.priority - a.priority);
 
     // Counts — always computed for all statuses so tabs show accurate numbers
