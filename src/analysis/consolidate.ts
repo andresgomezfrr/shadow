@@ -75,61 +75,65 @@ export async function activityConsolidate(
             for (const pattern of parsed.metaPatterns) {
               if (!pattern.title || !pattern.bodyMd) continue;
 
-              // Semantic dedup: check if a similar meta_pattern already exists
-              const decision = await checkMemoryDuplicate(ctx.db, {
-                kind: 'meta_pattern', title: pattern.title, bodyMd: pattern.bodyMd,
-              });
-              if (decision.action === 'skip') {
-                console.error(`[shadow:consolidate] Skip duplicate meta_pattern: ${pattern.title}`);
-                continue;
-              }
-              if (decision.action === 'update') {
-                ctx.db.mergeMemoryBody(decision.existingId, pattern.bodyMd, pattern.tags);
-                const merged = ctx.db.getMemory(decision.existingId);
-                if (merged) {
-                  await generateAndStoreEmbedding(ctx.db, 'memory', merged.id, { kind: merged.kind, title: merged.title, bodyMd: merged.bodyMd });
+              try {
+                // Semantic dedup: check if a similar meta_pattern already exists
+                const decision = await checkMemoryDuplicate(ctx.db, {
+                  kind: 'meta_pattern', title: pattern.title, bodyMd: pattern.bodyMd,
+                });
+                if (decision.action === 'skip') {
+                  console.error(`[shadow:consolidate] Skip duplicate meta_pattern: ${pattern.title}`);
+                  continue;
                 }
-                console.error(`[shadow:consolidate] Updated existing meta_pattern: ${pattern.title}`);
-                continue;
-              }
+                if (decision.action === 'update') {
+                  ctx.db.mergeMemoryBody(decision.existingId, pattern.bodyMd, pattern.tags);
+                  const merged = ctx.db.getMemory(decision.existingId);
+                  if (merged) {
+                    await generateAndStoreEmbedding(ctx.db, 'memory', merged.id, { kind: merged.kind, title: merged.title, bodyMd: merged.bodyMd });
+                  }
+                  console.error(`[shadow:consolidate] Updated existing meta_pattern: ${pattern.title}`);
+                  continue;
+                }
 
-              const metaMem = ctx.db.createMemory({
-                layer: 'core',
-                scope: 'global',
-                kind: 'meta_pattern',
-                title: pattern.title,
-                bodyMd: pattern.bodyMd,
-                tags: pattern.tags ?? [],
-                sourceType: 'consolidate',
-                confidenceScore: pattern.confidence ?? 80,
-                relevanceScore: 0.8,
-              });
-              await generateAndStoreEmbedding(ctx.db, 'memory', metaMem.id, { kind: 'meta_pattern', title: metaMem.title, bodyMd: metaMem.bodyMd });
+                const metaMem = ctx.db.createMemory({
+                  layer: 'core',
+                  scope: 'global',
+                  kind: 'meta_pattern',
+                  title: pattern.title,
+                  bodyMd: pattern.bodyMd,
+                  tags: pattern.tags ?? [],
+                  sourceType: 'consolidate',
+                  confidenceScore: pattern.confidence ?? 80,
+                  relevanceScore: 0.8,
+                });
+                await generateAndStoreEmbedding(ctx.db, 'memory', metaMem.id, { kind: 'meta_pattern', title: metaMem.title, bodyMd: metaMem.bodyMd });
 
-              // Archive hot memories that are semantically covered by this meta_pattern
-              const { vectorSearch } = await import('../memory/search.js');
-              const similar = await vectorSearch({
-                db: ctx.db.rawDb, text: pattern.title + ' ' + pattern.bodyMd,
-                vecTable: 'memory_vectors', limit: 10,
-              });
-              for (const match of similar) {
-                if (match.id === metaMem.id) continue; // Don't archive itself
-                if (match.similarity < 0.65) break; // Below threshold
-                const mem = ctx.db.getMemory(match.id);
-                if (!mem || mem.layer !== 'hot') continue; // Only archive hot sources
-                ctx.db.updateMemory(mem.id, { archivedAt: new Date().toISOString() });
-                ctx.db.deleteEmbedding('memory_vectors', mem.id);
-                ctx.db.createFeedback({ targetKind: 'memory', targetId: mem.id, action: 'consolidated', note: `merged into meta_pattern: ${pattern.title}` });
-                console.error(`[shadow:consolidate] Archived hot source: ${mem.title}`);
+                // Archive hot memories that are semantically covered by this meta_pattern
+                const { vectorSearch } = await import('../memory/search.js');
+                const similar = await vectorSearch({
+                  db: ctx.db.rawDb, text: pattern.title + ' ' + pattern.bodyMd,
+                  vecTable: 'memory_vectors', limit: 10,
+                });
+                for (const match of similar) {
+                  if (match.id === metaMem.id) continue; // Don't archive itself
+                  if (match.similarity < 0.65) break; // Below threshold
+                  const mem = ctx.db.getMemory(match.id);
+                  if (!mem || mem.layer !== 'hot') continue; // Only archive hot sources
+                  ctx.db.updateMemory(mem.id, { archivedAt: new Date().toISOString() });
+                  ctx.db.deleteEmbedding('memory_vectors', mem.id);
+                  ctx.db.createFeedback({ targetKind: 'memory', targetId: mem.id, action: 'consolidated', note: `merged into meta_pattern: ${pattern.title}` });
+                  console.error(`[shadow:consolidate] Archived hot source: ${mem.title}`);
+                }
+              } catch (e) {
+                console.error(`[shadow:consolidate] Meta-pattern failed: ${pattern.title}:`, e instanceof Error ? e.message : e);
               }
             }
           }
-        } catch {
-          // Failed to parse LLM output — not fatal
+        } catch (e) {
+          console.error('[shadow:consolidate] Failed to parse LLM output:', e instanceof Error ? e.message : e);
         }
       }
-    } catch {
-      // LLM call failed — continue with programmatic results only
+    } catch (e) {
+      console.error('[shadow:consolidate] LLM call failed:', e instanceof Error ? e.message : e);
     }
   }
 

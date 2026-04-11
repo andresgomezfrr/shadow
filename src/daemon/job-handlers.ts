@@ -249,7 +249,12 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
     lastHeartbeat: ctx.db.getLastJob('heartbeat'),
     pendingEventCount: ctx.db.listPendingEvents().length,
   };
-  const consolidateResult = await activityConsolidate(actCtx);
+  let consolidateResult = { memoriesPromoted: 0, memoriesDemoted: 0, memoriesExpired: 0, llmCalls: 0, tokensUsed: 0 };
+  try {
+    consolidateResult = await activityConsolidate(actCtx);
+  } catch (e) {
+    console.error('[daemon] Consolidate layer maintenance failed:', e instanceof Error ? e.message : e);
+  }
 
   // Phase 2: Correction enforcement
   ctx.setPhase('corrections');
