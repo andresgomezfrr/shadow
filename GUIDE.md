@@ -198,6 +198,12 @@ npm run dev -- daemon start
 npm run dev -- daemon stop
 npm run dev -- daemon status
 
+# Jobs (trigger any daemon job manually)
+npm run dev -- job list              # ver tipos disponibles
+npm run dev -- job heartbeat         # analizar actividad reciente
+npm run dev -- job suggest           # generar sugerencias
+npm run dev -- job reflect           # evolucionar soul
+
 # Diagnostico
 npm run dev -- doctor
 

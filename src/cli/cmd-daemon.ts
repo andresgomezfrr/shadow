@@ -193,11 +193,55 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       );
     });
 
-  // --- heartbeat ---
+  // --- job <type> ---
+
+  const JOB_TYPES: Record<string, { priority: number; description: string }> = {
+    heartbeat:              { priority: 10, description: 'analyze recent activity (4-phase)' },
+    suggest:                { priority: 8,  description: 'generate suggestions from observations' },
+    'suggest-deep':         { priority: 6,  description: 'full codebase review for suggestions' },
+    'suggest-project':      { priority: 5,  description: 'cross-repo project analysis' },
+    reflect:                { priority: 5,  description: 'evolve soul reflection' },
+    consolidate:            { priority: 3,  description: 'memory layer maintenance + merge' },
+    'repo-profile':         { priority: 3,  description: 'generate repo profile' },
+    'project-profile':      { priority: 4,  description: 'generate project profile' },
+    'remote-sync':          { priority: 2,  description: 'git ls-remote + selective fetch' },
+    'context-enrich':       { priority: 4,  description: 'query external MCP servers' },
+    'mcp-discover':         { priority: 2,  description: 'discover MCP server capabilities' },
+    'digest-daily':         { priority: 5,  description: 'generate daily standup digest' },
+    'digest-weekly':        { priority: 5,  description: 'generate weekly digest' },
+    'digest-brag':          { priority: 5,  description: 'generate brag doc' },
+    'revalidate-suggestion': { priority: 3, description: 'revalidate open suggestions' },
+  };
+
+  program
+    .command('job <type>')
+    .description('trigger a daemon job by type (use "shadow job list" to see available types)')
+    .action((type: string) => {
+      if (type === 'list') {
+        const lines = Object.entries(JOB_TYPES).map(([t, info]) => `  ${t.padEnd(24)} ${info.description}`);
+        console.log('Available job types:\n' + lines.join('\n'));
+        return;
+      }
+      const info = JOB_TYPES[type];
+      if (!info) {
+        console.error(`Unknown job type: ${type}\nRun "shadow job list" to see available types.`);
+        process.exit(1);
+      }
+      withDb((db, json) => {
+        if (db.hasQueuedOrRunning(type)) {
+          printOutput({ error: `${type} already queued or running` }, json);
+          return;
+        }
+        db.enqueueJob(type, { priority: info.priority, triggerSource: 'manual' });
+        printOutput({ triggered: true, message: `${type} enqueued — daemon will pick it up on next tick` }, json);
+      });
+    });
+
+  // --- heartbeat / reflect (aliases for backwards compat) ---
 
   program
     .command('heartbeat')
-    .description('trigger a heartbeat cycle immediately')
+    .description('trigger a heartbeat cycle (alias for "shadow job heartbeat")')
     .action(() => withDb((db, json) => {
       if (db.hasQueuedOrRunning('heartbeat')) {
         printOutput({ error: 'heartbeat already queued or running' }, json);
@@ -207,11 +251,9 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       printOutput({ triggered: true, message: 'heartbeat enqueued — daemon will pick it up on next tick' }, json);
     }));
 
-  // --- reflect ---
-
   program
     .command('reflect')
-    .description('trigger a soul reflection immediately')
+    .description('trigger a soul reflection (alias for "shadow job reflect")')
     .action(() => withDb((db, json) => {
       if (db.hasQueuedOrRunning('reflect')) {
         printOutput({ error: 'reflect already queued or running' }, json);

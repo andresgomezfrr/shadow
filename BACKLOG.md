@@ -4,13 +4,6 @@ Actualizado 2026-04-11. Items completados en [COMPLETED.md](COMPLETED.md).
 
 ---
 
-## Prioridad alta — CLI
-
-### `shadow job <type>` — comando genérico para lanzar jobs
-Reemplazar los comandos individuales (`shadow heartbeat`, `shadow reflect`) con un solo comando: `shadow job <type>`. Soportar todos los job types registrados. Ejemplo: `shadow job reflect`, `shadow job suggest`, `shadow job consolidate`.
-
----
-
 ## Prioridad media — Tests
 
 ### Tests MCP tools

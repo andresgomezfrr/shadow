@@ -112,8 +112,8 @@ export const CLI_GROUPS: CliGroup[] = [
       { command: 'shadow daemon stop', description: 'Stop the background daemon' },
       { command: 'shadow daemon restart', description: 'Restart the daemon (picks up code changes)' },
       { command: 'shadow daemon status', description: 'Show daemon status (PID, uptime, port)' },
-      { command: 'shadow daemon heartbeat', description: 'Trigger a heartbeat cycle immediately' },
-      { command: 'shadow daemon reflect', description: 'Trigger a soul reflection immediately' },
+      { command: 'shadow job <type>', description: 'Trigger any daemon job (heartbeat, suggest, reflect, consolidate, etc.)' },
+      { command: 'shadow job list', description: 'List all available job types' },
     ],
   },
   {

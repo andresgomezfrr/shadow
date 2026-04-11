@@ -366,7 +366,8 @@ shadow system add|list|remove
 shadow memory list|search|teach|forget
 shadow suggest list|view|accept|dismiss
 shadow observe / events list|ack / focus [duration] / available
-shadow heartbeat                  # Trigger heartbeat immediately
+shadow job <type>                  # Trigger any daemon job (heartbeat, suggest, reflect, etc.)
+shadow job list                   # List all available job types
 shadow daemon restart             # Full restart (kills processes, frees port, relaunches)
 ```
 
