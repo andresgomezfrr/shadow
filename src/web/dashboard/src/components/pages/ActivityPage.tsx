@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchActivity, fetchActivitySummary, fetchStatus } from '../../api/client';
@@ -58,6 +59,7 @@ function buildFetchParams(params: Record<string, string>) {
 }
 
 export function ActivityPage() {
+  const [videoEnded, setVideoEnded] = useState(false);
   const { params, setParam } = useFilterParams({ type: '', period: 'today', offset: '0' });
 
   const fetchParams = buildFetchParams(params);
@@ -85,7 +87,17 @@ export function ActivityPage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-3">
-        <img src="/ghost/activity.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+{videoEnded
+          ? <img src="/ghost/activity.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+          : <video
+              autoPlay
+              muted
+              playsInline
+              onEnded={() => setVideoEnded(true)}
+              className="w-[80px] h-[80px] rounded-full object-cover"
+              src="/ghost/activity.mp4"
+            />
+        }
         <h1 className="text-xl font-semibold">Activity</h1>
       </div>
 

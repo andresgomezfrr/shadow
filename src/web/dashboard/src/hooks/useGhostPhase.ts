@@ -10,7 +10,7 @@ export const isVideo = (p: string) => p.endsWith('.mp4');
 const randomFrom = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
 const PHASE_MAP: Record<string, PhaseInfo> = {
-  idle:              { images: ['/ghost/idle.mp4', '/ghost/idle-1.png', '/ghost/idle-2.png', '/ghost/idle-3.png', '/ghost/idle-4.png', '/ghost/idle-5.png', '/ghost/idle-6.png', '/ghost/idle-7.png', '/ghost/idle-9.png'], label: 'idle' },
+  idle:              { images: ['/ghost/idle.mp4', '/ghost/idle-1.png', '/ghost/idle-2.png', '/ghost/idle-3.png', '/ghost/idle-4.png', '/ghost/idle-5.png', '/ghost/idle-6.png', '/ghost/idle-7.mp4', '/ghost/idle-9.png'], label: 'idle' },
   focus:             { images: ['/ghost/focus.png'],           label: 'focus mode' },
   watching:          { images: ['/ghost/watching.mp4', '/ghost/watching-1.png'], label: 'watching' },
   learning:          { images: ['/ghost/watching.mp4', '/ghost/watching-1.png'], label: 'learning' },
@@ -18,7 +18,7 @@ const PHASE_MAP: Record<string, PhaseInfo> = {
   suggest:           { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'suggesting...' },
   'suggest-deep':    { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'deep suggesting...' },
   'suggest-project': { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.png'], label: 'project suggestions...' },
-  consolidate:       { images: ['/ghost/consolidating-1.png', '/ghost/consolidating-2.png'], label: 'consolidating...' },
+  consolidate:       { images: ['/ghost/consolidating-1.png', '/ghost/consolidating-2.mp4'], label: 'consolidating...' },
   reflect:           { images: ['/ghost/reflecting.png'],      label: 'reflecting...' },
   'context-enrich':  { images: ['/ghost/enriching.png'],       label: 'enriching...' },
   'remote-sync':     { images: ['/ghost/syncing.png'],         label: 'syncing...' },
