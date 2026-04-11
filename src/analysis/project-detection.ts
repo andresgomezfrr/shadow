@@ -149,25 +149,13 @@ export function computeProjectMomentum(
   const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
 
   // Count memories linked to this project in the window
-  const recentMemories = db.listMemories({ archived: false })
-    .filter(m =>
-      m.createdAt > since &&
-      (m.entities ?? []).some(e => e.type === 'project' && e.id === projectId),
-    ).length;
+  const recentMemories = db.countMemories({ archived: false, createdSince: since, entityType: 'project', entityId: projectId });
 
   // Count observations linked to this project in the window
-  const recentObs = db.listObservations({ status: 'open', limit: 50 })
-    .filter(o =>
-      o.createdAt > since &&
-      (o.entities ?? []).some(e => e.type === 'project' && e.id === projectId),
-    ).length;
+  const recentObs = db.countObservations({ status: 'open', entityType: 'project', entityId: projectId });
 
   // Count suggestions linked to this project in the window
-  const recentSugs = db.listSuggestions({})
-    .filter(s =>
-      s.createdAt > since &&
-      (s.entities ?? []).some(e => e.type === 'project' && e.id === projectId),
-    ).length;
+  const recentSugs = db.countSuggestions({ entityType: 'project', entityId: projectId });
 
   // Weighted score: memories × 3 + observations × 2 + suggestions × 1
   const rawScore = recentMemories * 3 + recentObs * 2 + recentSugs;

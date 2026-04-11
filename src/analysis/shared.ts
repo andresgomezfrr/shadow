@@ -71,11 +71,12 @@ export function buildEntityLinks(db: ShadowDatabase, repoId: string | null, text
   });
 }
 
-/** Update entities_json on an existing memory/observation */
+/** Update entities_json + entity_links junction on an existing memory/observation/suggestion */
 export function persistEntityLinks(db: ShadowDatabase, table: 'memories' | 'observations' | 'suggestions', id: string, entities: EntityLink[]): void {
   if (entities.length === 0) return;
   try {
     db.rawDb.prepare(`UPDATE ${table} SET entities_json = ? WHERE id = ?`).run(JSON.stringify(entities), id);
+    db.syncEntityLinks(table, id, entities);
   } catch { /* best effort */ }
 }
 

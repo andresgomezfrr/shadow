@@ -217,15 +217,14 @@ export async function handleActivityRoutes(
     const recentJobs = db.listJobs({ limit: 5 });
     // Active projects with observation/suggestion counts
     const activeProjects = db.listProjects({ status: 'active' }).map(p => {
-      const projObs = db.listObservations({ status: 'open', limit: 50 })
-        .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === p.id));
-      const projSugs = suggestions
-        .filter(s => (s.entities ?? []).some(e => e.type === 'project' && e.id === p.id));
+      const obsCount = db.countObservations({ status: 'open', projectId: p.id });
+      const sugCount = db.countSuggestions({ status: 'open', projectId: p.id });
+      const topObs = obsCount > 0 ? db.listObservations({ status: 'open', projectId: p.id, limit: 1 }) : [];
       return {
         id: p.id, name: p.name, kind: p.kind,
         repoCount: p.repoIds.length, systemCount: p.systemIds.length,
-        observationCount: projObs.length, suggestionCount: projSugs.length,
-        topObservation: projObs[0]?.title ?? null,
+        observationCount: obsCount, suggestionCount: sugCount,
+        topObservation: topObs[0]?.title ?? null,
       };
     });
 

@@ -9,6 +9,7 @@ import type {
   ContactRecord,
   DigestRecord,
   EnrichmentCacheRecord,
+  EntityLink,
   EntityRelationRecord,
   EventRecord,
   FeedbackRecord,
@@ -259,8 +260,8 @@ export class ShadowDatabase {
 
   createMemory(input: CreateMemoryInput): MemoryRecord { return knowledge.createMemory(this.database, input); }
   getMemory(id: string): MemoryRecord | null { return knowledge.getMemory(this.database, id); }
-  listMemories(filters?: { layer?: string; layers?: string[]; scope?: string; repoId?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string; limit?: number; offset?: number }): MemoryRecord[] { return knowledge.listMemories(this.database, filters); }
-  countMemories(filters?: { layer?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string }): number { return knowledge.countMemories(this.database, filters); }
+  listMemories(filters?: { layer?: string; layers?: string[]; scope?: string; repoId?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string; entityType?: string; entityId?: string; limit?: number; offset?: number }): MemoryRecord[] { return knowledge.listMemories(this.database, filters); }
+  countMemories(filters?: { layer?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string; entityType?: string; entityId?: string }): number { return knowledge.countMemories(this.database, filters); }
   searchMemories(query: string, options?: { layer?: string; scope?: string; repoId?: string; limit?: number }): MemorySearchResult[] { return knowledge.searchMemories(this.database, query, options); }
   updateMemory(id: string, updates: Partial<Pick<MemoryRecord, 'layer' | 'scope' | 'kind' | 'title' | 'bodyMd' | 'tags' | 'confidenceScore' | 'relevanceScore' | 'accessCount' | 'lastAccessedAt' | 'promotedFrom' | 'demotedTo' | 'archivedAt'>> & { entities?: Array<{ type: string; id: string }> }): void { return knowledge.updateMemory(this.database, id, updates); }
   touchMemory(id: string): void { return knowledge.touchMemory(this.database, id); }
@@ -270,8 +271,8 @@ export class ShadowDatabase {
 
   createObservation(input: CreateObservationInput): ObservationRecord { return knowledge.createObservation(this.database, input); }
   getObservation(id: string): ObservationRecord | null { return knowledge.getObservation(this.database, id); }
-  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; severity?: string; kind?: string; projectId?: string; limit?: number; offset?: number }): ObservationRecord[] { return knowledge.listObservations(this.database, filters); }
-  countObservations(filters?: { repoId?: string; status?: string; severity?: string; kind?: string; projectId?: string }): number { return knowledge.countObservations(this.database, filters); }
+  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string; limit?: number; offset?: number }): ObservationRecord[] { return knowledge.listObservations(this.database, filters); }
+  countObservations(filters?: { repoId?: string; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string }): number { return knowledge.countObservations(this.database, filters); }
   countObservationsSince(since: string): number { return knowledge.countObservationsSince(this.database, since); }
   markObservationProcessed(id: string, suggestionId?: string): void { return knowledge.markObservationProcessed(this.database, id, suggestionId); }
   updateObservationStatus(id: string, status: string): void { return knowledge.updateObservationStatus(this.database, id, status); }
@@ -284,8 +285,8 @@ export class ShadowDatabase {
 
   createSuggestion(input: CreateSuggestionInput): SuggestionRecord { return knowledge.createSuggestion(this.database, input); }
   getSuggestion(id: string): SuggestionRecord | null { return knowledge.getSuggestion(this.database, id); }
-  listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] { return knowledge.listSuggestions(this.database, filters); }
-  countSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string }): number { return knowledge.countSuggestions(this.database, filters); }
+  listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] { return knowledge.listSuggestions(this.database, filters); }
+  countSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string }): number { return knowledge.countSuggestions(this.database, filters); }
   updateSuggestion(id: string, updates: Partial<Pick<SuggestionRecord, 'status' | 'feedbackNote' | 'shownAt' | 'resolvedAt' | 'expiresAt' | 'title' | 'summaryMd' | 'reasoningMd' | 'impactScore' | 'confidenceScore' | 'riskScore' | 'revalidationCount' | 'lastRevalidatedAt' | 'revalidationVerdict' | 'revalidationNote'>>): void { return knowledge.updateSuggestion(this.database, id, updates); }
   countPendingSuggestions(): number { return knowledge.countPendingSuggestions(this.database); }
 
@@ -294,6 +295,7 @@ export class ShadowDatabase {
   storeEmbedding(table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors', id: string, embedding: Float32Array): void { return knowledge.storeEmbedding(this.database, table, id, embedding); }
   deleteEmbedding(table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors', id: string): void { return knowledge.deleteEmbedding(this.database, table, id); }
   removeEntityReferences(entityType: string, entityId: string): void { return knowledge.removeEntityReferences(this.database, entityType, entityId); }
+  syncEntityLinks(sourceTable: string, sourceId: string, entities: EntityLink[]): void { return knowledge.syncEntityLinks(this.database, sourceTable, sourceId, entities); }
 
   // --- Interactions ---
 

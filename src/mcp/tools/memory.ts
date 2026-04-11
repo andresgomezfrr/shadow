@@ -218,8 +218,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
         if (parsed.entityType && parsed.entityId) {
           try {
             const entities = [{ type: parsed.entityType as 'repo' | 'project' | 'system', id: parsed.entityId }];
-            db.rawDb.prepare('UPDATE memories SET entities_json = ? WHERE id = ?')
-              .run(JSON.stringify(entities), memory.id);
+            db.updateMemory(memory.id, { entities });
           } catch { /* best-effort */ }
         }
 

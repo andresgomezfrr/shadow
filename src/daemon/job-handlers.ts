@@ -555,10 +555,8 @@ async function handleProjectProfile(ctx: JobContext): Promise<JobHandlerResult> 
   const repoProfiles = repos.map(r => r!.contextMd ? `### ${r!.name}\n${r!.contextMd}` : `### ${r!.name}\nNo profile yet.`);
 
   // Gather project context
-  const observations = ctx.db.listObservations({ limit: 20 })
-    .filter(o => o.entities?.some(e => e.type === 'project' && e.id === projectId));
-  const memories = ctx.db.listMemories({ limit: 20, archived: false })
-    .filter(m => m.entities?.some(e => e.type === 'project' && e.id === projectId));
+  const observations = ctx.db.listObservations({ entityType: 'project', entityId: projectId, limit: 20 });
+  const memories = ctx.db.listMemories({ archived: false, entityType: 'project', entityId: projectId, limit: 20 });
   const systems = (project.systemIds ?? []).map(id => ctx.db.getSystem(id)).filter(Boolean);
 
   // External context from enrichment
@@ -642,10 +640,8 @@ async function handleSuggestDeep(ctx: JobContext, _shared: DaemonSharedState): P
 
   // Gather rich context
   const repoProfile = repo.contextMd ?? 'No profile available.';
-  const observations = ctx.db.listObservations({ limit: 20 })
-    .filter(o => o.entities?.some(e => e.type === 'repo' && e.id === repoId));
-  const memories = ctx.db.listMemories({ limit: 20, archived: false })
-    .filter(m => m.entities?.some(e => e.type === 'repo' && e.id === repoId));
+  const observations = ctx.db.listObservations({ entityType: 'repo', entityId: repoId, limit: 20 });
+  const memories = ctx.db.listMemories({ archived: false, entityType: 'repo', entityId: repoId, limit: 20 });
   const dismissPatterns = ctx.db.getDismissPatterns(repoId);
   const recentAccepted = ctx.db.listSuggestions({ status: 'accepted', limit: 10 })
     .filter(s => s.repoId === repoId);
@@ -777,6 +773,7 @@ Generate 1-5 suggestions. Quality over quantity.`;
         const entities = [{ type: 'repo' as const, id: repoId }];
         try {
           ctx.db.rawDb.prepare('UPDATE suggestions SET entities_json = ? WHERE id = ?').run(JSON.stringify(entities), created.id);
+          ctx.db.syncEntityLinks('suggestions', created.id, entities);
         } catch { /* best-effort */ }
 
         // Generate embedding
@@ -847,8 +844,7 @@ async function handleSuggestProject(ctx: JobContext): Promise<JobHandlerResult> 
   // Cross-project observations
   const crossObs = ctx.db.listObservations({ limit: 20 })
     .filter(o => o.kind === 'cross_project' || o.entities?.some(e => e.type === 'project' && e.id === projectId));
-  const memories = ctx.db.listMemories({ limit: 20, archived: false })
-    .filter(m => m.entities?.some(e => e.type === 'project' && e.id === projectId));
+  const memories = ctx.db.listMemories({ archived: false, entityType: 'project', entityId: projectId, limit: 20 });
   const dismissPatterns = ctx.db.getDismissPatterns();
 
   // External context from enrichment
@@ -976,6 +972,7 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
         ];
         try {
           ctx.db.rawDb.prepare('UPDATE suggestions SET entities_json = ? WHERE id = ?').run(JSON.stringify(entities), created.id);
+          ctx.db.syncEntityLinks('suggestions', created.id, entities);
         } catch { /* best-effort */ }
 
         // Generate embedding

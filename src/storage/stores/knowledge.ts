@@ -60,64 +60,76 @@ export function getMemory(db: DatabaseSync, id: string): MemoryRecord | null {
   return row ? mapMemory(row) : null;
 }
 
-export function listMemories(db: DatabaseSync, filters?: { layer?: string; layers?: string[]; scope?: string; repoId?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string; limit?: number; offset?: number }): MemoryRecord[] {
+export function listMemories(db: DatabaseSync, filters?: { layer?: string; layers?: string[]; scope?: string; repoId?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string; entityType?: string; entityId?: string; limit?: number; offset?: number }): MemoryRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
+  let join = '';
 
   if (filters?.layer) {
-    clauses.push('layer = ?');
+    clauses.push('m.layer = ?');
     values.push(filters.layer);
   }
   if (filters?.layers?.length) {
     const ph = filters.layers.map(() => '?').join(',');
-    clauses.push(`layer IN (${ph})`);
+    clauses.push(`m.layer IN (${ph})`);
     values.push(...filters.layers);
   }
   if (filters?.scope) {
-    clauses.push('scope = ?');
+    clauses.push('m.scope = ?');
     values.push(filters.scope);
   }
   if (filters?.repoId) {
-    clauses.push('repo_id = ?');
+    clauses.push('m.repo_id = ?');
     values.push(filters.repoId);
   }
   if (filters?.memoryType) {
-    clauses.push('memory_type = ?');
+    clauses.push('m.memory_type = ?');
     values.push(filters.memoryType);
   }
   if (filters?.kind) {
-    clauses.push('kind = ?');
+    clauses.push('m.kind = ?');
     values.push(filters.kind);
   }
   if (filters?.archived === false) {
-    clauses.push('archived_at IS NULL');
+    clauses.push('m.archived_at IS NULL');
   } else if (filters?.archived === true) {
-    clauses.push('archived_at IS NOT NULL');
+    clauses.push('m.archived_at IS NOT NULL');
   }
   if (filters?.createdSince) {
-    clauses.push('created_at > ?');
+    clauses.push('m.created_at > ?');
     values.push(filters.createdSince);
+  }
+  if (filters?.entityType && filters?.entityId) {
+    join = "JOIN entity_links el ON el.source_table = 'memories' AND el.source_id = m.id";
+    clauses.push('el.entity_type = ? AND el.entity_id = ?');
+    values.push(filters.entityType, filters.entityId);
   }
 
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
   const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
   return db
-    .prepare(`SELECT * FROM memories ${where} ORDER BY created_at DESC, id ASC${pagination}`)
+    .prepare(`SELECT m.* FROM memories m ${join} ${where} ORDER BY m.created_at DESC, m.id ASC${pagination}`)
     .all(...values)
     .map(mapMemory);
 }
 
-export function countMemories(db: DatabaseSync, filters?: { layer?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string }): number {
+export function countMemories(db: DatabaseSync, filters?: { layer?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string; entityType?: string; entityId?: string }): number {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
-  if (filters?.layer) { clauses.push('layer = ?'); values.push(filters.layer); }
-  if (filters?.memoryType) { clauses.push('memory_type = ?'); values.push(filters.memoryType); }
-  if (filters?.kind) { clauses.push('kind = ?'); values.push(filters.kind); }
-  if (filters?.archived === false) { clauses.push('archived_at IS NULL'); }
-  else if (filters?.archived === true) { clauses.push('archived_at IS NOT NULL'); }
-  if (filters?.createdSince) { clauses.push('created_at > ?'); values.push(filters.createdSince); }
+  let join = '';
+  if (filters?.layer) { clauses.push('m.layer = ?'); values.push(filters.layer); }
+  if (filters?.memoryType) { clauses.push('m.memory_type = ?'); values.push(filters.memoryType); }
+  if (filters?.kind) { clauses.push('m.kind = ?'); values.push(filters.kind); }
+  if (filters?.archived === false) { clauses.push('m.archived_at IS NULL'); }
+  else if (filters?.archived === true) { clauses.push('m.archived_at IS NOT NULL'); }
+  if (filters?.createdSince) { clauses.push('m.created_at > ?'); values.push(filters.createdSince); }
+  if (filters?.entityType && filters?.entityId) {
+    join = "JOIN entity_links el ON el.source_table = 'memories' AND el.source_id = m.id";
+    clauses.push('el.entity_type = ? AND el.entity_id = ?');
+    values.push(filters.entityType, filters.entityId);
+  }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-  return (db.prepare(`SELECT COUNT(*) as total FROM memories ${where}`).get(...values) as { total: number }).total;
+  return (db.prepare(`SELECT COUNT(*) as total FROM memories m ${join} ${where}`).get(...values) as { total: number }).total;
 }
 
 export function searchMemories(db: DatabaseSync, query: string, options?: { layer?: string; scope?: string; repoId?: string; limit?: number }): MemorySearchResult[] {
@@ -193,6 +205,9 @@ export function updateMemory(db: DatabaseSync, id: string, updates: Partial<Pick
   values.push(new Date().toISOString());
   values.push(id);
   db.prepare(`UPDATE memories SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  if (updates.entities) {
+    syncEntityLinks(db, 'memories', id, updates.entities as EntityLink[]);
+  }
 }
 
 export function touchMemory(db: DatabaseSync, id: string): void {
@@ -273,57 +288,68 @@ export function getObservation(db: DatabaseSync, id: string): ObservationRecord 
   return row ? mapObservation(row) : null;
 }
 
-export function listObservations(db: DatabaseSync, filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; severity?: string; kind?: string; projectId?: string; limit?: number; offset?: number }): ObservationRecord[] {
+export function listObservations(db: DatabaseSync, filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string; limit?: number; offset?: number }): ObservationRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
+  let join = '';
 
   if (filters?.repoId) {
-    clauses.push('repo_id = ?');
+    clauses.push('o.repo_id = ?');
     values.push(filters.repoId);
   }
   if (filters?.sourceKind) {
-    clauses.push('source_kind = ?');
+    clauses.push('o.source_kind = ?');
     values.push(filters.sourceKind);
   }
   if (filters?.processed !== undefined) {
-    clauses.push('processed = ?');
+    clauses.push('o.processed = ?');
     values.push(filters.processed ? 1 : 0);
   }
   if (filters?.status && filters.status !== 'all') {
-    clauses.push('status = ?');
+    clauses.push('o.status = ?');
     values.push(filters.status);
   }
   if (filters?.severity) {
-    clauses.push('severity = ?');
+    clauses.push('o.severity = ?');
     values.push(filters.severity);
   }
   if (filters?.kind) {
-    clauses.push('kind = ?');
+    clauses.push('o.kind = ?');
     values.push(filters.kind);
   }
-  if (filters?.projectId) {
-    clauses.push("entities_json LIKE ?");
-    values.push(`%"id":"${filters.projectId}"%`);
+  const eType = filters?.entityType ?? (filters?.projectId ? 'project' : undefined);
+  const eId = filters?.entityId ?? filters?.projectId;
+  if (eType && eId) {
+    join = "JOIN entity_links el ON el.source_table = 'observations' AND el.source_id = o.id";
+    clauses.push('el.entity_type = ? AND el.entity_id = ?');
+    values.push(eType, eId);
   }
 
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
   const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
   return db
-    .prepare(`SELECT * FROM observations ${where} ORDER BY votes DESC, last_seen_at DESC, id ASC${pagination}`)
+    .prepare(`SELECT o.* FROM observations o ${join} ${where} ORDER BY o.votes DESC, o.last_seen_at DESC, o.id ASC${pagination}`)
     .all(...values)
     .map(mapObservation);
 }
 
-export function countObservations(db: DatabaseSync, filters?: { repoId?: string; status?: string; severity?: string; kind?: string; projectId?: string }): number {
+export function countObservations(db: DatabaseSync, filters?: { repoId?: string; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string }): number {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
-  if (filters?.repoId) { clauses.push('repo_id = ?'); values.push(filters.repoId); }
-  if (filters?.status && filters.status !== 'all') { clauses.push('status = ?'); values.push(filters.status); }
-  if (filters?.severity) { clauses.push('severity = ?'); values.push(filters.severity); }
-  if (filters?.kind) { clauses.push('kind = ?'); values.push(filters.kind); }
-  if (filters?.projectId) { clauses.push("entities_json LIKE ?"); values.push(`%"id":"${filters.projectId}"%`); }
+  let join = '';
+  if (filters?.repoId) { clauses.push('o.repo_id = ?'); values.push(filters.repoId); }
+  if (filters?.status && filters.status !== 'all') { clauses.push('o.status = ?'); values.push(filters.status); }
+  if (filters?.severity) { clauses.push('o.severity = ?'); values.push(filters.severity); }
+  if (filters?.kind) { clauses.push('o.kind = ?'); values.push(filters.kind); }
+  const eType = filters?.entityType ?? (filters?.projectId ? 'project' : undefined);
+  const eId = filters?.entityId ?? filters?.projectId;
+  if (eType && eId) {
+    join = "JOIN entity_links el ON el.source_table = 'observations' AND el.source_id = o.id";
+    clauses.push('el.entity_type = ? AND el.entity_id = ?');
+    values.push(eType, eId);
+  }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-  return (db.prepare(`SELECT COUNT(*) as total FROM observations ${where}`).get(...values) as { total: number }).total;
+  return (db.prepare(`SELECT COUNT(*) as total FROM observations o ${join} ${where}`).get(...values) as { total: number }).total;
 }
 
 export function countObservationsSince(db: DatabaseSync, since: string): number {
@@ -457,45 +483,56 @@ const SORT_COLUMNS: Record<string, string> = {
   risk: 'risk_score DESC, created_at DESC',
 };
 
-export function listSuggestions(db: DatabaseSync, filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] {
+export function listSuggestions(db: DatabaseSync, filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
+  let join = '';
 
   if (filters?.status) {
-    clauses.push('status = ?');
+    clauses.push('s.status = ?');
     values.push(filters.status);
   }
   if (filters?.kind) {
-    clauses.push('kind = ?');
+    clauses.push('s.kind = ?');
     values.push(filters.kind);
   }
   if (filters?.repoId) {
-    clauses.push('repo_id = ?');
+    clauses.push('s.repo_id = ?');
     values.push(filters.repoId);
   }
-  if (filters?.projectId) {
-    clauses.push("entities_json LIKE ?");
-    values.push(`%"id":"${filters.projectId}"%`);
+  const eType = filters?.entityType ?? (filters?.projectId ? 'project' : undefined);
+  const eId = filters?.entityId ?? filters?.projectId;
+  if (eType && eId) {
+    join = "JOIN entity_links el ON el.source_table = 'suggestions' AND el.source_id = s.id";
+    clauses.push('el.entity_type = ? AND el.entity_id = ?');
+    values.push(eType, eId);
   }
 
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
   const orderBy = SORT_COLUMNS[filters?.sortBy ?? ''] ?? 'created_at DESC, id ASC';
   const pagination = `${filters?.limit != null ? ` LIMIT ${Number(filters.limit)}` : ''}${filters?.offset != null ? ` OFFSET ${Number(filters.offset)}` : ''}`;
   return db
-    .prepare(`SELECT * FROM suggestions ${where} ORDER BY ${orderBy}${pagination}`)
+    .prepare(`SELECT s.* FROM suggestions s ${join} ${where} ORDER BY ${orderBy}${pagination}`)
     .all(...values)
     .map(mapSuggestion);
 }
 
-export function countSuggestions(db: DatabaseSync, filters?: { status?: string; kind?: string; repoId?: string; projectId?: string }): number {
+export function countSuggestions(db: DatabaseSync, filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string }): number {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
-  if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
-  if (filters?.kind) { clauses.push('kind = ?'); values.push(filters.kind); }
-  if (filters?.repoId) { clauses.push('repo_id = ?'); values.push(filters.repoId); }
-  if (filters?.projectId) { clauses.push("entities_json LIKE ?"); values.push(`%"id":"${filters.projectId}"%`); }
+  let join = '';
+  if (filters?.status) { clauses.push('s.status = ?'); values.push(filters.status); }
+  if (filters?.kind) { clauses.push('s.kind = ?'); values.push(filters.kind); }
+  if (filters?.repoId) { clauses.push('s.repo_id = ?'); values.push(filters.repoId); }
+  const eType = filters?.entityType ?? (filters?.projectId ? 'project' : undefined);
+  const eId = filters?.entityId ?? filters?.projectId;
+  if (eType && eId) {
+    join = "JOIN entity_links el ON el.source_table = 'suggestions' AND el.source_id = s.id";
+    clauses.push('el.entity_type = ? AND el.entity_id = ?');
+    values.push(eType, eId);
+  }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-  return (db.prepare(`SELECT COUNT(*) as total FROM suggestions ${where}`).get(...values) as { total: number }).total;
+  return (db.prepare(`SELECT COUNT(*) as total FROM suggestions s ${join} ${where}`).get(...values) as { total: number }).total;
 }
 
 export function updateSuggestion(db: DatabaseSync, id: string, updates: Partial<Pick<SuggestionRecord, 'status' | 'feedbackNote' | 'shownAt' | 'resolvedAt' | 'expiresAt' | 'title' | 'summaryMd' | 'reasoningMd' | 'impactScore' | 'confidenceScore' | 'riskScore' | 'revalidationCount' | 'lastRevalidatedAt' | 'revalidationVerdict' | 'revalidationNote'>>): void {
@@ -535,21 +572,26 @@ export function deleteEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'obs
   }
 }
 
-/** Remove entity references from entities_json in memories, observations, and suggestions. */
+/** Remove entity references from entity_links junction + entities_json in memories, observations, suggestions, tasks. */
 export function removeEntityReferences(db: DatabaseSync, entityType: string, entityId: string): void {
   db.exec('BEGIN');
   try {
-    const tables = ['memories', 'observations', 'suggestions'];
-    for (const table of tables) {
-      const rows = db
-        .prepare(`SELECT id, entities_json FROM ${table} WHERE entities_json LIKE ?`)
-        .all(`%${entityId}%`) as { id: string; entities_json: string }[];
-      for (const row of rows) {
-        const entities: EntityLink[] = jsonParse(row.entities_json, []);
+    // Find affected rows via indexed junction table lookup
+    const affected = db
+      .prepare('SELECT source_table, source_id FROM entity_links WHERE entity_type = ? AND entity_id = ?')
+      .all(entityType, entityId) as { source_table: string; source_id: string }[];
+
+    // Remove from junction table
+    db.prepare('DELETE FROM entity_links WHERE entity_type = ? AND entity_id = ?').run(entityType, entityId);
+
+    // Sync entities_json for consistency
+    for (const row of affected) {
+      const current = db.prepare(`SELECT entities_json FROM ${row.source_table} WHERE id = ?`).get(row.source_id) as { entities_json: string } | undefined;
+      if (current) {
+        const entities: EntityLink[] = jsonParse(current.entities_json, []);
         const filtered = entities.filter(e => !(e.type === entityType && e.id === entityId));
-        db
-          .prepare(`UPDATE ${table} SET entities_json = ? WHERE id = ?`)
-          .run(JSON.stringify(filtered), row.id);
+        db.prepare(`UPDATE ${row.source_table} SET entities_json = ? WHERE id = ?`)
+          .run(JSON.stringify(filtered), row.source_id);
       }
     }
     db.exec('COMMIT');
@@ -557,4 +599,12 @@ export function removeEntityReferences(db: DatabaseSync, entityType: string, ent
     db.exec('ROLLBACK');
     throw e;
   }
+}
+
+/** Sync entity_links junction table for a given source row. Caller controls transaction if needed. */
+export function syncEntityLinks(db: DatabaseSync, sourceTable: string, sourceId: string, entities: EntityLink[]): void {
+  db.prepare('DELETE FROM entity_links WHERE source_table = ? AND source_id = ?').run(sourceTable, sourceId);
+  if (entities.length === 0) return;
+  const ins = db.prepare('INSERT OR IGNORE INTO entity_links (source_table, source_id, entity_type, entity_id) VALUES (?, ?, ?, ?)');
+  for (const e of entities) ins.run(sourceTable, sourceId, e.type, e.id);
 }

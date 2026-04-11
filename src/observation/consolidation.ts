@@ -59,6 +59,7 @@ export async function consolidateObservations(db: ShadowDatabase): Promise<numbe
       db.rawDb.prepare(
         `UPDATE observations SET votes = votes + ?, repo_ids_json = ?, entities_json = ?, last_seen_at = ? WHERE id = ?`,
       ).run(loser.votes, JSON.stringify(mergedRepoIds), JSON.stringify(mergedEntities), new Date().toISOString(), keeper.id);
+      db.syncEntityLinks('observations', keeper.id, mergedEntities);
 
       db.updateObservationStatus(loser.id, 'done');
       db.deleteEmbedding('observation_vectors', loser.id);

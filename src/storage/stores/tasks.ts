@@ -1,7 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
-import type { TaskRecord } from '../models.js';
+import type { EntityLink, TaskRecord } from '../models.js';
 import { type SQLValue, mapTask, toSqlValue } from '../mappers.js';
+import { syncEntityLinks } from './knowledge.js';
 
 type CreateTaskInput = {
   title: string;
@@ -39,6 +40,9 @@ export function createTask(db: DatabaseSync, input: CreateTaskInput): TaskRecord
     now,
     now,
   );
+  if (input.entities?.length) {
+    syncEntityLinks(db, 'tasks', id, input.entities as EntityLink[]);
+  }
   return getTask(db, id)!;
 }
 
@@ -89,8 +93,12 @@ export function updateTask(db: DatabaseSync, id: string, updates: Partial<Pick<T
   }
   values.push(id);
   db.prepare(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  if (updates.entities) {
+    syncEntityLinks(db, 'tasks', id, updates.entities as EntityLink[]);
+  }
 }
 
 export function deleteTask(db: DatabaseSync, id: string): void {
+  db.prepare("DELETE FROM entity_links WHERE source_table = 'tasks' AND source_id = ?").run(id);
   db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
 }

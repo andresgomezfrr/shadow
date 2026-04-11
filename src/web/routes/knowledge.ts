@@ -185,8 +185,7 @@ export async function handleKnowledgeRoutes(
       if (body.entityType && body.entityId) {
         try {
           const entities = [{ type: body.entityType, id: body.entityId }];
-          db.rawDb.prepare('UPDATE memories SET entities_json = ? WHERE id = ?')
-            .run(JSON.stringify(entities), memory.id);
+          db.updateMemory(memory.id, { entities });
         } catch { /* best-effort */ }
       }
 

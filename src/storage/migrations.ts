@@ -835,6 +835,44 @@ export const migrations: Migration[] = [
       UPDATE runs SET status = 'planned' WHERE status = 'completed';
     `,
   },
+  {
+    version: 44,
+    name: 'entity_links_junction',
+    sql: `
+      CREATE TABLE IF NOT EXISTS entity_links (
+        source_table TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        PRIMARY KEY (source_table, source_id, entity_type, entity_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_entity_links_target ON entity_links(entity_type, entity_id, source_table);
+
+      -- Backfill from memories
+      INSERT OR IGNORE INTO entity_links (source_table, source_id, entity_type, entity_id)
+      SELECT 'memories', m.id, json_extract(j.value, '$.type'), json_extract(j.value, '$.id')
+      FROM memories m, json_each(m.entities_json) j
+      WHERE m.entities_json IS NOT NULL AND m.entities_json != '[]' AND m.entities_json != '';
+
+      -- Backfill from observations
+      INSERT OR IGNORE INTO entity_links (source_table, source_id, entity_type, entity_id)
+      SELECT 'observations', o.id, json_extract(j.value, '$.type'), json_extract(j.value, '$.id')
+      FROM observations o, json_each(o.entities_json) j
+      WHERE o.entities_json IS NOT NULL AND o.entities_json != '[]' AND o.entities_json != '';
+
+      -- Backfill from suggestions
+      INSERT OR IGNORE INTO entity_links (source_table, source_id, entity_type, entity_id)
+      SELECT 'suggestions', s.id, json_extract(j.value, '$.type'), json_extract(j.value, '$.id')
+      FROM suggestions s, json_each(s.entities_json) j
+      WHERE s.entities_json IS NOT NULL AND s.entities_json != '[]' AND s.entities_json != '';
+
+      -- Backfill from tasks
+      INSERT OR IGNORE INTO entity_links (source_table, source_id, entity_type, entity_id)
+      SELECT 'tasks', t.id, json_extract(j.value, '$.type'), json_extract(j.value, '$.id')
+      FROM tasks t, json_each(t.entities_json) j
+      WHERE t.entities_json IS NOT NULL AND t.entities_json != '[]' AND t.entities_json != '';
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

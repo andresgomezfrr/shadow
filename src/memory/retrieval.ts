@@ -464,6 +464,7 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
         db.rawDb
           .prepare('UPDATE memories SET entities_json = ? WHERE id = ?')
           .run(JSON.stringify(allEntities), newMem.id);
+        db.syncEntityLinks('memories', newMem.id, allEntities as EntityLink[]);
       }
 
       // Generate embedding for new memory

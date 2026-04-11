@@ -47,8 +47,7 @@ export async function handleEntityRoutes(
 
     const observations = db.listObservations({ status: 'open', projectId: project.id, limit: 50 });
     const suggestions = db.listSuggestions({ status: 'open', projectId: project.id, limit: 50 });
-    const memories = db.listMemories({ archived: false, limit: 500 })
-      .filter(m => (m.entities ?? []).some(e => e.type === 'project' && e.id === project.id));
+    const memories = db.listMemories({ archived: false, entityType: 'project', entityId: project.id, limit: 50 });
 
     const enrichLimit = clampLimit(params.get('enrichLimit'), 10);
     const enrichOffset = clampOffset(params.get('enrichOffset'));
@@ -72,7 +71,7 @@ export async function handleEntityRoutes(
       counts: {
         observations: db.countObservations({ status: 'open', projectId: project.id }),
         suggestions: db.countSuggestions({ status: 'open', projectId: project.id }),
-        memories: memories.length,
+        memories: db.countMemories({ archived: false, entityType: 'project', entityId: project.id }),
       },
     }), true;
   }
@@ -83,10 +82,8 @@ export async function handleEntityRoutes(
     const system = db.getSystem(systemDetailMatch[1]);
     if (!system) return json(res, { error: 'System not found' }, 404), true;
 
-    const observations = db.listObservations({ status: 'open', limit: 50 })
-      .filter(o => (o.entities ?? []).some(e => e.type === 'system' && e.id === system.id));
-    const memories = db.listMemories({ archived: false })
-      .filter(m => (m.entities ?? []).some(e => e.type === 'system' && e.id === system.id));
+    const observations = db.listObservations({ status: 'open', entityType: 'system', entityId: system.id, limit: 50 });
+    const memories = db.listMemories({ archived: false, entityType: 'system', entityId: system.id });
 
     // Find projects that include this system
     const projects = db.listProjects({ status: 'active' })
@@ -98,8 +95,8 @@ export async function handleEntityRoutes(
       memories: memories.slice(0, 10).map(m => ({ id: m.id, kind: m.kind, title: m.title, createdAt: m.createdAt })),
       projects: projects.map(p => ({ id: p.id, name: p.name, kind: p.kind })),
       counts: {
-        observations: observations.length,
-        memories: memories.length,
+        observations: db.countObservations({ status: 'open', entityType: 'system', entityId: system.id }),
+        memories: db.countMemories({ archived: false, entityType: 'system', entityId: system.id }),
         projects: projects.length,
       },
     }), true;

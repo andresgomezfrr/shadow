@@ -486,12 +486,9 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         const systems = project.systemIds.map(id => db.getSystem(id)).filter(Boolean).map(s => ({ id: s!.id, name: s!.name, kind: s!.kind }));
         const contacts = project.contactIds.map(id => db.getContact(id)).filter(Boolean).map(c => ({ id: c!.id, name: c!.name, role: c!.role }));
 
-        const observations = db.listObservations({ status: 'open', limit: 50 })
-          .filter(o => (o.entities ?? []).some(e => e.type === 'project' && e.id === project!.id));
-        const suggestions = db.listSuggestions({ status: 'open' })
-          .filter(s => (s.entities ?? []).some(e => e.type === 'project' && e.id === project!.id));
-        const memories = db.listMemories({ archived: false })
-          .filter(m => (m.entities ?? []).some(e => e.type === 'project' && e.id === project!.id));
+        const observations = db.listObservations({ status: 'open', projectId: project!.id, limit: 50 });
+        const suggestions = db.listSuggestions({ status: 'open', projectId: project!.id, limit: 50 });
+        const memories = db.listMemories({ archived: false, entityType: 'project', entityId: project!.id, limit: 50 });
 
         let enrichment: unknown[] = [];
         try {

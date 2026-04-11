@@ -464,10 +464,12 @@ describe('projects + entity cascade', () => {
       title: 'Test entity cascade on delete',
     });
 
-    // Set entities_json via rawDb to link observation to the project
+    // Set entities_json + entity_links via rawDb to link observation to the project
+    const entities = [{ type: 'project' as const, id: project.id }];
     db.rawDb
       .prepare('UPDATE observations SET entities_json = ? WHERE id = ?')
-      .run(JSON.stringify([{ type: 'project', id: project.id }]), obs.id);
+      .run(JSON.stringify(entities), obs.id);
+    db.syncEntityLinks('observations', obs.id, entities);
 
     // Verify entity link is set
     const beforeDelete = db.getObservation(obs.id)!;

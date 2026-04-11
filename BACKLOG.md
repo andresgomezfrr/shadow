@@ -24,6 +24,30 @@ Ningún ErrorBoundary en todo el dashboard React. Un crash en cualquier componen
 ### P2: 3 catch blocks en runs.ts deberían loguear
 `src/web/routes/runs.ts` L263, L377, L458 — catches silenciosos donde el error es diagnóstico útil (session ID parse, git diff, LLM title generation).
 
+### P2: Entity deletes sin transacción
+`src/storage/database.ts:203-250` — deleteRepo/System/Project/Contact hacen 3 operaciones (delete + removeEntityReferences + deleteRelationsFor) sin BEGIN/COMMIT. Si falla entre pasos, queda estado inconsistente (referencias huérfanas).
+
+### P2: Embedding stale tras merge en consolidate
+`src/analysis/consolidate.ts:87` — `mergeMemoryBody()` actualiza el texto pero NO regenera el embedding. El vector queda apuntando al contenido antiguo, degradando la precisión de dedup. Mismo issue en `extract.ts` cuando usa merge.
+
+### P2: Suggest fail-open cuando validación falla
+`src/analysis/suggest.ts:224-234` — Si Phase 2 (validación LLM) falla o devuelve JSON malformado, TODOS los candidatos de Phase 1 pasan sin filtro. Mitigado parcialmente por dedup semántico posterior.
+
+### P2: Request body sin límite de tamaño
+`src/web/helpers.ts:34-41` — `readBody()` acumula chunks sin límite. Un cliente malicioso puede enviar un body enorme y agotar heap. Añadir MAX_BODY_SIZE (~10MB).
+
+### P3: Duplicate fetch en getActiveRevalidations
+`src/web/dashboard/src/api/client.ts:302-304` — Hace dos llamadas idénticas a `fetchJobs({ type: 'revalidate-suggestion' })`. Debería ser una sola llamada o filtrar por status diferente.
+
+### P3: SSE reconnect sin límite de reintentos
+`src/web/dashboard/src/hooks/useEventStream.ts:30-39` — Backoff exponencial con cap en 30s, pero sin máximo de intentos. Si el server está permanentemente caído, reconecta cada 30s indefinidamente.
+
+### P3: Blob URL no revocado en Sidebar
+`src/web/dashboard/src/components/layout/Sidebar.tsx:55-60` — `URL.createObjectURL(blob)` sin `revokeObjectURL` en cleanup del useEffect. Leak mínimo (una sola URL, lifetime de la app).
+
+### P3: Tablas sin mecanismo de limpieza
+`interactions`, `event_queue`, `llm_usage`, `jobs`, `feedback` crecen sin límite. Sin retention policy ni cleanup job. Bajo impacto actual, relevante a largo plazo.
+
 ---
 
 ## Prioridad media — Tests
@@ -73,9 +97,6 @@ Si consolidate corre antes que repo-profile, consume la corrección y repo-profi
 ---
 
 ## Prioridad media — Infraestructura de datos
-
-### Junction table para knowledge entities *(2026-04-08)*
-Reemplazar `json_each()` sobre `entities_json` con tabla de junction indexada. Necesario para performance a escala (>1000 memorias).
 
 ### MCP server ordering en dashboard *(2026-04-08)*
 Drag-drop para reordenar MCP servers en Enrichment. El orden como hint para el LLM.
