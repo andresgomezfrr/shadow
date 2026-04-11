@@ -84,9 +84,9 @@ export async function handleWorkspaceRoutes(
     const includeActiveObs = type === 'all' || type === 'observation';
     const includeAckedObs = type === 'acknowledged';
 
-    // Runs: active (running/queued) + to review (completed/failed), not archived, top-level only
+    // Runs: active + to review + executed (until explicitly closed), not archived, top-level only
     if (includeRuns) {
-      for (const status of ['running', 'queued', 'completed', 'failed'] as const) {
+      for (const status of ['running', 'queued', 'completed', 'failed', 'executed'] as const) {
         const runs = db.listRuns({ status, archived: false, limit: 50 });
         for (const r of runs) {
           if (r.parentRunId) continue; // skip children
@@ -160,7 +160,7 @@ export async function handleWorkspaceRoutes(
     items.sort((a, b) => b.priority - a.priority);
 
     // Counts — always computed for all statuses so tabs show accurate numbers
-    const countRuns = (['running', 'queued', 'completed', 'failed'] as const)
+    const countRuns = (['running', 'queued', 'completed', 'failed', 'executed'] as const)
       .flatMap(s => db.listRuns({ status: s, archived: false, limit: 50 }))
       .filter(r => !r.parentRunId).length;
     const countTasksTodo = db.countTasks({ status: 'todo', projectId });

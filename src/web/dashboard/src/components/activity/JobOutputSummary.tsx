@@ -228,21 +228,8 @@ export function JobOutputSummary({ entry }: Props) {
     );
   }
 
-  if (type === 'run:plan' || type === 'run:execution') {
-    return (
-      <span className="inline-flex items-center gap-1.5">
-        {entry.repoName && chip(entry.repoName, 'text-text-dim bg-border')}
-        {entry.confidence && (
-          <Badge className={
-            entry.confidence === 'high' ? 'text-green bg-green/15' :
-            entry.confidence === 'medium' ? 'text-orange bg-orange/15' :
-            'text-red bg-red/15'
-          }>
-            {entry.confidence}
-          </Badge>
-        )}
-      </span>
-    );
+  if (type === 'run:plan' || type === 'run:execute') {
+    return null; // repoName + confidence already shown by ActivityEntry
   }
 
   // Fallback: skip/idle or unknown

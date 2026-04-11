@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Run, Suggestion, Observation, Task } from '../../../api/types';
 
@@ -26,6 +26,8 @@ type WorkspaceContextType = {
   drillToItem: (id: string, type: string) => void;
   setOffset: (n: number) => void;
   isDrillDown: React.RefObject<boolean>;
+  expandedPlan: string | null;
+  setExpandedPlan: (content: string | null) => void;
 };
 
 const WorkspaceCtx = createContext<WorkspaceContextType | null>(null);
@@ -75,8 +77,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     update({ offset: n > 0 ? String(n) : null });
   }, [update]);
 
+  const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+
   return (
-    <WorkspaceCtx.Provider value={{ state, setProject, setFilter, setSelectedItem, drillToItem, setOffset, isDrillDown }}>
+    <WorkspaceCtx.Provider value={{ state, setProject, setFilter, setSelectedItem, drillToItem, setOffset, isDrillDown, expandedPlan, setExpandedPlan }}>
       {children}
     </WorkspaceCtx.Provider>
   );

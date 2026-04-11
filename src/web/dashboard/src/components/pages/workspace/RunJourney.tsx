@@ -1,6 +1,5 @@
 import { useApi } from '../../../hooks/useApi';
 import { fetchRunContext, fetchPrStatus, createRunSession, executeRun, discardRun, retryRun, archiveRun, closeRun, cleanupWorktree, createDraftPr } from '../../../api/client';
-import { Markdown } from '../../common/Markdown';
 import { ConfidenceIndicator } from '../../common/ConfidenceIndicator';
 import { Badge } from '../../common/Badge';
 import { timeAgo } from '../../../utils/format';
@@ -30,10 +29,9 @@ function Step({ status, label, children }: { status: 'done' | 'active' | 'pendin
 
 export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: () => void }) {
   const { data: ctx, refresh } = useApi(() => fetchRunContext(runId), [runId], 30_000);
-  const [planOpen, setPlanOpen] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<{ command: string } | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
-  const { drillToItem } = useWorkspace();
+  const { drillToItem, expandedPlan, setExpandedPlan } = useWorkspace();
 
   const run = ctx?.run;
   const childRuns = ctx?.childRuns ?? [];
@@ -117,7 +115,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
   if (!ctx || !run) return <div className="text-text-dim text-sm p-4">Loading journey...</div>;
 
   const isPlanCompleted = run.status === 'completed';
-  const isTerminal = ['executed', 'executed_manual', 'discarded', 'failed', 'closed'].includes(run.status);
+  const isTerminal = ['executed_manual', 'discarded', 'closed'].includes(run.status);
   const hasWorktree = !!activeRun?.worktreePath;
   const hasPr = !!activeRun?.prUrl;
 
@@ -180,14 +178,12 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
         )}
         {run.resultSummaryMd && (
           <div className="mt-1">
-            <button onClick={() => setPlanOpen(!planOpen)} className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer">
-              {planOpen ? '▾ Hide plan' : '▸ View plan'}
+            <button
+              onClick={() => setExpandedPlan(expandedPlan ? null : run.resultSummaryMd)}
+              className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer"
+            >
+              {expandedPlan ? '▾ Hide plan' : '▸ View plan'}
             </button>
-            {planOpen && (
-              <div className="mt-1 bg-bg rounded-lg p-2 max-h-48 overflow-y-auto">
-                <Markdown>{run.resultSummaryMd}</Markdown>
-              </div>
-            )}
           </div>
         )}
         {run.errorSummary && (
@@ -241,8 +237,8 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
         </Step>
       )}
 
-      {/* Pull Request */}
-      {(hasPr || hasWorktree) && (
+      {/* Pull Request — only after execution completes */}
+      {(hasPr || (hasWorktree && execStatus === 'done')) && (
         <Step status={hasPr ? 'done' : 'pending'} label="Pull Request">
           {hasPr && prStatus ? (
             <div className="text-xs space-y-1">
@@ -267,7 +263,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
             <a href={activeRun!.prUrl!} target="_blank" rel="noopener noreferrer" className="text-xs text-accent hover:underline">View on GitHub →</a>
           ) : hasWorktree ? (
             <button onClick={handleDraftPr} disabled={loading === 'pr'} className="px-3 py-1 rounded-lg text-xs font-semibold bg-purple text-bg border-none cursor-pointer hover:brightness-110 disabled:opacity-50">
-              {loading === 'pr' ? 'Creating...' : 'Create draft PR'}
+              {loading === 'pr' ? (<><span className="inline-block w-3 h-3 border-2 border-bg border-t-transparent rounded-full animate-spin mr-1.5" />Creating PR (~5s)</>) : 'Create draft PR'}
             </button>
           ) : null}
         </Step>

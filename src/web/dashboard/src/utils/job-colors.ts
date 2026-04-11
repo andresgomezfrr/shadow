@@ -16,7 +16,7 @@ export const JOB_TYPE_COLORS: Record<string, string> = {
   'digest-brag': 'bg-cyan-500/20 text-cyan-300',
   'revalidate-suggestion': 'bg-sky-400/20 text-sky-300',
   'run:plan': 'bg-indigo-500/20 text-indigo-300',
-  'run:execution': 'bg-violet-500/20 text-violet-300',
+  'run:execute': 'bg-violet-500/20 text-violet-300',
 };
 
 export const JOB_TYPE_COLOR_DEFAULT = 'text-text-dim bg-border';

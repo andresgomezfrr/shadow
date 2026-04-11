@@ -48,6 +48,12 @@ const PHASE_DOT: Record<string, string> = {
   'digest-daily': 'bg-cyan-400',
   'digest-weekly': 'bg-cyan-400',
   'digest-brag': 'bg-cyan-400',
+  // Run phases
+  preparing: 'bg-text-muted',
+  planning: 'bg-indigo-400',
+  evaluating: 'bg-sky-400',
+  executing: 'bg-violet-400',
+  verifying: 'bg-green-400',
 };
 
 const PHASE_TEXT: Record<string, string> = {
@@ -80,7 +86,17 @@ const PHASE_TEXT: Record<string, string> = {
   'digest-daily': 'text-cyan-400',
   'digest-weekly': 'text-cyan-400',
   'digest-brag': 'text-cyan-400',
+  // Run phases
+  preparing: 'text-text-muted',
+  planning: 'text-indigo-300',
+  evaluating: 'text-sky-300',
+  executing: 'text-violet-300',
+  verifying: 'text-green-300',
 };
+
+// Run phases (computed by prefix, not per-kind)
+const RUN_PLAN_PHASES = ['preparing', 'planning', 'evaluating'];
+const RUN_EXEC_PHASES = ['preparing', 'executing', 'verifying'];
 
 const JOB_PHASES: Record<string, string[]> = {
   heartbeat: ['prepare', 'summarize', 'extract', 'cleanup', 'observe', 'notify'],
@@ -138,6 +154,9 @@ const JOB_ACTIVE_DOT: Record<string, string> = {
   'digest-weekly': 'bg-cyan-400',
   'digest-brag': 'bg-cyan-400',
   'revalidate-suggestion': 'bg-sky-400',
+  // Run types
+  'run:plan': 'bg-indigo-400',
+  'run:execute': 'bg-violet-400',
 };
 const JOB_ACTIVE_TEXT: Record<string, string> = {
   heartbeat: 'text-purple-300',
@@ -155,6 +174,9 @@ const JOB_ACTIVE_TEXT: Record<string, string> = {
   'digest-weekly': 'text-cyan-300',
   'digest-brag': 'text-cyan-300',
   'revalidate-suggestion': 'text-sky-300',
+  // Run types
+  'run:plan': 'text-indigo-300',
+  'run:execute': 'text-violet-300',
 };
 
 function PhasePipeline({ phases, currentPhase, allPhases, jobType }: { phases: string[]; currentPhase?: string; allPhases?: string[]; jobType?: string }) {
@@ -607,7 +629,9 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
 
   // Running state
   if (isRunning) {
-    const expectedPhases = JOB_PHASES[entry.type];
+    const expectedPhases = isRun
+      ? (entry.type === 'run:execute' ? RUN_EXEC_PHASES : RUN_PLAN_PHASES)
+      : JOB_PHASES[entry.type];
     return (
       <div className="bg-accent/5 border border-l-[3px] border-l-blue border-accent/30 rounded-lg px-4 py-3">
         <div className="flex items-center gap-2 flex-wrap">

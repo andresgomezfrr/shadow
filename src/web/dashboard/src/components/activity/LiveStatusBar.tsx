@@ -7,7 +7,7 @@ import { JOB_TYPE_COLORS } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
 import type { ActivityEntry } from '../../api/types';
 
-const SSE_EVENTS = ['job:started', 'job:phase', 'job:complete', 'job:enqueued'];
+const SSE_EVENTS = ['job:started', 'job:phase', 'job:complete', 'job:enqueued', 'run:phase'];
 
 export function LiveStatusBar() {
   const now = useNow();
