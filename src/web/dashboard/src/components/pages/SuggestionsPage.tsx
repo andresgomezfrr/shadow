@@ -1,9 +1,10 @@
 import { timeAgo } from '../../utils/format';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import type { Suggestion } from '../../api/types';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchSuggestions, fetchSuggestionContext, fetchRepos, fetchRuns, fetchProjects, acceptSuggestion, dismissSuggestion, snoozeSuggestion, bulkSuggestionAction, revalidateSuggestion, getActiveRevalidations } from '../../api/client';
+import { fetchSuggestions, fetchSuggestionContext, fetchRepos, fetchRuns, fetchProjects, acceptSuggestion, dismissSuggestion, snoozeSuggestion, bulkSuggestionAction, revalidateSuggestion, getActiveRevalidations, lookupEntity } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { FilterTabs } from '../common/FilterTabs';
 import { Pagination } from '../common/Pagination';
@@ -78,10 +79,34 @@ export function SuggestionsPage() {
   const { data: runs } = useApi(fetchRuns, [], 30_000);
 
   const fbState = rawData?.feedbackState ?? null;
-  const data = rawData?.items ?? null;
+  const rawItems = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
   const scores = rawData?.scores ?? {};
 
+  const [prefetched, setPrefetched] = useState<Suggestion | null>(null);
+  const [capturedHighlight, setCapturedHighlight] = useState<string | null>(null);
+
+  // Capture highlight so we can prefetch even after URL is cleared
+  useEffect(() => {
+    if (highlightId) setCapturedHighlight(highlightId);
+  }, [highlightId]);
+
+  // Prefetch suggestion if not in list
+  useEffect(() => {
+    if (!capturedHighlight || !rawItems) return;
+    if (rawItems.some(s => s.id === capturedHighlight)) { setPrefetched(null); return; }
+    if (prefetched?.id === capturedHighlight) return;
+    (async () => {
+      const resp = await lookupEntity<Suggestion>('suggestion', capturedHighlight);
+      if (resp?.item) setPrefetched(resp.item);
+    })();
+  }, [capturedHighlight, rawItems]);
+
+  const data = useMemo(() => {
+    if (!rawItems) return null;
+    if (!prefetched || rawItems.some(s => s.id === prefetched.id)) return rawItems;
+    return [prefetched, ...rawItems];
+  }, [rawItems, prefetched]);
 
   // Handle highlight
   if (highlightId && !pulseId && data?.some((s) => s.id === highlightId)) {
@@ -94,7 +119,7 @@ export function SuggestionsPage() {
   }
 
   const suggestionScrollRef = (id: string) => (el: HTMLElement | null) => {
-    if (el && id === highlightId && !scrolledRef.current) {
+    if (el && id === capturedHighlight && !scrolledRef.current) {
       scrolledRef.current = true;
       setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
     }

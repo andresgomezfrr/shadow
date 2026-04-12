@@ -16,6 +16,7 @@ import { handleJobRoutes } from './routes/jobs.js';
 import { handleEntityRoutes } from './routes/entities.js';
 import { handleKnowledgeRoutes } from './routes/knowledge.js';
 import { handleProfileRoutes } from './routes/profile.js';
+import { handleSearchRoutes } from './routes/search.js';
 import { handleWorkspaceRoutes } from './routes/workspace.js';
 import { handleTaskRoutes } from './routes/tasks.js';
 
@@ -191,7 +192,7 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
           handleWorkspaceRoutes, handleTaskRoutes,
           handleSuggestionRoutes, handleObservationRoutes, handleRunRoutes,
           handleActivityRoutes, handleJobRoutes, handleEntityRoutes,
-          handleKnowledgeRoutes, handleProfileRoutes,
+          handleKnowledgeRoutes, handleProfileRoutes, handleSearchRoutes,
         ];
         for (const handler of handlers) {
           if (await handler(req, res, pathname, params, db, daemonState)) return;

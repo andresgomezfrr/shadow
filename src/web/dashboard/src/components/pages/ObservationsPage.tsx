@@ -1,6 +1,6 @@
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchObservations, fetchRepos, fetchProjects, acknowledgeObservation, resolveObservation, reopenObservation } from '../../api/client';
+import { fetchObservations, fetchRepos, fetchProjects, acknowledgeObservation, resolveObservation, reopenObservation, lookupEntity } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { CorrectionPanel } from '../common/CorrectionPanel';
 import { Pagination } from '../common/Pagination';
@@ -8,9 +8,10 @@ import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
 import { FilterTabs } from '../common/FilterTabs';
 import { OBS_KIND_COLORS, OBS_KIND_COLOR_DEFAULT, OBS_KIND_OPTIONS, OBS_SEVERITY_BORDER, OBS_SEVERITY_ICON, OBS_SEVERITY_ICON_COLOR } from '../../utils/observation-colors';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useHighlight } from '../../hooks/useHighlight';
 import { timeAgo } from '../../utils/format';
+import type { Observation } from '../../api/types';
 
 const STATUS_OPTIONS = [
   { label: 'Open', value: 'open', dotColor: 'bg-green', activeClass: 'bg-green/15 text-green' },
@@ -39,12 +40,31 @@ export function ObservationsPage() {
   );
   const { data: repos } = useApi(fetchRepos, [], 60_000);
   const { data: projects } = useApi(() => fetchProjects(), [], 60_000);
-  const data = rawData?.items ?? null;
+  const rawItems = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
   const fbState = rawData?.feedbackState ?? null;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [correctingId, setCorrectingId] = useState<string | null>(null);
-  const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
+  const [prefetched, setPrefetched] = useState<Observation | null>(null);
+  const { pulseId, scrollRef, highlightId } = useHighlight(expanded, setExpanded);
+
+  // Prefetch highlighted observation if it's not in the current list
+  useEffect(() => {
+    if (!highlightId || !rawItems) return;
+    if (rawItems.some(o => o.id === highlightId)) { setPrefetched(null); return; }
+    if (prefetched?.id === highlightId) return;
+    (async () => {
+      const resp = await lookupEntity<Observation>('observation', highlightId);
+      if (resp?.item) setPrefetched(resp.item);
+    })();
+  }, [highlightId, rawItems]);
+
+  // Merge prefetched item with list, de-duplicated
+  const data = useMemo(() => {
+    if (!rawItems) return null;
+    if (!prefetched || rawItems.some(o => o.id === prefetched.id)) return rawItems;
+    return [prefetched, ...rawItems];
+  }, [rawItems, prefetched]);
 
   const toggle = (id: string) => {
     setExpanded((s) => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });

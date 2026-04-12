@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { fetchMemories, fetchRepos, fetchProjects, fetchSystems } from '../../api/client';
+import { fetchMemories, fetchRepos, fetchProjects, fetchSystems, lookupEntity } from '../../api/client';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { useHighlight } from '../../hooks/useHighlight';
 import { LAYER_COLORS } from '../../api/types';
@@ -31,7 +31,7 @@ export function MemoriesPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [correctingId, setCorrectingId] = useState<string | null>(null);
-  const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
+  const { pulseId, scrollRef, highlightId } = useHighlight(expanded, setExpanded);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Entity name resolver
@@ -69,6 +69,18 @@ export function MemoriesPage() {
       setLoading(false);
     })();
   }, [params.layer, params.q, params.offset]);
+
+  // If highlight target isn't in the current list, fetch it and prepend
+  useEffect(() => {
+    if (!highlightId || loading) return;
+    if (memories.some(m => m.id === highlightId)) return;
+    (async () => {
+      const data = await lookupEntity<Memory>('memory', highlightId);
+      if (data?.item) {
+        setMemories(prev => prev.some(m => m.id === data.item.id) ? prev : [data.item, ...prev]);
+      }
+    })();
+  }, [highlightId, loading, memories]);
 
   const toggle = (id: string) => {
     setExpanded((s) => {

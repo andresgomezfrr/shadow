@@ -45,9 +45,33 @@ function qs(params: Record<string, string | undefined>): string {
   return '?' + new URLSearchParams(entries).toString();
 }
 
+// --- Search types ---
+
+export type SearchItem = {
+  id: string;
+  title: string;
+  subtitle: string;
+  route: string;
+  score?: number;
+};
+
+export type SearchGroupType = 'memory' | 'observation' | 'suggestion' | 'task' | 'run' | 'project' | 'system' | 'repo' | 'contact';
+
+export type SearchGroup = {
+  type: SearchGroupType;
+  label: string;
+  items: SearchItem[];
+};
+
 // --- GET ---
 
 export const fetchStatus = () => api<StatusResponse>('/api/status');
+
+export const searchAll = (q: string, limit?: number) =>
+  api<{ groups: SearchGroup[] }>(`/api/search${qs({ q, limit: limit != null ? String(limit) : undefined })}`);
+
+export const lookupEntity = <T,>(type: SearchGroupType, id: string) =>
+  api<{ item: T }>(`/api/lookup${qs({ type, id })}`);
 
 export const fetchDailySummary = () => api<DailySummary>('/api/daily-summary');
 

@@ -2,7 +2,7 @@ import { timeAgo } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
 import { useHighlight } from '../../hooks/useHighlight';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, closeRun, archiveRun, retryRun, rollbackRun, createDraftPr } from '../../api/client';
+import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, closeRun, archiveRun, retryRun, rollbackRun, createDraftPr, lookupEntity } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
@@ -10,7 +10,7 @@ import { FilterTabs } from '../common/FilterTabs';
 import { Pagination } from '../common/Pagination';
 import { ConfidenceIndicator } from '../common/ConfidenceIndicator';
 import { RunPipeline } from '../common/RunPipeline';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Run } from '../../api/types';
 
 import { RUN_STATUS_BORDER, RUN_STATUS_ICON, RUN_STATUS_ICON_COLOR } from '../../utils/run-colors';
@@ -68,10 +68,28 @@ export function RunsPage() {
     [params.status, params.offset],
     15_000,
   );
-  const data = rawData?.items ?? null;
+  const rawItems = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const { pulseId, scrollRef } = useHighlight(expanded, setExpanded);
+  const [prefetched, setPrefetched] = useState<Run | null>(null);
+  const { pulseId, scrollRef, highlightId } = useHighlight(expanded, setExpanded);
+
+  // Prefetch highlighted run if not in current list
+  useEffect(() => {
+    if (!highlightId || !rawItems) return;
+    if (rawItems.some(r => r.id === highlightId)) { setPrefetched(null); return; }
+    if (prefetched?.id === highlightId) return;
+    (async () => {
+      const resp = await lookupEntity<Run>('run', highlightId);
+      if (resp?.item) setPrefetched(resp.item);
+    })();
+  }, [highlightId, rawItems]);
+
+  const data = useMemo(() => {
+    if (!rawItems) return null;
+    if (!prefetched || rawItems.some(r => r.id === prefetched.id)) return rawItems;
+    return [prefetched, ...rawItems];
+  }, [rawItems, prefetched]);
   const { data: repos } = useApi(fetchRepos, [], 60_000);
   const githubRepoIds = new Set(
     (repos ?? []).filter((r) => r.remoteUrl?.includes('github')).map((r) => r.id),
