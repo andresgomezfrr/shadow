@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -97,7 +97,7 @@ export class RunnerService {
         worktreePath = join(repos[0].path, '.shadow-worktrees', run.id.slice(0, 8));
         try {
           mkdirSync(join(repos[0].path, '.shadow-worktrees'), { recursive: true });
-          execSync(`git worktree add "${worktreePath}" -b "${branchName}"`, {
+          execFileSync('git', ['worktree', 'add', worktreePath, '-b', branchName], {
             cwd: repos[0].path,
             stdio: 'pipe',
             timeout: 10_000,
@@ -277,7 +277,7 @@ export class RunnerService {
           const resultRef = execSync('git rev-parse HEAD', { cwd: executionCwd, encoding: 'utf-8', timeout: 5_000 }).trim();
           let diffStat: string | null = null;
           if (resultRef !== snapshotRef) {
-            diffStat = execSync(`git diff --stat ${snapshotRef}..${resultRef}`, { cwd: executionCwd, encoding: 'utf-8', timeout: 10_000 }).trim();
+            diffStat = execFileSync('git', ['diff', '--stat', `${snapshotRef}..${resultRef}`], { cwd: executionCwd, encoding: 'utf-8', timeout: 10_000 }).trim();
           }
           this.db.updateRun(run.id, { resultRef, diffStat });
         } catch { /* non-fatal */ }
@@ -401,7 +401,7 @@ export class RunnerService {
     if (!worktreePath) return;
     try {
       const cwd = repoCwd ?? undefined;
-      execSync(`git worktree remove "${worktreePath}" --force`, { cwd, stdio: 'pipe', timeout: 10_000 });
+      execFileSync('git', ['worktree', 'remove', worktreePath, '--force'], { cwd, stdio: 'pipe', timeout: 10_000 });
     } catch (err) {
       console.error('[runner] Failed to remove worktree:', err instanceof Error ? err.message : err);
     }
@@ -453,7 +453,7 @@ export class RunnerService {
     const cwd = run.worktreePath ?? repo.path;
 
     try {
-      execSync(`git reset --hard ${run.snapshotRef}`, { cwd, timeout: 10_000, stdio: 'pipe' });
+      execFileSync('git', ['reset', '--hard', run.snapshotRef], { cwd, timeout: 10_000, stdio: 'pipe' });
 
       this.db.createAuditEvent({
         interface: 'runner',

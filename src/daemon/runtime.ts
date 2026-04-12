@@ -586,10 +586,10 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           if (!lastDeep) continue; // first-time handled by repo-profile trigger
 
           const daysSince = (Date.now() - new Date(lastDeep.startedAt).getTime()) / (24 * 60 * 60 * 1000);
-          const { execSync } = await import('node:child_process');
+          const { execFileSync } = await import('node:child_process');
           let commitsSince = 0;
           try {
-            const log = execSync(`git log --since="${lastDeep.startedAt}" --oneline`, { cwd: repo.path, encoding: 'utf-8', timeout: 5000, stdio: 'pipe' }).trim();
+            const log = execFileSync('git', ['log', `--since=${lastDeep.startedAt}`, '--oneline'], { cwd: repo.path, encoding: 'utf-8', timeout: 5000, stdio: 'pipe' }).trim();
             commitsSince = log ? log.split('\n').length : 0;
           } catch { /* ignore */ }
 

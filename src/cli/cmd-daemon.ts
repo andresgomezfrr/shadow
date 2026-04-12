@@ -270,7 +270,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
     .description('upgrade Shadow to the latest release (or a specific branch)')
     .option('--branch <branch>', 'use a specific branch instead of latest release tag')
     .action(async (opts: { branch?: string }) => {
-      const { execSync } = await import('node:child_process');
+      const { execSync, execFileSync } = await import('node:child_process');
       const json = Boolean(program.opts().json);
       const projectRoot = resolve(__dirname, '..', '..');
       const currentVersion: string = JSON.parse(
@@ -296,7 +296,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         target = `origin/${opts.branch}`;
         targetLabel = opts.branch;
         try {
-          execSync(`git fetch origin ${opts.branch}`, { cwd: projectRoot, stdio: 'pipe' });
+          execFileSync('git', ['fetch', 'origin', opts.branch], { cwd: projectRoot, stdio: 'pipe' });
         } catch {
           printOutput({ error: `Branch '${opts.branch}' not found on remote` }, json);
           return;
@@ -325,7 +325,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
 
       // Checkout target
       try {
-        execSync(`git checkout ${target}`, { cwd: projectRoot, stdio: 'inherit' });
+        execFileSync('git', ['checkout', target], { cwd: projectRoot, stdio: 'inherit' });
       } catch {
         printOutput({ error: `Failed to checkout ${targetLabel}` }, json);
         return;

@@ -213,7 +213,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
 
   // Post-heartbeat: reactive repo-profile if repos have new commits since last profile
   try {
-    const { execSync } = await import('node:child_process');
+    const { execSync, execFileSync } = await import('node:child_process');
     if (!db.hasQueuedOrRunning('repo-profile')) {
       const lastProfile = db.getLastJob('repo-profile');
       const gapMs = lastProfile ? Date.now() - new Date(lastProfile.startedAt).getTime() : Infinity;
@@ -222,7 +222,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
         const needsProfile = db.listRepos().some(r => {
           if (!r.contextUpdatedAt) return true;
           try {
-            const log = execSync(`git log --since="${r.contextUpdatedAt}" --oneline`, {
+            const log = execFileSync('git', ['log', `--since=${r.contextUpdatedAt}`, '--oneline'], {
               cwd: r.path, encoding: 'utf-8', timeout: 5000, stdio: 'pipe',
             }).trim();
             return log.length > 0;
