@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { execFileSync } from 'node:child_process';
 import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 import { json, clampLimit, clampOffset, parseOptionalBody, OptionalNoteSchema } from '../helpers.js';
@@ -57,11 +58,10 @@ export async function handleRunRoutes(
       if (!run.prUrl) return json(res, { error: 'Run has no PR' }, 400), true;
 
       try {
-        const { execSync } = await import('node:child_process');
         const repo = db.getRepo(run.repoId);
         if (!repo) return json(res, { error: 'Repo not found' }, 404), true;
-        const prJson = execSync(
-          `gh pr view "${run.prUrl}" --json state,isDraft,reviewDecision,statusCheckRollup,url`,
+        const prJson = execFileSync(
+          'gh', ['pr', 'view', run.prUrl, '--json', 'state,isDraft,reviewDecision,statusCheckRollup,url'],
           { cwd: repo.path, timeout: 15_000, stdio: 'pipe', encoding: 'utf-8' },
         ).trim();
         const pr = JSON.parse(prJson) as { state?: string; isDraft?: boolean; reviewDecision?: string; statusCheckRollup?: Array<{ conclusion?: string; state?: string }>; url?: string };
@@ -179,10 +179,9 @@ export async function handleRunRoutes(
           try {
             const repo = db.getRepo(run.repoId);
             if (repo) {
-              const { execSync } = await import('node:child_process');
-              execSync(`git worktree remove "${run.worktreePath}" --force`, { cwd: repo.path, timeout: 10_000, stdio: 'pipe' });
+              execFileSync('git', ['worktree', 'remove', run.worktreePath, '--force'], { cwd: repo.path, timeout: 10_000, stdio: 'pipe' });
               const branchName = `shadow/${runId.slice(0, 8)}`;
-              execSync(`git branch -D "${branchName}"`, { cwd: repo.path, timeout: 5_000, stdio: 'pipe' });
+              execFileSync('git', ['branch', '-D', branchName], { cwd: repo.path, timeout: 5_000, stdio: 'pipe' });
             }
           } catch { /* best-effort cleanup */ }
         }
@@ -294,10 +293,9 @@ export async function handleRunRoutes(
             try {
               const repo = db.getRepo(child.repoId);
               if (repo) {
-                const { execSync } = await import('node:child_process');
-                execSync(`git worktree remove "${child.worktreePath}" --force`, { cwd: repo.path, timeout: 10_000, stdio: 'pipe' });
+                execFileSync('git', ['worktree', 'remove', child.worktreePath, '--force'], { cwd: repo.path, timeout: 10_000, stdio: 'pipe' });
                 const branchName = `shadow/${child.id.slice(0, 8)}`;
-                execSync(`git branch -D "${branchName}"`, { cwd: repo.path, timeout: 5_000, stdio: 'pipe' });
+                execFileSync('git', ['branch', '-D', branchName], { cwd: repo.path, timeout: 5_000, stdio: 'pipe' });
               }
               db.updateRun(child.id, { worktreePath: null as unknown as string });
             } catch { /* best-effort cleanup */ }
@@ -317,10 +315,9 @@ export async function handleRunRoutes(
       const repo = db.getRepo(run.repoId);
       if (!repo) return json(res, { error: 'Repo not found' }, 404), true;
       try {
-        const { execSync } = await import('node:child_process');
-        try { execSync(`git worktree remove "${run.worktreePath}" --force`, { cwd: repo.path, timeout: 10_000, stdio: 'pipe' }); } catch { /* may not exist */ }
+        try { execFileSync('git', ['worktree', 'remove', run.worktreePath, '--force'], { cwd: repo.path, timeout: 10_000, stdio: 'pipe' }); } catch { /* may not exist */ }
         const branchName = `shadow/${runId.slice(0, 8)}`;
-        try { execSync(`git branch -D "${branchName}"`, { cwd: repo.path, timeout: 5_000, stdio: 'pipe' }); } catch { /* may not exist */ }
+        try { execFileSync('git', ['branch', '-D', branchName], { cwd: repo.path, timeout: 5_000, stdio: 'pipe' }); } catch { /* may not exist */ }
         db.updateRun(runId, { worktreePath: null as unknown as string });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -346,9 +343,8 @@ export async function handleRunRoutes(
       const branchName = `shadow/${run.id.slice(0, 8)}`;
 
       // Verify branch exists locally before attempting push
-      const { execSync: execCheck } = await import('node:child_process');
       try {
-        execCheck(`git rev-parse --verify ${branchName}`, { cwd: repo.path, stdio: 'pipe', timeout: 5_000 });
+        execFileSync('git', ['rev-parse', '--verify', branchName], { cwd: repo.path, stdio: 'pipe', timeout: 5_000 });
       } catch {
         return json(res, { error: `Branch ${branchName} no longer exists — worktree may have been cleaned up` }, 400), true;
       }
@@ -365,14 +361,14 @@ export async function handleRunRoutes(
       let diff = '';
       let hasUncommittedChanges = false;
       try {
-        const worktreeStatus = execCheck(`git status --porcelain`, { cwd: worktreeCwd, stdio: 'pipe', timeout: 5_000, encoding: 'utf-8' }).toString().trim();
+        const worktreeStatus = execFileSync('git', ['status', '--porcelain'], { cwd: worktreeCwd, stdio: 'pipe', timeout: 5_000, encoding: 'utf-8' }).toString().trim();
         hasUncommittedChanges = worktreeStatus.length > 0;
         if (hasUncommittedChanges) {
           // Diff from worktree (uncommitted changes)
-          diff = execCheck(`git diff`, { cwd: worktreeCwd, stdio: 'pipe', timeout: 10_000, encoding: 'utf-8' }).toString().trim();
+          diff = execFileSync('git', ['diff'], { cwd: worktreeCwd, stdio: 'pipe', timeout: 10_000, encoding: 'utf-8' }).toString().trim();
         } else {
           // Diff from branch vs main (already committed)
-          diff = execCheck(`git diff ${repo.defaultBranch}...${branchName}`, { cwd: repo.path, stdio: 'pipe', timeout: 10_000, encoding: 'utf-8' }).toString().trim();
+          diff = execFileSync('git', ['diff', `${repo.defaultBranch}...${branchName}`], { cwd: repo.path, stdio: 'pipe', timeout: 10_000, encoding: 'utf-8' }).toString().trim();
         }
       } catch (e) { console.error('[runs] Failed to get diff for PR:', e instanceof Error ? e.message : e); }
 
@@ -462,16 +458,15 @@ export async function handleRunRoutes(
         commitMessage = title;
       }
 
-      const { execSync: exec } = await import('node:child_process');
       try {
         // Commit uncommitted changes in the worktree before pushing
         if (hasUncommittedChanges) {
-          exec(`git add -A`, { cwd: worktreeCwd, stdio: 'pipe', timeout: 5_000 });
-          exec(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: worktreeCwd, stdio: 'pipe', timeout: 10_000 });
+          execFileSync('git', ['add', '-A'], { cwd: worktreeCwd, stdio: 'pipe', timeout: 5_000 });
+          execFileSync('git', ['commit', '-m', commitMessage], { cwd: worktreeCwd, stdio: 'pipe', timeout: 10_000 });
         }
 
         // Push branch to remote
-        exec(`git push -u origin ${branchName}`, { cwd: repo.path, stdio: 'pipe', timeout: 30_000 });
+        execFileSync('git', ['push', '-u', 'origin', branchName], { cwd: repo.path, stdio: 'pipe', timeout: 30_000 });
 
         // Create draft PR via gh CLI — use --body-file with stdin to preserve markdown formatting
         const { writeFileSync: writeTemp, unlinkSync } = await import('node:fs');
@@ -480,8 +475,8 @@ export async function handleRunRoutes(
         writeTemp(bodyFile, body, 'utf-8');
         let prOutput: string;
         try {
-          prOutput = exec(
-            `gh pr create --draft --title ${JSON.stringify(title)} --body-file ${JSON.stringify(bodyFile)} --head ${branchName} --base ${repo.defaultBranch}`,
+          prOutput = execFileSync(
+            'gh', ['pr', 'create', '--draft', '--title', title, '--body-file', bodyFile, '--head', branchName, '--base', repo.defaultBranch],
             { cwd: repo.path, stdio: 'pipe', timeout: 30_000, encoding: 'utf-8' },
           ).toString().trim();
         } finally {
