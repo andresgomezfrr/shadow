@@ -37,11 +37,9 @@ export function ScoreBar({ impact, confidence, risk, compact }: Props) {
       <div className="flex items-center gap-1" title={`Confidence: ${confidence}%`}>
         <span className="text-blue">{Math.round(confidence)}%</span>
       </div>
-      {risk > 1 && (
-        <div className="flex items-center gap-1" title={`Risk: ${risk}/5`}>
-          <span className="text-orange">⚠{risk}</span>
-        </div>
-      )}
+      <div className="flex items-center gap-1" title={`Risk: ${risk}/5`}>
+        <span className="text-orange">⚠{risk}</span>
+      </div>
     </div>
   );
 }
