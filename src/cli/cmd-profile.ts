@@ -20,6 +20,12 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
         const contacts = db.listContacts();
         const pendingSuggestions = db.countPendingSuggestions();
         const pendingEvents = db.listPendingEvents().length;
+        const unreadEvents = db.listUnreadEvents();
+        const unreadNotifications = unreadEvents.length;
+        const topEvent = unreadEvents.find(e => e.priority >= 7);
+        const topNotification = topEvent
+          ? { kind: topEvent.kind, message: (topEvent.payload as Record<string, unknown>).message as string, priority: topEvent.priority }
+          : null;
         const lastHeartbeat = db.getLastJob('heartbeat');
         const recentInteractions = db.listRecentInteractions(5);
         const usage = db.getUsageSummary('day');
@@ -81,6 +87,8 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
           thoughtExpiresAt: (daemonState.thoughtExpiresAt as string) ?? null,
           activeProject,
           alerts: (daemonState.alerts as Array<{ id: string; message: string; severity: string; since: string }>) ?? [],
+          unreadNotifications,
+          topNotification,
         };
       }),
     );

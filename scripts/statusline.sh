@@ -51,6 +51,9 @@ ENERGY=$(echo "$STATUS" | grep -o '"energyLevel":"[^"]*"' | head -1 | cut -d'"' 
 THOUGHT=$(echo "$RAW_STATUS" | grep -o '"thought": *"[^"]*"' | head -1 | sed 's/"thought": *"//;s/"$//')
 THOUGHT_EXPIRES=$(echo "$RAW_STATUS" | grep -o '"thoughtExpiresAt": *"[^"]*"' | head -1 | sed 's/"thoughtExpiresAt": *"//;s/"$//')
 ACTIVE_PROJECT=$(echo "$STATUS" | grep -o '"activeProject":"[^"]*"' | head -1 | cut -d'"' -f4)
+UNREAD_NOTIFS=$(echo "$STATUS" | grep -o '"unreadNotifications":[0-9]*' | head -1 | cut -d: -f2)
+TOP_NOTIF_KIND=$(echo "$STATUS" | grep -o '"topNotification":{[^}]*}' | head -1 | grep -o '"kind":"[^"]*"' | cut -d'"' -f4)
+TOP_NOTIF_MSG=$(echo "$RAW_STATUS" | grep -o '"topNotification": *{[^}]*}' | head -1 | grep -o '"message": *"[^"]*"' | sed 's/"message": *"//;s/"$//')
 
 # Extract alerts: each alert has message + severity + since + acked
 ALERT_MESSAGES=()
@@ -248,6 +251,10 @@ if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
   LINE="$LINE | 💡$SUGGESTIONS"
 fi
 
+if [ "$UNREAD_NOTIFS" -gt 0 ] 2>/dev/null; then
+  LINE="$LINE | 📬$UNREAD_NOTIFS"
+fi
+
 # Heartbeat countdown (heart pulses between ♥︎ and ♡ each refresh)
 if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
   HB_TS=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "${NEXT_HB%%.*}" "+%s" 2>/dev/null || date -u -d "$NEXT_HB" "+%s" 2>/dev/null || echo 0)
@@ -262,10 +269,25 @@ if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
   fi
 fi
 
-# Line 2: thought (only when active)
+# Resolve top notification icon by event kind
+TOP_NOTIF_ICON=""
+if [ -n "$TOP_NOTIF_KIND" ]; then
+  case "$TOP_NOTIF_KIND" in
+    run_failed|job_failed) TOP_NOTIF_ICON="🔴" ;;
+    auto_execute_complete|run_completed) TOP_NOTIF_ICON="✅" ;;
+    version_available) TOP_NOTIF_ICON="🆕" ;;
+    plan_needs_review) TOP_NOTIF_ICON="👀" ;;
+    observation_notable) TOP_NOTIF_ICON="👁️" ;;
+    *) TOP_NOTIF_ICON="🔔" ;;
+  esac
+fi
+
+# Line 2: thought (priority) > top notification (persistent)
 OUTPUT="$LINE"
 if [ -n "$SHOW_THOUGHT" ]; then
   OUTPUT="$OUTPUT\n${CD}💭 ${SHOW_THOUGHT}${C0}"
+elif [ -n "$TOP_NOTIF_MSG" ]; then
+  OUTPUT="$OUTPUT\n📬 ${TOP_NOTIF_ICON} ${TOP_NOTIF_MSG}"
 fi
 
 # Line 3+: alerts (persistent, one per line)
