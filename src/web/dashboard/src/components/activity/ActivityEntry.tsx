@@ -113,6 +113,8 @@ const JOB_PHASES: Record<string, string[]> = {
   'digest-weekly': ['digest'],
   'digest-brag': ['digest'],
   'revalidate-suggestion': ['prepare', 'evaluate', 'apply'],
+  'auto-plan': ['filtering', 'revalidating', 'planning'],
+  'auto-execute': ['filtering', 'executing', 'verifying'],
 };
 
 
@@ -153,6 +155,8 @@ const JOB_ACTIVE_DOT: Record<string, string> = {
   'digest-weekly': 'bg-cyan-400',
   'digest-brag': 'bg-cyan-400',
   'revalidate-suggestion': 'bg-sky-400',
+  'auto-plan': 'bg-lime-400',
+  'auto-execute': 'bg-rose-400',
   // Run types
   'run:plan': 'bg-indigo-400',
   'run:execute': 'bg-violet-400',
@@ -173,6 +177,8 @@ const JOB_ACTIVE_TEXT: Record<string, string> = {
   'digest-weekly': 'text-cyan-300',
   'digest-brag': 'text-cyan-300',
   'revalidate-suggestion': 'text-sky-300',
+  'auto-plan': 'text-lime-300',
+  'auto-execute': 'text-rose-300',
   // Run types
   'run:plan': 'text-indigo-300',
   'run:execute': 'text-violet-300',
@@ -534,6 +540,65 @@ function renderExpandedDetail(entry: ActivityEntryType) {
             </a>
           )}
         </div>
+      </>
+    );
+  }
+
+  if (type === 'auto-plan' || type === 'auto-execute') {
+    const candidates = (r.candidates ?? []) as Array<{ title?: string; suggestionId?: string; action: string; reason?: string; runId?: string }>;
+
+    const ACTION_STYLES: Record<string, { color: string; label: string }> = {
+      skip: { color: 'text-text-muted', label: 'skip' },
+      dismissed: { color: 'text-orange', label: 'dismissed' },
+      planned: { color: 'text-lime-300', label: 'planned' },
+      needs_review: { color: 'text-amber-300', label: 'needs review' },
+      auto_executed: { color: 'text-rose-300', label: 'executed' },
+      error: { color: 'text-red', label: 'error' },
+    };
+
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES[type]} />
+        {candidates.length > 0 ? (
+          <div className="space-y-0.5">
+            {candidates.map((c, i) => {
+              const style = ACTION_STYLES[c.action] ?? ACTION_STYLES.skip;
+              const title = c.title ?? c.runId?.slice(0, 8) ?? '?';
+              const isRunLink = (c.action === 'planned' || c.action === 'auto_executed') && c.reason;
+              // Title link: suggestion page for auto-plan actions, workspace run for auto-execute/needs_review
+              const titleHref = c.suggestionId
+                ? `/suggestions?highlight=${c.suggestionId}`
+                : c.runId
+                ? `/workspace?item=${c.runId}&itemType=run`
+                : undefined;
+              return (
+                <div key={i} className="flex items-start gap-1.5 text-xs">
+                  <span className={`font-medium ${style.color} shrink-0`}>{style.label}</span>
+                  {titleHref ? (
+                    <a
+                      href={titleHref}
+                      className="text-text-dim hover:text-accent hover:underline"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {title}
+                    </a>
+                  ) : (
+                    <span className="text-text-dim">{title}</span>
+                  )}
+                  {isRunLink ? (
+                    <a href={`/workspace?item=${c.reason}&itemType=run`} className="text-accent text-[10px] hover:underline shrink-0" onClick={e => e.stopPropagation()}>
+                      → run {c.reason!.slice(0, 8)}
+                    </a>
+                  ) : (
+                    c.reason && <span className="text-text-muted/70 text-[10px]">— {c.reason}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-text-muted">No candidates</div>
+        )}
       </>
     );
   }

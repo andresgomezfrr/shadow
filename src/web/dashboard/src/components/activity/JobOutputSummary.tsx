@@ -231,38 +231,32 @@ export function JobOutputSummary({ entry }: Props) {
   if (type === 'auto-plan' || type === 'auto-execute') {
     const candidates = r.candidates as Array<{ title?: string; action: string; reason?: string; runId?: string }> | undefined;
     if (!candidates || candidates.length === 0) {
-      return <span className="text-text-muted text-xs">no suggestions to evaluate</span>;
+      return <span className="text-text-muted text-xs">no candidates</span>;
     }
 
-    const ACTION_STYLES: Record<string, { color: string; label: string }> = {
-      skip: { color: 'text-text-muted', label: 'skip' },
-      dismissed: { color: 'text-orange', label: 'dismissed' },
-      planned: { color: 'text-lime-300', label: 'planned' },
-      needs_review: { color: 'text-amber-300', label: 'needs review' },
-      auto_executed: { color: 'text-rose-300', label: 'executed' },
-      error: { color: 'text-red', label: 'error' },
+    const counts: Record<string, number> = {};
+    for (const c of candidates) counts[c.action] = (counts[c.action] ?? 0) + 1;
+
+    const STAT_STYLES: Record<string, { color: string; label: string }> = {
+      skip: { color: 'text-text-muted bg-border', label: 'skipped' },
+      dismissed: { color: 'text-orange bg-orange/15', label: 'dismissed' },
+      planned: { color: 'text-lime-300 bg-lime-500/15', label: 'planned' },
+      needs_review: { color: 'text-amber-300 bg-amber-400/15', label: 'needs review' },
+      auto_executed: { color: 'text-rose-300 bg-rose-500/15', label: 'executed' },
+      error: { color: 'text-red bg-red/15', label: 'error' },
     };
 
-    return (
-      <div className="space-y-0.5">
-        {candidates.map((c, i) => {
-          const style = ACTION_STYLES[c.action] ?? ACTION_STYLES.skip;
-          const title = c.title ?? c.runId?.slice(0, 8) ?? '?';
-          const isRunLink = (c.action === 'planned' || c.action === 'auto_executed') && c.reason;
-          return (
-            <div key={i} className="flex items-center gap-1.5 text-xs">
-              <span className={`font-medium ${style.color}`}>{style.label}</span>
-              <span className="text-text-dim truncate max-w-64">{title}</span>
-              {isRunLink ? (
-                <a href={`/workspace?filter=run&item=${c.reason}&itemType=run`} className="text-accent text-[10px] hover:underline">→ run {c.reason!.slice(0, 8)}</a>
-              ) : (
-                c.reason && <span className="text-text-muted/70 text-[10px]">— {c.reason}</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
+    // Show actionable stats first, then skips
+    const order = ['planned', 'auto_executed', 'needs_review', 'dismissed', 'error', 'skip'];
+    const badges = order
+      .filter(action => (counts[action] ?? 0) > 0)
+      .map(action => {
+        const style = STAT_STYLES[action] ?? STAT_STYLES.skip;
+        const n = counts[action];
+        return <Badge key={action} className={style.color}>{n} {style.label}</Badge>;
+      });
+
+    return <span className="inline-flex items-center gap-1.5 flex-wrap">{badges}</span>;
   }
 
   if (type === 'run:plan' || type === 'run:execute') {
