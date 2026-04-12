@@ -376,6 +376,7 @@ export class ShadowDatabase {
   enqueueJob(type: string, opts?: { priority?: number; triggerSource?: string; params?: Record<string, unknown> }): JobRecord { return execution.enqueueJob(this.database, type, opts); }
   claimNextJob(opts?: { types?: string[]; excludeTypes?: string[] }): JobRecord | null { return execution.claimNextJob(this.database, opts); }
   hasQueuedOrRunning(type: string): boolean { return execution.hasQueuedOrRunning(this.database, type); }
+  hasQueuedOrRunningWithParams(type: string, paramKey: string, paramValue: string): boolean { return execution.hasQueuedOrRunningWithParams(this.database, type, paramKey, paramValue); }
 
   // --- Feedback ---
 

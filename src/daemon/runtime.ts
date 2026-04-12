@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { promises as dns } from 'node:dns';
 
 import type { ShadowConfig } from '../config/schema.js';
 import { killAllActiveChildren } from '../backend/claude-cli.js';
@@ -38,6 +39,7 @@ export type DaemonState = {
   activeProjects: Array<{ projectId: string; projectName: string; score: number }>;
   updateAvailable: { latest: string; current: string } | null;
   alerts: Array<{ id: string; message: string; severity: 'info' | 'warning' | 'critical'; since: string; acked: boolean }>;
+  networkAvailable: boolean;
 };
 
 // --- Constants ---
@@ -58,6 +60,18 @@ function daemonPidPath(config: ShadowConfig): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function isNetworkAvailable(): Promise<boolean> {
+  try {
+    await Promise.race([
+      dns.resolve4('api.anthropic.com'),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function computeSleepMs(
@@ -124,6 +138,7 @@ function emptyState(): DaemonState {
     activeProjects: [],
     updateAvailable: null,
     alerts: [],
+    networkAvailable: true,
   };
 }
 
@@ -293,6 +308,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       activeProjects: [],
       updateAvailable: null,
       alerts: [],
+      networkAvailable: true,
     };
 
     writeDaemonState(config, state);
@@ -427,18 +443,24 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
       // === Phase 1: Enqueue scheduled jobs ===
 
+      // Network gate: skip LLM job scheduling when offline (darkwake/sleep)
+      const networkUp = await isNetworkAvailable();
+      if (!networkUp) {
+        console.error('[daemon] No network — skipping LLM job scheduling');
+      }
+
       // Time-based heartbeat scheduling (watcher events do NOT trigger heartbeats)
       const timeSinceLastHeartbeat = lastHeartbeatAt ? Date.now() - new Date(lastHeartbeatAt).getTime() : Infinity;
       const heartbeatInterval = consecutiveIdleTicks > 10
         ? config.activityHeartbeatMaxIntervalMs * 2  // deep idle: 60min
         : config.activityHeartbeatMaxIntervalMs;      // normal: 30min
-      if (!_db.hasQueuedOrRunning('heartbeat') && timeSinceLastHeartbeat >= heartbeatInterval) {
+      if (networkUp && !_db.hasQueuedOrRunning('heartbeat') && timeSinceLastHeartbeat >= heartbeatInterval) {
         _db.enqueueJob('heartbeat', { priority: 10 });
       }
-      if (shouldEnqueue('consolidate', 6 * 60 * 60 * 1000)) {
+      if (networkUp && shouldEnqueue('consolidate', 6 * 60 * 60 * 1000)) {
         _db.enqueueJob('consolidate', { priority: 3 });
       }
-      if (shouldEnqueue('reflect', 24 * 60 * 60 * 1000)) {
+      if (networkUp && shouldEnqueue('reflect', 24 * 60 * 60 * 1000)) {
         _db.enqueueJob('reflect', { priority: 5 });
       }
 
@@ -461,12 +483,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       const enrichEnabled = (profilePrefs?.enrichmentEnabled as boolean | undefined) ?? config.enrichmentEnabled;
       const enrichIntervalMin = profilePrefs?.enrichmentIntervalMin as number | undefined;
       const enrichIntervalMs = enrichIntervalMin ? enrichIntervalMin * 60 * 1000 : config.enrichmentIntervalMs;
-      if (enrichEnabled && shouldEnqueue('context-enrich', enrichIntervalMs)) {
+      if (networkUp && enrichEnabled && shouldEnqueue('context-enrich', enrichIntervalMs)) {
         _db.enqueueJob('context-enrich', { priority: 4 });
       }
 
       // MCP server discovery: describe servers from tool schemas (same gate as enrichment)
-      if (enrichEnabled && shouldEnqueue('mcp-discover', 24 * 60 * 60 * 1000)) {
+      if (networkUp && enrichEnabled && shouldEnqueue('mcp-discover', 24 * 60 * 60 * 1000)) {
         _db.enqueueJob('mcp-discover', { priority: 2 });
       }
 
@@ -479,12 +501,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const autonomy = loadAutonomyConfig(_db);
 
         // Auto-plan: every 3h
-        if (autonomy.planRules.enabled && autonomy.planRules.repoIds.length > 0 && shouldEnqueue('auto-plan', 3 * 60 * 60 * 1000)) {
+        if (networkUp && autonomy.planRules.enabled && autonomy.planRules.repoIds.length > 0 && shouldEnqueue('auto-plan', 3 * 60 * 60 * 1000)) {
           _db.enqueueJob('auto-plan', { priority: 4 });
         }
 
         // Auto-execute: every 3h, offset 1.5h from last auto-plan
-        if (autonomy.executeRules.enabled && autonomy.executeRules.repoIds.length > 0 && shouldEnqueue('auto-execute', 3 * 60 * 60 * 1000)) {
+        if (networkUp && autonomy.executeRules.enabled && autonomy.executeRules.repoIds.length > 0 && shouldEnqueue('auto-execute', 3 * 60 * 60 * 1000)) {
           const lastPlan = _db.getLastJob('auto-plan');
           const elapsed = lastPlan ? Date.now() - new Date(lastPlan.startedAt).getTime() : Infinity;
           if (elapsed >= 1.5 * 60 * 60 * 1000) {
@@ -509,16 +531,16 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
           if (nextStr < todayStr) {
             // Backfill a missed day (one per tick, catches up over multiple ticks)
-            _db.enqueueJob('digest-daily', { priority: 3, triggerSource: 'backfill', params: { periodStart: nextStr } });
+            if (networkUp) _db.enqueueJob('digest-daily', { priority: 3, triggerSource: 'backfill', params: { periodStart: nextStr } });
           } else {
             // No gaps — normal clock scheduling for today
-            if (isScheduleReady(DIGEST_SCHEDULES['digest-daily'], userTz, _db.getLastJob('digest-daily')?.startedAt)) {
+            if (networkUp && isScheduleReady(DIGEST_SCHEDULES['digest-daily'], userTz, _db.getLastJob('digest-daily')?.startedAt)) {
               _db.enqueueJob('digest-daily', { priority: 5 });
             }
           }
         } else {
           // Up to date or never generated — normal scheduling
-          if (isScheduleReady(DIGEST_SCHEDULES['digest-daily'], userTz, _db.getLastJob('digest-daily')?.startedAt)) {
+          if (networkUp && isScheduleReady(DIGEST_SCHEDULES['digest-daily'], userTz, _db.getLastJob('digest-daily')?.startedAt)) {
             _db.enqueueJob('digest-daily', { priority: 5 });
           }
         }
@@ -541,21 +563,23 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         if (!lastWeekCovered && nowTz.getDay() !== 0) {
           // Missing last week's digest and it's not Sunday yet (avoid racing with normal schedule)
           const weekStart = new Date(prevSunday);
-          _db.enqueueJob('digest-weekly', { priority: 3, triggerSource: 'backfill', params: { periodStart: weekStart.toISOString().slice(0, 10) } });
-        } else if (isScheduleReady(DIGEST_SCHEDULES['digest-weekly'], userTz, _db.getLastJob('digest-weekly')?.startedAt)) {
+          if (networkUp) _db.enqueueJob('digest-weekly', { priority: 3, triggerSource: 'backfill', params: { periodStart: weekStart.toISOString().slice(0, 10) } });
+        } else if (networkUp && isScheduleReady(DIGEST_SCHEDULES['digest-weekly'], userTz, _db.getLastJob('digest-weekly')?.startedAt)) {
           _db.enqueueJob('digest-weekly', { priority: 5 });
         }
       }
 
       // Brag: normal scheduling only (quarterly, no backfill)
-      if (!_db.hasQueuedOrRunning('digest-brag') && isScheduleReady(DIGEST_SCHEDULES['digest-brag'], userTz, _db.getLastJob('digest-brag')?.startedAt)) {
+      if (networkUp && !_db.hasQueuedOrRunning('digest-brag') && isScheduleReady(DIGEST_SCHEDULES['digest-brag'], userTz, _db.getLastJob('digest-brag')?.startedAt)) {
         _db.enqueueJob('digest-brag', { priority: 5 });
       }
 
       // Suggest-deep: periodic deep scan — find the repo with highest need
-      if (!_db.hasQueuedOrRunning('suggest-deep')) {
+      if (networkUp) {
         const repos = _db.listRepos();
         for (const repo of repos) {
+          if (_db.hasQueuedOrRunningWithParams('suggest-deep', 'repoId', repo.id)) continue;
+
           const lastDeep = _db.listJobs({ type: 'suggest-deep', status: 'completed', limit: 50 })
             .find(j => (j.result as Record<string, unknown>)?.repoId === repo.id);
 
@@ -651,6 +675,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       state.activeJobCount = jobQueue.activeCount;
       state.activeJobs = jobQueue.activeJobs;
       state.activeProjects = daemonShared.activeProjects;
+      state.networkAvailable = networkUp;
 
       // Process alert actions from MCP/external tools
       const alertActionsPath = resolve(config.resolvedDataDir, 'alert-actions.jsonl');

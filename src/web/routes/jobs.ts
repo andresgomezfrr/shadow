@@ -50,15 +50,30 @@ export async function handleJobRoutes(
       if (!VALID_TYPES.has(type)) {
         return json(res, { error: `Unknown job type: ${type}` }, 400), true;
       }
-      if (db.hasQueuedOrRunning(type)) {
-        return json(res, { error: `${type} already queued or running` }, 409), true;
-      }
       const PRIORITIES: Record<string, number> = {
         heartbeat: 10, suggest: 8, 'suggest-deep': 6, 'suggest-project': 5, reflect: 5, 'digest-daily': 5, 'digest-weekly': 5, 'digest-brag': 5,
         'context-enrich': 4, 'project-profile': 4, consolidate: 3, 'repo-profile': 3, 'mcp-discover': 2, 'remote-sync': 2,
       };
       const body = await parseOptionalBody(req, res, JobTriggerParamsSchema);
       if (!body) return true;
+
+      // Params-aware dedup for parametric job types
+      const PARAM_KEYS: Record<string, string> = {
+        'suggest-deep': 'repoId', 'suggest-project': 'projectId', 'repo-profile': 'repoId',
+        'project-profile': 'projectId', 'revalidate-suggestion': 'suggestionId',
+      };
+      const paramKey = PARAM_KEYS[type];
+      const paramValue = paramKey ? (body as Record<string, unknown>)[paramKey] as string : undefined;
+      if (paramKey && paramValue) {
+        if (db.hasQueuedOrRunningWithParams(type, paramKey, paramValue)) {
+          return json(res, { error: `${type} already queued or running for ${paramKey}=${paramValue}` }, 409), true;
+        }
+      } else {
+        if (db.hasQueuedOrRunning(type)) {
+          return json(res, { error: `${type} already queued or running` }, 409), true;
+        }
+      }
+
       db.enqueueJob(type, { priority: PRIORITIES[type] ?? 5, triggerSource: 'manual', params: Object.keys(body).length > 0 ? body : undefined });
       return json(res, { triggered: true, type }), true;
     }
@@ -67,12 +82,18 @@ export async function handleJobRoutes(
     if (digestTriggerMatch) {
       const kind = digestTriggerMatch[1];
       const jobType = `digest-${kind}`;
-      if (db.hasQueuedOrRunning(jobType)) {
-        return json(res, { error: `${kind} digest already queued or running` }, 409), true;
-      }
       const body = await parseOptionalBody(req, res, DigestTriggerSchema);
       if (!body) return true;
       const params = body.periodStart ? { periodStart: body.periodStart } : {};
+      if (body.periodStart) {
+        if (db.hasQueuedOrRunningWithParams(jobType, 'periodStart', body.periodStart)) {
+          return json(res, { error: `${kind} digest for ${body.periodStart} already queued or running` }, 409), true;
+        }
+      } else {
+        if (db.hasQueuedOrRunning(jobType)) {
+          return json(res, { error: `${kind} digest already queued or running` }, 409), true;
+        }
+      }
       db.enqueueJob(jobType, { triggerSource: 'manual', params });
       return json(res, { triggered: true, kind, periodStart: body.periodStart ?? null }), true;
     }

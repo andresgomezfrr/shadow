@@ -215,8 +215,9 @@ Generate 1-5 suggestions. Quality over quantity.`;
       return rIds.length >= 2 && rIds.includes(repoId);
     });
     for (const project of projects) {
-      if (!ctx.db.hasQueuedOrRunning('suggest-project')) {
-        const lastSp = ctx.db.getLastJob('suggest-project');
+      if (!ctx.db.hasQueuedOrRunningWithParams('suggest-project', 'projectId', project.id)) {
+        const lastSp = ctx.db.listJobs({ type: 'suggest-project', status: 'completed', limit: 20 })
+          .find(j => (j.result as Record<string, unknown>)?.projectId === project.id);
         const gapDays = lastSp ? (Date.now() - new Date(lastSp.startedAt).getTime()) / (24 * 60 * 60 * 1000) : Infinity;
         if (gapDays >= ctx.config.suggestProjectMinGapDays) {
           ctx.db.enqueueJob('suggest-project', { priority: 5, triggerSource: 'reactive', params: { projectId: project.id } });
@@ -407,7 +408,7 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
   return {
     llmCalls: 1, tokensUsed: tokens,
     phases: suggestionsCreated > 0 ? ['analyze', 'validate', 'notify'] : ['analyze'],
-    result: { projectName: project.name, suggestionsCreated, suggestionItems },
+    result: { projectId: project.id, projectName: project.name, suggestionsCreated, suggestionItems },
     lastError: errorHint(result),
   };
 }

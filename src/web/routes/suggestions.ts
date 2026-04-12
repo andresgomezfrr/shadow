@@ -98,6 +98,9 @@ export async function handleSuggestionRoutes(
       const suggestion = db.getSuggestion(revalidateMatch[1]);
       if (!suggestion) return json(res, { error: 'Suggestion not found' }, 404), true;
       if (!suggestion.repoId) return json(res, { error: 'Suggestion has no repo' }, 400), true;
+      if (db.hasQueuedOrRunningWithParams('revalidate-suggestion', 'suggestionId', suggestion.id)) {
+        return json(res, { error: 'Revalidation already queued or running for this suggestion' }, 409), true;
+      }
       const job = db.enqueueJob('revalidate-suggestion', { priority: 7, triggerSource: 'web', params: { suggestionId: suggestion.id } });
       return json(res, { ok: true, jobId: job.id }), true;
     }

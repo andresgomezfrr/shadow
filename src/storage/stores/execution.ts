@@ -224,3 +224,17 @@ export function hasQueuedOrRunning(db: DatabaseSync, type: string): boolean {
     .get(type);
   return !!row;
 }
+
+export function hasQueuedOrRunningWithParams(
+  db: DatabaseSync, type: string, paramKey: string, paramValue: string,
+): boolean {
+  const rows = db
+    .prepare("SELECT result_json FROM jobs WHERE type = ? AND status IN ('queued', 'running')")
+    .all(type) as Array<{ result_json: string }>;
+  return rows.some(row => {
+    try {
+      const params = JSON.parse(row.result_json);
+      return params[paramKey] === paramValue;
+    } catch { return false; }
+  });
+}

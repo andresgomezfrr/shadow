@@ -41,47 +41,42 @@ export async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedStat
 export async function handleRepoProfile(ctx: JobContext): Promise<JobHandlerResult> {
   ctx.setPhase('repo-profile');
 
-  // Check if this was a manual trigger — force re-profile all repos
   const job = ctx.db.getJob(ctx.jobId);
   const force = job?.triggerSource === 'manual';
+  const targetRepoId = (job?.result as Record<string, unknown>)?.repoId as string | undefined;
 
   const { profileRepos } = await import('../../observation/repo-profile.js');
   const result = await profileRepos(ctx.db, ctx.config, ctx.config.repoProfileBatchSize, force, (name, i, total) => {
     ctx.setPhase(`repo-profile: ${name} (${i}/${total})`);
-  });
+  }, targetRepoId);
 
-  // Get names of recently profiled repos
-  const repoNames = ctx.db.listRepos()
-    .filter(r => r.contextUpdatedAt && new Date(r.contextUpdatedAt).getTime() > Date.now() - 5 * 60 * 1000)
-    .map(r => r.name);
+  const { profiledRepoIds, profiledRepoNames } = result;
 
-  // Reactive triggers after profiling
+  // Reactive triggers — scoped to actually profiled repos
 
   // 1. First-time suggest-deep trigger for newly profiled repos
   try {
-    const allRepos = ctx.db.listRepos();
-    for (const rName of repoNames) {
-      const r = allRepos.find(rr => rr.name === rName);
-      if (!r) continue;
+    for (const repoId of profiledRepoIds) {
       const prevDeepScans = ctx.db.listJobs({ type: 'suggest-deep', limit: 50 })
-        .filter(j => (j.result as Record<string, unknown>)?.repoId === r.id);
-      if (prevDeepScans.length === 0 && !ctx.db.hasQueuedOrRunning('suggest-deep')) {
-        ctx.db.enqueueJob('suggest-deep', { priority: 6, triggerSource: 'first-scan', params: { repoId: r.id } });
-        console.error(`[daemon] First-time suggest-deep triggered for ${r.name}`);
+        .filter(j => (j.result as Record<string, unknown>)?.repoId === repoId);
+      if (prevDeepScans.length === 0 && !ctx.db.hasQueuedOrRunningWithParams('suggest-deep', 'repoId', repoId)) {
+        ctx.db.enqueueJob('suggest-deep', { priority: 6, triggerSource: 'first-scan', params: { repoId } });
+        console.error(`[daemon] First-time suggest-deep triggered for repo ${repoId.slice(0, 8)}`);
         break; // one at a time
       }
     }
   } catch { /* best-effort */ }
 
-  // 2. Reactive project-profile trigger
+  // 2. Reactive project-profile trigger — only for projects containing profiled repos
   try {
     const projects = ctx.db.listProjects().filter(p => {
       const rIds: string[] = p.repoIds ?? [];
-      return rIds.length >= 2;
+      return rIds.length >= 2 && rIds.some(id => profiledRepoIds.includes(id));
     });
     for (const project of projects) {
-      if (!ctx.db.hasQueuedOrRunning('project-profile')) {
-        const lastPp = ctx.db.getLastJob('project-profile');
+      if (!ctx.db.hasQueuedOrRunningWithParams('project-profile', 'projectId', project.id)) {
+        const lastPp = ctx.db.listJobs({ type: 'project-profile', status: 'completed', limit: 20 })
+          .find(j => (j.result as Record<string, unknown>)?.projectId === project.id);
         const gap = lastPp ? Date.now() - new Date(lastPp.startedAt).getTime() : Infinity;
         if (gap >= ctx.config.projectProfileMinGapMs) {
           ctx.db.enqueueJob('project-profile', { priority: 4, triggerSource: 'reactive', params: { projectId: project.id } });
@@ -95,7 +90,7 @@ export async function handleRepoProfile(ctx: JobContext): Promise<JobHandlerResu
   return {
     llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,
     phases: ['repo-profile'],
-    result: { reposProfiled: result.reposProfiled, repoNames },
+    result: { reposProfiled: result.reposProfiled, repoNames: profiledRepoNames },
   };
 }
 
@@ -216,7 +211,7 @@ Be concise. Each field 1-3 lines max. Respond with JSON: { "contextMd": "..." }`
 
   return {
     llmCalls: 1, tokensUsed: tokens, phases: ['profile'],
-    result: { projectName: project.name, repoCount: repos.length },
+    result: { projectId, projectName: project.name, repoCount: repos.length },
     lastError: errorHint(result),
   };
 }

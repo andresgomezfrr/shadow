@@ -241,8 +241,12 @@ export async function profileRepos(
   batchSize: number,
   force = false,
   onProgress?: (name: string, index: number, total: number) => void,
-): Promise<{ reposProfiled: number; llmCalls: number; tokensUsed: number }> {
-  const repos = db.listRepos();
+  targetRepoId?: string,
+): Promise<{ reposProfiled: number; llmCalls: number; tokensUsed: number; profiledRepoIds: string[]; profiledRepoNames: string[] }> {
+  let repos = db.listRepos();
+  if (targetRepoId) {
+    repos = repos.filter(r => r.id === targetRepoId);
+  }
 
   // Filter: never profiled OR has new commits since last profile (git log check)
   const candidates = repos
@@ -262,11 +266,13 @@ export async function profileRepos(
 
   if (candidates.length === 0) {
     console.error('[shadow:repo-profile] No repos with new commits, skipping');
-    return { reposProfiled: 0, llmCalls: 0, tokensUsed: 0 };
+    return { reposProfiled: 0, llmCalls: 0, tokensUsed: 0, profiledRepoIds: [], profiledRepoNames: [] };
   }
 
   let totalLlmCalls = 0;
   let totalTokens = 0;
+  const profiledRepoIds: string[] = [];
+  const profiledRepoNames: string[] = [];
 
   for (let i = 0; i < candidates.length; i++) {
     const repo = candidates[i];
@@ -277,6 +283,8 @@ export async function profileRepos(
 
     if (contextMd) {
       db.updateRepo(repo.id, { contextMd, contextUpdatedAt: new Date().toISOString() });
+      profiledRepoIds.push(repo.id);
+      profiledRepoNames.push(repo.name);
       console.error(`[shadow:repo-profile] ${repo.name}: ${contextMd.length} chars context saved`);
     }
 
@@ -292,5 +300,5 @@ export async function profileRepos(
     totalTokens += tokensUsed;
   }
 
-  return { reposProfiled: candidates.length, llmCalls: totalLlmCalls, tokensUsed: totalTokens };
+  return { reposProfiled: candidates.length, llmCalls: totalLlmCalls, tokensUsed: totalTokens, profiledRepoIds, profiledRepoNames };
 }
