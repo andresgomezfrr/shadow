@@ -248,11 +248,16 @@ export function JobOutputSummary({ entry }: Props) {
         {candidates.map((c, i) => {
           const style = ACTION_STYLES[c.action] ?? ACTION_STYLES.skip;
           const title = c.title ?? c.runId?.slice(0, 8) ?? '?';
+          const isRunLink = (c.action === 'planned' || c.action === 'auto_executed') && c.reason;
           return (
             <div key={i} className="flex items-center gap-1.5 text-xs">
               <span className={`font-medium ${style.color}`}>{style.label}</span>
               <span className="text-text-dim truncate max-w-64">{title}</span>
-              {c.reason && <span className="text-text-muted/70 text-[10px]">— {c.reason}</span>}
+              {isRunLink ? (
+                <a href={`/workspace?run=${c.reason}`} className="text-accent text-[10px] hover:underline">→ run {c.reason!.slice(0, 8)}</a>
+              ) : (
+                c.reason && <span className="text-text-muted/70 text-[10px]">— {c.reason}</span>
+              )}
             </div>
           );
         })}
