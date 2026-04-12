@@ -45,14 +45,14 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
     .map(([k, v]) => `${k}: ${v}`);
 
   if (candidates.length === 0) {
+    const kindsLabel = planRules.kinds.length > 0 ? planRules.kinds.join(', ') : 'all';
     return {
       llmCalls: 0, tokensUsed: 0, phases: ['filtering'],
       result: {
         skipped: true,
-        reason: 'no candidates after filtering',
         totalOpen: allOpen.length,
         filtered: rejectionReasons,
-        rules: { impactMin: planRules.impactMin, confidenceMin: planRules.confidenceMin, riskMax: planRules.riskMax, effortMax: planRules.effortMax, minAgeHours: planRules.minAgeHours, kinds: planRules.kinds.length > 0 ? planRules.kinds : 'all', repos: planRules.repoIds.length },
+        rules: `impact≥${planRules.impactMin} conf≥${planRules.confidenceMin} risk≤${planRules.riskMax} effort≤${planRules.effortMax} age≥${planRules.minAgeHours}h kinds=${kindsLabel} repos=${planRules.repoIds.length}`,
       },
     };
   }
@@ -229,10 +229,9 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
       llmCalls: 0, tokensUsed: 0, phases: ['filtering'],
       result: {
         skipped: true,
-        reason: 'no candidates after filtering',
         totalPlanned: plannedRuns.length,
         filtered: rejectionReasons,
-        rules: { impactMin: executeRules.impactMin, confidenceMin: executeRules.confidenceMin, riskMax: executeRules.riskMax, effortMax: executeRules.effortMax, kinds: executeRules.kinds.length > 0 ? executeRules.kinds : 'all', repos: executeRules.repoIds.length },
+        rules: `impact≥${executeRules.impactMin} conf≥${executeRules.confidenceMin} risk≤${executeRules.riskMax} effort≤${executeRules.effortMax} kinds=${executeRules.kinds.length > 0 ? executeRules.kinds.join(', ') : 'all'} repos=${executeRules.repoIds.length}`,
       },
     };
   }

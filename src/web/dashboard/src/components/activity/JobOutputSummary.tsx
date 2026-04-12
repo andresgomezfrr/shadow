@@ -234,12 +234,14 @@ export function JobOutputSummary({ entry }: Props) {
     const skippedCount = num(r, 'skipped');
     const filtered = arr(r, 'filtered');
     const totalOpen = num(r, 'totalOpen');
+    const rules = str(r, 'rules');
     if (r.skipped === true) {
-      const filterDetail = filtered.length > 0 ? filtered.join(', ') : null;
       return (
-        <span className="inline-flex items-center gap-1.5 flex-wrap">
-          <span className="text-text-muted text-xs">{totalOpen} open, 0 passed filters</span>
-          {filterDetail && <span className="text-[10px] text-text-muted/70" title={filterDetail}>({filterDetail})</span>}
+        <span className="inline-flex items-center gap-1.5 flex-wrap" title={rules}>
+          <span className="text-text-muted text-xs">{totalOpen} open → 0 passed</span>
+          {filtered.length > 0 && filtered.map((f, i) => (
+            <Badge key={i} className="text-text-muted bg-border/50">{f}</Badge>
+          ))}
         </span>
       );
     }
@@ -257,12 +259,14 @@ export function JobOutputSummary({ entry }: Props) {
     const review = num(r, 'needsReview');
     const filtered = arr(r, 'filtered');
     const totalPlanned = num(r, 'totalPlanned');
+    const rules = str(r, 'rules');
     if (r.skipped === true) {
-      const filterDetail = filtered.length > 0 ? filtered.join(', ') : null;
       return (
-        <span className="inline-flex items-center gap-1.5 flex-wrap">
-          <span className="text-text-muted text-xs">{totalPlanned} planned, 0 passed filters</span>
-          {filterDetail && <span className="text-[10px] text-text-muted/70" title={filterDetail}>({filterDetail})</span>}
+        <span className="inline-flex items-center gap-1.5 flex-wrap" title={rules}>
+          <span className="text-text-muted text-xs">{totalPlanned} planned → 0 passed</span>
+          {filtered.length > 0 && filtered.map((f, i) => (
+            <Badge key={i} className="text-text-muted bg-border/50">{f}</Badge>
+          ))}
         </span>
       );
     }
