@@ -21,9 +21,7 @@ Renderizado por filtro, transiciones de estado del feed unificado y context pane
 ## Prioridad media — Runner
 
 ### Pendiente de evaluar
-- **Auto-accept de planes**: planes de alta confidence que se auto-ejecutan sin revisión. Necesita UI para configurar umbral y tipos de sugerencia que pueden auto-aceptarse.
 - **Plan demasiado largo**: repos con archivos grandes pueden saturar contexto. Evaluar file size hints en briefing o exclusión de archivos grandes.
-- **Timeout de planes**: 15min puede ser corto para repos grandes con Opus. Evaluar si necesita timeout diferenciado para plan vs execute.
 
 ---
 
@@ -45,9 +43,6 @@ Trust global vs per-repo. Shadow puede saber mucho de un repo y poco de otro. Ha
 ---
 
 ## Prioridad media — Job system tuning
-
-### Evaluar intervalos de jobs con datos reales
-Analizar: ¿consolidate produce cambios? ¿reflect produce cambios significativos? ¿digests se consultan?
 
 ### Consolidate timing: no consumir correcciones antes de que otros jobs las vean
 Si consolidate corre antes que repo-profile, consume la corrección y repo-profile no la ve.
@@ -86,8 +81,8 @@ Auditar si siempre estamos asociando `entities_json` cuando la información lo p
 ### Soporte monorepo: un repo, múltiples proyectos con path prefixes *(2026-04-08)*
 Path prefixes por proyecto, detección de fronteras (BUILD.bazel, package.json), heartbeat scoping, entity linking granular.
 
-### Agrupación por repo + búsqueda global en dashboard
-Agrupación visual por repo, barra de búsqueda global.
+### Búsqueda global en dashboard
+Barra de búsqueda tipo cmd+k para encontrar cualquier entidad rápido. Cobra sentido con 5+ repos activos.
 
 ---
 
