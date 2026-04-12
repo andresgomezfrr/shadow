@@ -1,6 +1,6 @@
 # Shadow — Backlog
 
-Actualizado 2026-04-11. Items completados en [COMPLETED.md](COMPLETED.md).
+Actualizado 2026-04-12. Items completados en [COMPLETED.md](COMPLETED.md).
 
 ---
 
@@ -30,22 +30,12 @@ Renderizado por filtro, transiciones de estado del feed unificado y context pane
 ### Detectar PRs creados fuera de Shadow
 Si un run tiene worktree pero no prUrl, detectar si existe un PR con `gh pr list --head shadow/{id}`.
 
-### Warning de worktree huerfano en workspace
-Si un run terminal tiene `worktreePath` pero el directorio ya no existe, mostrar warning visual.
-
 ---
 
 ## Prioridad media — Dashboard UX
 
 ### Evaluar: trust por repo en vez de global *(2026-04-08)*
 Trust global vs per-repo. Shadow puede saber mucho de un repo y poco de otro. Hablar antes de diseñar.
-
----
-
-## Prioridad media — Job system tuning
-
-### Consolidate timing: no consumir correcciones antes de que otros jobs las vean
-Si consolidate corre antes que repo-profile, consume la corrección y repo-profile no la ve.
 
 ---
 

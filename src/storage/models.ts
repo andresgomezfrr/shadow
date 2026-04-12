@@ -140,6 +140,7 @@ export type MemoryRecord = {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  enforcedAt: number | null;
 };
 
 // --- Observations ---

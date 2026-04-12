@@ -895,6 +895,13 @@ export const migrations: Migration[] = [
       ALTER TABLE suggestions ADD COLUMN effort TEXT DEFAULT 'medium';
     `,
   },
+  {
+    version: 48,
+    name: 'memory_enforced_at',
+    sql: `
+      ALTER TABLE memories ADD COLUMN enforced_at INTEGER;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

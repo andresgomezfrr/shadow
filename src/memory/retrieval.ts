@@ -8,6 +8,14 @@ import { safeParseJson } from '../backend/json-repair.js';
 import { z } from 'zod';
 
 /**
+ * Grace window during which a recently enforced correction stays visible to readers
+ * (loadPendingCorrections). After this window, the correction becomes eligible for
+ * absorption via mergeRelatedMemories. 48h covers any job with cadence ≤ 1 day
+ * (heartbeat, suggest, repo-profile, project-profile, reflect, digest-daily).
+ */
+const CORRECTION_GRACE_MS = 48 * 60 * 60 * 1000;
+
+/**
  * Search memories by text query using FTS5.
  * Delegates directly to db.searchMemories() which handles BM25 ranking.
  */
@@ -119,12 +127,17 @@ export function touchMemories(db: ShadowDatabase, memoryIds: string[]): void {
  * Load pending corrections and format them as a prompt section.
  * Corrections override any other information and MUST be respected by LLM prompts.
  * Optionally filters by entity overlap when entities are provided.
+ * Includes corrections that are either not yet enforced, or enforced within the grace window
+ * (so readers continue to see them until every downstream job has had at least one run).
  */
 export function loadPendingCorrections(
   db: ShadowDatabase,
   entities?: EntityLink[],
 ): string {
-  const corrections = db.listMemories({ kind: 'correction', archived: false, limit: 50 });
+  const now = Date.now();
+  const corrections = db
+    .listMemories({ kind: 'correction', archived: false, limit: 50 })
+    .filter(c => c.enforcedAt == null || c.enforcedAt > now - CORRECTION_GRACE_MS);
   if (corrections.length === 0) return '';
 
   const relevant = entities
@@ -149,14 +162,20 @@ export function loadPendingCorrections(
 /**
  * Enforce corrections by finding semantically similar memories that contradict them.
  * Uses LLM to decide whether each candidate should be archived, edited, or kept.
- * After processing, the correction memory is promoted to kind 'taught' (consumed).
+ * After processing, each correction is stamped with enforced_at (NOT promoted to 'taught').
+ * The stamp provides idempotency (already-stamped corrections are skipped on subsequent runs)
+ * and unlocks the correction for absorption via mergeRelatedMemories after the grace window.
  */
 export async function enforceCorrections(
   db: ShadowDatabase,
   config: ShadowConfig,
 ): Promise<{ processed: number; archived: number; edited: number }> {
-  // Process oldest corrections first so later refinements prevail
-  const corrections = db.listMemories({ kind: 'correction', archived: false, limit: 50 }).reverse();
+  // Idempotency: only process corrections that have never been enforced before.
+  // Process oldest corrections first so later refinements prevail.
+  const corrections = db
+    .listMemories({ kind: 'correction', archived: false, limit: 50 })
+    .filter(c => c.enforcedAt == null)
+    .reverse();
   if (corrections.length === 0) return { processed: 0, archived: 0, edited: 0 };
 
   let archived = 0;
@@ -202,7 +221,13 @@ export async function enforceCorrections(
       candidates.push({ id: mem.id, title: mem.title, bodyMd: mem.bodyMd, similarity });
     }
 
-    // Ask LLM to decide for each candidate
+    // Ask LLM to decide for each candidate. Track whether enforcement completed
+    // successfully — only then do we stamp enforced_at. Any failure (LLM error,
+    // non-success status, missing output, JSON parse failure) leaves the correction
+    // pending so the next consolidate retries it.
+    // Standalone corrections (no candidates) are considered successfully enforced.
+    let enforceSucceeded = candidates.length === 0;
+
     if (candidates.length > 0) {
       const adapter = selectAdapter(config);
       const prompt = `You are evaluating memories for contradictions with a user correction.
@@ -262,15 +287,24 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
                 edited++;
               }
             }
+            enforceSucceeded = true;
+          } else {
+            console.error(`[corrections] JSON parse failed for "${correction.title}" — correction stays pending`);
           }
+        } else {
+          console.error(`[corrections] LLM returned non-success for "${correction.title}" — correction stays pending`);
         }
       } catch (err) {
         console.error(`[corrections] LLM enforcement failed for "${correction.title}":`, err instanceof Error ? err.message : err);
       }
     }
 
-    // Promote correction to taught (consumed)
-    db.updateMemory(correction.id, { kind: 'taught' });
+    if (enforceSucceeded) {
+      // Stamp enforced_at — marks the correction as processed (idempotent).
+      // Only reached when enforcement completed without errors. Failed runs leave
+      // enforced_at NULL so the next consolidate retries.
+      db.updateMemory(correction.id, { enforcedAt: Date.now() });
+    }
   }
 
   return { processed: corrections.length, archived, edited };
@@ -279,16 +313,20 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
 /**
  * Merge semantically similar memories into richer combined memories.
  * Uses vector search to find clusters, then LLM to decide and merge.
- * Protected kinds (soul_reflection, taught, correction, knowledge_summary, meta_pattern) are excluded.
- * Core-layer memories are excluded.
+ * Protected kinds (soul_reflection, correction, knowledge_summary) and core-layer
+ * memories are normally excluded. Exception: corrections past the grace window
+ * (isAbsorbableCorrection) bypass both gates so their content can be absorbed.
  */
 export async function mergeRelatedMemories(
   db: ShadowDatabase,
   config: ShadowConfig,
 ): Promise<{ merged: number; archived: number; deduped: number }> {
   const PROTECTED_KINDS = new Set(['soul_reflection', 'correction', 'knowledge_summary']);
+  const now = Date.now();
+  const isAbsorbableCorrection = (m: MemoryRecord): boolean =>
+    m.kind === 'correction' && m.enforcedAt != null && m.enforcedAt < now - CORRECTION_GRACE_MS;
   const candidates = db.listMemories({ archived: false, limit: 200 })
-    .filter(m => !PROTECTED_KINDS.has(m.kind));
+    .filter(m => !PROTECTED_KINDS.has(m.kind) || isAbsorbableCorrection(m));
 
   if (candidates.length < 2) return { merged: 0, archived: 0, deduped: 0 };
 
@@ -346,7 +384,10 @@ export async function mergeRelatedMemories(
       if (similarity < 0.65) break;
 
       const other = db.getMemory(row.id);
-      if (!other || other.archivedAt || PROTECTED_KINDS.has(other.kind) || other.layer === 'core') continue;
+      if (!other || other.archivedAt) continue;
+      // Absorbable corrections (past grace window) bypass PROTECTED_KINDS and core-layer gates.
+      const absorbable = isAbsorbableCorrection(other);
+      if (!absorbable && (PROTECTED_KINDS.has(other.kind) || other.layer === 'core')) continue;
       if (other.scope !== mem.scope) continue; // same scope only
 
       cluster.push({ id: other.id, title: other.title, bodyMd: other.bodyMd, kind: other.kind, layer: other.layer, scope: other.scope, entities: other.entities ?? [] });
@@ -372,6 +413,11 @@ export async function mergeRelatedMemories(
   for (const cluster of clusters) {
     if (archived >= maxArchived) break; // proportion safeguard
 
+    const hasCorrection = cluster.some(m => m.kind === 'correction');
+    const correctionNote = hasCorrection
+      ? `\n\nIMPORTANT: This cluster contains a memory with kind 'correction'. A correction is a user instruction that has already been applied to related memories during enforcement. Merging should absorb its content into the resulting memory — the mergedKind MUST reflect the corrected knowledge (e.g. convention, preference, pattern, workflow), NOT 'correction'. The correction itself will be archived as a source of the merge.`
+      : '';
+
     const prompt = `You are consolidating knowledge memories for Shadow, an engineering companion. These memories are about similar topics and may overlap.
 
 Memories:
@@ -380,7 +426,7 @@ ${cluster.map((m, i) => `[${i}] "${m.title}" (${m.kind}, ${m.layer}): ${m.bodyMd
 Should these be merged into a single, richer memory? Consider:
 - Are they genuinely about the same topic/system?
 - Does merging lose important nuance?
-- Would a combined memory be more useful than ${cluster.length} separate ones?
+- Would a combined memory be more useful than ${cluster.length} separate ones?${correctionNote}
 
 Respond with JSON:
 {

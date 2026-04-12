@@ -210,6 +210,7 @@ export function mapMemory(row: unknown): MemoryRecord {
     createdAt: str(d.created_at),
     updatedAt: str(d.updated_at),
     archivedAt: strOrNull(d.archived_at),
+    enforcedAt: d.enforced_at == null ? null : num(d.enforced_at),
   };
 }
 

@@ -4,13 +4,15 @@ Historical record of completed backlog items.
 
 ---
 
-## Session 2026-04-12 (cmd+k global search)
+## Session 2026-04-12 (corrections lifecycle + cmd+k)
 
+- **Corrections timing fix — `enforced_at` + 48h grace window + merge absorption** — Migration v48: `memories.enforced_at INTEGER`. `enforceCorrections` ya no promueve a `kind='taught'`; stampa `enforced_at` (sólo si la enforcement completó con éxito — flag `enforceSucceeded` cubre LLM/parse/catch failures). `loadPendingCorrections` filtra por `enforced_at IS NULL OR enforced_at > now() - 48h` — readers siguen viendo corrections recién aplicadas durante 48h (cubre cadencia ≤ diaria de `reflect`, `digest-daily`, `repo-profile`, `project-profile`). `mergeRelatedMemories` ahora absorbe corrections post-grace: bypass condicional de `PROTECTED_KINDS` + core-layer gate, prompt con nota sobre corrections. Resultado: la correction se disuelve en la memoria que corrigió via pipeline existente con `sourceMemoryIds` trackeados. `kind='taught'` queda legacy. Bug detectado y fixed durante validación end-to-end: el catch del LLM call stampaba `enforced_at` incluso en fallo → data loss path — Shadow mismo lo reportó vía suggestion durante el propio run de consolidate.
 - **Cmd+K global search** — Command palette en dashboard (Cmd+K / Ctrl+K / `/`). Búsqueda unificada sobre memories, observations, suggestions, tasks, runs, projects, systems, repos, contacts. Reusa `hybridSearch` (FTS5+vector) para knowledge entities y SQL LIKE para structural. Resultados agrupados por tipo con badges, keyboard nav (↑↓/Enter/Esc), recents en localStorage (max 10, LRU).
 - **Deep-link prefetch pattern** — Endpoint genérico `GET /api/lookup?type=X&id=Y` para fetch individual. `useHighlight` ahora expone `highlightId` capturado (sobrevive al clear del URL). 4 páginas (Memories, Observations, Suggestions, Runs) hacen prefetch del item si no está en la lista visible y lo prependan. Evita el silent-fail de deep-links a items fuera de la primera página paginada.
 
 ## Backlog cleanup 2026-04-12
 
+- **Warning de worktree huérfano** — Cerrado por diseño. El endpoint `/api/runs/{id}/cleanup-worktree` (`src/web/routes/runs.ts:318-321`) ya es idempotente: envuelve `git worktree remove` y `git branch -D` en try/catch silencioso y limpia `worktreePath` en DB al final. Si el directorio no existe, el remove falla, se ignora, y la DB queda limpia igual. Un warning visual no aportaba acción diferenciada.
 - **Auto-accept de planes** — Superseded by L4 Autonomy. `auto-plan` revalida suggestions maduras contra código y crea plan runs; `auto-execute` ejecuta planes con high confidence + 0 doubts. UI configurable (effort, risk, impact, confidence, kinds, per-repo opt-in) en `SectionAutonomy.tsx`.
 - **Timeout diferenciado plan vs execute** — Already shipped in L4. Per-job `timeoutMs` en `JobHandlerEntry`: auto-plan 30min, auto-execute 60min. Infraestructura en `JobQueue` (`entry.timeoutMs ?? JOB_TIMEOUT_MS`).
 - **Agrupación por repo en dashboard** — Dropped. Los filtros por repo ya existen en suggestions/observations; la agrupación visual sería cosmética y redundante.

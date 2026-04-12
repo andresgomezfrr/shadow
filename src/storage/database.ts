@@ -292,7 +292,7 @@ export class ShadowDatabase {
   listMemories(filters?: { layer?: string; layers?: string[]; scope?: string; repoId?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string; entityType?: string; entityId?: string; limit?: number; offset?: number }): MemoryRecord[] { return knowledge.listMemories(this.database, filters); }
   countMemories(filters?: { layer?: string; memoryType?: string; kind?: string; archived?: boolean; createdSince?: string; entityType?: string; entityId?: string }): number { return knowledge.countMemories(this.database, filters); }
   searchMemories(query: string, options?: { layer?: string; scope?: string; repoId?: string; limit?: number }): MemorySearchResult[] { return knowledge.searchMemories(this.database, query, options); }
-  updateMemory(id: string, updates: Partial<Pick<MemoryRecord, 'layer' | 'scope' | 'kind' | 'title' | 'bodyMd' | 'tags' | 'confidenceScore' | 'relevanceScore' | 'accessCount' | 'lastAccessedAt' | 'promotedFrom' | 'demotedTo' | 'archivedAt'>> & { entities?: Array<{ type: string; id: string }> }): void { return knowledge.updateMemory(this.database, id, updates); }
+  updateMemory(id: string, updates: Partial<Pick<MemoryRecord, 'layer' | 'scope' | 'kind' | 'title' | 'bodyMd' | 'tags' | 'confidenceScore' | 'relevanceScore' | 'accessCount' | 'lastAccessedAt' | 'promotedFrom' | 'demotedTo' | 'archivedAt' | 'enforcedAt'>> & { entities?: Array<{ type: string; id: string }> }): void { return knowledge.updateMemory(this.database, id, updates); }
   touchMemory(id: string): void { return knowledge.touchMemory(this.database, id); }
   mergeMemoryBody(id: string, newBodyMd: string, newTags?: string[]): void { return knowledge.mergeMemoryBody(this.database, id, newBodyMd, newTags); }
 
