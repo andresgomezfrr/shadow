@@ -81,9 +81,6 @@ Auditar si siempre estamos asociando `entities_json` cuando la información lo p
 ### Soporte monorepo: un repo, múltiples proyectos con path prefixes *(2026-04-08)*
 Path prefixes por proyecto, detección de fronteras (BUILD.bazel, package.json), heartbeat scoping, entity linking granular.
 
-### Búsqueda global en dashboard
-Barra de búsqueda tipo cmd+k para encontrar cualquier entidad rápido. Cobra sentido con 5+ repos activos.
-
 ---
 
 ## Long-term — Features (evaluar)

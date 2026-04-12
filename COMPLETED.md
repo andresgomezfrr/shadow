@@ -4,10 +4,17 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-12 (cmd+k global search)
+
+- **Cmd+K global search** — Command palette en dashboard (Cmd+K / Ctrl+K / `/`). Búsqueda unificada sobre memories, observations, suggestions, tasks, runs, projects, systems, repos, contacts. Reusa `hybridSearch` (FTS5+vector) para knowledge entities y SQL LIKE para structural. Resultados agrupados por tipo con badges, keyboard nav (↑↓/Enter/Esc), recents en localStorage (max 10, LRU).
+- **Deep-link prefetch pattern** — Endpoint genérico `GET /api/lookup?type=X&id=Y` para fetch individual. `useHighlight` ahora expone `highlightId` capturado (sobrevive al clear del URL). 4 páginas (Memories, Observations, Suggestions, Runs) hacen prefetch del item si no está en la lista visible y lo prependan. Evita el silent-fail de deep-links a items fuera de la primera página paginada.
+
 ## Backlog cleanup 2026-04-12
 
 - **Auto-accept de planes** — Superseded by L4 Autonomy. `auto-plan` revalida suggestions maduras contra código y crea plan runs; `auto-execute` ejecuta planes con high confidence + 0 doubts. UI configurable (effort, risk, impact, confidence, kinds, per-repo opt-in) en `SectionAutonomy.tsx`.
 - **Timeout diferenciado plan vs execute** — Already shipped in L4. Per-job `timeoutMs` en `JobHandlerEntry`: auto-plan 30min, auto-execute 60min. Infraestructura en `JobQueue` (`entry.timeoutMs ?? JOB_TIMEOUT_MS`).
+- **Agrupación por repo en dashboard** — Dropped. Los filtros por repo ya existen en suggestions/observations; la agrupación visual sería cosmética y redundante.
+- **Evaluar intervalos de jobs con datos reales** — Dropped. Item de análisis, no actionable. Si aparece evidencia de que un job quema tokens sin valor, se revisa puntualmente.
 
 ---
 
