@@ -23,6 +23,9 @@ const KINDS: Record<string, KindConfig> = {
   run_failed: { label: n => `${n} run${n !== 1 ? 's' : ''} failed`, icon: '✕', nav: '/workspace?filter=run' },
   job_completed: { label: n => `${n} job${n !== 1 ? 's' : ''} completed`, icon: '⚙', nav: '/activity' },
   job_failed: { label: n => `${n} job${n !== 1 ? 's' : ''} failed`, icon: '✕', nav: '/activity' },
+  auto_plan_complete: { label: n => `${n} auto-plan${n !== 1 ? 's' : ''} done`, icon: '📋', nav: '/activity' },
+  auto_execute_complete: { label: n => `${n} auto-execute${n !== 1 ? 's' : ''} done`, icon: '▶', nav: '/activity' },
+  plan_needs_review: { label: n => `${n} plan${n !== 1 ? 's' : ''} need review`, icon: '👀', nav: '/workspace?filter=run' },
   version_available: { label: () => 'Update available', icon: '🆕', nav: '/profile' },
 };
 
@@ -60,6 +63,7 @@ function eventNavTarget(event: EventRecord): string | null {
   if (p.runId) return `/workspace?filter=run&item=${p.runId}&itemType=run`;
   if (p.observationId) return `/workspace?filter=observation&item=${p.observationId}&itemType=observation`;
   if (Array.isArray(p.observationIds) && p.observationIds.length === 1) return `/workspace?filter=observation&item=${p.observationIds[0]}&itemType=observation`;
+  if (p.jobId) return `/activity?highlight=${p.jobId}`;
   if (p.jobType) return '/activity';
   return null;
 }
@@ -173,7 +177,7 @@ export function NotificationPanel({ onClose, onRead }: { onClose: () => void; on
                           className="px-4 py-1 ml-6 text-[11px] text-accent hover:text-accent/80 cursor-pointer"
                           onClick={() => handleViewAll(group)}
                         >
-                          View all in workspace →
+                          View all in {group.navigateTo.startsWith('/activity') ? 'activity' : 'workspace'} →
                         </div>
                       </div>
                     )}

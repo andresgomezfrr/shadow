@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchActivity, fetchActivitySummary, fetchStatus } from '../../api/client';
@@ -62,6 +63,31 @@ function buildFetchParams(params: Record<string, string>) {
 
 export function ActivityPage() {
   const [videoEnded, setVideoEnded] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const highlightId = searchParams.get('highlight');
+  const [pulseId, setPulseId] = useState<string | null>(null);
+  const scrolledRef = useRef(false);
+
+  useEffect(() => {
+    if (!highlightId) return;
+    setPulseId(highlightId);
+    scrolledRef.current = false;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('highlight');
+      return next;
+    }, { replace: true });
+    const timer = setTimeout(() => setPulseId(null), 3000);
+    return () => clearTimeout(timer);
+  }, [highlightId, setSearchParams]);
+
+  const scrollRef = (id: string) => (el: HTMLElement | null) => {
+    if (el && id === pulseId && !scrolledRef.current) {
+      scrolledRef.current = true;
+      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    }
+  };
+
   const { params, setParam } = useFilterParams({ type: '', period: 'today', offset: '0' });
 
   const fetchParams = buildFetchParams(params);
@@ -157,7 +183,13 @@ export function ActivityPage() {
       ) : (
         <div className="flex flex-col gap-1.5">
           {items.map((entry) => (
-            <ActivityEntryCard key={entry.id} entry={entry} />
+            <div
+              key={entry.id}
+              ref={scrollRef(entry.id)}
+              className={pulseId === entry.id ? 'rounded-lg ring-2 ring-accent/30 transition-all' : ''}
+            >
+              <ActivityEntryCard entry={entry} defaultExpanded={entry.id === pulseId} />
+            </div>
           ))}
         </div>
       )}

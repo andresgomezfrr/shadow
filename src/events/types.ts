@@ -19,6 +19,7 @@ export type ShadowEventPayload = {
   repoId?: string;
   observationIds?: string[];
   jobType?: string;
+  jobId?: string;
 };
 
 export const EVENT_PRIORITIES: Record<ShadowEventKind, number> = {

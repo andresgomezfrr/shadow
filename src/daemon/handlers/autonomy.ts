@@ -166,7 +166,7 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
     ctx.db.createEvent({
       kind: 'auto_plan_complete',
       priority: 5,
-      payload: { message: `Auto-plan: ${autoPlanned} planned, ${autoDismissed} dismissed, ${skipped} skipped`, autoPlanned, autoDismissed, skipped },
+      payload: { message: `Auto-plan: ${autoPlanned} planned, ${autoDismissed} dismissed, ${skipped} skipped`, jobId: ctx.jobId, autoPlanned, autoDismissed, skipped },
     });
   }
 
@@ -300,7 +300,7 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
     ctx.db.createEvent({
       kind: 'auto_execute_complete',
       priority: 8,
-      payload: { message: `Auto-execute: ${autoExecuted} executed, ${needsReview} need review`, autoExecuted, needsReview, filtered },
+      payload: { message: `Auto-execute: ${autoExecuted} executed, ${needsReview} need review`, jobId: ctx.jobId, autoExecuted, needsReview, filtered },
     });
   }
 
