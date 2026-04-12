@@ -20,40 +20,33 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
   const now = Date.now();
   const minAgeMs = planRules.minAgeHours * 60 * 60 * 1000;
 
-  // Track why suggestions are filtered out
-  const rejections = { tooYoung: 0, lowImpact: 0, lowConfidence: 0, highRisk: 0, effortTooBig: 0, wrongKind: 0, repoNotEnabled: 0 };
+  // Per-suggestion filtering with reasons
+  type SuggestionEntry = { suggestionId: string; title: string; action: string; reason?: string };
+  const allEntries: SuggestionEntry[] = [];
+  const passed: typeof allOpen = [];
 
-  const candidates = allOpen.filter(s => {
+  for (const s of allOpen) {
     const ageMs = now - new Date(s.createdAt).getTime();
-    if (ageMs < minAgeMs) { rejections.tooYoung++; return false; }
-    if (s.impactScore < planRules.impactMin) { rejections.lowImpact++; return false; }
-    if (s.confidenceScore < planRules.confidenceMin) { rejections.lowConfidence++; return false; }
-    if (s.riskScore > planRules.riskMax) { rejections.highRisk++; return false; }
-    if (!effortWithinLimit(s.effort, planRules.effortMax)) { rejections.effortTooBig++; return false; }
-    if (planRules.kinds.length > 0 && !planRules.kinds.includes(s.kind)) { rejections.wrongKind++; return false; }
-    // Repo opt-in: suggestion must belong to an enabled repo
+    const ageHours = Math.round(ageMs / 3_600_000);
+    if (ageMs < minAgeMs) { allEntries.push({ suggestionId: s.id, title: s.title, action: 'skip', reason: `too young (${ageHours}h < ${planRules.minAgeHours}h)` }); continue; }
+    if (s.impactScore < planRules.impactMin) { allEntries.push({ suggestionId: s.id, title: s.title, action: 'skip', reason: `low impact (${s.impactScore} < ${planRules.impactMin})` }); continue; }
+    if (s.confidenceScore < planRules.confidenceMin) { allEntries.push({ suggestionId: s.id, title: s.title, action: 'skip', reason: `low confidence (${s.confidenceScore} < ${planRules.confidenceMin})` }); continue; }
+    if (s.riskScore > planRules.riskMax) { allEntries.push({ suggestionId: s.id, title: s.title, action: 'skip', reason: `high risk (${s.riskScore} > ${planRules.riskMax})` }); continue; }
+    if (!effortWithinLimit(s.effort, planRules.effortMax)) { allEntries.push({ suggestionId: s.id, title: s.title, action: 'skip', reason: `effort too big (${s.effort} > ${planRules.effortMax})` }); continue; }
+    if (planRules.kinds.length > 0 && !planRules.kinds.includes(s.kind)) { allEntries.push({ suggestionId: s.id, title: s.title, action: 'skip', reason: `kind not allowed (${s.kind})` }); continue; }
     const suggestionRepoIds = s.repoIds.length > 0 ? s.repoIds : (s.repoId ? [s.repoId] : []);
-    if (!suggestionRepoIds.some(rid => planRules.repoIds.includes(rid))) { rejections.repoNotEnabled++; return false; }
-    return true;
-  })
+    if (!suggestionRepoIds.some(rid => planRules.repoIds.includes(rid))) { allEntries.push({ suggestionId: s.id, title: s.title, action: 'skip', reason: 'repo not enabled' }); continue; }
+    passed.push(s);
+  }
+
+  const candidates = passed
     .sort((a, b) => b.impactScore - a.impactScore)
     .slice(0, planRules.maxPerJob);
 
-  // Build rejection summary (only include non-zero reasons)
-  const rejectionReasons = Object.entries(rejections)
-    .filter(([, v]) => v > 0)
-    .map(([k, v]) => `${k}: ${v}`);
-
   if (candidates.length === 0) {
-    const kindsLabel = planRules.kinds.length > 0 ? planRules.kinds.join(', ') : 'all';
     return {
       llmCalls: 0, tokensUsed: 0, phases: ['filtering'],
-      result: {
-        skipped: true,
-        totalOpen: allOpen.length,
-        filtered: rejectionReasons,
-        rules: `impact≥${planRules.impactMin} conf≥${planRules.confidenceMin} risk≤${planRules.riskMax} effort≤${planRules.effortMax} age≥${planRules.minAgeHours}h kinds=${kindsLabel} repos=${planRules.repoIds.length}`,
-      },
+      result: { skipped: true, totalOpen: allOpen.length, candidates: allEntries },
     };
   }
 
@@ -67,7 +60,8 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
   let autoPlanned = 0;
   let autoDismissed = 0;
   let skipped = 0;
-  const resultCandidates: Array<{ suggestionId: string; title: string; action: string }> = [];
+  // Start with the filtered entries from phase 1, then append revalidation/planning results
+  const resultCandidates: SuggestionEntry[] = [...allEntries];
 
   const { selectAdapter } = await import('../../backend/index.js');
   const { safeParseJson } = await import('../../backend/json-repair.js');
@@ -86,7 +80,7 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
     const repo = suggestion.repoId ? ctx.db.getRepo(suggestion.repoId) : null;
     if (!repo) {
       skipped++;
-      resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skipped_no_repo' });
+      resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skip', reason: 'repo not found' });
       continue;
     }
 
@@ -129,14 +123,14 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
 
       if (result.status !== 'success' || !result.output) {
         skipped++;
-        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skipped_llm_failed' });
+        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skip', reason: 'revalidation LLM failed' });
         continue;
       }
 
       const parsed = safeParseJson(result.output, verdictSchema, 'auto-plan-revalidate');
       if (!parsed.success) {
         skipped++;
-        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skipped_parse_failed' });
+        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skip', reason: 'revalidation parse failed' });
         continue;
       }
 
@@ -144,7 +138,7 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
         // Auto-dismiss: suggestion is outdated
         await dismissSuggestion(ctx.db, suggestion.id, `Auto-dismissed: ${parsed.data.reason}`, 'not_applicable');
         autoDismissed++;
-        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'auto_dismissed' });
+        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'dismissed', reason: parsed.data.reason });
         console.error(`[auto-plan] Dismissed: "${suggestion.title}" — ${parsed.data.reason}`);
         continue;
       }
@@ -154,16 +148,16 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
       const accepted = acceptSuggestion(ctx.db, suggestion.id, 'execute');
       if (accepted.ok && accepted.runCreated) {
         autoPlanned++;
-        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'auto_planned' });
+        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'planned', reason: accepted.runCreated });
         console.error(`[auto-plan] Planned: "${suggestion.title}" → run ${accepted.runCreated.slice(0, 8)}`);
       } else {
         skipped++;
-        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skipped_accept_failed' });
+        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skip', reason: 'accept failed' });
       }
     } catch (e) {
       console.error(`[auto-plan] Error processing "${suggestion.title}":`, e instanceof Error ? e.message : e);
       skipped++;
-      resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skipped_error' });
+      resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skip', reason: e instanceof Error ? e.message : 'unknown error' });
     }
   }
 

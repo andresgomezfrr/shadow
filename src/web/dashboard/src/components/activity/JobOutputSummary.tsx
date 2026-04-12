@@ -228,53 +228,35 @@ export function JobOutputSummary({ entry }: Props) {
     );
   }
 
-  if (type === 'auto-plan') {
-    const planned = num(r, 'autoPlanned');
-    const dismissed = num(r, 'autoDismissed');
-    const skippedCount = num(r, 'skipped');
-    const filtered = arr(r, 'filtered');
-    const totalOpen = num(r, 'totalOpen');
-    const rules = str(r, 'rules');
-    if (r.skipped === true) {
-      return (
-        <span className="inline-flex items-center gap-1.5 flex-wrap" title={rules}>
-          <span className="text-text-muted text-xs">{totalOpen} open → 0 passed</span>
-          {filtered.length > 0 && filtered.map((f, i) => (
-            <Badge key={i} className="text-text-muted bg-border/50">{f}</Badge>
-          ))}
-        </span>
-      );
+  if (type === 'auto-plan' || type === 'auto-execute') {
+    const candidates = r.candidates as Array<{ title?: string; action: string; reason?: string; runId?: string }> | undefined;
+    if (!candidates || candidates.length === 0) {
+      return <span className="text-text-muted text-xs">no suggestions to evaluate</span>;
     }
-    return (
-      <span className="inline-flex items-center gap-1.5 flex-wrap">
-        {planned > 0 && chip(`${planned} planned`, 'text-lime-300 bg-lime-500/15')}
-        {dismissed > 0 && chip(`${dismissed} dismissed`, 'text-orange bg-orange/15')}
-        {skippedCount > 0 && <span className="text-xs text-text-muted">{skippedCount} skipped</span>}
-      </span>
-    );
-  }
 
-  if (type === 'auto-execute') {
-    const executed = num(r, 'autoExecuted');
-    const review = num(r, 'needsReview');
-    const filtered = arr(r, 'filtered');
-    const totalPlanned = num(r, 'totalPlanned');
-    const rules = str(r, 'rules');
-    if (r.skipped === true) {
-      return (
-        <span className="inline-flex items-center gap-1.5 flex-wrap" title={rules}>
-          <span className="text-text-muted text-xs">{totalPlanned} planned → 0 passed</span>
-          {filtered.length > 0 && filtered.map((f, i) => (
-            <Badge key={i} className="text-text-muted bg-border/50">{f}</Badge>
-          ))}
-        </span>
-      );
-    }
+    const ACTION_STYLES: Record<string, { color: string; label: string }> = {
+      skip: { color: 'text-text-muted', label: 'skip' },
+      dismissed: { color: 'text-orange', label: 'dismissed' },
+      planned: { color: 'text-lime-300', label: 'planned' },
+      needs_review: { color: 'text-amber-300', label: 'needs review' },
+      auto_executed: { color: 'text-rose-300', label: 'executed' },
+      error: { color: 'text-red', label: 'error' },
+    };
+
     return (
-      <span className="inline-flex items-center gap-1.5 flex-wrap">
-        {executed > 0 && chip(`${executed} executed`, 'text-rose-300 bg-rose-500/15')}
-        {review > 0 && chip(`${review} need review`, 'text-amber-300 bg-amber-400/15')}
-      </span>
+      <div className="space-y-0.5">
+        {candidates.map((c, i) => {
+          const style = ACTION_STYLES[c.action] ?? ACTION_STYLES.skip;
+          const title = c.title ?? c.runId?.slice(0, 8) ?? '?';
+          return (
+            <div key={i} className="flex items-center gap-1.5 text-xs">
+              <span className={`font-medium ${style.color}`}>{style.label}</span>
+              <span className="text-text-dim truncate max-w-64">{title}</span>
+              {c.reason && <span className="text-text-muted/70 text-[10px]">— {c.reason}</span>}
+            </div>
+          );
+        })}
+      </div>
     );
   }
 
