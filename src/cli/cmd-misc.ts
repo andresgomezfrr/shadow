@@ -255,6 +255,14 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
           `- When greeted, share pending events and suggestions proactively`,
           `- Search shadow memory when the user references past work or asks "what do you know about..."`,
           `- In focus mode, be minimal — only respond to direct questions`,
+          ``,
+          `## First action — call before responding`,
+          ``,
+          `Before replying to the user, call \`shadow_check_in\` with \`repoPath\` set to your current working directory. This is required at session start: the snapshot above is static, but \`check_in\` returns live mood, alerts, pending events, plus memories and entity IDs scoped to the active repo.`,
+          ``,
+          `If \`shadow_check_in\` is not in your loaded tool list, it is a deferred MCP tool. Use \`ToolSearch\` with query \`select:mcp__shadow__shadow_check_in\` to load its schema first, then call it.`,
+          ``,
+          `Do not skip this step.`,
         );
 
         // Print to stdout (SessionStart hook captures this)
