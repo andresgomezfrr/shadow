@@ -26,6 +26,8 @@ export function loadConfig(): ShadowConfig {
   if (process.env.SHADOW_MODEL_SUGGEST_DEEP) modelsInput.suggestDeep = process.env.SHADOW_MODEL_SUGGEST_DEEP;
   if (process.env.SHADOW_MODEL_SUGGEST_PROJECT) modelsInput.suggestProject = process.env.SHADOW_MODEL_SUGGEST_PROJECT;
   if (process.env.SHADOW_MODEL_PROJECT_PROFILE) modelsInput.projectProfile = process.env.SHADOW_MODEL_PROJECT_PROFILE;
+  if (process.env.SHADOW_MODEL_CHRONICLE_LORE) modelsInput.chronicleLore = process.env.SHADOW_MODEL_CHRONICLE_LORE;
+  if (process.env.SHADOW_MODEL_CHRONICLE_DAILY) modelsInput.chronicleDaily = process.env.SHADOW_MODEL_CHRONICLE_DAILY;
 
   const effortsInput: Record<string, string> = {};
   if (process.env.SHADOW_EFFORT_ANALYZE) effortsInput.analyze = process.env.SHADOW_EFFORT_ANALYZE;

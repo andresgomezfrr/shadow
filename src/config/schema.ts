@@ -17,6 +17,8 @@ export const ModelsSchema = z.object({
   projectProfile: z.string().default('opus'),
   mcpDiscover: z.string().default('sonnet'),
   revalidate: z.string().default('opus'),
+  chronicleLore: z.string().default('opus'),
+  chronicleDaily: z.string().default('haiku'),
 });
 
 export const EffortsSchema = z.object({
@@ -63,6 +65,8 @@ export const ConfigSchema = z.object({
     projectProfile: 'opus',
     mcpDiscover: 'sonnet',
     revalidate: 'opus',
+    chronicleLore: 'opus',
+    chronicleDaily: 'haiku',
   }),
   efforts: EffortsSchema.default({
     analyze: 'medium',

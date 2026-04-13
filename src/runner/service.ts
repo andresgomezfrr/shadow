@@ -321,6 +321,26 @@ export class RunnerService {
         applyBondDelta(this.db, isSuccess ? 'run_success' : 'run_failed');
       } catch (e) { console.error('[runner] bond delta failed:', e); }
 
+      // Chronicle milestone: first_auto_execute (first successful auto-spawned child run)
+      if (isSuccess && run.parentRunId) {
+        try {
+          const row = this.db.rawDb
+            .prepare(
+              `SELECT COUNT(*) AS n FROM runs
+               WHERE parent_run_id IS NOT NULL AND status = 'done'
+                 AND outcome IN ('executed','executed_manual')`,
+            )
+            .get() as { n: number };
+          if (row.n === 1) {
+            const { triggerChronicleMilestone } = await import('../analysis/chronicle.js');
+            triggerChronicleMilestone(this.db, 'first_auto_execute', {
+              title: 'First autonomous execution',
+              data: { runId: run.id, repoId: run.repoId, prompt: run.prompt.slice(0, 200) },
+            }).catch((e) => console.error('[chronicle] first_auto_execute hook failed:', e));
+          }
+        } catch (e) { console.error('[chronicle] first_auto_execute hook failed:', e); }
+      }
+
       this.db.createInteraction({
         interface: 'runner',
         kind: 'run-complete',

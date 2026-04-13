@@ -220,11 +220,25 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
           await generateAndStoreEmbedding(db, 'memory', memory.id, { kind: memory.kind, title: memory.title, bodyMd: memory.bodyMd });
         } catch { /* best-effort */ }
 
-        // Trust: teaching/correcting increases trust
+        // Bond: correcting recomputes axes (depth + alignment grow)
         try {
           const { applyBondDelta } = await import('../../profile/bond.js');
           applyBondDelta(db, 'memory_taught');
         } catch { /* ignore */ }
+
+        // Chronicle milestone: first_correction
+        try {
+          const row = db.rawDb
+            .prepare(`SELECT COUNT(*) AS n FROM memories WHERE kind = 'correction' AND archived_at IS NULL`)
+            .get() as { n: number };
+          if (row.n === 1) {
+            const { triggerChronicleMilestone } = await import('../../analysis/chronicle.js');
+            triggerChronicleMilestone(db, 'first_correction', {
+              title: memory.title,
+              data: { scope: parsed.scope, body: parsed.body.slice(0, 200) },
+            }).catch((e) => console.error('[chronicle] first_correction hook failed:', e));
+          }
+        } catch (e) { console.error('[chronicle] first_correction hook failed:', e); }
 
         return { ok: true, correction: { id: memory.id, title: memory.title, kind: memory.kind, layer: memory.layer } };
       },

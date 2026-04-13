@@ -389,6 +389,19 @@ export async function activityAnalyze(
               await generateAndStoreEmbedding(ctx.db, 'memory', mem.id, { kind: mem.kind, title: mem.title, bodyMd: mem.bodyMd });
               memoriesCreated++;
               if (insight.kind === 'pattern') patternsDetected++;
+              // Chronicle milestone: memories:100 / 200 / 300 ...
+              try {
+                const total = ctx.db.rawDb
+                  .prepare(`SELECT COUNT(*) AS n FROM memories WHERE archived_at IS NULL AND kind IN ('taught','correction','knowledge_summary')`)
+                  .get() as { n: number };
+                if (total.n > 0 && total.n % 100 === 0) {
+                  const { triggerChronicleMilestone } = await import('./chronicle.js');
+                  triggerChronicleMilestone(ctx.db, `memories:${total.n}`, {
+                    title: `${total.n} memories`,
+                    data: { count: total.n, kind: insight.kind },
+                  }).catch((e) => console.error('[chronicle] milestone hook failed:', e));
+                }
+              } catch (e) { console.error('[chronicle] memories:N hook failed:', e); }
               break;
             }
           }
