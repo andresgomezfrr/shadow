@@ -20,6 +20,9 @@ Renderizado por filtro, transiciones de estado del feed unificado y context pane
 
 ## Prioridad media — Runner
 
+### Ejecución paralela de runs (plan + execute)
+Actualmente el runner procesa 1 run a la vez — los demás se quedan en `queued` hasta que termina. Permitir concurrencia configurable (N runs simultáneos) para plan y execute. Evaluar: límite por defecto, impacto en SQLite WAL contention, y si el JobQueue necesita un semaphore o pool.
+
 ### Pendiente de evaluar
 - **Plan demasiado largo**: repos con archivos grandes pueden saturar contexto. Evaluar file size hints en briefing o exclusión de archivos grandes.
 
@@ -29,6 +32,13 @@ Renderizado por filtro, transiciones de estado del feed unificado y context pane
 
 ### Detectar PRs creados fuera de Shadow
 Si un run tiene worktree pero no prUrl, detectar si existe un PR con `gh pr list --head shadow/{id}`.
+
+---
+
+## Prioridad media — Digests
+
+### Digest/Morning no se actualizan tras re-ejecutar job
+Escenario: job de digest falla con timeout ("Process timed out"), se relanza manualmente para el día anterior, el job ejecuta OK pero ni la página de Digests ni el Morning reflejan el resultado nuevo. Posibles causas: (1) el digest se inserta con period_start/period_end que no matchea la query del día anterior, (2) la UI cachea o filtra por fecha de forma que excluye digests regenerados, (3) el morning page usa una query distinta que no recoge el digest actualizado. Investigar query boundaries, upsert vs insert duplicado, y si el frontend refetch es correcto.
 
 ---
 
