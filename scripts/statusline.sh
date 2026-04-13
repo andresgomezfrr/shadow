@@ -2,9 +2,9 @@
 # Shadow status line for Claude Code
 # Shows Shadow's current state with emojis — alive and expressive
 
-SHADOW_DIR="/Users/andresg/.shadow/app"
+SHADOW_DIR="${SHADOW_DEV_DIR:-$HOME/workspace/shadow}"
 # Use the shadow CLI wrapper (resolves correct Node version automatically)
-SHADOW_BIN="/Users/andresg/.shadow/bin/shadow"
+SHADOW_BIN="$(command -v shadow 2>/dev/null || echo "$HOME/.shadow/bin/shadow")"
 if [ -x "$SHADOW_BIN" ]; then
   SHADOW_CLI="$SHADOW_BIN"
 else
@@ -14,7 +14,7 @@ else
     SHADOW_CLI="npx --prefix $SHADOW_DIR tsx $SHADOW_DIR/src/cli.ts"
   fi
 fi
-CACHE_FILE="/Users/andresg/.shadow/statusline-cache.txt"
+CACHE_FILE="$HOME/.shadow/statusline-cache.txt"
 CACHE_TTL=15
 
 # Check cache freshness
@@ -35,7 +35,7 @@ if [ $? -ne 0 ] || [ -z "$STATUS" ]; then
 fi
 
 # Parse fields
-TRUST=$(echo "$STATUS" | grep -o '"trustLevel":[0-9]*' | head -1 | cut -d: -f2)
+BOND=$(echo "$STATUS" | grep -o '"bondTier":[0-9]*' | head -1 | cut -d: -f2)
 SUGGESTIONS=$(echo "$STATUS" | grep -o '"pendingSuggestions":[0-9]*' | head -1 | cut -d: -f2)
 EVENTS=$(echo "$STATUS" | grep -o '"pendingEvents":[0-9]*' | head -1 | cut -d: -f2)
 FOCUS=$(echo "$STATUS" | grep -o '"focusMode":"[^"]*"' | head -1 | cut -d'"' -f4)
@@ -73,13 +73,16 @@ while IFS= read -r acked; do
   [ -n "$acked" ] && ALERT_ACKED+=("$acked")
 done < <(echo "$STATUS" | grep -o '"acked":[a-z]*' | cut -d: -f2)
 
-# Trust name + emoji
-case "$TRUST" in
+# Bond tier name + emoji (8 tiers post-v49)
+case "$BOND" in
   1) TNAME="observer"; TEMOJI="🔍" ;;
-  2) TNAME="advisor"; TEMOJI="💬" ;;
-  3) TNAME="assistant"; TEMOJI="🤝" ;;
-  4) TNAME="partner"; TEMOJI="⚡️" ;;
-  5) TNAME="shadow"; TEMOJI="👾" ;;
+  2) TNAME="echo";     TEMOJI="💭" ;;
+  3) TNAME="whisper";  TEMOJI="🤫" ;;
+  4) TNAME="shade";    TEMOJI="🌫" ;;
+  5) TNAME="shadow";   TEMOJI="👾" ;;
+  6) TNAME="wraith";   TEMOJI="👻" ;;
+  7) TNAME="herald";   TEMOJI="📯" ;;
+  8) TNAME="kindred";  TEMOJI="🌌" ;;
   *) TNAME="observer"; TEMOJI="🔍" ;;
 esac
 

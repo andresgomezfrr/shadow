@@ -910,7 +910,12 @@ export const migrations: Migration[] = [
       ALTER TABLE user_profile ADD COLUMN bond_axes_json TEXT NOT NULL
         DEFAULT '{"time":0,"depth":0,"momentum":0,"alignment":0,"autonomy":0}';
       ALTER TABLE user_profile ADD COLUMN bond_tier INTEGER NOT NULL DEFAULT 1;
-      ALTER TABLE user_profile ADD COLUMN bond_reset_at TEXT NOT NULL DEFAULT (datetime('now'));
+      -- SQLite doesn't allow non-constant defaults in ALTER TABLE ADD COLUMN,
+      -- so we use a placeholder constant. The v49 first-boot reset hook in
+      -- daemon/runtime.ts overwrites this to now() on the first restart,
+      -- and ensureProfile() for fresh DBs also updates it via resetBondState.
+      ALTER TABLE user_profile ADD COLUMN bond_reset_at TEXT NOT NULL DEFAULT '2026-01-01T00:00:00Z';
+      UPDATE user_profile SET bond_reset_at = datetime('now') WHERE bond_reset_at = '2026-01-01T00:00:00Z';
       ALTER TABLE user_profile ADD COLUMN bond_tier_last_rise_at TEXT;
 
       -- chronicle_entries: immutable narrative records (tier crossings + milestones)
