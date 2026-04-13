@@ -978,6 +978,16 @@ export const migrations: Migration[] = [
       CREATE UNIQUE INDEX IF NOT EXISTS idx_digests_kind_period_unique ON digests(kind, period_start);
     `,
   },
+  {
+    version: 51,
+    name: 'rename_closed_outcomes',
+    sql: `
+      UPDATE runs SET outcome = 'no_changes'
+        WHERE outcome = 'closed' AND closed_note = 'No changes needed';
+      UPDATE runs SET outcome = 'closed_manual'
+        WHERE outcome = 'closed';
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

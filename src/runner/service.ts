@@ -154,7 +154,12 @@ export class RunnerService {
               '## Risks and edge cases',
               '## Verification steps',
             ].join('\n')
-          : 'Implement the plan below. Read the relevant files, make the changes, and verify.',
+          : [
+              'Implement the plan below. Read the relevant files, make the changes, and verify.',
+              '',
+              '**IMPORTANT**: When finished, commit your changes with `git add -A && git commit -m "<descriptive message>"`.',
+              'Uncommitted changes will be lost. Only commit; do NOT push.',
+            ].join('\n'),
       ].filter(Boolean).join('\n');
 
       const fullPrompt = briefing;
@@ -271,16 +276,46 @@ export class RunnerService {
         finishedAt,
       });
 
-      // 6b. Checkpoint: capture post-execution state + diff stat
-      if (run.kind === 'execution' && snapshotRef) {
+      // 6b. Capture post-execution state — auto-commit any dirty worktree, then read refs
+      if (run.kind === 'execution' && snapshotRef && isSuccess) {
         try {
-          const resultRef = execSync('git rev-parse HEAD', { cwd: executionCwd, encoding: 'utf-8', timeout: 5_000 }).trim();
+          // Safety net: capture any edits Claude left uncommitted
+          const porcelain = execFileSync('git', ['status', '--porcelain'], {
+            cwd: executionCwd, encoding: 'utf-8', timeout: 5_000,
+          }).trim();
+          if (porcelain) {
+            const shortTitle = (suggestion?.title ?? 'auto-execute').slice(0, 60);
+            execFileSync('git', ['add', '-A'], { cwd: executionCwd, timeout: 10_000 });
+            execFileSync('git', [
+              'commit',
+              '-m', `[shadow] ${shortTitle}\n\nAuto-committed by Shadow runner (run ${run.id.slice(0, 8)}).`,
+            ], {
+              cwd: executionCwd,
+              env: {
+                ...process.env,
+                GIT_AUTHOR_NAME: 'Shadow',
+                GIT_AUTHOR_EMAIL: 'shadow@local',
+                GIT_COMMITTER_NAME: 'Shadow',
+                GIT_COMMITTER_EMAIL: 'shadow@local',
+              },
+              timeout: 15_000,
+            });
+            console.error(`[runner] Auto-committed dirty worktree for ${run.id.slice(0, 8)}`);
+          }
+
+          const resultRef = execSync('git rev-parse HEAD', {
+            cwd: executionCwd, encoding: 'utf-8', timeout: 5_000,
+          }).trim();
           let diffStat: string | null = null;
           if (resultRef !== snapshotRef) {
-            diffStat = execFileSync('git', ['diff', '--stat', `${snapshotRef}..${resultRef}`], { cwd: executionCwd, encoding: 'utf-8', timeout: 10_000 }).trim();
+            diffStat = execFileSync('git', ['diff', '--stat', `${snapshotRef}..${resultRef}`], {
+              cwd: executionCwd, encoding: 'utf-8', timeout: 10_000,
+            }).trim();
           }
           this.db.updateRun(run.id, { resultRef, diffStat });
-        } catch { /* non-fatal */ }
+        } catch (e) {
+          console.error(`[runner] Checkpoint capture failed for ${run.id.slice(0, 8)}:`, e instanceof Error ? e.message : e);
+        }
       }
 
       // 6c. Post-execution verification (build/lint/test)
@@ -299,23 +334,24 @@ export class RunnerService {
         const siblings = this.db.listRuns({ parentRunId: run.parentRunId });
         const aggregated = aggregateParentStatus(siblings);
         if (aggregated === 'done' && run.kind === 'execution') {
-          // Child execution succeeded — decide parent final based on PR state
-          const hasChanges = !!(run.diffStat && run.diffStat.trim());
-          if (run.prUrl) {
+          // Re-fetch current run to get fresh diffStat/prUrl after updates above
+          const current = this.db.getRun(run.id) ?? run;
+          const hasChanges = !!(current.diffStat && current.diffStat.trim());
+          if (current.prUrl) {
             // PR created → parent waits for merge/close (pr-sync job will finalize)
             this.db.transitionRun(run.parentRunId, 'awaiting_pr');
             this.db.updateRun(run.parentRunId, { finishedAt });
           } else if (!hasChanges) {
-            // Claude decided nothing to change → close journey with justification
-            const justification = run.resultSummaryMd?.slice(0, 500) || 'No changes needed';
+            // No-op: Claude ran but nothing to change
+            const justification = current.resultSummaryMd?.slice(0, 500) || 'No changes needed';
             this.db.transitionRun(run.parentRunId, 'done');
             this.db.updateRun(run.parentRunId, {
               finishedAt,
-              outcome: 'closed',
+              outcome: 'no_changes',
               closedNote: justification,
             });
           } else {
-            // Edge case: changes committed but no PR (direct push or PR creation failed)
+            // Changes committed but no PR (direct push or manual PR flow)
             this.db.transitionRun(run.parentRunId, 'done');
             this.db.updateRun(run.parentRunId, { finishedAt, outcome: 'executed' });
           }
