@@ -74,12 +74,6 @@ export class RunQueue {
       if (hasActiveSibling) return false;
     }
 
-    // Repo concurrency: only allow multiple runs on same repo if execution (worktree)
-    const sameRepoActive = [...this.active.values()].filter((a) => a.repoId === run.repoId);
-    if (sameRepoActive.length > 0 && run.kind !== 'execution') {
-      return false;
-    }
-
     return true;
   }
 
