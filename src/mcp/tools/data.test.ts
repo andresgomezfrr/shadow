@@ -306,7 +306,7 @@ describe('shadow_daily_summary', () => {
     assert.ok(result.date);
     assert.ok(result.activity);
     assert.ok(result.tokens);
-    assert.ok('trustLevel' in result);
+    assert.ok('bondTier' in result);
   });
 });
 

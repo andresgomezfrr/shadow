@@ -215,15 +215,108 @@ export type PrStatus = {
 };
 
 // ---------------------------------------------------------------------------
+// Chronicle types (v49)
+// ---------------------------------------------------------------------------
+
+export type BondAxes = {
+  time: number;
+  depth: number;
+  momentum: number;
+  alignment: number;
+  autonomy: number;
+};
+
+export type ChronicleTier = {
+  tier: number;
+  name: string;  // actual name if tier <= currentTier, otherwise '???'
+  minDays: number;
+  qualityFloor: number;
+  isReached: boolean;
+  isCurrent: boolean;
+  isNext: boolean;
+  loreRevealed: boolean;
+};
+
+export type ChronicleEntry = {
+  id: string;
+  kind: 'tier_lore' | 'milestone';
+  tier: number | null;
+  milestoneKey: string | null;
+  title: string;
+  bodyMd: string;
+  model: string;
+  createdAt: string;
+};
+
+export type Unlockable = {
+  id: string;
+  tierRequired: number;
+  kind: string;
+  title: string;
+  description: string | null;
+  payload: Record<string, unknown>;
+  unlocked: boolean;
+  unlockedAt: string | null;
+  createdAt: string;
+};
+
+export type ChronicleResponse = {
+  profile: {
+    bondTier: number;
+    bondAxes: BondAxes;
+    bondResetAt: string;
+    bondTierLastRiseAt: string | null;
+  };
+  tiers: ChronicleTier[];
+  entries: ChronicleEntry[];
+  unlockables: Unlockable[];
+  nextStep: {
+    tier: number;
+    name: string;
+    requirements: {
+      minDays: number;
+      daysElapsed: number;
+      qualityFloor: number;
+      currentQuality: number;
+    };
+    hint: string;
+  } | null;
+  voiceOfShadow: { body: string; generatedAt: string };
+};
+
+// ---------------------------------------------------------------------------
 // UI constants
 // ---------------------------------------------------------------------------
 
+/** @deprecated Use BOND_TIER_NAMES — kept temporarily for back-compat. */
 export const TRUST_NAMES: Record<number, string> = {
   1: 'Observer',
   2: 'Advisor',
   3: 'Assistant',
   4: 'Partner',
   5: 'Shadow',
+};
+
+export const BOND_TIER_NAMES: Record<number, string> = {
+  1: 'observer',
+  2: 'echo',
+  3: 'whisper',
+  4: 'shade',
+  5: 'shadow',
+  6: 'wraith',
+  7: 'herald',
+  8: 'kindred',
+};
+
+export const BOND_TIER_BADGES: Record<number, string> = {
+  1: '🔍',
+  2: '💭',
+  3: '🤫',
+  4: '🌫',
+  5: '👾',
+  6: '👻',
+  7: '📯',
+  8: '🌌',
 };
 
 export const MOOD_EMOJIS: Record<string, string> = {

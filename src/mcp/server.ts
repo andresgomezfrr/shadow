@@ -21,8 +21,9 @@ import { taskTools } from './tools/tasks.js';
 
 export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: { daemonState?: DaemonSharedState }): McpTool[] {
   function getTrustLevel(): number {
+    // Legacy name kept for ToolContext back-compat; returns bond tier now
     const profile = db.getProfile('default');
-    return profile?.trustLevel ?? 0;
+    return profile?.bondTier ?? 0;
   }
 
   function deriveMood(): string {

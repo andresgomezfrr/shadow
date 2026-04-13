@@ -215,8 +215,8 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
           `</soul>`,
           ``,
           `## Current State`,
-          `- Trust level: ${profile.trustLevel} (${trustNames[profile.trustLevel] ?? 'observer'})`,
-          `- Trust score: ${profile.trustScore}/100`,
+          `- Bond tier: ${profile.bondTier} (${trustNames[profile.bondTier] ?? 'observer'})`,
+          `- Bond axes: t${profile.bondAxes.time}/d${profile.bondAxes.depth}/m${profile.bondAxes.momentum}/a${profile.bondAxes.alignment}/u${profile.bondAxes.autonomy}`,
           `- Proactivity: ${profile.proactivityLevel}/10`,
           `- Focus mode: ${focusInfo}`,
           `- Mood: neutral`,
@@ -367,8 +367,8 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         return {
           date: todayStart.toISOString().split('T')[0],
           user: profile.displayName ?? 'unknown',
-          trustLevel: profile.trustLevel,
-          trustScore: profile.trustScore,
+          bondTier: profile.bondTier,
+          bondAxes: profile.bondAxes,
           activity: {
             observationsToday: todayObs.length,
             memoriesCreatedToday: todayMemories.length,

@@ -122,10 +122,6 @@ export function statusTools(ctx: ToolContext): McpTool[] {
           bondTierName: trustNames[profile.bondTier] ?? 'observer',
           bondAxes: profile.bondAxes,
           bondResetAt: profile.bondResetAt,
-          // Legacy aliases — kept for back-compat (dashboard + tests), dropped in commit 6
-          trustLevel: profile.bondTier,
-          trustName: trustNames[profile.bondTier] ?? 'observer',
-          trustScore: profile.trustScore,
           proactivityLevel: profile.proactivityLevel,
           focusMode: profile.focusMode,
           focusUntil: profile.focusUntil,
@@ -180,10 +176,6 @@ export function statusTools(ctx: ToolContext): McpTool[] {
           bondTier: profile?.bondTier ?? 1,
           bondAxes: profile?.bondAxes ?? { time: 0, depth: 0, momentum: 0, alignment: 0, autonomy: 0 },
           bondResetAt: profile?.bondResetAt ?? null,
-          // Legacy aliases — dropped in commit 6
-          trustLevel: profile?.bondTier ?? 1,
-          trustScore: profile?.trustScore ?? 0,
-          bondLevel: profile?.bondLevel ?? 0,
           totalInteractions: profile?.totalInteractions ?? 0,
           proactivityLevel: profile?.proactivityLevel ?? config.proactivityLevel,
           repoCount: repos.length,

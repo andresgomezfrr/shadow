@@ -10,7 +10,6 @@ export const SETTINGS_GROUPS = [
 ] as const;
 
 export const SETTINGS_SECTIONS = [
-  { id: 'trust', label: 'Trust Level', group: 'general', keywords: ['trust', 'level', 'score', 'interactions', 'observer', 'advisor', 'partner', 'shadow'] },
   { id: 'identity', label: 'Identity', group: 'general', keywords: ['name', 'displayName', 'locale', 'timezone', 'language', 'identity'] },
   { id: 'behavior', label: 'Behavior', group: 'behavior', keywords: ['proactivity', 'personality', 'verbosity', 'concise', 'verbose', 'minimal', 'companion'] },
   { id: 'models', label: 'LLM Models', group: 'behavior', keywords: ['llm', 'model', 'analyze', 'suggest', 'consolidate', 'runner', 'haiku', 'sonnet', 'opus'] },

@@ -226,8 +226,8 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         return {
           date: todayStart.toISOString().split('T')[0],
           user: profile.displayName ?? 'unknown',
-          trustLevel: profile.trustLevel,
-          trustScore: profile.trustScore,
+          bondTier: profile.bondTier,
+          bondAxes: profile.bondAxes,
           activity: {
             observationsToday: todayObs.length,
             memoriesCreatedToday: todayMemories.length,

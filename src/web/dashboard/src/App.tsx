@@ -22,6 +22,7 @@ import { ActivityPage } from './components/pages/ActivityPage';
 
 import { DigestsPage } from './components/pages/DigestsPage';
 import { GuidePage } from './components/pages/GuidePage';
+import { ChroniclePage } from './components/pages/ChroniclePage';
 import { NotFoundPage } from './components/pages/NotFoundPage';
 
 export function App() {
@@ -31,6 +32,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/morning" replace />} />
         <Route path="/morning" element={<MorningPage />} />
+        <Route path="/chronicle" element={<ChroniclePage />} />
         <Route path="/dashboard" element={<Navigate to="/morning" replace />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/memories" element={<MemoriesPage />} />

@@ -1,7 +1,7 @@
 import { formatTokens } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
 import { fetchStatus } from '../../api/client';
-import { TRUST_NAMES, MOOD_EMOJIS } from '../../api/types';
+import { BOND_TIER_NAMES, MOOD_EMOJIS } from '../../api/types';
 import { MetricCard } from '../common/MetricCard';
 import { ProgressBar } from '../common/ProgressBar';
 import { tierLabel } from './settings/SectionBehavior';
@@ -13,7 +13,7 @@ export function DashboardPage() {
   if (!data) return <div className="text-text-dim">Loading...</div>;
 
   const { profile, counts, usage, lastHeartbeat } = data;
-  const trustName = TRUST_NAMES[profile.trustLevel] ?? 'Unknown';
+  const bondName = BOND_TIER_NAMES[profile.bondTier] ?? 'observer';
   const mood = profile.moodHint ?? 'neutral';
   const moodEmoji = MOOD_EMOJIS[mood] ?? '😐';
 
@@ -22,11 +22,11 @@ export function DashboardPage() {
       <h1 className="text-xl font-semibold mb-6">Dashboard</h1>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-        <MetricCard label="Trust Level" value={`Lv.${profile.trustLevel} ${trustName}`} accent href="/profile">
-          <ProgressBar value={profile.trustLevel} max={5} />
+        <MetricCard label="Bond" value={`Lv.${profile.bondTier} ${bondName}`} accent href="/chronicle">
+          <ProgressBar value={profile.bondTier} max={8} />
         </MetricCard>
 
-        <MetricCard label="Trust Score" value={profile.trustScore.toFixed(1)} href="/profile" />
+        <MetricCard label="Depth" value={profile.bondAxes.depth} href="/chronicle" />
 
         <MetricCard label="Proactivity" value={tierLabel(profile.proactivityLevel)} href="/profile" />
 

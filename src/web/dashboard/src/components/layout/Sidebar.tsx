@@ -16,6 +16,7 @@ type NavEntry = NavItem | NavDivider;
 const NAV: NavEntry[] = [
   // Home
   { to: '/morning', icon: '☀️', label: 'Morning' },
+  { to: '/chronicle', icon: '🌒', label: 'Chronicle' },
 
   // Action
   { divider: true, groupLabel: 'ACTION' },

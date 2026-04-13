@@ -8,7 +8,6 @@ import { SETTINGS_SECTIONS, SETTINGS_GROUPS, type SectionId } from './settings/s
 import { useScrollSpy } from './settings/useScrollSpy';
 import { useSettingsSearch } from './settings/useSettingsSearch';
 import { SettingsSidebar } from './settings/SettingsSidebar';
-import { SectionTrustLevel } from './settings/SectionTrustLevel';
 import { SectionIdentity } from './settings/SectionIdentity';
 import { SectionBehavior } from './settings/SectionBehavior';
 import { SectionLLMModels } from './settings/SectionLLMModels';
@@ -109,7 +108,6 @@ export function ProfilePage() {
         </div>
 
         {/* General */}
-        <SectionTrustLevel profile={profile} visible={isSectionVisible('trust')} />
         <SectionIdentity profile={profile} saved={saved} onSave={saveField} visible={isSectionVisible('identity')} />
 
         {/* Behavior */}

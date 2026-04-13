@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useApi } from '../../hooks/useApi';
 import { fetchDailySummary, fetchDigests, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
-import { TRUST_NAMES, MOOD_EMOJIS } from '../../api/types';
+import { BOND_TIER_NAMES, MOOD_EMOJIS } from '../../api/types';
+import { VoiceOfShadow } from './chronicle/VoiceOfShadow';
 import { MorningMetrics } from './morning/MorningMetrics';
 import { MorningJobs } from './morning/MorningJobs';
 import { MorningMemories } from './morning/MorningMemories';
@@ -64,7 +65,7 @@ export function MorningPage() {
   const profile = data.profile;
   const mood = profile.moodHint ?? 'neutral';
   const moodEmoji = MOOD_EMOJIS[mood] ?? '😐';
-  const trustName = TRUST_NAMES[profile.trustLevel] ?? 'Unknown';
+  const bondName = BOND_TIER_NAMES[profile.bondTier] ?? 'observer';
   const pendingSuggestions = data.pendingSuggestions.filter((s) => !dismissed.has(s.id));
 
   return (
@@ -85,8 +86,9 @@ export function MorningPage() {
           </h1>
           <p className="text-text-dim mt-1 capitalize">{formatDate()}</p>
           <p className="text-text-muted text-xs mt-0.5">
-            Trust: Lv.{profile.trustLevel} {trustName} &middot; Score: {profile.trustScore.toFixed(1)}
+            Bond: Lv.{profile.bondTier} {bondName}
           </p>
+          <VoiceOfShadow className="mt-1" />
         </div>
       </div>
 

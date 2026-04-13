@@ -22,7 +22,7 @@ describe('shadow_profile', () => {
   it('returns default profile', async () => {
     const result = await callTool(tools, 'shadow_profile') as Record<string, unknown>;
     assert.ok(result.id);
-    assert.equal(result.trustLevel, 1);
+    assert.equal(result.bondTier, 1);
     assert.ok(result.proactivityLevel);
   });
 });

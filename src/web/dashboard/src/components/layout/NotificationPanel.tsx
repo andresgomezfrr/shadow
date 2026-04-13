@@ -27,6 +27,8 @@ const KINDS: Record<string, KindConfig> = {
   auto_execute_complete: { label: n => `${n} auto-execute${n !== 1 ? 's' : ''} done`, icon: '▶', nav: '/activity' },
   plan_needs_review: { label: n => `${n} plan${n !== 1 ? 's' : ''} need review`, icon: '👀', nav: '/workspace?filter=run' },
   version_available: { label: () => 'Update available', icon: '🆕', nav: '/profile' },
+  bond_tier_rise: { label: () => 'New bond reached', icon: '🌒', nav: '/chronicle' },
+  unlock: { label: n => `${n} unlock${n !== 1 ? 's' : ''}`, icon: '✨', nav: '/chronicle' },
 };
 
 function groupEvents(events: EventRecord[]): NotificationGroup[] {
@@ -58,6 +60,7 @@ function groupEvents(events: EventRecord[]): NotificationGroup[] {
 }
 
 function eventNavTarget(event: EventRecord): string | null {
+  if (event.kind === 'bond_tier_rise' || event.kind === 'unlock') return '/chronicle';
   const p = event.payload as Record<string, unknown>;
   if (p.suggestionId) return `/workspace?filter=suggestion&item=${p.suggestionId}&itemType=suggestion`;
   if (p.runId) return `/workspace?filter=run&item=${p.runId}&itemType=run`;

@@ -113,10 +113,6 @@ export type UserProfileRecord = {
   bondTier: number;
   bondResetAt: string;
   bondTierLastRiseAt: string | null;
-  // Legacy fields — kept through commits 1-5 for dashboard back-compat, removed in commit 6
-  trustLevel: number;
-  trustScore: number;
-  bondLevel: number;
   totalInteractions: number;
   preferences: Record<string, unknown>;
   dislikes: unknown[];

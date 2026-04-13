@@ -38,7 +38,7 @@ describe('shadow_check_in', () => {
 
   it('returns profile, mood, greeting for fresh DB', async () => {
     const result = await callTool(tools, 'shadow_check_in', {}) as Record<string, unknown>;
-    assert.ok(result.trustLevel);
+    assert.ok(result.bondTier);
     assert.equal(result.mood, 'neutral');
     assert.equal(result.greeting, 'first_session_ever');
     assert.ok(Array.isArray(result.pendingEvents));
@@ -108,7 +108,7 @@ describe('shadow_status', () => {
 
   it('returns correct counts for fresh DB', async () => {
     const result = await callTool(tools, 'shadow_status', {}) as Record<string, unknown>;
-    assert.equal(result.trustLevel, 3);
+    assert.equal(result.bondTier, 3);
     assert.equal(result.repoCount, 0);
     assert.equal(typeof result.pendingSuggestions, 'number');
     assert.equal(typeof result.pendingEvents, 'number');

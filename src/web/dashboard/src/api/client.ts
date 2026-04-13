@@ -67,6 +67,14 @@ export type SearchGroup = {
 
 export const fetchStatus = () => api<StatusResponse>('/api/status');
 
+export const fetchChronicle = () => api<import('./types').ChronicleResponse>('/api/chronicle');
+
+export const fetchVoiceOfShadow = () =>
+  api<{ body: string; generatedAt: string }>('/api/chronicle/voice');
+
+export const fetchNextStepHint = () =>
+  api<{ body: string; generatedAt: string }>('/api/chronicle/next-step');
+
 export const searchAll = (q: string, limit?: number) =>
   api<{ groups: SearchGroup[] }>(`/api/search${qs({ q, limit: limit != null ? String(limit) : undefined })}`);
 

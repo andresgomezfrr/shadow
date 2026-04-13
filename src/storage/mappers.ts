@@ -178,10 +178,6 @@ export function mapProfile(row: unknown): UserProfileRecord {
     bondTier: num(d.bond_tier),
     bondResetAt: str(d.bond_reset_at),
     bondTierLastRiseAt: strOrNull(d.bond_tier_last_rise_at),
-    // Legacy
-    trustLevel: num(d.trust_level),
-    trustScore: num(d.trust_score),
-    bondLevel: num(d.bond_level),
     totalInteractions: num(d.total_interactions),
     preferences: jsonParse(d.preferences_json, {}),
     dislikes: jsonParse(d.dislikes_json, []),

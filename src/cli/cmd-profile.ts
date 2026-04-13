@@ -57,12 +57,12 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
         const activeProject = (daemonState.activeProjects as Array<{ projectName: string }> | undefined)?.[0]?.projectName ?? null;
 
         return {
-          trustLevel: profile.trustLevel,
-          trustScore: profile.trustScore,
+          bondTier: profile.bondTier,
+          bondAxes: profile.bondAxes,
+          bondResetAt: profile.bondResetAt,
           proactivityLevel: profile.proactivityLevel,
           focusMode: profile.focusMode,
           focusUntil: profile.focusUntil,
-          bondLevel: profile.bondLevel,
           totalInteractions: profile.totalInteractions,
           repos: repos.length,
           systems: systems.length,
@@ -137,14 +137,14 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
 
   profile
     .command('trust')
-    .description('show trust level and score')
+    .description('show bond tier and axes')
     .action(() =>
       withDb((db) => {
         const p = db.ensureProfile();
         return {
-          trustLevel: p.trustLevel,
-          trustScore: p.trustScore,
-          bondLevel: p.bondLevel,
+          bondTier: p.bondTier,
+          bondAxes: p.bondAxes,
+          bondResetAt: p.bondResetAt,
           totalInteractions: p.totalInteractions,
         };
       }),
@@ -155,7 +155,7 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
     .description('set a profile field (e.g., proactivityLevel, timezone, displayName)')
     .action((key: string, value: string) =>
       withDb((db) => {
-        const numericFields = ['proactivityLevel', 'trustLevel', 'trustScore', 'bondLevel'];
+        const numericFields = ['proactivityLevel'];
         const parsedValue = numericFields.includes(key) ? Number(value) : value;
         db.updateProfile('default', { [key]: parsedValue });
         return { ok: true, set: key, value: parsedValue };

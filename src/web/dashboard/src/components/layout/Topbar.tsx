@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TRUST_NAMES } from '../../api/types';
+import { BOND_TIER_NAMES } from '../../api/types';
 import type { StatusResponse } from '../../api/types';
 import { useSSEConnected, useSSEStaleness } from '../../hooks/useEventStream';
 import { useApi } from '../../hooks/useApi';
@@ -16,8 +16,8 @@ export function Topbar({ status }: { status?: StatusResponse | null }) {
   const sseConnected = useSSEConnected();
   const { stale, agoSec } = useSSEStaleness();
   const profile = status?.profile;
-  const trustLevel = profile?.trustLevel ?? 1;
-  const trustName = TRUST_NAMES[trustLevel] ?? 'Unknown';
+  const bondTier = profile?.bondTier ?? 1;
+  const bondName = BOND_TIER_NAMES[bondTier] ?? 'observer';
   const focusActive = profile?.focusMode === 'focus';
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -30,7 +30,7 @@ export function Topbar({ status }: { status?: StatusResponse | null }) {
         <div className="flex items-center gap-3">
           <h1 className="text-base font-semibold text-accent tracking-wide">Shadow</h1>
           <span className="text-[13px] bg-accent-soft text-accent px-2.5 py-0.5 rounded-xl flex items-center gap-1">
-            Lv.{trustLevel} {trustName}
+            Lv.{bondTier} {bondName}
           </span>
         </div>
         <div className="flex items-center gap-3.5 text-[13px] text-text-dim">
