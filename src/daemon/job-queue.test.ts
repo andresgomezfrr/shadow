@@ -84,6 +84,8 @@ function createShared(): DaemonSharedState {
     consecutiveIdleTicks: 0,
     consecutiveGhostJobs: 0,
     lastGhostHint: null,
+    networkAvailable: true,
+    systemAwake: true,
   };
 }
 

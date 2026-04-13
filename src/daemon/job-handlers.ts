@@ -39,6 +39,11 @@ export type DaemonSharedState = {
   consecutiveIdleTicks: number;
   consecutiveGhostJobs: number;
   lastGhostHint: string | null;
+  // Sleep/wake state propagated by the scheduler each tick. Reactive handlers
+  // consult these before calling enqueueJob so they don't spawn LLM children
+  // while the Mac is in darkwake or offline.
+  networkAvailable: boolean;
+  systemAwake: boolean;
 };
 
 export type JobCategory = 'llm' | 'io';
@@ -205,7 +210,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
     if (profileForSuggest.bondTier >= 2) {
       const lastSuggest = db.getLastJob('suggest');
       const suggestGap = lastSuggest ? Date.now() - new Date(lastSuggest.startedAt).getTime() : Infinity;
-      if (suggestGap >= config.suggestReactiveMinGapMs) {
+      if (suggestGap >= config.suggestReactiveMinGapMs && shared.networkAvailable && shared.systemAwake) {
         db.enqueueJob('suggest', { priority: 8, triggerSource: 'reactive' });
       }
     }
@@ -213,8 +218,8 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
 
   // Post-heartbeat: reactive repo-profile if repos have new commits since last profile
   try {
-    const { execSync, execFileSync } = await import('node:child_process');
-    if (!db.hasQueuedOrRunning('repo-profile')) {
+    const { execFileSync } = await import('node:child_process');
+    if (!db.hasQueuedOrRunning('repo-profile') && shared.networkAvailable && shared.systemAwake) {
       const lastProfile = db.getLastJob('repo-profile');
       const gapMs = lastProfile ? Date.now() - new Date(lastProfile.startedAt).getTime() : Infinity;
       const minGapMs = 2 * 60 * 60 * 1000; // 2h min gap

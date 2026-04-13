@@ -41,7 +41,7 @@ export async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> 
   };
 }
 
-export async function handleSuggestDeep(ctx: JobContext, _shared: DaemonSharedState): Promise<JobHandlerResult> {
+export async function handleSuggestDeep(ctx: JobContext, shared: DaemonSharedState): Promise<JobHandlerResult> {
   ctx.setPhase('scan');
 
   const job = ctx.db.getJob(ctx.jobId);
@@ -207,24 +207,27 @@ Generate 1-5 suggestions. Quality over quantity.`;
     }
   }
 
-  // Post deep-scan: trigger suggest-project if repo belongs to a project with 2+ repos
-  try {
-    const projects = ctx.db.listProjects().filter(p => {
-      const rIds = p.repoIds ?? [];
-      return rIds.length >= 2 && rIds.includes(repoId);
-    });
-    for (const project of projects) {
-      if (!ctx.db.hasQueuedOrRunningWithParams('suggest-project', 'projectId', project.id)) {
-        const lastSp = ctx.db.listJobs({ type: 'suggest-project', status: 'completed', limit: 20 })
-          .find(j => (j.result as Record<string, unknown>)?.projectId === project.id);
-        const gapDays = lastSp ? (Date.now() - new Date(lastSp.startedAt).getTime()) / (24 * 60 * 60 * 1000) : Infinity;
-        if (gapDays >= ctx.config.suggestProjectMinGapDays) {
-          ctx.db.enqueueJob('suggest-project', { priority: 5, triggerSource: 'reactive', params: { projectId: project.id } });
-          break;
+  // Post deep-scan: trigger suggest-project if repo belongs to a project with 2+ repos.
+  // Skipped when the Mac is in darkwake/offline to avoid cascading LLM work into sleep.
+  if (shared.networkAvailable && shared.systemAwake) {
+    try {
+      const projects = ctx.db.listProjects().filter(p => {
+        const rIds = p.repoIds ?? [];
+        return rIds.length >= 2 && rIds.includes(repoId);
+      });
+      for (const project of projects) {
+        if (!ctx.db.hasQueuedOrRunningWithParams('suggest-project', 'projectId', project.id)) {
+          const lastSp = ctx.db.listJobs({ type: 'suggest-project', status: 'completed', limit: 20 })
+            .find(j => (j.result as Record<string, unknown>)?.projectId === project.id);
+          const gapDays = lastSp ? (Date.now() - new Date(lastSp.startedAt).getTime()) / (24 * 60 * 60 * 1000) : Infinity;
+          if (gapDays >= ctx.config.suggestProjectMinGapDays) {
+            ctx.db.enqueueJob('suggest-project', { priority: 5, triggerSource: 'reactive', params: { projectId: project.id } });
+            break;
+          }
         }
       }
-    }
-  } catch { /* best-effort */ }
+    } catch { /* best-effort */ }
+  }
 
   return {
     llmCalls: 1, tokensUsed: tokens,

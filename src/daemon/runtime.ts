@@ -76,6 +76,27 @@ async function isNetworkAvailable(): Promise<boolean> {
   }
 }
 
+// Detects whether macOS is in full wake (display on / user active) vs darkwake.
+// macOS keeps TCPKeepAlive active during darkwake, so DNS alone cannot distinguish
+// the two — we need UserIsActive from pmset assertions.
+// Fail-open: any error, timeout, or parse failure returns true so non-macOS hosts
+// and unexpected environments keep working.
+async function isSystemAwake(): Promise<boolean> {
+  try {
+    const { execFile } = await import('node:child_process');
+    return await new Promise<boolean>((resolvePromise) => {
+      const child = execFile('pmset', ['-g', 'assertions'], { timeout: 2000 }, (err, stdout) => {
+        if (err) return resolvePromise(true);
+        const match = stdout.match(/^\s*UserIsActive\s+(\d)/m);
+        resolvePromise(match ? match[1] === '1' : true);
+      });
+      child.on('error', () => resolvePromise(true));
+    });
+  } catch {
+    return true;
+  }
+}
+
 function computeSleepMs(
   activeSleepMs: number,
   idleSleepMs: number,
@@ -266,6 +287,8 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       consecutiveIdleTicks: 0,
       consecutiveGhostJobs: 0,
       lastGhostHint: null,
+      networkAvailable: true,
+      systemAwake: true,
     };
 
     // Step 3c: Start EventBus + web server (receives daemonShared for MCP + /api/status)
@@ -461,34 +484,44 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
       // === Phase 1: Enqueue scheduled jobs ===
 
-      // Network gate: skip LLM job scheduling when offline (darkwake/sleep)
-      const networkUp = await isNetworkAvailable();
-      if (!networkUp) {
-        console.error('[daemon] No network — skipping LLM job scheduling');
+      // Sleep/wake gate: skip scheduling when offline or when the Mac is in darkwake.
+      // DNS alone is not enough — TCPKeepAlive keeps resolution alive during darkwake,
+      // so we also check pmset UserIsActive to distinguish full wake from micro-wakes.
+      const [networkUp, systemAwake] = await Promise.all([
+        isNetworkAvailable(),
+        isSystemAwake(),
+      ]);
+      const canSchedule = networkUp && systemAwake;
+      if (!canSchedule) {
+        const reason = !networkUp ? 'no network' : 'system not fully awake (darkwake/sleep)';
+        console.error(`[daemon] Skipping job scheduling — ${reason}`);
       }
+      daemonShared.networkAvailable = networkUp;
+      daemonShared.systemAwake = systemAwake;
+      state.networkAvailable = networkUp;
 
       // Time-based heartbeat scheduling (watcher events do NOT trigger heartbeats)
       const timeSinceLastHeartbeat = lastHeartbeatAt ? Date.now() - new Date(lastHeartbeatAt).getTime() : Infinity;
       const heartbeatInterval = consecutiveIdleTicks > 10
         ? config.activityHeartbeatMaxIntervalMs * 2  // deep idle: 60min
         : config.activityHeartbeatMaxIntervalMs;      // normal: 30min
-      if (networkUp && !_db.hasQueuedOrRunning('heartbeat') && timeSinceLastHeartbeat >= heartbeatInterval) {
+      if (canSchedule && !_db.hasQueuedOrRunning('heartbeat') && timeSinceLastHeartbeat >= heartbeatInterval) {
         _db.enqueueJob('heartbeat', { priority: 10 });
       }
-      if (networkUp && shouldEnqueue('consolidate', 6 * 60 * 60 * 1000)) {
+      if (canSchedule && shouldEnqueue('consolidate', 6 * 60 * 60 * 1000)) {
         _db.enqueueJob('consolidate', { priority: 3 });
       }
-      if (networkUp && shouldEnqueue('reflect', 24 * 60 * 60 * 1000)) {
+      if (canSchedule && shouldEnqueue('reflect', 24 * 60 * 60 * 1000)) {
         _db.enqueueJob('reflect', { priority: 5 });
       }
 
       // Remote sync: periodic git ls-remote for detecting remote changes
-      if (config.remoteSyncEnabled && shouldEnqueue('remote-sync', config.remoteSyncIntervalMs)) {
+      if (canSchedule && config.remoteSyncEnabled && shouldEnqueue('remote-sync', config.remoteSyncIntervalMs)) {
         _db.enqueueJob('remote-sync', { priority: 2 });
       }
 
       // PR sync: detect merge/close for runs in awaiting_pr (every 30m, only if any awaiting)
-      if (networkUp && shouldEnqueue('pr-sync', 30 * 60 * 1000)) {
+      if (canSchedule && shouldEnqueue('pr-sync', 30 * 60 * 1000)) {
         const awaitingCount = _db.listRuns({ status: 'awaiting_pr' }).length;
         if (awaitingCount > 0) {
           _db.enqueueJob('pr-sync', { priority: 3 });
@@ -496,7 +529,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       }
 
       // Version check: periodic check for new Shadow releases (every 12h)
-      if (shouldEnqueue('version-check', 12 * 60 * 60 * 1000)) {
+      if (canSchedule && shouldEnqueue('version-check', 12 * 60 * 60 * 1000)) {
         _db.enqueueJob('version-check', { priority: 1 });
       }
 
@@ -509,12 +542,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       const enrichEnabled = (profilePrefs?.enrichmentEnabled as boolean | undefined) ?? config.enrichmentEnabled;
       const enrichIntervalMin = profilePrefs?.enrichmentIntervalMin as number | undefined;
       const enrichIntervalMs = enrichIntervalMin ? enrichIntervalMin * 60 * 1000 : config.enrichmentIntervalMs;
-      if (networkUp && enrichEnabled && shouldEnqueue('context-enrich', enrichIntervalMs)) {
+      if (canSchedule && enrichEnabled && shouldEnqueue('context-enrich', enrichIntervalMs)) {
         _db.enqueueJob('context-enrich', { priority: 4 });
       }
 
       // MCP server discovery: describe servers from tool schemas (same gate as enrichment)
-      if (networkUp && enrichEnabled && shouldEnqueue('mcp-discover', 24 * 60 * 60 * 1000)) {
+      if (canSchedule && enrichEnabled && shouldEnqueue('mcp-discover', 24 * 60 * 60 * 1000)) {
         _db.enqueueJob('mcp-discover', { priority: 2 });
       }
 
@@ -527,12 +560,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const autonomy = loadAutonomyConfig(_db);
 
         // Auto-plan: every 3h
-        if (networkUp && autonomy.planRules.enabled && autonomy.planRules.repoIds.length > 0 && shouldEnqueue('auto-plan', 3 * 60 * 60 * 1000)) {
+        if (canSchedule && autonomy.planRules.enabled && autonomy.planRules.repoIds.length > 0 && shouldEnqueue('auto-plan', 3 * 60 * 60 * 1000)) {
           _db.enqueueJob('auto-plan', { priority: 4 });
         }
 
         // Auto-execute: every 3h, offset 1.5h from last auto-plan
-        if (networkUp && autonomy.executeRules.enabled && autonomy.executeRules.repoIds.length > 0 && shouldEnqueue('auto-execute', 3 * 60 * 60 * 1000)) {
+        if (canSchedule && autonomy.executeRules.enabled && autonomy.executeRules.repoIds.length > 0 && shouldEnqueue('auto-execute', 3 * 60 * 60 * 1000)) {
           const lastPlan = _db.getLastJob('auto-plan');
           const elapsed = lastPlan ? Date.now() - new Date(lastPlan.startedAt).getTime() : Infinity;
           if (elapsed >= 1.5 * 60 * 60 * 1000) {
@@ -557,16 +590,16 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
           if (nextStr < todayStr) {
             // Backfill a missed day (one per tick, catches up over multiple ticks)
-            if (networkUp) _db.enqueueJob('digest-daily', { priority: 3, triggerSource: 'backfill', params: { periodStart: nextStr } });
+            if (canSchedule) _db.enqueueJob('digest-daily', { priority: 3, triggerSource: 'backfill', params: { periodStart: nextStr } });
           } else {
             // No gaps — normal clock scheduling for today
-            if (networkUp && isScheduleReady(DIGEST_SCHEDULES['digest-daily'], userTz, _db.getLastJob('digest-daily')?.startedAt)) {
+            if (canSchedule && isScheduleReady(DIGEST_SCHEDULES['digest-daily'], userTz, _db.getLastJob('digest-daily')?.startedAt)) {
               _db.enqueueJob('digest-daily', { priority: 5 });
             }
           }
         } else {
           // Up to date or never generated — normal scheduling
-          if (networkUp && isScheduleReady(DIGEST_SCHEDULES['digest-daily'], userTz, _db.getLastJob('digest-daily')?.startedAt)) {
+          if (canSchedule && isScheduleReady(DIGEST_SCHEDULES['digest-daily'], userTz, _db.getLastJob('digest-daily')?.startedAt)) {
             _db.enqueueJob('digest-daily', { priority: 5 });
           }
         }
@@ -589,19 +622,19 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         if (!lastWeekCovered && nowTz.getDay() !== 0) {
           // Missing last week's digest and it's not Sunday yet (avoid racing with normal schedule)
           const weekStart = new Date(prevSunday);
-          if (networkUp) _db.enqueueJob('digest-weekly', { priority: 3, triggerSource: 'backfill', params: { periodStart: weekStart.toISOString().slice(0, 10) } });
-        } else if (networkUp && isScheduleReady(DIGEST_SCHEDULES['digest-weekly'], userTz, _db.getLastJob('digest-weekly')?.startedAt)) {
+          if (canSchedule) _db.enqueueJob('digest-weekly', { priority: 3, triggerSource: 'backfill', params: { periodStart: weekStart.toISOString().slice(0, 10) } });
+        } else if (canSchedule && isScheduleReady(DIGEST_SCHEDULES['digest-weekly'], userTz, _db.getLastJob('digest-weekly')?.startedAt)) {
           _db.enqueueJob('digest-weekly', { priority: 5 });
         }
       }
 
       // Brag: normal scheduling only (quarterly, no backfill)
-      if (networkUp && !_db.hasQueuedOrRunning('digest-brag') && isScheduleReady(DIGEST_SCHEDULES['digest-brag'], userTz, _db.getLastJob('digest-brag')?.startedAt)) {
+      if (canSchedule && !_db.hasQueuedOrRunning('digest-brag') && isScheduleReady(DIGEST_SCHEDULES['digest-brag'], userTz, _db.getLastJob('digest-brag')?.startedAt)) {
         _db.enqueueJob('digest-brag', { priority: 5 });
       }
 
       // Suggest-deep: periodic deep scan — find the repo with highest need
-      if (networkUp) {
+      if (canSchedule) {
         const repos = _db.listRepos();
         for (const repo of repos) {
           if (_db.hasQueuedOrRunningWithParams('suggest-deep', 'repoId', repo.id)) continue;
@@ -630,9 +663,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       }
 
       // === Phase 2: Parallel job execution via JobQueue ===
+      // Pass canSchedule so the queue skips claiming new jobs during darkwake/offline
+      // while still letting in-flight jobs complete.
 
       try {
-        const jobsActive = await jobQueue.tick();
+        const jobsActive = await jobQueue.tick({ allowClaim: canSchedule });
         if (jobsActive) worked = true;
       } catch (jqErr) {
         console.error('[daemon] Job queue tick failed:', jqErr instanceof Error ? jqErr.message : jqErr);
