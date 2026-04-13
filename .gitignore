@@ -3,6 +3,7 @@ dist/
 .env
 .env.local
 .shadow/
+.shadow-worktrees/
 .claude/
 coverage/
 *.log

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Badge } from '../common/Badge';
 import type { ActivityEntry } from '../../api/types';
 import { num, str, arr, items } from '../../utils/job-results';
@@ -259,8 +260,30 @@ export function JobOutputSummary({ entry }: Props) {
     return <span className="inline-flex items-center gap-1.5 flex-wrap">{badges}</span>;
   }
 
-  if (type === 'run:plan' || type === 'run:execute') {
-    return null; // repoName + confidence already shown by ActivityEntry
+  if (type === 'run:execute') {
+    const diffStat = str(r, 'diffStat');
+    const diffSummary = diffStat ? (diffStat.split('\n').filter(l => l.trim()).pop() ?? null) : null;
+    const outcome = str(r, 'outcome');
+    const taskTitle = entry.taskTitle;
+    const error = str(r, 'error');
+    if (entry.status === 'failed' && error) {
+      // Error already rendered by ActivityEntry collapsed row — return compact stats if any
+      return diffSummary ? chip(diffSummary, 'text-red bg-red/15') : null;
+    }
+    const parts: ReactNode[] = [];
+    if (diffSummary) parts.push(<Badge key="diff" className="text-cyan-300 bg-cyan-400/15">{diffSummary}</Badge>);
+    if (outcome && outcome !== 'executed') parts.push(<Badge key="outcome" className="text-text-dim bg-border">{outcome}</Badge>);
+    if (taskTitle) parts.push(<span key="task" className="text-xs text-text-dim truncate max-w-60">{taskTitle}</span>);
+    return parts.length > 0 ? <span className="inline-flex items-center gap-1.5 flex-wrap">{parts}</span> : null;
+  }
+
+  if (type === 'run:plan') {
+    const doubts = arr(r, 'doubts');
+    const taskTitle = entry.taskTitle;
+    const parts: ReactNode[] = [];
+    if (doubts.length > 0) parts.push(<Badge key="doubts" className="text-orange bg-orange/15">⚠ {doubts.length} doubt{doubts.length !== 1 ? 's' : ''}</Badge>);
+    if (taskTitle) parts.push(<span key="task" className="text-xs text-text-dim truncate max-w-60">{taskTitle}</span>);
+    return parts.length > 0 ? <span className="inline-flex items-center gap-1.5">{parts}</span> : null;
   }
 
   // Fallback: skip/idle or unknown

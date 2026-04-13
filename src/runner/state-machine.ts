@@ -9,6 +9,7 @@ export type RunStatus =
   | 'queued'
   | 'running'
   | 'planned'
+  | 'awaiting_pr'
   | 'done'
   | 'dismissed'
   | 'failed';
@@ -24,12 +25,13 @@ export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
  * Each key maps to the set of statuses it can transition TO.
  */
 const TRANSITIONS: Record<RunStatus, ReadonlySet<RunStatus>> = {
-  queued:    new Set(['running', 'failed']),
-  running:   new Set(['planned', 'done', 'failed']),
-  planned:   new Set(['done', 'dismissed', 'failed']),
-  done:      new Set(),  // terminal
-  dismissed: new Set(),  // terminal
-  failed:    new Set(),  // terminal
+  queued:      new Set(['running', 'failed']),
+  running:     new Set(['planned', 'done', 'failed']),
+  planned:     new Set(['done', 'dismissed', 'failed', 'awaiting_pr']),
+  awaiting_pr: new Set(['done', 'dismissed', 'failed']),
+  done:        new Set(),  // terminal
+  dismissed:   new Set(),  // terminal
+  failed:      new Set(),  // terminal
 };
 
 export class RunTransitionError extends Error {

@@ -205,6 +205,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
     'repo-profile':         { priority: 3,  description: 'generate repo profile' },
     'project-profile':      { priority: 4,  description: 'generate project profile' },
     'remote-sync':          { priority: 2,  description: 'git ls-remote + selective fetch' },
+    'pr-sync':              { priority: 3,  description: 'detect PR merge/close for awaiting_pr runs' },
     'context-enrich':       { priority: 4,  description: 'query external MCP servers' },
     'mcp-discover':         { priority: 2,  description: 'discover MCP server capabilities' },
     'digest-daily':         { priority: 5,  description: 'generate daily standup digest' },

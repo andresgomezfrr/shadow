@@ -271,7 +271,9 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
       continue;
     }
 
-    // Create child execution run
+    // Create child execution run. Parent stays in 'planned' — the aggregation
+    // in runner/service.ts will finalize the parent based on the child's
+    // result (awaiting_pr if PR created, done if no changes, failed on error).
     try {
       const childRun = ctx.db.createRun({
         repoId: run.repoId,

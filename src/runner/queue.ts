@@ -57,12 +57,21 @@ export class RunQueue {
     // Already in active map
     if (this.active.has(run.id)) return false;
 
-    // Parent-child dependency: child must wait until parent reaches terminal state
+    // Parent-child dependency: child may start when parent is terminal OR 'planned'
+    // (planned = plan generated, ready for execution delegation).
+    // No concurrent siblings: only one execution child runs at a time per parent.
     if (run.parentRunId) {
       const parent = this.db.getRun(run.parentRunId);
-      if (parent && !TERMINAL_STATUSES.has(parent.status)) {
-        return false;
-      }
+      const parentOk = parent && (
+        TERMINAL_STATUSES.has(parent.status) || parent.status === 'planned'
+      );
+      if (!parentOk) return false;
+
+      const siblings = this.db.listRuns({ parentRunId: run.parentRunId });
+      const hasActiveSibling = siblings.some((s) =>
+        s.id !== run.id && (s.status === 'running' || this.active.has(s.id))
+      );
+      if (hasActiveSibling) return false;
     }
 
     // Repo concurrency: only allow multiple runs on same repo if execution (worktree)

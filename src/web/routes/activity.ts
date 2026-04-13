@@ -56,6 +56,8 @@ export async function handleActivityRoutes(
       verified: string | null;
       parentRunId: string | null;
       prUrl: string | null;
+      taskId: string | null;
+      taskTitle: string | null;
     };
 
     const merged: ActivityEntry[] = [];
@@ -91,6 +93,8 @@ export async function handleActivityRoutes(
           verified: null,
           parentRunId: null,
           prUrl: null,
+          taskId: null,
+          taskTitle: null,
         });
       }
       // Count: filter by period in JS if needed
@@ -111,6 +115,14 @@ export async function handleActivityRoutes(
       if (periodDate) runs = runs.filter(r => (r.startedAt ?? r.createdAt) >= periodDate!);
       for (const r of runs) {
         const repoName = r.repoId ? (db.getRepo(r.repoId)?.name ?? null) : null;
+        const task = r.taskId ? db.getTask(r.taskId) : null;
+        const runResult: Record<string, unknown> = {};
+        if (r.resultSummaryMd) runResult.summaryMd = r.resultSummaryMd;
+        if (r.errorSummary) runResult.error = r.errorSummary;
+        if (r.outcome) runResult.outcome = r.outcome;
+        if (r.diffStat) runResult.diffStat = r.diffStat;
+        if (r.doubts && r.doubts.length > 0) runResult.doubts = r.doubts;
+        if (r.verification && Object.keys(r.verification).length > 0) runResult.verification = r.verification;
         merged.push({
           id: r.id,
           source: 'run',
@@ -121,7 +133,7 @@ export async function handleActivityRoutes(
           llmCalls: 0,
           tokensUsed: 0,
           durationMs: r.startedAt && r.finishedAt ? new Date(r.finishedAt).getTime() - new Date(r.startedAt).getTime() : null,
-          result: r.resultSummaryMd ? { summaryMd: r.resultSummaryMd } : {},
+          result: runResult,
           startedAt: r.startedAt ?? r.createdAt,
           finishedAt: r.finishedAt ?? null,
           runId: r.id,
@@ -130,6 +142,8 @@ export async function handleActivityRoutes(
           verified: r.verified ?? null,
           parentRunId: r.parentRunId ?? null,
           prUrl: r.prUrl ?? null,
+          taskId: r.taskId ?? null,
+          taskTitle: task?.title ?? null,
         });
       }
       if (periodDate) {

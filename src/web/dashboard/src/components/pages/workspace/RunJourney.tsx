@@ -3,24 +3,25 @@ import { fetchRunContext, fetchPrStatus, createRunSession, executeRun, discardRu
 import { ConfidenceIndicator } from '../../common/ConfidenceIndicator';
 import { Badge } from '../../common/Badge';
 import { timeAgo } from '../../../utils/format';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useWorkspace } from './WorkspaceContext';
 import type { Run } from '../../../api/types';
 
 // --- Timeline step visual ---
 function Step({ status, label, children }: { status: 'done' | 'active' | 'pending' | 'failed'; label: string; children?: React.ReactNode }) {
   const dot: Record<string, string> = {
-    done: 'bg-green text-green', active: 'bg-blue text-blue animate-pulse',
+    done: 'bg-green text-green', active: 'bg-blue text-blue',
     pending: 'bg-border text-text-muted', failed: 'bg-red text-red',
   };
+  const parts = dot[status]?.split(' ') ?? ['bg-border', 'text-text-muted'];
   return (
     <div className="flex gap-3">
       <div className="flex flex-col items-center">
-        <div className={`w-3 h-3 rounded-full shrink-0 ${dot[status]?.split(' ')[0] ?? 'bg-border'}`} />
+        <div className={`w-3 h-3 rounded-full shrink-0 ${parts[0] ?? 'bg-border'} ${status === 'active' ? 'animate-pulse' : ''}`} />
         <div className="w-px flex-1 bg-border" />
       </div>
       <div className="pb-4 flex-1 min-w-0">
-        <div className={`text-xs font-medium mb-1 ${dot[status]?.split(' ')[1] ?? 'text-text-muted'}`}>{label}</div>
+        <div className={`text-xs font-medium mb-1 ${parts[1] ?? 'text-text-muted'}`}>{label}</div>
         {children}
       </div>
     </div>
@@ -28,7 +29,8 @@ function Step({ status, label, children }: { status: 'done' | 'active' | 'pendin
 }
 
 export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: () => void }) {
-  const { data: ctx, refresh } = useApi(() => fetchRunContext(runId), [runId], 30_000);
+  const [pollMs, setPollMs] = useState(30_000);
+  const { data: ctx, refresh } = useApi(() => fetchRunContext(runId), [runId, pollMs], pollMs);
   const [sessionInfo, setSessionInfo] = useState<{ command: string } | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const { drillToItem, expandedPlan, setExpandedPlan } = useWorkspace();
@@ -37,6 +39,15 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
   const childRuns = ctx?.childRuns ?? [];
   const sourceSuggestion = ctx?.sourceSuggestion;
   const sourceObservation = ctx?.sourceObservation;
+
+  // Adaptive polling: 5s when something is actively running/queued, 30s otherwise.
+  useEffect(() => {
+    const hasActive =
+      run?.status === 'running' || run?.status === 'queued' ||
+      childRuns.some(c => c.status === 'running' || c.status === 'queued');
+    const target = hasActive ? 5_000 : 30_000;
+    setPollMs(prev => prev === target ? prev : target);
+  }, [run?.status, childRuns]);
 
   // Active run = latest non-archived child, or the run itself
   const activeChild = childRuns.filter(c => !c.archived).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
@@ -82,10 +93,11 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
     doRefresh();
   }, [run, doRefresh]);
 
-  const handleRetry = useCallback(async () => {
-    if (!run) return;
+  const handleRetry = useCallback(async (targetId?: string) => {
+    const id = targetId ?? run?.id;
+    if (!id) return;
     setLoading('retry');
-    try { await retryRun(run.id); doRefresh(); } finally { setLoading(null); }
+    try { await retryRun(id); doRefresh(); } finally { setLoading(null); }
   }, [run, doRefresh]);
 
   const handleArchive = useCallback(async () => {
@@ -123,13 +135,15 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
   const planStatus: 'done' | 'active' | 'pending' | 'failed' =
     run.status === 'failed' ? 'failed' :
     run.status === 'running' ? 'active' :
-    ['planned', 'done', 'dismissed'].includes(run.status) ? 'done' : 'pending';
+    ['planned', 'awaiting_pr', 'done', 'dismissed'].includes(run.status) ? 'done' : 'pending';
 
   const execStatus: 'done' | 'active' | 'pending' | 'failed' =
     activeChild?.status === 'failed' ? 'failed' :
+    activeChild?.status === 'queued' ? 'active' :
     activeChild?.status === 'running' ? 'active' :
     activeChild && ['planned', 'done'].includes(activeChild.status) ? 'done' :
-    run.status === 'done' && (run.outcome === 'executed' || run.outcome === 'executed_manual') ? 'done' : 'pending';
+    run.status === 'awaiting_pr' ? 'done' :
+    run.status === 'done' && (run.outcome === 'executed' || run.outcome === 'executed_manual' || run.outcome === 'merged') ? 'done' : 'pending';
 
   return (
     <div className="space-y-2">
@@ -186,7 +200,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
         {run.errorSummary && (
           <div className="mt-1 bg-red/5 border border-red/20 rounded p-2 text-xs text-red whitespace-pre-wrap max-h-24 overflow-y-auto">{run.errorSummary}</div>
         )}
-        {isPlanCompleted && (
+        {isPlanCompleted && childRuns.length === 0 && (
           <div className="flex items-center gap-2 mt-2">
             <button onClick={handleExecute} disabled={loading === 'execute'} className="px-3 py-1 rounded-lg text-xs font-semibold bg-green text-bg border-none cursor-pointer hover:brightness-110 disabled:opacity-50">▶ Execute</button>
             <button onClick={handleSession} disabled={loading === 'session'} className="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer disabled:opacity-50">{loading === 'session' ? '...' : 'Session'}</button>
@@ -195,7 +209,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
         )}
         {run.status === 'failed' && (
           <div className="flex items-center gap-2 mt-2">
-            <button onClick={handleRetry} disabled={loading === 'retry'} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange/15 text-orange border-none cursor-pointer hover:bg-orange/25 disabled:opacity-50">{loading === 'retry' ? '...' : 'Retry'}</button>
+            <button onClick={() => handleRetry()} disabled={loading === 'retry'} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange/15 text-orange border-none cursor-pointer hover:bg-orange/25 disabled:opacity-50">{loading === 'retry' ? '...' : 'Retry'}</button>
             <button onClick={handleArchive} className="text-xs text-text-muted hover:text-text bg-transparent border-none cursor-pointer">Archive</button>
           </div>
         )}
@@ -208,9 +222,32 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
             <div key={child.id} className={`text-xs ${child.archived ? 'text-text-muted line-through' : 'text-text-dim'} ${i > 0 ? 'mt-1' : ''}`}>
               {child.status === 'failed' ? '✕' : child.status === 'running' ? '⟳' : '✓'}
               {' '}Attempt {i + 1} — {child.status}
+              {child.status === 'running' && child.activity && (
+                <span className="text-blue ml-1">({child.activity})</span>
+              )}
               {child.startedAt && child.finishedAt && ` (${Math.round((new Date(child.finishedAt).getTime() - new Date(child.startedAt).getTime()) / 1000)}s)`}
             </div>
           ))}
+          {execStatus === 'failed' && activeChild && (
+            <>
+              {activeChild.errorSummary && (
+                <div className="mt-2 bg-red/5 border border-red/20 rounded p-2 text-xs text-red whitespace-pre-wrap max-h-24 overflow-y-auto">
+                  {activeChild.errorSummary === 'orphaned — daemon restarted'
+                    ? 'Orphaned by daemon restart — no auto-retry. Click Retry to run again.'
+                    : activeChild.errorSummary}
+                </div>
+              )}
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={() => handleRetry(activeChild.id)}
+                  disabled={loading === 'retry'}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange/15 text-orange border-none cursor-pointer hover:bg-orange/25 disabled:opacity-50"
+                >
+                  {loading === 'retry' ? '...' : 'Retry'}
+                </button>
+              </div>
+            </>
+          )}
         </Step>
       )}
 
@@ -239,18 +276,28 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
         <Step status={hasPr ? 'done' : 'pending'} label="Pull Request">
           {hasPr && prStatus ? (
             <div className="text-xs space-y-1">
-              <div className="flex items-center gap-2">
-                <Badge className={prStatus.state === 'MERGED' ? 'text-purple bg-purple/15' : prStatus.state === 'CLOSED' ? 'text-red bg-red/15' : 'text-green bg-green/15'}>
-                  {prStatus.isDraft ? 'draft' : prStatus.state.toLowerCase()}
-                </Badge>
-                {prStatus.checksStatus && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {(() => {
+                  // State badge — merge/closed dominate over draft
+                  if (prStatus.state === 'MERGED') {
+                    return <Badge className="text-purple bg-purple/15">merged</Badge>;
+                  }
+                  if (prStatus.state === 'CLOSED') {
+                    return <Badge className="text-red bg-red/15">closed</Badge>;
+                  }
+                  if (prStatus.isDraft) {
+                    return <Badge className="text-orange bg-orange/15">draft</Badge>;
+                  }
+                  return <Badge className="text-blue bg-blue/15">open</Badge>;
+                })()}
+                {prStatus.state === 'OPEN' && prStatus.checksStatus && (
                   <Badge className={prStatus.checksStatus === 'SUCCESS' ? 'text-green bg-green/15' : prStatus.checksStatus === 'FAILURE' ? 'text-red bg-red/15' : 'text-orange bg-orange/15'}>
                     checks: {prStatus.checksStatus.toLowerCase()}
                   </Badge>
                 )}
-                {prStatus.reviewDecision && (
-                  <Badge className={prStatus.reviewDecision === 'APPROVED' ? 'text-green bg-green/15' : 'text-orange bg-orange/15'}>
-                    {prStatus.reviewDecision.toLowerCase().replace('_', ' ')}
+                {prStatus.state === 'OPEN' && prStatus.reviewDecision && (
+                  <Badge className={prStatus.reviewDecision === 'APPROVED' ? 'text-green bg-green/15' : prStatus.reviewDecision === 'CHANGES_REQUESTED' ? 'text-red bg-red/15' : 'text-orange bg-orange/15'}>
+                    {prStatus.reviewDecision.toLowerCase().replace(/_/g, ' ')}
                   </Badge>
                 )}
               </div>

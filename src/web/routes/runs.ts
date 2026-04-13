@@ -20,8 +20,22 @@ export async function handleRunRoutes(
       const limit = clampLimit(params.get('limit'), 30);
       const offset = clampOffset(params.get('offset'));
       const items = db.listRuns({ status, repoId, archived, limit, offset });
+      // Include execution children for parent runs in the result — so the
+      // pipeline view (RunsPage, workspace) can show child state even when
+      // parent and child are in different statuses (e.g. parent=awaiting_pr, child=done).
+      const seen = new Set(items.map(r => r.id));
+      const children = [];
+      for (const r of items) {
+        if (r.parentRunId) continue;
+        for (const kid of db.listRuns({ parentRunId: r.id })) {
+          if (!seen.has(kid.id)) {
+            children.push(kid);
+            seen.add(kid.id);
+          }
+        }
+      }
       const total = db.countRuns({ status, archived });
-      return json(res, { items, total }), true;
+      return json(res, { items: [...items, ...children], total }), true;
     }
 
     // Run context — full journey chain in one call
@@ -190,7 +204,7 @@ export async function handleRunRoutes(
       }
 
       if (action === 'execute') {
-        try { db.transitionRun(runId, 'done'); db.updateRun(runId, { outcome: 'executed' }); } catch { return json(res, { error: 'Run must be completed to execute' }, 400), true; }
+        if (run.status !== 'planned') return json(res, { error: 'Run must be in planned status to execute' }, 400), true;
         const childRun = db.createRun({
           repoId: run.repoId,
           repoIds: run.repoIds,

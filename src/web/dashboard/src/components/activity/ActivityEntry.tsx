@@ -4,6 +4,7 @@ import { num, str, arr, items } from '../../utils/job-results';
 import { JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
 import { ConfidenceIndicator } from '../common/ConfidenceIndicator';
+import { Markdown } from '../common/Markdown';
 import { JobOutputSummary } from './JobOutputSummary';
 import { triggerJobWithParams } from '../../api/client';
 import type { ActivityEntry as ActivityEntryType } from '../../api/types';
@@ -13,6 +14,8 @@ const STATUS_BADGE: Record<string, string> = {
   running: 'text-blue bg-blue/15',
   failed: 'text-red bg-red/15',
   queued: 'text-orange bg-orange/15',
+  planned: 'text-indigo-300 bg-indigo-500/15',
+  awaiting_pr: 'text-fuchsia-300 bg-fuchsia-500/15',
   done: 'text-purple bg-purple/15',
   dismissed: 'text-text-muted bg-text-muted/10',
 };
@@ -51,7 +54,7 @@ const PHASE_DOT: Record<string, string> = {
   preparing: 'bg-text-muted',
   planning: 'bg-indigo-400',
   evaluating: 'bg-sky-400',
-  executing: 'bg-violet-400',
+  executing: 'bg-fuchsia-400',
   verifying: 'bg-green-400',
 };
 
@@ -89,7 +92,7 @@ const PHASE_TEXT: Record<string, string> = {
   preparing: 'text-text-muted',
   planning: 'text-indigo-300',
   evaluating: 'text-sky-300',
-  executing: 'text-violet-300',
+  executing: 'text-fuchsia-300',
   verifying: 'text-green-300',
 };
 
@@ -159,7 +162,7 @@ const JOB_ACTIVE_DOT: Record<string, string> = {
   'auto-execute': 'bg-rose-400',
   // Run types
   'run:plan': 'bg-indigo-400',
-  'run:execute': 'bg-violet-400',
+  'run:execute': 'bg-fuchsia-400',
 };
 const JOB_ACTIVE_TEXT: Record<string, string> = {
   heartbeat: 'text-purple-300',
@@ -181,7 +184,7 @@ const JOB_ACTIVE_TEXT: Record<string, string> = {
   'auto-execute': 'text-rose-300',
   // Run types
   'run:plan': 'text-indigo-300',
-  'run:execute': 'text-violet-300',
+  'run:execute': 'text-fuchsia-300',
 };
 
 function PhasePipeline({ phases, currentPhase, allPhases, jobType }: { phases: string[]; currentPhase?: string; allPhases?: string[]; jobType?: string }) {
@@ -604,22 +607,90 @@ function renderExpandedDetail(entry: ActivityEntryType) {
   }
 
   if (type.startsWith('run:')) {
+    const error = str(r, 'error');
+    const diffStat = str(r, 'diffStat');
+    const outcome = str(r, 'outcome');
+    const doubts = arr(r, 'doubts');
+    const verification = (r.verification ?? {}) as Record<string, { passed: boolean; output: string; durationMs: number }>;
+    const summaryMd = str(r, 'summaryMd');
     return (
       <>
-        {entry.runId && (
+        {entry.taskTitle && entry.taskId && (
           <div>
+            <span className="text-accent">Task:</span>{' '}
+            <a
+              href={`/workspace?item=${entry.taskId}&itemType=task`}
+              className="text-text-dim hover:text-accent hover:underline"
+              onClick={e => e.stopPropagation()}
+            >
+              {entry.taskTitle}
+            </a>
+          </div>
+        )}
+        {entry.confidence && (
+          <div className="flex items-center gap-2">
+            <span className="text-accent">Confidence:</span>
+            <ConfidenceIndicator confidence={entry.confidence} doubts={doubts.length} />
+            {outcome && <span className="text-text-muted text-[10px]">outcome: {outcome}</span>}
+          </div>
+        )}
+        {doubts.length > 0 && (
+          <ul className="ml-3 space-y-0.5">
+            {doubts.map((d, i) => (
+              <li key={i} className="text-orange text-[11px] flex gap-1.5">
+                <span className="shrink-0">⚠</span>
+                <span className="text-text-dim">{d}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {diffStat && (
+          <div>
+            <span className="text-accent">Diff:</span>
+            <pre className="mt-0.5 text-[11px] text-text-dim whitespace-pre-wrap font-mono bg-border/30 rounded p-2 max-h-32 overflow-y-auto">{diffStat}</pre>
+          </div>
+        )}
+        {Object.keys(verification).length > 0 && (
+          <div>
+            <span className="text-accent">Verification:</span>
+            <div className="ml-3 mt-0.5 space-y-0.5">
+              {Object.entries(verification).map(([cmd, result]) => (
+                <div key={cmd} className="flex items-center gap-1.5 text-[11px]">
+                  <span className={result.passed ? 'text-green' : 'text-red'}>{result.passed ? '✓' : '✗'}</span>
+                  <span className="text-text-dim">{cmd}</span>
+                  <span className="text-text-muted">({result.durationMs}ms)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {error && (
+          <div className="bg-red/5 border border-red/20 rounded p-2 text-[11px] text-red whitespace-pre-wrap max-h-24 overflow-y-auto">
+            {error === 'orphaned — daemon restarted'
+              ? 'Orphaned by daemon restart — no auto-retry. Open in Workspace and click Retry to run again.'
+              : error}
+          </div>
+        )}
+        {summaryMd && (
+          <div>
+            <span className="text-accent">Summary:</span>
+            <div className="mt-0.5 max-h-64 overflow-y-auto">
+              <Markdown>{summaryMd}</Markdown>
+            </div>
+          </div>
+        )}
+        <div className="flex items-center gap-3 pt-1">
+          {entry.runId && (
             <a href={`/workspace?item=${entry.runId}&itemType=run`} className="text-accent hover:underline" onClick={e => e.stopPropagation()}>
-              View in Workspace
+              View in Workspace →
             </a>
-          </div>
-        )}
-        {entry.prUrl && (
-          <div>
+          )}
+          {entry.prUrl && (
             <a href={entry.prUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline" onClick={e => e.stopPropagation()}>
-              {entry.prUrl}
+              View PR →
             </a>
-          </div>
-        )}
+          )}
+        </div>
       </>
     );
   }

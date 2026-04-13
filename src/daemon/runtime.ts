@@ -398,15 +398,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         });
         console.error(`[daemon] Marked orphaned run ${run.id.slice(0, 8)} as failed (daemon restart)`);
       }
-      const queuedRuns = _db.listRuns({ status: 'queued' });
-      for (const run of queuedRuns) {
-        _db.transitionRun(run.id, 'failed');
-        _db.updateRun(run.id, {
-          errorSummary: 'orphaned — daemon restarted',
-          finishedAt: new Date().toISOString(),
-        });
-        console.error(`[daemon] Marked orphaned queued run ${run.id.slice(0, 8)} as failed (daemon restart)`);
-      }
+      // Note: 'queued' runs are intentionally left untouched — RunQueue.tick() re-picks them on the next tick.
     }
     cleanOrphanedJobsOnStartup();
 
@@ -493,6 +485,14 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       // Remote sync: periodic git ls-remote for detecting remote changes
       if (config.remoteSyncEnabled && shouldEnqueue('remote-sync', config.remoteSyncIntervalMs)) {
         _db.enqueueJob('remote-sync', { priority: 2 });
+      }
+
+      // PR sync: detect merge/close for runs in awaiting_pr (every 30m, only if any awaiting)
+      if (networkUp && shouldEnqueue('pr-sync', 30 * 60 * 1000)) {
+        const awaitingCount = _db.listRuns({ status: 'awaiting_pr' }).length;
+        if (awaitingCount > 0) {
+          _db.enqueueJob('pr-sync', { priority: 3 });
+        }
       }
 
       // Version check: periodic check for new Shadow releases (every 12h)

@@ -294,12 +294,33 @@ export class RunnerService {
         } catch { /* non-fatal — verification failure shouldn't block the run */ }
       }
 
-      // Propagate to parent via multi-child aggregation
+      // Propagate to parent via multi-child aggregation — PR-aware for execution children
       if (run.parentRunId) {
         const siblings = this.db.listRuns({ parentRunId: run.parentRunId });
-        const parentStatus = aggregateParentStatus(siblings);
-        if (parentStatus !== null) {
-          this.db.transitionRun(run.parentRunId, parentStatus);
+        const aggregated = aggregateParentStatus(siblings);
+        if (aggregated === 'done' && run.kind === 'execution') {
+          // Child execution succeeded — decide parent final based on PR state
+          const hasChanges = !!(run.diffStat && run.diffStat.trim());
+          if (run.prUrl) {
+            // PR created → parent waits for merge/close (pr-sync job will finalize)
+            this.db.transitionRun(run.parentRunId, 'awaiting_pr');
+            this.db.updateRun(run.parentRunId, { finishedAt });
+          } else if (!hasChanges) {
+            // Claude decided nothing to change → close journey with justification
+            const justification = run.resultSummaryMd?.slice(0, 500) || 'No changes needed';
+            this.db.transitionRun(run.parentRunId, 'done');
+            this.db.updateRun(run.parentRunId, {
+              finishedAt,
+              outcome: 'closed',
+              closedNote: justification,
+            });
+          } else {
+            // Edge case: changes committed but no PR (direct push or PR creation failed)
+            this.db.transitionRun(run.parentRunId, 'done');
+            this.db.updateRun(run.parentRunId, { finishedAt, outcome: 'executed' });
+          }
+        } else if (aggregated !== null) {
+          this.db.transitionRun(run.parentRunId, aggregated);
           this.db.updateRun(run.parentRunId, { finishedAt });
         }
       }

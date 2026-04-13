@@ -56,6 +56,8 @@ export type ActivityEntry = {
   verified: string | null;
   parentRunId: string | null;
   prUrl: string | null;
+  taskId: string | null;
+  taskTitle: string | null;
 };
 
 export type ActivitySummary = {

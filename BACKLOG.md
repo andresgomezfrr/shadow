@@ -1,6 +1,6 @@
 # Shadow — Backlog
 
-Actualizado 2026-04-12. Items completados en [COMPLETED.md](COMPLETED.md).
+Actualizado 2026-04-13. Items completados en [COMPLETED.md](COMPLETED.md).
 
 ---
 

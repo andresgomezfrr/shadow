@@ -451,6 +451,7 @@ async function handleVersionCheck(ctx: JobContext): Promise<JobHandlerResult> {
 import { handleSuggest, handleSuggestDeep, handleSuggestProject, handleRevalidateSuggestion } from './handlers/suggest.js';
 import { handleRemoteSync, handleRepoProfile, handleContextEnrich, handleMcpDiscover, handleProjectProfile } from './handlers/profiling.js';
 import { handleAutoPlan, handleAutoExecute } from './handlers/autonomy.js';
+import { handlePrSync } from './handlers/pr-sync.js';
 
 export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
   const registry = new Map<string, JobHandlerEntry>();
@@ -470,6 +471,7 @@ export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
   registry.set('revalidate-suggestion', { category: 'llm', fn: handleRevalidateSuggestion });
   registry.set('auto-plan', { category: 'llm', fn: handleAutoPlan, timeoutMs: 30 * 60 * 1000 });
   registry.set('auto-execute', { category: 'llm', fn: handleAutoExecute, timeoutMs: 60 * 60 * 1000 });
+  registry.set('pr-sync', { category: 'io', fn: handlePrSync });
 
   // Digest handlers registered with their full type name
   for (const digestType of ['digest-daily', 'digest-weekly', 'digest-brag']) {

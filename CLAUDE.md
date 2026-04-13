@@ -21,6 +21,7 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
                                     │   ├── consolidate (memory maintenance, 6h)
                                     │   ├── reflect (soul reflection, daily)
                                     │   ├── remote-sync (git ls-remote, 30min)
+                                    │   ├── pr-sync (gh pr view for awaiting_pr runs, 30min)
                                     │   ├── context-enrich (MCP enrichment)
                                     │   └── auto-plan / auto-execute (autonomy)
                                     ├── Hooks (6: sessions + tool use + errors + subagents)
@@ -64,7 +65,7 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 | `/events` | Events | Pending event queue |
 | `/guide` | Guide | Tabbed reference: overview, concepts, CLI, MCP tools, jobs |
 
-**Dev**: `npm run dashboard:dev` → Vite on :5173, proxies API to :3700. **Build**: `npm run dashboard:build` → outputs to `src/web/public/`, served by daemon at :3700.
+**Dev**: `npm run dashboard:dev` → Vite on :5173, proxies API to :3700. **Build**: `npm run dashboard:build` → outputs to `src/web/dashboard/dist/`, served by daemon at :3700 via `server.ts` (which checks this path first, then falls back to `src/web/public/index.html` for legacy).
 
 ## Database Schema
 
@@ -243,7 +244,7 @@ SHADOW_DATA_DIR=~/.shadow            # Data directory
 - **`--allowedTools "mcp__shadow__*"`** on all CLI spawns — Claude uses Shadow's tools without permission prompts. Execution runs also get `Edit,Write,Bash`.
 - **Runner = MCP delegation** — briefing-only prompt; Claude reads files and uses `shadow_*` tools itself rather than receiving pre-loaded context.
 - **Rotation = consume-and-delete** — at heartbeat start, JSONL files are renamed to `.rotating` atomically. Each heartbeat processes exactly the data since the last one. Orphaned `.rotating` from crashed heartbeats are consumed in the next run.
-- **Unified status vocabulary** — all entities use `open` / `done` / `dismissed`. Observations add `acknowledged` / `expired`. Runs use `queued/running/completed/done/dismissed/failed` with `outcome` recording *how* a `done` was reached (executed / executed_manual / closed).
+- **Unified status vocabulary** — all entities use `open` / `done` / `dismissed`. Observations add `acknowledged` / `expired`. Runs use `queued/running/planned/awaiting_pr/done/dismissed/failed` with `outcome` recording *how* a `done` was reached (executed / executed_manual / merged / closed). `awaiting_pr` is non-terminal: parent plan waits for PR merge/close, finalized by the `pr-sync` job.
 - **Per-job timeout** — JobQueue supports per-job `timeoutMs` via `JobHandlerEntry` (default 15min, auto-plan 30min, auto-execute 60min). Timeout kills spawned adapters via `killJobAdapters`.
 - **Confidence eval model** — uses `config.models.runner` (default Opus). Critical gate decision for autonomous execution warrants highest quality.
 - **Access count honesty** — heartbeat internal lookups use `touch=false`; only MCP searches increment access counts.

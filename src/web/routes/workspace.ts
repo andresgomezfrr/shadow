@@ -32,6 +32,7 @@ function assignPriority(item: FeedItem, activeParentIds: Set<string>): number {
     if (r.status === 'running') return 110;
     if (r.status === 'done' && activeParentIds.has(item.id)) return 108;
     if (r.status === 'queued') return 105;
+    if (r.status === 'awaiting_pr') return 104;
     if (r.status === 'failed') return 102;
     return 100;
   }
@@ -72,7 +73,7 @@ export async function handleWorkspaceRoutes(
 
     // Which statuses to include
     const includeRuns = type === 'all' || type === 'run' || type === 'run-active' || type === 'run-done' || type === 'run-failed';
-    const activeRunStatuses = new Set(['queued', 'running', 'planned']);
+    const activeRunStatuses = new Set(['queued', 'running', 'planned', 'awaiting_pr']);
     const runStatusFilter = type === 'all' ? activeRunStatuses : type === 'run-active' ? activeRunStatuses : type === 'run-done' ? new Set(['done']) : type === 'run-failed' ? new Set(['failed']) : null;
     const includeActiveTasks = type === 'all' || type === 'task';
     const includeTaskOpen = type === 'task-open';
@@ -89,7 +90,7 @@ export async function handleWorkspaceRoutes(
     // Runs: active + to review + done (until explicitly dismissed), not archived, top-level only
     const activeParentIds = new Set<string>();
     if (includeRuns) {
-      const statusesToFetch = runStatusFilter ? [...runStatusFilter] : ['running', 'queued', 'planned', 'failed', 'done', 'dismissed'];
+      const statusesToFetch = runStatusFilter ? [...runStatusFilter] : ['running', 'queued', 'planned', 'awaiting_pr', 'failed', 'done', 'dismissed'];
       for (const status of statusesToFetch) {
         const runs = db.listRuns({ status, archived: false, limit: 50 });
         for (const r of runs) {
@@ -174,11 +175,11 @@ export async function handleWorkspaceRoutes(
     items.sort((a, b) => b.priority - a.priority);
 
     // Counts — always computed for all statuses so tabs show accurate numbers
-    const allRuns = (['running', 'queued', 'planned', 'failed', 'done', 'dismissed'] as const)
+    const allRuns = (['running', 'queued', 'planned', 'awaiting_pr', 'failed', 'done', 'dismissed'] as const)
       .flatMap(s => db.listRuns({ status: s, archived: false, limit: 50 }))
       .filter(r => !r.parentRunId);
     const countRuns = allRuns.length;
-    const countRunsActive = allRuns.filter(r => ['queued', 'running', 'planned'].includes(r.status)).length;
+    const countRunsActive = allRuns.filter(r => ['queued', 'running', 'planned', 'awaiting_pr'].includes(r.status)).length;
     const countRunsDone = allRuns.filter(r => r.status === 'done').length;
     const countRunsFailed = allRuns.filter(r => r.status === 'failed').length;
     const countTasksOpen = db.countTasks({ status: 'open', projectId });

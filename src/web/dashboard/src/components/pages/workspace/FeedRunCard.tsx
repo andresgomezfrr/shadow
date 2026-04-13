@@ -1,6 +1,7 @@
 import { timeAgo } from '../../../utils/format';
 import { Badge } from '../../common/Badge';
 import { ConfidenceIndicator } from '../../common/ConfidenceIndicator';
+import { JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../../utils/job-colors';
 import type { Run } from '../../../api/types';
 import type { SelectedItem } from './WorkspaceContext';
 
@@ -29,6 +30,9 @@ export function FeedRunCard({ run, selected, onSelect, onExecute, onSession, onD
   const isActive = run.status === 'running' || run.status === 'queued';
   const isFailed = run.status === 'failed';
   const isRunning = run.status === 'running';
+  const kindColor = run.kind === 'execution' ? JOB_TYPE_COLORS['run:execute']
+    : run.kind === 'plan' ? JOB_TYPE_COLORS['run:plan']
+    : JOB_TYPE_COLOR_DEFAULT;
 
   return (
     <div
@@ -45,7 +49,10 @@ export function FeedRunCard({ run, selected, onSelect, onExecute, onSession, onD
             {RUN_STATUS_ICON[run.status] ?? '○'}
           </span>
         )}
-        <Badge className="text-text-dim bg-border">{run.kind}</Badge>
+        <Badge className={kindColor}>{run.kind}</Badge>
+        {run.status === 'awaiting_pr' && (
+          <Badge className="text-fuchsia-300 bg-fuchsia-500/15">awaiting pr</Badge>
+        )}
         {run.status === 'done' && run.outcome && run.outcome !== 'executed' && (
           <Badge className="text-purple bg-purple/15">done:{run.outcome === 'executed_manual' ? 'manual' : run.outcome}</Badge>
         )}

@@ -20,6 +20,7 @@ const STATUS_FILTERS = [
   { label: 'All', value: '' },
   { label: 'Queued', value: 'queued', dotColor: 'bg-orange', activeClass: 'bg-orange/15 text-orange' },
   { label: 'Running', value: 'running', dotColor: 'bg-blue', activeClass: 'bg-blue/15 text-blue' },
+  { label: 'Awaiting PR', value: 'awaiting_pr', dotColor: 'bg-fuchsia-500', activeClass: 'bg-fuchsia-500/15 text-fuchsia-300' },
   { label: 'Done', value: 'done', dotColor: 'bg-purple', activeClass: 'bg-purple/15 text-purple' },
   { label: 'Dismissed', value: 'dismissed', dotColor: 'bg-text-muted', activeClass: 'bg-text-muted/15 text-text-muted' },
   { label: 'Failed', value: 'failed', dotColor: 'bg-red', activeClass: 'bg-red/15 text-red' },
@@ -32,7 +33,7 @@ const PAGE_SIZE = 20;
 // --- Helpers ---
 
 function getPipelineStatus(run: Run, childRun?: Run): { plan: 'done' | 'running' | 'failed' | 'pending'; exec: 'done' | 'running' | 'failed' | 'pending'; pr: 'done' | 'pending' } {
-  const planDone = ['planned', 'done'].includes(run.status);
+  const planDone = ['planned', 'awaiting_pr', 'done'].includes(run.status);
   const plan = run.status === 'running' ? 'running' : run.status === 'failed' ? 'failed' : planDone ? 'done' : 'pending';
 
   let exec: 'done' | 'running' | 'failed' | 'pending' = 'pending';
@@ -40,7 +41,7 @@ function getPipelineStatus(run: Run, childRun?: Run): { plan: 'done' | 'running'
     if (childRun.status === 'running') exec = 'running';
     else if (childRun.status === 'failed') exec = 'failed';
     else if (['done', 'planned'].includes(childRun.status)) exec = 'done';
-  } else if (run.status === 'done') {
+  } else if (run.status === 'awaiting_pr' || run.status === 'done') {
     exec = 'done';
   }
 

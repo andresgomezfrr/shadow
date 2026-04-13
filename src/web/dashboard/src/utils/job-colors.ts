@@ -18,7 +18,7 @@ export const JOB_TYPE_COLORS: Record<string, string> = {
   'auto-plan': 'bg-lime-500/20 text-lime-300',
   'auto-execute': 'bg-rose-500/20 text-rose-300',
   'run:plan': 'bg-indigo-500/20 text-indigo-300',
-  'run:execute': 'bg-violet-500/20 text-violet-300',
+  'run:execute': 'bg-fuchsia-500/20 text-fuchsia-300',
 };
 
 export const JOB_TYPE_COLOR_DEFAULT = 'text-text-dim bg-border';
