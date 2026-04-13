@@ -6,6 +6,8 @@ import { dirname } from 'node:path';
 import type { ShadowConfig } from '../config/load-config.js';
 import type {
   AuditEventRecord,
+  BondDailyCacheRecord,
+  ChronicleEntryRecord,
   ContactRecord,
   DigestRecord,
   EnrichmentCacheRecord,
@@ -25,6 +27,7 @@ import type {
   SuggestionRecord,
   SystemRecord,
   TaskRecord,
+  UnlockableRecord,
   UserProfileRecord,
 } from './models.js';
 import { applyMigrations } from './migrations.js';
@@ -37,6 +40,7 @@ import * as profileStore from './stores/profile.js';
 import * as enrichmentStore from './stores/enrichment.js';
 import * as relations from './stores/relations.js';
 import * as tasksStore from './stores/tasks.js';
+import * as chronicleStore from './stores/chronicle.js';
 
 // --- Input types ---
 
@@ -398,6 +402,26 @@ export class ShadowDatabase {
   recordLlmUsage(input: CreateLlmUsageInput): LlmUsageRecord { return tracking.recordLlmUsage(this.database, input); }
   getLlmUsage(id: string): LlmUsageRecord | null { return tracking.getLlmUsage(this.database, id); }
   getUsageSummary(period: 'day' | 'week' | 'month' = 'day'): { totalInputTokens: number; totalOutputTokens: number; totalCalls: number; byModel: Record<string, { input: number; output: number; calls: number }> } { return tracking.getUsageSummary(this.database, period); }
+
+  // --- Chronicle Entries (v49) ---
+
+  createChronicleEntry(input: { kind: 'tier_lore' | 'milestone'; tier: number | null; milestoneKey: string | null; title: string; bodyMd: string; model: string }): ChronicleEntryRecord { return chronicleStore.createChronicleEntry(this.database, input); }
+  getChronicleEntryByTier(tier: number): ChronicleEntryRecord | null { return chronicleStore.getChronicleEntryByTier(this.database, tier); }
+  getChronicleEntryByMilestone(key: string): ChronicleEntryRecord | null { return chronicleStore.getChronicleEntryByMilestone(this.database, key); }
+  listChronicleEntries(opts?: { maxTier?: number }): ChronicleEntryRecord[] { return chronicleStore.listChronicleEntries(this.database, opts); }
+
+  // --- Unlockables (v49) ---
+
+  listUnlockables(): UnlockableRecord[] { return chronicleStore.listUnlockables(this.database); }
+  listUnlockedUnlockables(): UnlockableRecord[] { return chronicleStore.listUnlockedUnlockables(this.database); }
+  getLockedUnlockablesUpToTier(tier: number): UnlockableRecord[] { return chronicleStore.getLockedUnlockablesUpToTier(this.database, tier); }
+  markUnlockableUnlocked(id: string): void { return chronicleStore.markUnlockableUnlocked(this.database, id); }
+
+  // --- Bond Daily Cache (v49) ---
+
+  getBondDailyCache(key: string): BondDailyCacheRecord | null { return chronicleStore.getBondDailyCache(this.database, key); }
+  setBondDailyCache(key: string, bodyMd: string, model: string, ttlMs: number): void { return chronicleStore.setBondDailyCache(this.database, key, bodyMd, model, ttlMs); }
+  invalidateBondDailyCache(key: string): void { return chronicleStore.invalidateBondDailyCache(this.database, key); }
 
   // --- Enrichment Cache ---
 

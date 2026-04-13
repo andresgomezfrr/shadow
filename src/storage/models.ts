@@ -85,6 +85,14 @@ export type ContactRecord = {
 
 // --- User Profile ---
 
+export type BondAxes = {
+  time: number;
+  depth: number;
+  momentum: number;
+  alignment: number;
+  autonomy: number;
+};
+
 export type UserProfileRecord = {
   id: string;
   displayName: string | null;
@@ -100,6 +108,12 @@ export type UserProfileRecord = {
   energyLevel: string | null;
   moodHint: string | null;
   moodPhrase: string | null;
+  // Bond system (v49)
+  bondAxes: BondAxes;
+  bondTier: number;
+  bondResetAt: string;
+  bondTierLastRiseAt: string | null;
+  // Legacy fields — kept through commits 1-5 for dashboard back-compat, removed in commit 6
   trustLevel: number;
   trustScore: number;
   bondLevel: number;
@@ -108,6 +122,39 @@ export type UserProfileRecord = {
   dislikes: unknown[];
   createdAt: string;
   updatedAt: string;
+};
+
+// --- Chronicle / Unlockables / Bond cache ---
+
+export type ChronicleEntryRecord = {
+  id: string;
+  kind: 'tier_lore' | 'milestone';
+  tier: number | null;
+  milestoneKey: string | null;
+  title: string;
+  bodyMd: string;
+  model: string;
+  createdAt: string;
+};
+
+export type UnlockableRecord = {
+  id: string;
+  tierRequired: number;
+  kind: string;
+  title: string;
+  description: string | null;
+  payload: Record<string, unknown>;
+  unlocked: boolean;
+  unlockedAt: string | null;
+  createdAt: string;
+};
+
+export type BondDailyCacheRecord = {
+  cacheKey: string;
+  bodyMd: string;
+  model: string;
+  generatedAt: string;
+  expiresAt: string;
 };
 
 // --- Memory ---

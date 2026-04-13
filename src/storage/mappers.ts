@@ -1,5 +1,8 @@
 import type {
   AuditEventRecord,
+  BondAxes,
+  BondDailyCacheRecord,
+  ChronicleEntryRecord,
   ContactRecord,
   DigestRecord,
   EnrichmentCacheRecord,
@@ -18,6 +21,7 @@ import type {
   SuggestionRecord,
   SystemRecord,
   TaskRecord,
+  UnlockableRecord,
   UserProfileRecord,
 } from './models.js';
 
@@ -169,6 +173,12 @@ export function mapProfile(row: unknown): UserProfileRecord {
     energyLevel: strOrNull(d.energy_level),
     moodHint: strOrNull(d.mood_hint),
     moodPhrase: strOrNull(d.mood_phrase),
+    // Bond system (v49)
+    bondAxes: jsonParse<BondAxes>(d.bond_axes_json, { time: 0, depth: 0, momentum: 0, alignment: 0, autonomy: 0 }),
+    bondTier: num(d.bond_tier),
+    bondResetAt: str(d.bond_reset_at),
+    bondTierLastRiseAt: strOrNull(d.bond_tier_last_rise_at),
+    // Legacy
     trustLevel: num(d.trust_level),
     trustScore: num(d.trust_score),
     bondLevel: num(d.bond_level),
@@ -177,6 +187,46 @@ export function mapProfile(row: unknown): UserProfileRecord {
     dislikes: jsonParse(d.dislikes_json, []),
     createdAt: str(d.created_at),
     updatedAt: str(d.updated_at),
+  };
+}
+
+export function mapChronicleEntry(row: unknown): ChronicleEntryRecord {
+  const d = r(row);
+  return {
+    id: str(d.id),
+    kind: str(d.kind) as 'tier_lore' | 'milestone',
+    tier: d.tier == null ? null : num(d.tier),
+    milestoneKey: strOrNull(d.milestone_key),
+    title: str(d.title),
+    bodyMd: str(d.body_md),
+    model: str(d.model),
+    createdAt: str(d.created_at),
+  };
+}
+
+export function mapUnlockable(row: unknown): UnlockableRecord {
+  const d = r(row);
+  return {
+    id: str(d.id),
+    tierRequired: num(d.tier_required),
+    kind: str(d.kind),
+    title: str(d.title),
+    description: strOrNull(d.description),
+    payload: jsonParse(d.payload_json, {}),
+    unlocked: num(d.unlocked) === 1,
+    unlockedAt: strOrNull(d.unlocked_at),
+    createdAt: str(d.created_at),
+  };
+}
+
+export function mapBondDailyCache(row: unknown): BondDailyCacheRecord {
+  const d = r(row);
+  return {
+    cacheKey: str(d.cache_key),
+    bodyMd: str(d.body_md),
+    model: str(d.model),
+    generatedAt: str(d.generated_at),
+    expiresAt: str(d.expires_at),
   };
 }
 

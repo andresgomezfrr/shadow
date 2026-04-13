@@ -902,6 +902,69 @@ export const migrations: Migration[] = [
       ALTER TABLE memories ADD COLUMN enforced_at INTEGER;
     `,
   },
+  {
+    version: 49,
+    name: 'bond_multi_axis_chronicle',
+    sql: `
+      -- user_profile: bond axes + tier + reset timestamp
+      ALTER TABLE user_profile ADD COLUMN bond_axes_json TEXT NOT NULL
+        DEFAULT '{"time":0,"depth":0,"momentum":0,"alignment":0,"autonomy":0}';
+      ALTER TABLE user_profile ADD COLUMN bond_tier INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE user_profile ADD COLUMN bond_reset_at TEXT NOT NULL DEFAULT (datetime('now'));
+      ALTER TABLE user_profile ADD COLUMN bond_tier_last_rise_at TEXT;
+
+      -- chronicle_entries: immutable narrative records (tier crossings + milestones)
+      CREATE TABLE IF NOT EXISTS chronicle_entries (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        tier INTEGER,
+        milestone_key TEXT,
+        title TEXT NOT NULL,
+        body_md TEXT NOT NULL,
+        model TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_chronicle_kind ON chronicle_entries(kind, created_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_chronicle_tier_unique
+        ON chronicle_entries(tier) WHERE kind = 'tier_lore';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_chronicle_milestone_unique
+        ON chronicle_entries(milestone_key) WHERE kind = 'milestone';
+
+      -- unlockables: tier-gated content slots
+      CREATE TABLE IF NOT EXISTS unlockables (
+        id TEXT PRIMARY KEY,
+        tier_required INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        unlocked INTEGER NOT NULL DEFAULT 0,
+        unlocked_at TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_unlockables_tier ON unlockables(tier_required, unlocked);
+
+      -- bond_daily_cache: 24h TTL cache for Haiku-generated daily phrases
+      CREATE TABLE IF NOT EXISTS bond_daily_cache (
+        cache_key TEXT PRIMARY KEY,
+        body_md TEXT NOT NULL,
+        model TEXT NOT NULL,
+        generated_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      );
+
+      -- Seed 8 placeholder unlockables — titles/payloads editable later
+      INSERT INTO unlockables (id, tier_required, kind, title, description, created_at) VALUES
+        ('u-01', 1, 'placeholder', '???', 'A gift for the first steps', datetime('now')),
+        ('u-02', 2, 'placeholder', '???', 'An echo to keep', datetime('now')),
+        ('u-03', 3, 'placeholder', '???', 'Something whispered', datetime('now')),
+        ('u-04', 4, 'placeholder', '???', 'A shade you can share', datetime('now')),
+        ('u-05', 5, 'placeholder', '???', 'The shadow unfolds', datetime('now')),
+        ('u-06', 6, 'placeholder', '???', 'A presence of its own', datetime('now')),
+        ('u-07', 7, 'placeholder', '???', 'A herald''s voice', datetime('now')),
+        ('u-08', 8, 'placeholder', '???', 'Kindred, complete', datetime('now'));
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {
