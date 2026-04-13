@@ -28,8 +28,8 @@ export function GuideMcpTools() {
         <span className="inline-flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded text-[10px] bg-orange/15 text-orange">write</span> {totalTools - readOnly} write tools</span>
       </p>
       <p className="text-xs text-text-muted mb-4 bg-bg rounded-lg px-3 py-2">
-        <strong className="text-text-dim">Note:</strong> Trust levels are no longer capability gates &mdash; all tools are available regardless of trust level.
-        The trust system is now used for gamification and narrative only. The access badges below reflect the original design intent (read vs write).
+        <strong className="text-text-dim">Note:</strong> All tools are available regardless of bond tier &mdash; the bond system in Shadow is used for narrative and
+        gamification only. The access badges below reflect whether a tool is read-only or mutates state.
       </p>
 
       <div className="space-y-2">
@@ -73,7 +73,7 @@ function CategorySection({ category, isOpen, onToggle }: { category: McpCategory
                     {tool.readOnly ? (
                       <span className="px-1.5 py-0.5 rounded text-[10px] bg-green/15 text-green">read</span>
                     ) : (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-orange/15 text-orange">L{tool.trust}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-orange/15 text-orange">write</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-text-dim text-xs">{tool.description}</td>

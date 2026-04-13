@@ -92,7 +92,7 @@ const FEATURES: [string, string, string][] = [
   ['\uD83E\uDDE0', 'Persistent Memory', '5-layer memory system with automatic decay and consolidation. Learns from your work.'],
   ['\uD83D\uDCA1', 'Proactive Suggestions', 'LLM-powered suggestions based on patterns, risks, and opportunities in your code.'],
   ['\uD83D\uDC41\uFE0F', 'Observations', 'Automated insights from your repos — risks, improvements, patterns, opportunities.'],
-  ['\uD83D\uDD12', 'Trust System', '5-level trust (observer \u2192 shadow) that unlocks capabilities as you build rapport.'],
+  ['\uD83C\uDF12', 'Bond System', '8-tier bond (observer \u2192 kindred) tracked on 5 axes — narrative only, see the Chronicle page.'],
   ['\uD83C\uDFAF', 'Focus Mode', 'Silence all proactive notifications when you need deep concentration.'],
   ['\uD83D\uDCCA', 'Dashboard', 'Web UI at localhost:3700 to browse memories, suggestions, observations, and more.'],
   ['\uD83D\uDCDD', 'Digests', 'Generate daily standups, weekly 1:1 reports, or quarterly brag docs from your activity.'],

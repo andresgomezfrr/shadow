@@ -83,12 +83,12 @@ in SQL.
 |-------|---------|-------------|
 | `schema_migrations` | Migration versioning | version, name, applied_at |
 | `repos` | Watched repositories | path (UNIQUE), language_hint, test/lint/build commands |
-| `user_profile` | Single-row user state | trust_level, trust_score, bond_level, preferences (JSON) |
+| `user_profile` | Single-row user state | bond_axes_json, bond_tier (1-8), bond_reset_at, preferences (JSON). Legacy trust_level/trust_score/bond_level kept but unused since v49 |
 | `memories` | Layered memory system | layer, scope, kind, FTS-indexed title+body |
 | `observations` | Raw signals from repo watching | kind, severity, processed flag |
-| `suggestions` | Proactive recommendations | impact/confidence/risk scores, required_trust_level |
+| `suggestions` | Proactive recommendations | impact/confidence/risk scores (required_trust_level legacy, unused since v49) |
 | `heartbeats` | Autonomous activity log | phase, activity, duration_ms |
-| `interactions` | User conversation log | sentiment, topics (JSON), trust_delta |
+| `interactions` | User conversation log | sentiment, topics (JSON) (trust_delta legacy, unused since v49) |
 | `event_queue` | Decoupled notifications | kind, priority, delivered flag |
 | `runs` | Task executions via AI backend | status, prompt, result_summary_md |
 | `audit_events` | Append-only action trail | actor, interface, action, detail (JSON) |
@@ -123,7 +123,7 @@ handler, closes database in `finally` block.
 | Command | Description |
 |---------|------------|
 | `shadow init` | Bootstrap ~/.shadow, create DB, ensure profile |
-| `shadow status` | Trust level, repos count, pending suggestions/events |
+| `shadow status` | Bond tier, repos count, pending suggestions/events |
 | `shadow doctor` | Node version, platform, config values |
 | `shadow repo add <path>` | Register a repo to watch |
 | `shadow repo list` | List watched repos |
@@ -136,7 +136,8 @@ handler, closes database in `finally` block.
 | `shadow suggest accept <id>` | Accept suggestion |
 | `shadow suggest dismiss <id>` | Dismiss suggestion (with optional --note) |
 | `shadow profile show` | Show full user profile |
-| `shadow profile trust` | Show trust level and score |
+| `shadow profile bond` | Show bond tier and axes |
+| `shadow profile bond-reset --confirm` | Reset bond state to tier 1 (memories preserved) |
 | `shadow events list` | Show pending events |
 | `shadow events ack` | Acknowledge all pending events |
 
@@ -147,11 +148,11 @@ All commands support `--json` flag for structured output.
 ```bash
 npm run typecheck          # Compiles without errors
 npm run dev -- init        # Creates ~/.shadow with DB and directories
-npm run dev -- status      # Shows trust level 1, 0 repos, 0 suggestions
+npm run dev -- status      # Shows bond tier 1, 0 repos, 0 suggestions
 npm run dev -- doctor      # Shows Node version, config values
 npm run dev -- repo add .  # Registers current directory
 npm run dev -- repo list   # Shows registered repos
 npm run dev -- memory teach "test" --body "test memory"
 npm run dev -- memory list # Shows the taught memory
-npm run dev -- profile trust  # Shows trust level 1, score 0
+npm run dev -- profile bond   # Shows bond tier 1, axes all 0
 ```

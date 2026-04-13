@@ -104,7 +104,8 @@ shadow/
 │   │   ├── project-detection.ts  # Active project detection + momentum scoring
 │   │   └── enrichment.ts         # 2-phase MCP enrichment (plan + execute)
 │   ├── profile/
-│   │   ├── trust.ts              # 5 trust levels, 10+ trust delta events
+│   │   ├── bond.ts              # 5-axis bond model + 8 tiers + applyBondDelta + resetBondState
+│   │   ├── unlockables.ts       # evaluateUnlocks engine — marks unlocked + emits events on tier rise
 │   │   └── user-profile.ts       # Work hours, commit patterns, energy/mood detection
 │   ├── personality/
 │   │   └── loader.ts             # SOUL.md personality loader (shared)
@@ -182,7 +183,7 @@ src/web/dashboard/
 │   │   ├── layout/
 │   │   │   ├── AppShell.tsx      # Sidebar + Topbar + content area
 │   │   │   ├── Sidebar.tsx       # Navigation (emoji icons + labels, grouped sections)
-│   │   │   └── Topbar.tsx        # Trust badge, mood, refresh timer
+│   │   │   └── Topbar.tsx        # Bond tier badge, mood, refresh timer
 │   │   ├── common/               # Badge, Card, EmptyState, FilterTabs, MetricCard, Pagination,
 │   │   │                         # Markdown, ScoreBar, RunPipeline, ConfidenceIndicator, Toggle,
 │   │   │                         # ThumbsFeedback, CorrectionPanel, SearchInput, SettingsField
@@ -209,7 +210,8 @@ src/web/dashboard/
 | Route | Page | Purpose |
 |-------|------|---------|
 | `/morning` | Morning | Daily brief: active projects, enrichment, metrics, runs, memories, observations, suggestions |
-| `/profile` | Profile | Settings sections: identity, behavior, models, soul, thoughts, enrichment, trust, system config |
+| `/profile` | Profile | Settings sections: identity, behavior, models, soul, thoughts, enrichment, autonomy, system config |
+| `/chronicle` | Chronicle | Bond system page: tier badge + lore, 5-axis radar, 8-tier path (silhouettes for unreached), next-step hint, timeline of crossings + milestones, unlocks grid |
 | `/memories` | Memories | Search + layer filter (URL-persisted) + pagination + expandable list |
 | `/suggestions` | Suggestions | Filter tabs (status + kind), pagination, accept/dismiss with reason, scores, bulk actions |
 | `/observations` | Observations | Filter by status/severity, pagination, votes, ack/resolve/reopen, deep links |
@@ -234,7 +236,10 @@ src/web/dashboard/
 |-------|---------|-------------|
 | `repos` | Tracked repos | name, path (unique), default_branch, test/lint/build commands, last_fetched_at |
 | `projects` | Groups of repos+systems | kind (long-term/sprint/task), status, repo_ids_json, system_ids_json |
-| `user_profile` | Single-row profile | trust_level (1-5), trust_score (0-100), proactivity_level (1-10), personality_level (1-5), focus_mode |
+| `user_profile` | Single-row profile | bond_axes_json, bond_tier (1-8), bond_reset_at, bond_tier_last_rise_at, proactivity_level (1-10), focus_mode. Legacy trust_level/trust_score/bond_level columns kept but unused (v50 cleanup) |
+| `chronicle_entries` | Immutable narrative (v49) | kind ('tier_lore'\|'milestone'), tier (UNIQUE per tier_lore), milestone_key (UNIQUE per milestone), body_md, model |
+| `unlockables` | Tier-gated content slots (v49) | tier_required, kind, title, description, payload_json, unlocked, unlocked_at |
+| `bond_daily_cache` | 24h TTL cache (v49) | cache_key ('voice_of_shadow'\|'next_step_hint'), body_md, model, expires_at |
 | `memories` | Layered memory | layer, scope, kind, entities_json, memory_type (episodic/semantic), FTS5+vector indexed |
 | `observations` | LLM-derived facts | source_kind, kind (incl. cross_project), entities_json, repo_ids_json, votes, severity |
 | `suggestions` | LLM proposals | impact/confidence/risk scores, status, entities_json, repo_ids_json |
@@ -286,19 +291,49 @@ Tools split across `src/mcp/tools/`: status.ts, memory.ts, observations.ts, sugg
 ### Write (40)
 `shadow_repo_add`, `shadow_repo_update`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_update`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_correct`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_observe`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`, `shadow_relation_add`, `shadow_relation_remove`, `shadow_alert_ack`, `shadow_alert_resolve`, `shadow_run_archive`, `shadow_run_create`, `shadow_digest`, `shadow_enrichment_write`, `shadow_task_create`, `shadow_task_update`, `shadow_task_close`, `shadow_task_archive`, `shadow_task_remove`, `shadow_task_execute`
 
-## Trust System
+## Bond System (v49)
 
-Trust levels are **narrative/gamification only** — no capability gating. All MCP tools are available regardless of trust level.
+The bond system replaced the single-score trust model in v49. It tracks the relationship between Andrés and Shadow across **5 axes** and **8 tiers**, dual-gated by time + quality, monotonic (never decreases). **Narrative only** — no capability gating. All MCP tools are available regardless of bond tier.
 
-| Level | Score | Name |
-|-------|-------|------|
-| 1 | 0-15 | observer |
-| 2 | 15-35 | advisor |
-| 3 | 35-60 | assistant |
-| 4 | 60-85 | partner |
-| 5 | 85-100 | shadow |
+### 5 axes (all 0-100)
 
-Trust score grows with usage: check_in (+0.3), memory_taught (+1.0), heartbeat_completed (+0.5), suggestion_accepted (+2.0).
+| Axis | Source | Curve |
+|------|--------|-------|
+| **time** | `now - bond_reset_at` | sqrt over 1 year |
+| **depth** | memories kind∈{taught, correction, knowledge_summary, soul_reflection} since reset | saturating 1−e^(−n/60) |
+| **momentum** | feedback('accept','dismiss') + runs('done') + observations('done','acknowledged') last 28 days | saturating 1−e^(−n/18) |
+| **alignment** | 60% accept/dismiss rate + 30% corrections + 10% soul reflections | weighted |
+| **autonomy** | runs with parent_run_id AND status='done' AND outcome∈{executed, executed_manual} | saturating 1−e^(−n/10) |
+
+`time` is a gate-only axis — it does not count toward the quality floor average.
+
+### 8 tiers (dual-gated: min days + quality floor on 4 dynamic axes)
+
+| Tier | Name | Min days | Quality floor |
+|------|------|----------|---------------|
+| 1 | observer | 0 | 0 |
+| 2 | echo | 3 | 15 |
+| 3 | whisper | 7 | 28 |
+| 4 | shade | 14 | 40 |
+| 5 | shadow | 30 | 52 |
+| 6 | wraith | 60 | 64 |
+| 7 | herald | 120 | 76 |
+| 8 | kindred | 240 | 86 |
+
+`applyBondDelta(db, eventKind)` is sync: recomputes all 5 axes from DB, persists, evaluates tier. On tier rise it fires three fire-and-forget hooks: `triggerChronicleLore` (Opus, immutable tier lore), event_queue entry `bond_tier_rise`, and `evaluateUnlocks` (marks eligible unlockables + emits `unlock` events). Event kind is informational only — axes are data-driven.
+
+`resetBondState(db)` wipes bond state transactionally (axes to 0, tier to 1, chronicle_entries/bond_daily_cache cleared, unlockables relocked) but preserves memories, suggestions, observations, runs, interactions, audit events, and soul. Triggered automatically on first daemon boot via `~/.shadow/bond-reset.v49.done` sentinel; also available as `shadow profile bond-reset --confirm`.
+
+### Chronicle
+
+A new `/chronicle` page (sidebar 🌒) visualizes the bond: radar chart of 5 axes, 8-tier path (future tiers are silhouettes until reached), next-step requirements, immutable timeline of tier crossings + milestones, and an unlocks grid (8 placeholder slots seeded in v49, editable later). Four LLM calls drive the narrative:
+
+- **Tier-cross lore** (Opus, immutable, `chronicle_entries.kind='tier_lore'`) — one per tier crossed, 2-3 sentences authored by Shadow's voice
+- **Milestone commentary** (Opus, immutable, `chronicle_entries.kind='milestone'`) — memories:100/200/…, first_correction, first_auto_execute
+- **Voice of Shadow** (Haiku, 24h cache in `bond_daily_cache`) — one-line ambient phrase, shown in Chronicle header + Morning page
+- **Next-step hint** (Haiku, 24h cache) — personalized behavior suggestion for the next tier
+
+Config: `models.chronicleLore` (default `opus`), `models.chronicleDaily` (default `haiku`), env vars `SHADOW_MODEL_CHRONICLE_LORE` / `SHADOW_MODEL_CHRONICLE_DAILY`.
 
 ## Memory Layers
 
@@ -322,7 +357,7 @@ All memory is **on-demand** — never auto-loaded into prompts. FTS5 search find
 | Stop | command (async) | Claude responses (full text) → conversations.jsonl |
 | StopFailure | command (async) | API errors → events.jsonl |
 | SubagentStart | command (async) | Subagent spawns → events.jsonl |
-| StatusLine | command | Shows emoji status bar: activity + trust badge + suggestions + heartbeat countdown |
+| StatusLine | command | Shows emoji status bar: activity + bond tier badge + suggestions + heartbeat countdown |
 
 All capture hooks check `$SHADOW_JOB` env var and exit early for daemon LLM calls (prevents self-traffic contamination).
 
@@ -343,7 +378,7 @@ All capture hooks check `$SHADOW_JOB` env var and exit early for daemon LLM call
 | `{•_•}🔄` | pink | Syncing (git remote) |
 | `📋 name` | — | Active project indicator |
 
-Trust badges: 🔍 observer, 💬 advisor, 🤝 assistant, ⚡️ partner, 👾 shadow
+Bond badges (8 tiers): 🔍 observer, 💭 echo, 🤫 whisper, 🌫 shade, 👾 shadow, 👻 wraith, 📯 herald, 🌌 kindred
 
 ## CLI Commands
 
@@ -406,7 +441,7 @@ SHADOW_DATA_DIR=~/.shadow        # Data directory
 
 ## Key Patterns
 
-**Adding a new MCP tool**: Add to the appropriate file in `src/mcp/tools/`. Follow existing pattern: inputSchema + async handler. Use `trustGate(level)` for write tools. Register in `src/mcp/server.ts` tool assembly.
+**Adding a new MCP tool**: Add to the appropriate file in `src/mcp/tools/`. Follow existing pattern: inputSchema + async handler. Trust gates removed — all tools available regardless of bond tier. Register in `src/mcp/server.ts` tool assembly.
 
 **Adding a new CLI command**: Create or extend the appropriate `src/cli/cmd-*.ts` module. Export a register function, call it from `src/cli.ts`. Use `withDb()` wrapper for DB access.
 
@@ -466,7 +501,7 @@ Source: `sourceKind: 'llm'` (not `'repo'`)
 
 ## Current State (as of 2026-04-11)
 
-- **67 MCP tools** (27 read + 40 write, no trust gating) — split across `src/mcp/tools/` (8 modules)
+- **67 MCP tools** (27 read + 40 write, no bond gating) — split across `src/mcp/tools/` (8 modules)
 - **6 hooks** (SessionStart, PostToolUse, UserPromptSubmit, Stop, StopFailure, SubagentStart) — SHADOW_JOB env filter prevents daemon self-traffic
 - **15 job types** — heartbeat, suggest, suggest-deep, suggest-project, consolidate, reflect, remote-sync, context-enrich, repo-profile, project-profile, digest-daily, digest-weekly, digest-brag, auto-plan, auto-execute. Parallel execution via JobQueue (maxConcurrentJobs=3 LLM + IO unlimited). Per-job timeout support (default 15min, auto-plan 30min, auto-execute 60min).
 - **Ghost mascot** `{•‿•}` in status line — 15 states × 3 variants, 9 ANSI colors. Thoughts system generates LLM status line phrases.
@@ -527,7 +562,7 @@ All pending improvements, features, and known issues are tracked in [`BACKLOG.md
 - **Tasks** — First-class work containers (`src/mcp/tools/tasks.ts`, `src/storage/stores/execution.ts`). Link to suggestions via `suggestion_id` (created from accept "plan"), to projects via `project_id`, to repos via `repo_ids_json`. Runs link back to tasks via `task_id`. External refs (Jira, GitHub) and session resume support.
 - **Run outcome** — When a run reaches `done`, the `outcome` field records how it got there (e.g., executed, executed_manual, closed). This replaces the old status-as-outcome pattern where executed/executed_manual/closed were separate statuses.
 - **Autonomy system** — `src/autonomy/rules.ts` defines Zod schemas for plan/execute rules. `src/daemon/handlers/autonomy.ts` implements both job handlers. Auto-plan: filters open suggestions by rules (DB-level, 0 tokens), revalidates each against code (LLM), auto-dismisses outdated, accepts valid ones as plan runs. Auto-execute: filters planned runs by rules + hardcoded confidence gate (high + 0 doubts), creates child execution runs in worktree. Config stored in `user_profile.preferences_json.autonomy`. Per-repo opt-in, OFF by default.
-- **Trust gates removed** — `trustGate()` removed from all MCP tool handlers (`src/mcp/server.ts`, `src/mcp/tools/types.ts`). Trust score and deltas still tracked for gamification/narrative but no longer gate capabilities. All tools available regardless of trust level.
+- **Bond system (v49)** — Replaced single-score trust with 5-axis bond + 8 tiers + Chronicle page. Dual-gated (time + quality floor), monotonic. Chronicle writes immutable tier lore (Opus) + milestone commentaries (Opus) + daily Voice of Shadow (Haiku, 24h cache) + next-step hint (Haiku, 24h cache). Reset on first boot via `~/.shadow/bond-reset.v49.done` sentinel. All MCP tools remain available regardless of bond tier — narrative only, no capability gating.
 - **Per-job timeout** — `JobHandlerEntry` now supports optional `timeoutMs` field. JobQueue uses per-job timeout when set, falls back to global 15min default. Auto-plan: 30min, auto-execute: 60min.
 - **Suggestion effort field** — `effort` (small/medium/large) now persisted in DB (migration v47). Generated by LLM in suggest pipeline, used by autonomy rules for filtering.
 - **Confidence eval model** — Changed from hardcoded Sonnet to `config.models.runner` (default Opus). Critical gate decision for autonomous execution warrants highest quality model.

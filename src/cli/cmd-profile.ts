@@ -136,7 +136,7 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
     .action(() => withDb((db) => db.ensureProfile()));
 
   profile
-    .command('trust')
+    .command('bond')
     .description('show bond tier and axes')
     .action(() =>
       withDb((db) => {
@@ -145,7 +145,29 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
           bondTier: p.bondTier,
           bondAxes: p.bondAxes,
           bondResetAt: p.bondResetAt,
+          bondTierLastRiseAt: p.bondTierLastRiseAt,
           totalInteractions: p.totalInteractions,
+        };
+      }),
+    );
+
+  profile
+    .command('bond-reset')
+    .description('reset bond state to tier 1 (memories/suggestions/runs preserved)')
+    .option('--confirm', 'required — this will zero your bond axes and clear chronicle entries')
+    .action((opts: { confirm?: boolean }) =>
+      withDb(async (db) => {
+        if (!opts.confirm) {
+          return {
+            ok: false,
+            error: 'Refusing to run without --confirm. This zeroes bond state.',
+          };
+        }
+        const { resetBondState } = await import('../profile/bond.js');
+        resetBondState(db);
+        return {
+          ok: true,
+          message: 'Bond reset to tier 1 (observer). Memories and history preserved.',
         };
       }),
     );

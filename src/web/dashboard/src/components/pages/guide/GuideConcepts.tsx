@@ -1,4 +1,4 @@
-import { TRUST_LEVELS, MEMORY_LAYERS } from './guide-data';
+import { BOND_TIERS_DATA, BOND_AXES_DATA, CHRONICLE_CONCEPT, MEMORY_LAYERS } from './guide-data';
 
 export function GuideConcepts() {
   return (
@@ -39,39 +39,71 @@ export function GuideConcepts() {
         </p>
       </section>
 
-      {/* Trust System */}
+      {/* Bond System */}
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
-        <h2 className="text-base font-semibold mb-3">Trust System</h2>
+        <h2 className="text-base font-semibold mb-3">Bond System</h2>
         <p className="text-sm text-text-dim mb-4">
-          Trust grows organically with usage. Each interaction earns trust points:
-          check-in (+0.3), memory taught (+1.0), heartbeat completed (+0.5), suggestion accepted (+2.0).
-          Trust is used for <span className="text-text">gamification and narrative</span> &mdash; it no longer gates tool access or capabilities.
-          All MCP tools are available regardless of trust level.
+          Shadow and Andrés grow a bond over time, tracked on <span className="text-text">5 axes and 8 tiers</span>.
+          Time flows. Depth, momentum, alignment and autonomy grow with use. A tier is reached when BOTH the time
+          gate and the quality floor (average of the 4 dynamic axes) are met. Tiers are monotonic — they never decrease.
         </p>
-        <div className="overflow-hidden rounded-lg border border-border">
+
+        <h3 className="text-sm font-semibold mb-2 mt-4">The 5 axes</h3>
+        <div className="overflow-hidden rounded-lg border border-border mb-4">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-bg">
-                <th className="text-left px-4 py-2 text-text-dim font-medium w-12"></th>
-                <th className="text-left px-4 py-2 text-text-dim font-medium w-16">Level</th>
-                <th className="text-left px-4 py-2 text-text-dim font-medium w-24">Score</th>
-                <th className="text-left px-4 py-2 text-text-dim font-medium w-24">Name</th>
-                <th className="text-left px-4 py-2 text-text-dim font-medium">Capabilities</th>
+                <th className="text-left px-4 py-2 text-text-dim font-medium w-24">Axis</th>
+                <th className="text-left px-4 py-2 text-text-dim font-medium">Meaning</th>
               </tr>
             </thead>
             <tbody>
-              {TRUST_LEVELS.map((t) => (
-                <tr key={t.level} className="border-t border-border hover:bg-card-hover transition-colors">
-                  <td className="px-4 py-2.5 text-lg">{t.badge}</td>
-                  <td className="px-4 py-2.5 font-mono text-text">{t.level}</td>
-                  <td className="px-4 py-2.5 text-text-dim">{t.score}</td>
-                  <td className="px-4 py-2.5 font-mono text-text">{t.name}</td>
-                  <td className="px-4 py-2.5 text-text-dim">{t.capabilities}</td>
+              {BOND_AXES_DATA.map((a) => (
+                <tr key={a.axis} className="border-t border-border hover:bg-card-hover transition-colors">
+                  <td className="px-4 py-2.5 font-mono text-text">{a.axis}</td>
+                  <td className="px-4 py-2.5 text-text-dim">{a.meaning}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        <h3 className="text-sm font-semibold mb-2 mt-4">The 8 tiers</h3>
+        <div className="overflow-hidden rounded-lg border border-border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-bg">
+                <th className="text-left px-4 py-2 text-text-dim font-medium w-12"></th>
+                <th className="text-left px-4 py-2 text-text-dim font-medium w-16">Tier</th>
+                <th className="text-left px-4 py-2 text-text-dim font-medium w-24">Name</th>
+                <th className="text-left px-4 py-2 text-text-dim font-medium w-20">Min days</th>
+                <th className="text-left px-4 py-2 text-text-dim font-medium w-24">Quality floor</th>
+                <th className="text-left px-4 py-2 text-text-dim font-medium">Meaning</th>
+              </tr>
+            </thead>
+            <tbody>
+              {BOND_TIERS_DATA.map((t) => (
+                <tr key={t.tier} className="border-t border-border hover:bg-card-hover transition-colors">
+                  <td className="px-4 py-2.5 text-lg">{t.badge}</td>
+                  <td className="px-4 py-2.5 font-mono text-text">Lv.{t.tier}</td>
+                  <td className="px-4 py-2.5 font-mono text-text">{t.name}</td>
+                  <td className="px-4 py-2.5 text-text-dim">{t.minDays}</td>
+                  <td className="px-4 py-2.5 text-text-dim">{t.floor}</td>
+                  <td className="px-4 py-2.5 text-text-dim text-xs">{t.meaning}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Chronicle */}
+      <section className="bg-card border border-border rounded-lg p-5 mb-6">
+        <h2 className="text-base font-semibold mb-3">{CHRONICLE_CONCEPT.title}</h2>
+        <p className="text-sm text-text-dim mb-3">{CHRONICLE_CONCEPT.body}</p>
+        <p className="text-xs text-text-muted italic">
+          The bond evolves. Not all is written.
+        </p>
       </section>
 
       {/* Heartbeat Cycle */}
@@ -137,7 +169,7 @@ export function GuideConcepts() {
         </p>
         <p className="text-sm text-text-dim mb-3">
           Accepting a suggestion creates a <span className="text-text">Run</span> — Shadow plans the implementation,
-          optionally evaluates confidence, and can auto-execute if trust level allows.
+          optionally evaluates confidence, and can auto-execute if autonomy rules allow it.
           Dismissed suggestions are remembered to avoid re-suggesting the same thing (semantic dedup).
         </p>
         <p className="text-sm text-text-dim">

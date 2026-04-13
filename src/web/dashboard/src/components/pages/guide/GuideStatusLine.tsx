@@ -11,7 +11,7 @@ export function GuideStatusLine() {
 {•_•}\uD83D\uDD04 syncing | \uD83D\uDE0A\u26A1 \u26A1 | \u2665 15m`}
         </pre>
         <p className="text-sm text-text-dim">
-          <span className="text-text">Ghost mascot</span> + <span className="text-text">state</span> | <span className="text-text">mood + energy + trust</span> | <span className="text-text">active project</span> | <span className="text-text">notifications</span> | <span className="text-text">heartbeat countdown</span>
+          <span className="text-text">Ghost mascot</span> + <span className="text-text">state</span> | <span className="text-text">mood + energy + bond</span> | <span className="text-text">active project</span> | <span className="text-text">notifications</span> | <span className="text-text">heartbeat countdown</span>
         </p>
       </section>
 
@@ -56,16 +56,19 @@ export function GuideStatusLine() {
         ]} />
       </section>
 
-      {/* Trust Badge */}
+      {/* Bond Badge */}
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
-        <h2 className="text-base font-semibold mb-4">Trust Badge</h2>
-        <p className="text-sm text-text-dim mb-3">Your trust level with Shadow. Grows with usage. Trust is narrative/gamification only &mdash; it no longer gates tool access.</p>
+        <h2 className="text-base font-semibold mb-4">Bond Badge</h2>
+        <p className="text-sm text-text-dim mb-3">Your current bond tier with Shadow. Dual-gated by time + quality, monotonic (never decreases). Narrative only — does not gate tool access.</p>
         <Table rows={[
-          ['\uD83D\uDD0D', 'observer (0-15)', 'Read-only. Teach memories, view observations.'],
-          ['\uD83D\uDCAC', 'advisor (15-35)', 'Generate suggestions. Accept \u2192 run plans.'],
-          ['\uD83E\uDD1D', 'assistant (35-60)', 'Execute tasks. Pre-loaded CLI sessions.'],
-          ['\u26A1\uFE0F', 'partner (60-85)', 'Autonomous execution with review. Worktrees.'],
-          ['\uD83D\uDC7E', 'shadow (85-100)', 'Full autonomy. Branch, test, PR.'],
+          ['\uD83D\uDD0D', 'observer (Lv.1)', 'Just arrived. Shadow watches from a distance.'],
+          ['\uD83D\uDCAD', 'echo (Lv.2)',     '3d+. Starts to reverberate your patterns.'],
+          ['\uD83E\uDD2B', 'whisper (Lv.3)',  '7d+. Whispering insights, voice getting close.'],
+          ['\uD83C\uDF2B', 'shade (Lv.4)',    '14d+. Subtle presence, settling in.'],
+          ['\uD83D\uDC7E', 'shadow (Lv.5)',   '30d+. Full presence — the project name fulfilled.'],
+          ['\uD83D\uDC7B', 'wraith (Lv.6)',   '60d+. Operates on its own for you.'],
+          ['\uD83D\uDCEF', 'herald (Lv.7)',   '120d+. Anticipates your ideas, speaks with your voice.'],
+          ['\uD83C\uDF0C', 'kindred (Lv.8)',  '240d+. Merged — same soul, complete bond.'],
         ]} />
       </section>
 

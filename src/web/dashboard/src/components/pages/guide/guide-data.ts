@@ -16,7 +16,7 @@ export const CLI_GROUPS: CliGroup[] = [
     description: 'Setup, status, and daily use',
     commands: [
       { command: 'shadow init', description: 'Bootstrap the global shadow home for this user (~/.shadow, hooks, launchd, soul)' },
-      { command: 'shadow status', description: 'Show current shadow state summary (trust, repos, suggestions, heartbeat)' },
+      { command: 'shadow status', description: 'Show current shadow state summary (bond, repos, suggestions, heartbeat)' },
       { command: 'shadow doctor', description: 'Check local environment (Node, Claude CLI, daemon, DB, hooks)' },
       { command: 'shadow teach', description: 'Open interactive teaching session with Claude CLI' },
       { command: 'shadow ask', args: '<question...>', description: 'Ask Shadow a question from any terminal (one-shot, uses Claude CLI)' },
@@ -98,7 +98,8 @@ export const CLI_GROUPS: CliGroup[] = [
     description: 'Manage user profile and focus mode',
     commands: [
       { command: 'shadow profile show', description: 'Show current user profile' },
-      { command: 'shadow profile trust', description: 'Show trust level and score' },
+      { command: 'shadow profile bond', description: 'Show bond tier and axes' },
+      { command: 'shadow profile bond-reset --confirm', description: 'Reset bond state to tier 1 (memories/suggestions/runs preserved)' },
       { command: 'shadow profile set', args: '<key> <value>', description: 'Set a profile field (proactivityLevel, timezone, displayName)' },
       { command: 'shadow profile focus', args: '[duration]', description: 'Enter focus mode (proactivity -> 1). Optional: "2h", "30m"' },
       { command: 'shadow profile available', description: 'Exit focus mode, restore previous proactivity level' },
@@ -152,7 +153,7 @@ export const MCP_CATEGORIES: McpCategory[] = [
     name: 'Status & Context',
     tools: [
       { name: 'shadow_check_in', description: 'Get personality, mood, context, and pending updates. Call at conversation start.', trust: 0, readOnly: true },
-      { name: 'shadow_status', description: 'Summary of trust level, repos, suggestions, events, and LLM usage.', trust: 0, readOnly: true },
+      { name: 'shadow_status', description: 'Summary of bond tier, repos, suggestions, events, and LLM usage.', trust: 0, readOnly: true },
       { name: 'shadow_profile', description: 'Returns the current user profile.', trust: 0, readOnly: true },
       { name: 'shadow_soul', description: "Read Shadow's current soul reflection.", trust: 0, readOnly: true },
       { name: 'shadow_daily_summary', description: "Comprehensive summary of today's engineering activity.", trust: 0, readOnly: true },
@@ -297,6 +298,8 @@ export const CONFIG_MODELS: ConfigVar[] = [
   { envVar: 'SHADOW_MODEL_CONSOLIDATE', description: 'Model for memory consolidation', defaultVal: 'sonnet' },
   { envVar: 'SHADOW_MODEL_RUNNER', description: 'Model for task execution', defaultVal: 'opus' },
   { envVar: 'SHADOW_MODEL_THOUGHT', description: 'Model for ambient thoughts', defaultVal: 'haiku' },
+  { envVar: 'SHADOW_MODEL_CHRONICLE_LORE', description: 'Model for tier-cross + milestone lore (immutable narrative)', defaultVal: 'opus' },
+  { envVar: 'SHADOW_MODEL_CHRONICLE_DAILY', description: 'Model for Voice of Shadow + next-step hint (cached 24h)', defaultVal: 'haiku' },
 ];
 
 export const CONFIG_EFFORTS: ConfigVar[] = [
@@ -317,15 +320,31 @@ export const CONFIG_ADVANCED: ConfigVar[] = [
   { envVar: 'SHADOW_ENRICHMENT_INTERVAL_MS', description: 'Enrichment cycle interval', defaultVal: '7200000 (2h)' },
 ];
 
-// ── Trust Levels ───────────────────────────────────────
+// ── Bond Tiers (v49) ───────────────────────────────────
 
-export const TRUST_LEVELS = [
-  { level: 1, score: '0-15', name: 'observer', badge: '\uD83D\uDD0D', capabilities: 'Read-only. Teach memories, view observations.' },
-  { level: 2, score: '15-35', name: 'advisor', badge: '\uD83D\uDCAC', capabilities: 'Generate suggestions. Accept creates run plans.' },
-  { level: 3, score: '35-60', name: 'assistant', badge: '\uD83E\uDD1D', capabilities: 'Execute tasks. Pre-loaded CLI sessions.' },
-  { level: 4, score: '60-85', name: 'partner', badge: '\u26A1\uFE0F', capabilities: 'Autonomous execution with review. Worktrees.' },
-  { level: 5, score: '85-100', name: 'shadow', badge: '\uD83D\uDC7E', capabilities: 'Full autonomy. Branch, test, PR.' },
+export const BOND_TIERS_DATA = [
+  { tier: 1, minDays: 0,   floor: 0,  badge: '\uD83D\uDD0D', name: 'observer', meaning: 'Watching from a distance. Just arrived.' },
+  { tier: 2, minDays: 3,   floor: 15, badge: '\uD83D\uDCAD', name: 'echo',     meaning: 'Starts to reverberate your patterns.' },
+  { tier: 3, minDays: 7,   floor: 28, badge: '\uD83E\uDD2B', name: 'whisper',  meaning: 'Whispering insights, voice getting close.' },
+  { tier: 4, minDays: 14,  floor: 40, badge: '\uD83C\uDF2B',  name: 'shade',    meaning: 'Subtle presence, settling in.' },
+  { tier: 5, minDays: 30,  floor: 52, badge: '\uD83D\uDC7E', name: 'shadow',   meaning: 'Full presence. The project name fulfilled.' },
+  { tier: 6, minDays: 60,  floor: 64, badge: '\uD83D\uDC7B', name: 'wraith',   meaning: 'The shadow operates on its own for you.' },
+  { tier: 7, minDays: 120, floor: 76, badge: '\uD83D\uDCEF', name: 'herald',   meaning: 'Anticipates your ideas, speaks with your voice.' },
+  { tier: 8, minDays: 240, floor: 86, badge: '\uD83C\uDF0C', name: 'kindred',  meaning: 'Merged — same soul, complete bond.' },
 ];
+
+export const BOND_AXES_DATA = [
+  { axis: 'time',      meaning: 'Time together since last reset (sqrt curve over 1 year)' },
+  { axis: 'depth',     meaning: 'Knowledge accumulated — memories taught, corrections, soul reflections' },
+  { axis: 'momentum',  meaning: 'Recent meaningful activity — last 28 days (21 + 7 grace) of work together' },
+  { axis: 'alignment', meaning: 'How much Shadow thinks like you — corrections + accept/dismiss ratio' },
+  { axis: 'autonomy',  meaning: 'Successful self-directed work — auto-plan + auto-execute runs' },
+];
+
+export const CHRONICLE_CONCEPT = {
+  title: 'Chronicle',
+  body: 'A living record of the relationship. Every tier crossing and every milestone writes a short prose entry authored by Shadow in the voice of its current soul. Entries are immutable once written. The Chronicle page shows the current radar, the 8-tier path (future tiers are silhouettes until reached), the next step, and an unlocks grid that reveals new content as you progress.',
+};
 
 // ── Memory Layers ──────────────────────────────────────
 
