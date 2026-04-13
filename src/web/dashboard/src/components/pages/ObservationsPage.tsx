@@ -46,6 +46,7 @@ export function ObservationsPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [prefetched, setPrefetched] = useState<Observation | null>(null);
+  const [headerVideoEnded, setHeaderVideoEnded] = useState(false);
   const { pulseId, scrollRef, highlightId } = useHighlight(expanded, setExpanded);
 
   // Prefetch highlighted observation if it's not in the current list
@@ -81,7 +82,19 @@ export function ObservationsPage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-2 flex-wrap">
-        <img src="/ghost/observations-header.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+        {headerVideoEnded ? (
+          <img src="/ghost/observations-header.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+        ) : (
+          <video
+            autoPlay
+            muted
+            playsInline
+            poster="/ghost/observations-header.png"
+            onEnded={() => setHeaderVideoEnded(true)}
+            className="w-[80px] h-[80px] rounded-full object-cover"
+            src="/ghost/observations-header.mp4"
+          />
+        )}
         <h1 className="text-xl font-semibold">Observations</h1>
         <FilterTabs options={STATUS_OPTIONS} active={params.status} onChange={(v) => setParam('status', v)} />
       </div>
