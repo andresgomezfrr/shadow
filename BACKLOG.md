@@ -51,6 +51,12 @@ Drag-drop para reordenar MCP servers en Enrichment. El orden como hint para el L
 ### Logs del daemon en dashboard
 Los `console.error` van a `daemon.stderr.log` pero no son accesibles desde el dashboard.
 
+### `tsc` no limpia `dist/` tras renames de módulo
+`npm run build` llama a `tsc` directo, que NO borra archivos del dist correspondientes a sources ya eliminados. Descubierto en v49: el rename de `src/heartbeat/` → `src/analysis/` (commit anterior) dejó `dist/heartbeat/` con `profile/trust.js` importando desde un path muerto, y como el MCP server del daemon carga desde `dist/`, el `shadow_memory_teach` tool falló con `Cannot find module 'profile/trust.js'` tras `shadow daemon restart` pese a tener el TS source limpio. Workaround actual: correr `npm run clean && npm run build` tras cualquier rename de módulo. Fix opciones: (a) hacer que `npm run build` llame `clean` antes de `tsc`, (b) migrar a un bundler que hace tree-shake (esbuild/tsup), (c) añadir `tsc --build --clean` prestep. Opción (a) es la más pragmática.
+
+### MCP STDIO server no se reinicia con `shadow daemon restart`
+El MCP server STDIO que Claude Code arranca al inicio de cada sesión queda pegado a esa sesión. `shadow daemon restart` solo reinicia el daemon web (puerto 3700) + launchd background jobs, pero el STDIO MCP server no. Si hay un rename mid-session (p.ej. el `trust.ts` → `bond.ts` de hoy), las dynamic imports cacheadas en el STDIO MCP server siguen apuntando al path viejo y las MCP tool calls fallan hasta reiniciar Claude Code. Impacto bajo en sesiones normales, material durante refactors grandes. Fix opciones: (a) detectar cambios en `src/` y auto-reiniciar el MCP server, (b) añadir un `shadow mcp restart` CLI que envíe señal al MCP STDIO process, (c) aceptar la limitación y documentar el workaround (restart Claude Code tras refactors de módulos importados dinámicamente). Opción (c) probablemente suficiente — es un caso raro.
+
 ---
 
 ## Long-term — Autonomy evolution
