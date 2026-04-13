@@ -315,17 +315,16 @@ export class RunnerService {
         });
       }
 
-      // 7. Apply trust delta
-      const trustDelta = isSuccess ? 1.5 : -2.0;
-      const profile = this.db.ensureProfile();
-      const newTrustScore = Math.max(0, Math.min(100, profile.trustScore + trustDelta));
-      this.db.updateProfile(profile.id, { trustScore: newTrustScore });
+      // 7. Apply bond delta (data-driven recomputation of axes)
+      try {
+        const { applyBondDelta } = await import('../profile/bond.js');
+        applyBondDelta(this.db, isSuccess ? 'run_success' : 'run_failed');
+      } catch (e) { console.error('[runner] bond delta failed:', e); }
 
       this.db.createInteraction({
         interface: 'runner',
         kind: 'run-complete',
-        outputSummary: `Run ${run.id} ${result.status}. Trust delta: ${trustDelta >= 0 ? '+' : ''}${trustDelta}`,
-        trustDelta,
+        outputSummary: `Run ${run.id} ${result.status}.`,
       });
 
       // Audit trail
@@ -377,10 +376,11 @@ export class RunnerService {
       // Create run_failed event
       this.db.createEvent({ kind: 'run_failed', priority: 8, payload: { message: `Run failed: ${errorMessage.slice(0, 80)}`, runId: run.id, repoId: run.repoId } });
 
-      // Apply failure trust delta
-      const profile = this.db.ensureProfile();
-      const newTrustScore = Math.max(0, Math.min(100, profile.trustScore - 2.0));
-      this.db.updateProfile(profile.id, { trustScore: newTrustScore });
+      // Apply failure bond delta
+      try {
+        const { applyBondDelta } = await import('../profile/bond.js');
+        applyBondDelta(this.db, 'run_failed');
+      } catch (e) { console.error('[runner] bond delta failed:', e); }
 
       this.db.createAuditEvent({
         interface: 'runner',

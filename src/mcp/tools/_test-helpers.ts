@@ -26,7 +26,7 @@ type TestToolEnv = {
  * Create a real ToolContext backed by a tmpdir SQLite database.
  * Mirrors the context-building logic in createMcpTools() (server.ts:22-68).
  */
-export function createTestToolContext(opts?: { trustLevel?: number }): TestToolEnv {
+export function createTestToolContext(opts?: { trustLevel?: number; bondTier?: number }): TestToolEnv {
   const dbPath = join(tmpdir(), `shadow-mcp-test-${randomUUID()}.db`);
   const dataDir = join(tmpdir(), `shadow-mcp-data-${randomUUID()}`);
   const parsed = ConfigSchema.parse({});
@@ -38,16 +38,18 @@ export function createTestToolContext(opts?: { trustLevel?: number }): TestToolE
   };
   const db = new ShadowDatabase(config);
 
-  // Ensure profile exists and set trust level if requested
+  // Ensure profile exists and set bond tier if requested
   db.ensureProfile('default');
-  if (opts?.trustLevel !== undefined) {
-    setTrustLevel(db, opts.trustLevel);
+  // opts.bondTier is canonical; opts.trustLevel is a deprecated alias for back-compat
+  const tier = opts?.bondTier ?? opts?.trustLevel;
+  if (tier !== undefined) {
+    setBondTier(db, tier);
   }
 
   // Build ToolContext — same logic as server.ts
   function getTrustLevel(): number {
     const profile = db.getProfile('default');
-    return profile?.trustLevel ?? 0;
+    return profile?.bondTier ?? 0;
   }
 
   function deriveMood(): string {
@@ -108,12 +110,17 @@ export function createTestToolContext(opts?: { trustLevel?: number }): TestToolE
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Set trust level directly on the DB profile. */
+/** Set bond tier directly on the DB profile. */
+export function setBondTier(db: ShadowDatabase, tier: number): void {
+  db.updateProfile('default', { bondTier: tier });
+}
+
+/**
+ * @deprecated Use setBondTier. Kept so existing tests keep compiling.
+ * Maps trust level 1-5 to the equivalent bond tier.
+ */
 export function setTrustLevel(db: ShadowDatabase, level: number): void {
-  // Map level to minimum score for that level (from trust.ts thresholds)
-  const scoreMap: Record<number, number> = { 1: 0, 2: 15, 3: 35, 4: 60, 5: 85 };
-  const score = scoreMap[level] ?? 0;
-  db.updateProfile('default', { trustLevel: level, trustScore: score });
+  setBondTier(db, level);
 }
 
 /** Find a tool by name and call its handler. */

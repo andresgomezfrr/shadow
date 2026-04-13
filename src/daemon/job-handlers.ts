@@ -202,7 +202,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
   const observationsCreated = (handlerResult.result.observationsCreated as number) ?? 0;
   if (observationsCreated >= config.suggestReactiveThreshold) {
     const profileForSuggest = db.ensureProfile();
-    if (profileForSuggest.trustLevel >= 2) {
+    if (profileForSuggest.bondTier >= 2) {
       const lastSuggest = db.getLastJob('suggest');
       const suggestGap = lastSuggest ? Date.now() - new Date(lastSuggest.startedAt).getTime() : Infinity;
       if (suggestGap >= config.suggestReactiveMinGapMs) {

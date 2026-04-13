@@ -1,4 +1,6 @@
+import * as fs from 'node:fs';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import * as path from 'node:path';
 import { resolve } from 'node:path';
 import process from 'node:process';
 import { promises as dns } from 'node:dns';
@@ -223,6 +225,30 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
     // Step 3: Load profile (ensure it exists)
     db.ensureProfile();
+
+    // Step 3a: First-boot sentinel-file reset for v49 bond system.
+    // Runs exactly once per data dir: creates sentinel atomically, then
+    // resets bond state (memories/suggestions/runs preserved). After that,
+    // subsequent restarts see the sentinel and skip.
+    try {
+      const sentinelPath = path.join(config.resolvedDataDir, 'bond-reset.v49.done');
+      let shouldReset = false;
+      try {
+        const fd = fs.openSync(sentinelPath, 'wx');
+        fs.writeSync(fd, new Date().toISOString() + '\n');
+        fs.closeSync(fd);
+        shouldReset = true;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      }
+      if (shouldReset) {
+        const { resetBondState } = await import('../profile/bond.js');
+        resetBondState(db);
+        console.error('[bond] v49 reset applied — bond starts at tier 1 (memories preserved)');
+      }
+    } catch (e) {
+      console.error('[bond] v49 reset hook failed:', e);
+    }
 
     // Step 3b: Initialize shared state arrays + DaemonSharedState (needed by web server)
     const pendingGitEvents: Array<{ repoId: string; repoName: string; type: string; ts: string }> = [];

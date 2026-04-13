@@ -5,7 +5,7 @@ import { findRelevantMemories } from '../memory/retrieval.js';
 import { checkMemoryDuplicate } from '../memory/dedup.js';
 import { generateAndStoreEmbedding } from '../memory/lifecycle.js';
 import { selectAdapter } from '../backend/index.js';
-import { applyTrustDelta } from '../profile/bond.js';
+import { applyBondDelta } from '../profile/bond.js';
 import { safeParseJson } from '../backend/json-repair.js';
 
 import type { HeartbeatContext } from './state-machine.js';
@@ -592,8 +592,8 @@ export async function activityAnalyze(
 
   // Post-processing
   for (const obs of observations) ctx.db.markObservationProcessed(obs.id);
-  if (llmCalls > 0) { try { applyTrustDelta(ctx.db, 'heartbeat_completed'); } catch { /* */ } }
-  if (recentInteractions.length >= 10) { try { applyTrustDelta(ctx.db, 'interaction_logged'); } catch { /* */ } }
+  if (llmCalls > 0) { try { applyBondDelta(ctx.db, 'heartbeat_completed'); } catch { /* */ } }
+  if (recentInteractions.length >= 10) { try { applyBondDelta(ctx.db, 'interaction_logged'); } catch { /* */ } }
   // Consume-and-delete: clean up .rotating files
   cleanupRotating(rotatingInt);
   cleanupRotating(rotatingConv);

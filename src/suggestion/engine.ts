@@ -2,13 +2,11 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { SuggestionRecord } from '../storage/models.js';
 import { checkMemoryDuplicate } from '../memory/dedup.js';
 import { generateAndStoreEmbedding } from '../memory/lifecycle.js';
+import { applyBondDelta } from '../profile/bond.js';
 
 export type SuggestionAction = 'accept' | 'dismiss' | 'snooze' | 'expire';
 
 const STALE_DAYS = 30;
-const TRUST_ACCEPT = 2.0;
-const TRUST_DISMISS = -0.5;
-const TRUST_STREAK_PENALTY = -3.0;
 const STREAK_THRESHOLD = 3;
 
 // ---------------------------------------------------------------------------
@@ -42,8 +40,8 @@ export function acceptSuggestion(
   db.deleteEmbedding('suggestion_vectors', suggestionId);
   db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'accept', category: acceptCategory });
 
-  // Apply positive trust delta
-  applyTrustDelta(db, TRUST_ACCEPT);
+  // Apply bond delta (data-driven recomputation)
+  try { applyBondDelta(db, 'suggestion_accepted'); } catch { /* */ }
 
   let runId: string | undefined;
   let taskId: string | undefined;
@@ -116,23 +114,21 @@ export async function dismissSuggestion(
   });
   db.createFeedback({ targetKind: 'suggestion', targetId: suggestionId, action: 'dismiss', note, category });
 
-  // Apply base dismiss trust delta
-  let totalDelta = TRUST_DISMISS;
-
-  // Check for consecutive dismissal streak (including this one)
+  // Check for consecutive dismissal streak (still tracked for audit)
   const streak = getDismissalStreak(db);
-  if (streak >= STREAK_THRESHOLD && streak % STREAK_THRESHOLD === 0) {
-    totalDelta += TRUST_STREAK_PENALTY;
-  }
+  const streakPenalty = streak >= STREAK_THRESHOLD && streak % STREAK_THRESHOLD === 0;
 
-  applyTrustDelta(db, totalDelta);
+  // Apply bond delta — data-driven, streak reflected in momentum/alignment recomputation
+  try {
+    applyBondDelta(db, streakPenalty ? 'three_dismissed_in_row' : 'suggestion_dismissed');
+  } catch { /* */ }
 
   db.createAuditEvent({
     interface: 'suggestion-engine',
     action: 'dismiss-suggestion',
     targetKind: 'suggestion',
     targetId: suggestionId,
-    detail: { note: note ?? null, streak, trustDelta: totalDelta },
+    detail: { note: note ?? null, streak, streakPenalty },
   });
 
   // Auto-create preference memory from dismissal feedback
@@ -359,19 +355,3 @@ export function getDismissalStreak(db: ShadowDatabase): number {
   return streak;
 }
 
-// ---------------------------------------------------------------------------
-// Trust helper
-// ---------------------------------------------------------------------------
-
-function applyTrustDelta(db: ShadowDatabase, delta: number): void {
-  const profile = db.ensureProfile();
-  const newScore = Math.max(0, Math.min(100, profile.trustScore + delta));
-  db.updateProfile(profile.id, { trustScore: newScore });
-
-  db.createInteraction({
-    interface: 'suggestion-engine',
-    kind: 'trust-update',
-    outputSummary: `Trust delta: ${delta >= 0 ? '+' : ''}${delta} (${profile.trustScore} -> ${newScore})`,
-    trustDelta: delta,
-  });
-}

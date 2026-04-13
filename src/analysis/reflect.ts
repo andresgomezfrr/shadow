@@ -96,7 +96,7 @@ export async function activityReflect(
   const entityContext = [
     projects.length > 0 ? `Projects: ${projects.map(p => p.name).join(', ')}` : '',
     `Repos: ${repos.length} (${repos.slice(0, 5).map(r => r.name).join(', ')})`,
-    `Trust: L${ctx.profile.trustLevel} (${ctx.profile.trustScore})`,
+    `Bond: L${ctx.profile.bondTier} (${ctx.profile.bondAxes.depth}d/${ctx.profile.bondAxes.momentum}m/${ctx.profile.bondAxes.alignment}a/${ctx.profile.bondAxes.autonomy}u)`,
     `Proactivity: ${ctx.profile.proactivityLevel}/10`,
   ].filter(Boolean).join(' | ');
 

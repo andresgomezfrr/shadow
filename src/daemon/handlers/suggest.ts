@@ -179,7 +179,6 @@ Generate 1-5 suggestions. Quality over quantity.`;
           confidenceScore: s.confidenceScore,
           riskScore: s.riskScore,
           sourceObservationId: null,
-          requiredTrustLevel: ctx.db.ensureProfile().trustLevel,
         });
 
         // Persist entity links
@@ -373,7 +372,6 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
           confidenceScore: s.confidenceScore,
           riskScore: s.riskScore,
           sourceObservationId: null,
-          requiredTrustLevel: ctx.db.ensureProfile().trustLevel,
         });
 
         // Persist entity links

@@ -84,7 +84,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
 
         const { title, body, layer, scope, kind, tags, entityType, entityId } = MemoryTeachSchema.parse(params);
 
-        const { applyTrustDelta } = await import('../../profile/bond.js');
+        const { applyBondDelta } = await import('../../profile/bond.js');
         const memory = db.createMemory({
           layer: layer ?? 'working',
           scope: scope ?? 'global',
@@ -102,8 +102,8 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
           console.error(`[mcp:teach] Entity params received but not parsed: entityType=${params.entityType} entityId=${params.entityId}`);
         }
 
-        // Trust: teaching increases trust
-        try { applyTrustDelta(db, 'memory_taught'); } catch { /* ignore */ }
+        // Bond: teaching recomputes bond axes (depth grows)
+        try { applyBondDelta(db, 'memory_taught'); } catch { /* ignore */ }
         return entityType && entityId ? (db.getMemory(memory.id) ?? memory) : memory;
       },
     },
@@ -222,8 +222,8 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
 
         // Trust: teaching/correcting increases trust
         try {
-          const { applyTrustDelta } = await import('../../profile/bond.js');
-          applyTrustDelta(db, 'memory_taught');
+          const { applyBondDelta } = await import('../../profile/bond.js');
+          applyBondDelta(db, 'memory_taught');
         } catch { /* ignore */ }
 
         return { ok: true, correction: { id: memory.id, title: memory.title, kind: memory.kind, layer: memory.layer } };

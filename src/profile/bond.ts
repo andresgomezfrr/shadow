@@ -301,11 +301,3 @@ export function resetBondState(db: ShadowDatabase): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// DEPRECATED — back-compat alias for commit 2 only. Removed in commit 3.
-// ---------------------------------------------------------------------------
-
-/** @deprecated Use applyBondDelta directly. Kept for commit-2 compile compat. */
-export function applyTrustDelta(db: ShadowDatabase, eventKind: BondEventKind): void {
-  applyBondDelta(db, eventKind);
-}

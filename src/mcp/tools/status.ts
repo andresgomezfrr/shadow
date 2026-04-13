@@ -2,7 +2,7 @@ import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { mcpSchema, type McpTool, type ToolContext } from './types.js';
-import { applyTrustDelta } from '../../profile/bond.js';
+import { applyBondDelta } from '../../profile/bond.js';
 import { getDaemonState } from '../../daemon/runtime.js';
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
 
         const profile = db.ensureProfile();
         // Trust: each check_in increases trust
-        try { applyTrustDelta(db, 'check_in'); } catch { /* ignore */ }
+        try { applyBondDelta(db, 'check_in'); } catch { /* ignore */ }
         const mood = deriveMood();
         const greeting = deriveGreeting(profile);
         const pendingEvents = db.listPendingEvents();
@@ -118,8 +118,13 @@ export function statusTools(ctx: ToolContext): McpTool[] {
         return {
           displayName: profile.displayName,
           locale: profile.locale,
-          trustLevel: profile.trustLevel,
-          trustName: trustNames[profile.trustLevel] ?? 'observer',
+          bondTier: profile.bondTier,
+          bondTierName: trustNames[profile.bondTier] ?? 'observer',
+          bondAxes: profile.bondAxes,
+          bondResetAt: profile.bondResetAt,
+          // Legacy aliases — kept for back-compat (dashboard + tests), dropped in commit 6
+          trustLevel: profile.bondTier,
+          trustName: trustNames[profile.bondTier] ?? 'observer',
           trustScore: profile.trustScore,
           proactivityLevel: profile.proactivityLevel,
           focusMode: profile.focusMode,
@@ -172,7 +177,11 @@ export function statusTools(ctx: ToolContext): McpTool[] {
         const pendingEvents = db.listPendingEvents();
         const usage = db.getUsageSummary('day');
         return {
-          trustLevel: profile?.trustLevel ?? 0,
+          bondTier: profile?.bondTier ?? 1,
+          bondAxes: profile?.bondAxes ?? { time: 0, depth: 0, momentum: 0, alignment: 0, autonomy: 0 },
+          bondResetAt: profile?.bondResetAt ?? null,
+          // Legacy aliases — dropped in commit 6
+          trustLevel: profile?.bondTier ?? 1,
           trustScore: profile?.trustScore ?? 0,
           bondLevel: profile?.bondLevel ?? 0,
           totalInteractions: profile?.totalInteractions ?? 0,

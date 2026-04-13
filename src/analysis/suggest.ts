@@ -258,7 +258,6 @@ export async function activitySuggest(
         sourceObservationId: repoObs[0]?.id ?? null,
         kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd, reasoningMd: sug.reasoningMd,
         impactScore: sug.impactScore, confidenceScore: sug.confidenceScore, riskScore: sug.riskScore,
-        requiredTrustLevel: ctx.profile.trustLevel,
         effort: sug.effort,
       });
       const sugEntities = buildEntityLinks(ctx.db, repo.id, `${sug.title} ${sug.summaryMd}`, entityCache);
