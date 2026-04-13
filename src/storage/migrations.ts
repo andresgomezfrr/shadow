@@ -970,6 +970,14 @@ export const migrations: Migration[] = [
         ('u-08', 8, 'placeholder', '???', 'Kindred, complete', datetime('now'));
     `,
   },
+  {
+    version: 50,
+    name: 'digests_unique_period',
+    sql: `
+      DELETE FROM digests WHERE id NOT IN (SELECT MIN(id) FROM digests GROUP BY kind, period_start);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_digests_kind_period_unique ON digests(kind, period_start);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

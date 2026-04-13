@@ -439,8 +439,9 @@ export class ShadowDatabase {
 
   createDigest(input: { kind: string; periodStart: string; periodEnd: string; contentMd: string; model: string; tokensUsed?: number }): DigestRecord { return enrichmentStore.createDigest(this.database, input); }
   getDigest(id: string): DigestRecord | null { return enrichmentStore.getDigest(this.database, id); }
-  listDigests(filters?: { kind?: string; limit?: number; before?: string; after?: string }): DigestRecord[] { return enrichmentStore.listDigests(this.database, filters); }
+  listDigests(filters?: { kind?: string; limit?: number; before?: string; after?: string; periodStart?: string }): DigestRecord[] { return enrichmentStore.listDigests(this.database, filters); }
   getLatestDigest(kind: string): DigestRecord | null { return enrichmentStore.getLatestDigest(this.database, kind); }
+  getDigestByPeriod(kind: string, periodStart: string): DigestRecord | null { return enrichmentStore.getDigestByPeriod(this.database, kind, periodStart); }
   updateDigest(id: string, updates: { contentMd?: string; tokensUsed?: number }): void { return enrichmentStore.updateDigest(this.database, id, updates); }
 
   // --- Tasks ---

@@ -115,10 +115,9 @@ export async function activityDailyDigest(
 
   const contentMd = result.output ?? '*(No digest generated)*';
 
-  // Upsert: if today's daily already exists, update it
-  const existing = db.listDigests({ kind: 'daily', limit: 1 });
-  if (existing.length > 0 && existing[0].periodStart === today) {
-    db.updateDigest(existing[0].id, { contentMd, tokensUsed });
+  const existing = db.getDigestByPeriod('daily', today);
+  if (existing) {
+    db.updateDigest(existing.id, { contentMd, tokensUsed });
   } else {
     db.createDigest({ kind: 'daily', periodStart: today, periodEnd: today, contentMd, model, tokensUsed });
   }
@@ -194,9 +193,9 @@ export async function activityWeeklyDigest(
 
   const contentMd = result.output ?? '*(No digest generated)*';
 
-  const existing = db.listDigests({ kind: 'weekly', limit: 1 });
-  if (existing.length > 0 && existing[0].periodStart >= weekAgo) {
-    db.updateDigest(existing[0].id, { contentMd, tokensUsed });
+  const existing = db.getDigestByPeriod('weekly', weekAgo);
+  if (existing) {
+    db.updateDigest(existing.id, { contentMd, tokensUsed });
   } else {
     db.createDigest({ kind: 'weekly', periodStart: weekAgo, periodEnd: today, contentMd, model, tokensUsed });
   }

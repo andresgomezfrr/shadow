@@ -178,8 +178,8 @@ export function DigestsPage() {
         }, 3_000);
       });
       await waitForCompletion();
-      // Refetch the same period to get updated content
-      const result = await fetchDigests({ kind, limit: 1, before: currentDigest.periodEnd || currentDigest.periodStart + 'Z' });
+      // Refetch the same period to get updated content (exact lookup)
+      const result = await fetchDigests({ kind, limit: 1, periodStart: currentDigest.periodStart });
       if (result && result.length > 0) {
         setCurrentDigest(result[0]);
       } else {

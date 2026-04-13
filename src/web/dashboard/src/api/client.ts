@@ -97,12 +97,13 @@ export const fetchRepos = () => api<Repo[]>('/api/repos');
 export const fetchContacts = (team?: string) =>
   api<Contact[]>(`/api/contacts${qs({ team })}`);
 
-export const fetchDigests = (params?: { kind?: string; limit?: number; before?: string; after?: string }) =>
+export const fetchDigests = (params?: { kind?: string; limit?: number; before?: string; after?: string; periodStart?: string }) =>
   api<Digest[]>(`/api/digests${qs({
     kind: params?.kind,
     limit: params?.limit != null ? String(params.limit) : undefined,
     before: params?.before,
     after: params?.after,
+    periodStart: params?.periodStart,
   })}`);
 
 export type DigestKindStatus = { status: string; periodStart?: string };

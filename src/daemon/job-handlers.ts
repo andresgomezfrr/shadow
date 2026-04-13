@@ -356,9 +356,12 @@ function createDigestHandler(digestType: string): (ctx: JobContext, shared: Daem
     const result = await activities[digestType]!();
     const wordCount = result.contentMd.split(/\s+/).length;
 
-    // Find the digest record just created/updated
-    const recentDigests = ctx.db.listDigests?.({ kind: digestType.replace('digest-', ''), limit: 1 }) ?? [];
-    const digestId = recentDigests[0]?.id;
+    // Resolve the digest we just created/updated. For daily/weekly with a known
+    // periodStart, lookup by exact period; brag has no periodStart, fall back to MRU.
+    const kind = digestType.replace('digest-', '');
+    const digestId = periodStart
+      ? ctx.db.getDigestByPeriod(kind, periodStart)?.id
+      : ctx.db.listDigests({ kind, limit: 1 })[0]?.id;
 
     return {
       llmCalls: 1, tokensUsed: result.tokensUsed, phases: [digestType],

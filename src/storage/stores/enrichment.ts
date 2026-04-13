@@ -124,10 +124,11 @@ export function getDigest(db: DatabaseSync, id: string): DigestRecord | null {
   return row ? mapDigest(row) : null;
 }
 
-export function listDigests(db: DatabaseSync, filters?: { kind?: string; limit?: number; before?: string; after?: string }): DigestRecord[] {
+export function listDigests(db: DatabaseSync, filters?: { kind?: string; limit?: number; before?: string; after?: string; periodStart?: string }): DigestRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
   if (filters?.kind) { clauses.push('kind = ?'); values.push(filters.kind); }
+  if (filters?.periodStart) { clauses.push('period_start = ?'); values.push(filters.periodStart); }
   if (filters?.before) { clauses.push('period_start < ?'); values.push(filters.before); }
   if (filters?.after) { clauses.push('period_start > ?'); values.push(filters.after); }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
@@ -141,6 +142,11 @@ export function listDigests(db: DatabaseSync, filters?: { kind?: string; limit?:
 
 export function getLatestDigest(db: DatabaseSync, kind: string): DigestRecord | null {
   const row = db.prepare('SELECT * FROM digests WHERE kind = ? ORDER BY period_start DESC LIMIT 1').get(kind);
+  return row ? mapDigest(row) : null;
+}
+
+export function getDigestByPeriod(db: DatabaseSync, kind: string, periodStart: string): DigestRecord | null {
+  const row = db.prepare('SELECT * FROM digests WHERE kind = ? AND period_start = ? LIMIT 1').get(kind, periodStart);
   return row ? mapDigest(row) : null;
 }
 
