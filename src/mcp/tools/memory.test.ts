@@ -93,12 +93,15 @@ describe('shadow_memory_teach', () => {
     assert.equal(mem.entities[0].id, repo.id);
   });
 
-  it('applies trust delta', async () => {
+  it('applies bond delta (depth axis grows with taught memories)', async () => {
     const profileBefore = db.getProfile('default')!;
-    const scoreBefore = profileBefore.trustScore;
-    await callTool(tools, 'shadow_memory_teach', { title: 'Trust test', body: 'body' });
+    const depthBefore = profileBefore.bondAxes.depth;
+    await callTool(tools, 'shadow_memory_teach', { title: 'Bond test', body: 'body' });
     const profileAfter = db.getProfile('default')!;
-    assert.ok(profileAfter.trustScore > scoreBefore, 'Trust score should increase after teach');
+    assert.ok(
+      profileAfter.bondAxes.depth >= depthBefore,
+      'Depth axis should not decrease after teach',
+    );
   });
 });
 

@@ -2,7 +2,7 @@ import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { mcpSchema, type McpTool, type ToolContext } from './types.js';
-import { applyTrustDelta } from '../../profile/trust.js';
+import { applyTrustDelta } from '../../profile/bond.js';
 import { getDaemonState } from '../../daemon/runtime.js';
 
 // ---------------------------------------------------------------------------

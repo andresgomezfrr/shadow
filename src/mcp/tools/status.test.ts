@@ -57,12 +57,18 @@ describe('shadow_check_in', () => {
     assert.ok((result.contextProjects as string[]).includes(project.id));
   });
 
-  it('applies trust delta on check_in', async () => {
+  it('applies bond delta on check_in (recomputes axes without throwing)', async () => {
     const profileBefore = db.getProfile('default')!;
-    const scoreBefore = profileBefore.trustScore;
+    const axesBefore = profileBefore.bondAxes;
     await callTool(tools, 'shadow_check_in', {});
     const profileAfter = db.getProfile('default')!;
-    assert.ok(profileAfter.trustScore > scoreBefore);
+    // applyBondDelta is idempotent + data-driven — axes reflect current state,
+    // not a cumulative ledger. Just verify it ran without error and the
+    // bondAxes object is still well-formed.
+    assert.ok(profileAfter.bondAxes);
+    assert.equal(typeof profileAfter.bondAxes.time, 'number');
+    assert.equal(typeof profileAfter.bondAxes.depth, 'number');
+    assert.ok(profileAfter.bondAxes.depth >= axesBefore.depth);
   });
 
   it('includes update notification when available', async () => {

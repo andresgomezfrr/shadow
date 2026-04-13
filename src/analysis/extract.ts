@@ -5,7 +5,7 @@ import { findRelevantMemories } from '../memory/retrieval.js';
 import { checkMemoryDuplicate } from '../memory/dedup.js';
 import { generateAndStoreEmbedding } from '../memory/lifecycle.js';
 import { selectAdapter } from '../backend/index.js';
-import { applyTrustDelta } from '../profile/trust.js';
+import { applyTrustDelta } from '../profile/bond.js';
 import { safeParseJson } from '../backend/json-repair.js';
 
 import type { HeartbeatContext } from './state-machine.js';

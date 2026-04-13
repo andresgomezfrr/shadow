@@ -84,7 +84,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
 
         const { title, body, layer, scope, kind, tags, entityType, entityId } = MemoryTeachSchema.parse(params);
 
-        const { applyTrustDelta } = await import('../../profile/trust.js');
+        const { applyTrustDelta } = await import('../../profile/bond.js');
         const memory = db.createMemory({
           layer: layer ?? 'working',
           scope: scope ?? 'global',
@@ -222,7 +222,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
 
         // Trust: teaching/correcting increases trust
         try {
-          const { applyTrustDelta } = await import('../../profile/trust.js');
+          const { applyTrustDelta } = await import('../../profile/bond.js');
           applyTrustDelta(db, 'memory_taught');
         } catch { /* ignore */ }
 
