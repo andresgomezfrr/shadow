@@ -195,28 +195,47 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
 
   const plannedRuns = ctx.db.listPlannedRunsForAutoExec();
 
-  const rejections = { noSuggestion: 0, highRisk: 0, lowImpact: 0, lowConfidence: 0, effortTooBig: 0, wrongKind: 0, repoNotEnabled: 0 };
+  type RunEntry = { runId: string; title?: string; action: string; reason?: string };
+  const allEntries: RunEntry[] = [];
+  const passed: typeof plannedRuns = [];
 
-  const candidates = plannedRuns.filter(run => {
-    if (!run.suggestionId) { rejections.noSuggestion++; return false; }
-    const suggestion = ctx.db.getSuggestion(run.suggestionId);
-    if (!suggestion) { rejections.noSuggestion++; return false; }
+  for (const run of plannedRuns) {
+    const suggestion = run.suggestionId ? ctx.db.getSuggestion(run.suggestionId) : null;
+    const title = suggestion?.title ?? run.prompt.slice(0, 80);
 
-    if (suggestion.riskScore > executeRules.riskMax) { rejections.highRisk++; return false; }
-    if (suggestion.impactScore < executeRules.impactMin) { rejections.lowImpact++; return false; }
-    if (suggestion.confidenceScore < executeRules.confidenceMin) { rejections.lowConfidence++; return false; }
-    if (!effortWithinLimit(suggestion.effort, executeRules.effortMax)) { rejections.effortTooBig++; return false; }
-    if (executeRules.kinds.length > 0 && !executeRules.kinds.includes(suggestion.kind)) { rejections.wrongKind++; return false; }
-
+    if (!run.suggestionId || !suggestion) {
+      allEntries.push({ runId: run.id, title, action: 'skip', reason: 'no suggestion linked' });
+      continue;
+    }
+    if (suggestion.riskScore > executeRules.riskMax) {
+      allEntries.push({ runId: run.id, title, action: 'skip', reason: `high risk (${suggestion.riskScore} > ${executeRules.riskMax})` });
+      continue;
+    }
+    if (suggestion.impactScore < executeRules.impactMin) {
+      allEntries.push({ runId: run.id, title, action: 'skip', reason: `low impact (${suggestion.impactScore} < ${executeRules.impactMin})` });
+      continue;
+    }
+    if (suggestion.confidenceScore < executeRules.confidenceMin) {
+      allEntries.push({ runId: run.id, title, action: 'skip', reason: `low confidence (${suggestion.confidenceScore} < ${executeRules.confidenceMin})` });
+      continue;
+    }
+    if (!effortWithinLimit(suggestion.effort, executeRules.effortMax)) {
+      allEntries.push({ runId: run.id, title, action: 'skip', reason: `effort too big (${suggestion.effort} > ${executeRules.effortMax})` });
+      continue;
+    }
+    if (executeRules.kinds.length > 0 && !executeRules.kinds.includes(suggestion.kind)) {
+      allEntries.push({ runId: run.id, title, action: 'skip', reason: `kind not allowed (${suggestion.kind})` });
+      continue;
+    }
     const runRepoIds = run.repoIds.length > 0 ? run.repoIds : [run.repoId];
-    if (!runRepoIds.some(rid => executeRules.repoIds.includes(rid))) { rejections.repoNotEnabled++; return false; }
+    if (!runRepoIds.some(rid => executeRules.repoIds.includes(rid))) {
+      allEntries.push({ runId: run.id, title, action: 'skip', reason: 'repo not enabled' });
+      continue;
+    }
+    passed.push(run);
+  }
 
-    return true;
-  }).slice(0, executeRules.maxPerJob);
-
-  const rejectionReasons = Object.entries(rejections)
-    .filter(([, v]) => v > 0)
-    .map(([k, v]) => `${k}: ${v}`);
+  const candidates = passed.slice(0, executeRules.maxPerJob);
 
   if (candidates.length === 0) {
     return {
@@ -224,7 +243,7 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
       result: {
         skipped: true,
         totalPlanned: plannedRuns.length,
-        filtered: rejectionReasons,
+        candidates: allEntries,
         rules: `impact≥${executeRules.impactMin} conf≥${executeRules.confidenceMin} risk≤${executeRules.riskMax} effort≤${executeRules.effortMax} kinds=${executeRules.kinds.length > 0 ? executeRules.kinds.join(', ') : 'all'} repos=${executeRules.repoIds.length}`,
       },
     };
@@ -238,11 +257,13 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
   let autoExecuted = 0;
   let needsReview = 0;
   let filtered = 0;
-  const resultCandidates: Array<{ runId: string; action: string; reason?: string }> = [];
   const now = new Date().toISOString();
 
   for (const run of candidates) {
     if (ctx.signal.aborted) break;
+
+    const suggestion = run.suggestionId ? ctx.db.getSuggestion(run.suggestionId) : null;
+    const title = suggestion?.title ?? run.prompt.slice(0, 80);
 
     // HARDCODED safety gate: confidence must be high with zero doubts
     const confidenceHigh = run.confidence === 'high';
@@ -255,7 +276,7 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
       const reason = !confidenceHigh
         ? `confidence=${run.confidence} (need high)`
         : `${run.doubts.length} doubt(s): ${run.doubts.slice(0, 2).join('; ')}`;
-      resultCandidates.push({ runId: run.id, action: 'needs_review', reason });
+      allEntries.push({ runId: run.id, title, action: 'needs_review', reason });
 
       ctx.db.createEvent({
         kind: 'plan_needs_review',
@@ -287,13 +308,13 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
 
       ctx.db.updateRun(run.id, { autoEvalAt: now });
       autoExecuted++;
-      resultCandidates.push({ runId: run.id, action: 'auto_executed' });
+      allEntries.push({ runId: run.id, title, action: 'auto_executed' });
       console.error(`[auto-execute] Executing: run ${run.id.slice(0, 8)} → child ${childRun.id.slice(0, 8)}`);
     } catch (e) {
       console.error(`[auto-execute] Failed to create execution run for ${run.id.slice(0, 8)}:`, e instanceof Error ? e.message : e);
       ctx.db.updateRun(run.id, { autoEvalAt: now });
       filtered++;
-      resultCandidates.push({ runId: run.id, action: 'error', reason: e instanceof Error ? e.message : String(e) });
+      allEntries.push({ runId: run.id, title, action: 'error', reason: e instanceof Error ? e.message : String(e) });
     }
   }
 
@@ -310,6 +331,6 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
     llmCalls: 0, // executor doesn't make LLM calls itself; the RunQueue handles plan execution
     tokensUsed: 0,
     phases: ['filtering', 'executing', 'verifying'],
-    result: { autoExecuted, needsReview, filtered, candidates: resultCandidates },
+    result: { autoExecuted, needsReview, filtered, candidates: allEntries },
   };
 }

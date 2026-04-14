@@ -4,6 +4,22 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-13 (play-once video intros)
+
+- **Empty state + list headers play-once videos** — Extended the ActivityPage play-once pattern (`videoEnded` state + `onEnded` → swap to `<img>`) to three more surfaces. `EmptyState.tsx` now plays `/ghost/empty.mp4` once on mount then freezes on `empty.png`. `SuggestionsPage.tsx:241` and `ObservationsPage.tsx:84` do the same with `suggestions-header.mp4` / `observations-header.mp4` on their header illustrations. PNG used as `poster` on every `<video>` so the first frame doesn't flash before the MP4 starts. Unlike ShadowTV's looping videos (autoPlay+loop), these are deliberately play-once — the video is an intro, not ambient animation. Three new MP4s committed under `public/ghost/` (2-3 MB each, Gemini-generated).
+
+---
+
+## Session 2026-04-13 (sleep-aware scheduling fix)
+
+- **`systemAwake` check added to scheduler gate via `pmset -g assertions`** — Yesterday's DNS gate alone was insufficient: macOS keeps TCPKeepAlive active during darkwake, so `dns.resolve4('api.anthropic.com')` resolved fine and the gate opened mid-darkwake, letting LLM jobs start that then failed when the Mac returned to sleep. Forensic evidence from the 2026-04-12 clamshell cycle (18:00→20:22): 19 jobs fired inside the sleep window, `consolidate` failed at 136s, `suggest-deep` timed out at the 900s max (15min of Opus inference burned). New `isSystemAwake()` in runtime.ts spawns pmset each tick (~12ms overhead), parses `UserIsActive`, fails open on any error. Combined with network as `canSchedule = networkUp && systemAwake` and applied to all 14 scheduled job enqueues + JobQueue claim loop.
+- **Two missing gates closed** — `remote-sync` (runtime.ts:486) and `version-check` (runtime.ts:499) were enqueued without any gate. `remote-sync` is load-bearing because it triggers a reactive cascade: `remote-sync` → `repo-profile` → `suggest-deep` + `project-profile`. Both now wrapped in `canSchedule &&`.
+- **JobQueue.tick() accepts `allowClaim`** — When false (darkwake/offline), the claim loop is skipped but in-flight jobs keep running (can't cancel LLM calls mid-inference without losing tokens). Called from runtime.ts as `jobQueue.tick({ allowClaim: canSchedule })`. Queued jobs wait for the next fully-awake tick.
+- **Reactive handlers consult shared state** — `DaemonSharedState` gained `networkAvailable` + `systemAwake` flags, propagated each tick from the scheduler. 6 reactive enqueue sites now gate on them: `handleHeartbeat`→suggest + repo-profile, `handleRemoteSync`→repo-profile, `handleRepoProfile`→suggest-deep (first-scan) + project-profile, `handleSuggestDeep`→suggest-project. `handleRepoProfile` signature changed from `(ctx)` to `(ctx, shared)`. Without this, a parent job that legitimately started could still spawn LLM children mid-darkwake via the reactive path.
+- **Deploy + pending validation** — Shipped via `shadow daemon restart` (commit 0588059), pmset overhead verified at 12ms. Overnight clamshell sleep test scheduled for 2026-04-14 morning: expected 0 jobs with `started_at` inside the sleep window + multiple `Skipping job scheduling — system not fully awake` entries in daemon.stderr.log.
+
+---
+
 ## Session 2026-04-13 (run lifecycle PR-aware + UI polish)
 
 - **PR-aware run lifecycle** — New `awaiting_pr` non-terminal status between `planned` and terminal. Parent plan stays `planned` while the execution child runs (no more eager transition to `done` on Execute click). When the child finishes successfully: if it created a PR → parent transitions to `awaiting_pr`; if it made changes without a PR → `done` outcome=executed; if it decided no changes were needed → `done` outcome=closed with the child's resultSummaryMd as `closedNote`. The new `pr-sync` job (IO, 30min, gated on `awaiting_pr` count > 0) polls `gh pr view` and finalizes: MERGED → parent `done` outcome=merged + `pr_merged` event; CLOSED → parent `dismissed` with `closedNote='PR closed without merge'`. State machine adds `planned → awaiting_pr` and `awaiting_pr → {done, dismissed, failed}`. `aggregateParentStatus()` (already present in state-machine.ts since the concurrency commit) was the missing piece — both `/execute` and `auto-execute` were short-circuiting it by transitioning the parent eagerly. Now they only create the child and let aggregation drive the lifecycle. Andrés's mental model: `done` = PR finalized.

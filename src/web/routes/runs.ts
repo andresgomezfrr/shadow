@@ -285,7 +285,7 @@ export async function handleRunRoutes(
       const runId = closeMatch[1];
       const run = db.getRun(runId);
       if (!run) return json(res, { error: 'Run not found' }, 404), true;
-      try { db.transitionRun(runId, 'done'); db.updateRun(runId, { outcome: 'closed' }); } catch { return json(res, { error: 'Cannot close run in current status' }, 400), true; }
+      try { db.transitionRun(runId, 'done'); db.updateRun(runId, { outcome: 'closed_manual' }); } catch { return json(res, { error: 'Cannot close run in current status' }, 400), true; }
       const body = await parseOptionalBody(req, res, OptionalNoteSchema);
       if (!body) return true;
       if (body.note) db.updateRun(runId, { closedNote: body.note });
@@ -301,7 +301,7 @@ export async function handleRunRoutes(
               killJobAdapters(child.id);
             } catch { /* best-effort */ }
           }
-          try { db.transitionRun(child.id, 'done'); db.updateRun(child.id, { outcome: 'closed' }); } catch { /* skip non-closeable children */ }
+          try { db.transitionRun(child.id, 'done'); db.updateRun(child.id, { outcome: 'closed_manual' }); } catch { /* skip non-closeable children */ }
           // Clean worktree if exists
           if (child.worktreePath) {
             try {

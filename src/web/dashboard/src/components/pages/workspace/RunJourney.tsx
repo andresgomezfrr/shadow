@@ -143,7 +143,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
     activeChild?.status === 'running' ? 'active' :
     activeChild && ['planned', 'done'].includes(activeChild.status) ? 'done' :
     run.status === 'awaiting_pr' ? 'done' :
-    run.status === 'done' && (run.outcome === 'executed' || run.outcome === 'executed_manual' || run.outcome === 'merged') ? 'done' : 'pending';
+    run.status === 'done' && (run.outcome === 'executed' || run.outcome === 'executed_manual' || run.outcome === 'merged' || run.outcome === 'no_changes' || run.outcome === 'closed_manual') ? 'done' : 'pending';
 
   return (
     <div className="space-y-2">
@@ -352,7 +352,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
           <button onClick={handleClose} className="text-xs text-text-muted hover:text-text bg-transparent border-none cursor-pointer">Close journey</button>
         </div>
       )}
-      {run.status === 'done' && run.outcome === 'closed' && run.closedNote && (
+      {run.status === 'done' && (run.outcome === 'no_changes' || run.outcome === 'closed_manual') && run.closedNote && (
         <div className="text-xs text-text-muted italic">Closed: "{run.closedNote}"</div>
       )}
     </div>

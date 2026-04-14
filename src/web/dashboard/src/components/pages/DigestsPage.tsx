@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { fetchDigests, fetchDigestStatus, triggerDigest } from '../../api/client';
 import type { DigestKindStatus } from '../../api/client';
 import type { Digest } from '../../api/types';
@@ -48,7 +49,10 @@ function formatFooterDate(iso: string): string {
 }
 
 export function DigestsPage() {
-  const [kind, setKind] = useState<DigestKind>('daily');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialKind = (searchParams.get('kind') as DigestKind | null) ?? 'daily';
+  const initialPeriodRef = useRef<string | null>(searchParams.get('periodStart'));
+  const [kind, setKind] = useState<DigestKind>(initialKind);
   const [currentDigest, setCurrentDigest] = useState<Digest | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasPrev, setHasPrev] = useState(false);
@@ -101,10 +105,37 @@ export function DigestsPage() {
     setLoading(false);
   }, []);
 
-  // On kind change, fetch latest
+  // Fetch a specific digest by periodStart (deep-link from Activity)
+  const fetchByPeriod = useCallback(async (k: DigestKind, periodStart: string) => {
+    setLoading(true);
+    const result = await fetchDigests({ kind: k, limit: 1, periodStart });
+    if (result && result.length > 0) {
+      const digest = result[0];
+      setCurrentDigest(digest);
+      latestIdRef.current = digest.id;
+      const [older, newer] = await Promise.all([
+        fetchDigests({ kind: k, limit: 1, before: digest.periodStart }),
+        fetchDigests({ kind: k, limit: 1, after: digest.periodStart }),
+      ]);
+      setHasPrev(!!(older && older.length > 0));
+      setHasNext(!!(newer && newer.length > 0));
+      setLoading(false);
+      return true;
+    }
+    setLoading(false);
+    return false;
+  }, []);
+
+  // On kind change, fetch: consume initial periodStart once, else latest
   useEffect(() => {
-    fetchLatest(kind);
-  }, [kind, fetchLatest]);
+    const initial = initialPeriodRef.current;
+    if (initial) {
+      initialPeriodRef.current = null;
+      fetchByPeriod(kind, initial).then((ok) => { if (!ok) fetchLatest(kind); });
+    } else {
+      fetchLatest(kind);
+    }
+  }, [kind, fetchLatest, fetchByPeriod]);
 
   const navigatePrev = useCallback(async () => {
     if (!currentDigest) return;
@@ -113,13 +144,14 @@ export function DigestsPage() {
     if (result && result.length > 0) {
       const digest = result[0];
       setCurrentDigest(digest);
+      setSearchParams({ kind, periodStart: digest.periodStart }, { replace: true });
       setHasNext(true); // we came from a newer one
       // Check if there's an even older one
       const older = await fetchDigests({ kind, limit: 1, before: digest.periodStart });
       setHasPrev(!!(older && older.length > 0));
     }
     setLoading(false);
-  }, [currentDigest, kind]);
+  }, [currentDigest, kind, setSearchParams]);
 
   const navigateNext = useCallback(async () => {
     if (!currentDigest) return;
@@ -129,13 +161,19 @@ export function DigestsPage() {
     if (result && result.length > 0) {
       const digest = result[0];
       setCurrentDigest(digest);
+      setSearchParams({ kind, periodStart: digest.periodStart }, { replace: true });
       setHasPrev(true); // we came from an older one
       // Check if there's a newer one
       const newer = await fetchDigests({ kind, limit: 1, after: digest.periodStart });
       setHasNext(!!(newer && newer.length > 0));
     }
     setLoading(false);
-  }, [currentDigest, kind]);
+  }, [currentDigest, kind, setSearchParams]);
+
+  const handleKindChange = useCallback((next: DigestKind) => {
+    setKind(next);
+    setSearchParams({ kind: next }, { replace: true });
+  }, [setSearchParams]);
 
   // Generate new digest for current period
   const handleGenerate = useCallback(async () => {
@@ -178,8 +216,8 @@ export function DigestsPage() {
         }, 3_000);
       });
       await waitForCompletion();
-      // Refetch the same period to get updated content
-      const result = await fetchDigests({ kind, limit: 1, before: currentDigest.periodEnd || currentDigest.periodStart + 'Z' });
+      // Refetch the same period to get updated content (exact lookup)
+      const result = await fetchDigests({ kind, limit: 1, periodStart: currentDigest.periodStart });
       if (result && result.length > 0) {
         setCurrentDigest(result[0]);
       } else {
@@ -197,7 +235,7 @@ export function DigestsPage() {
       <div className="flex items-center gap-3 mb-5 flex-wrap">
         <img src="/ghost/digests.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
         <h1 className="text-xl font-semibold">Digests</h1>
-        <FilterTabs options={KIND_FILTERS} active={kind} onChange={(v) => setKind(v as DigestKind)} />
+        <FilterTabs options={KIND_FILTERS} active={kind} onChange={(v) => handleKindChange(v as DigestKind)} />
         <div className="ml-auto">
           <button
             onClick={handleGenerate}

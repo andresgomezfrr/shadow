@@ -30,14 +30,24 @@ export class JobQueue {
   /**
    * Called each daemon tick. Claims eligible queued jobs up to capacity and starts them.
    * Returns true if any jobs are active (started or still running).
+   *
+   * When `allowClaim` is false (e.g., during darkwake or no network), in-flight jobs
+   * keep running but no new jobs are claimed from the queue — they wait for the next
+   * tick where the system is fully awake and online.
    */
-  async tick(): Promise<boolean> {
+  async tick(opts: { allowClaim?: boolean } = {}): Promise<boolean> {
+    const allowClaim = opts.allowClaim ?? true;
+
     // Cleanup: remove completed/failed from active map
     for (const [jobId] of this.active) {
       const job = this.db.getJob(jobId);
       if (!job || job.status !== 'running') {
         this.active.delete(jobId);
       }
+    }
+
+    if (!allowClaim) {
+      return this.active.size > 0;
     }
 
     // Compute types to exclude (same-type mutual exclusion)

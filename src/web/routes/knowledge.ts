@@ -32,7 +32,8 @@ export async function handleKnowledgeRoutes(
       const limit = clampLimit(params.get('limit'), 20);
       const before = params.get('before') ?? undefined;
       const after = params.get('after') ?? undefined;
-      const digests = db.listDigests({ kind, limit, before, after });
+      const periodStart = params.get('periodStart') ?? undefined;
+      const digests = db.listDigests({ kind, limit, before, after, periodStart });
       return json(res, digests), true;
     }
 

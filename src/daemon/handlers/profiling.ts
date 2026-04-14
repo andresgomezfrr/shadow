@@ -18,7 +18,7 @@ export async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedStat
   }
 
   // Reactive repo-profile: trigger if changed repos need re-profiling (2h min gap)
-  if (withChanges.length > 0 && !ctx.db.hasQueuedOrRunning('repo-profile')) {
+  if (withChanges.length > 0 && !ctx.db.hasQueuedOrRunning('repo-profile') && shared.networkAvailable && shared.systemAwake) {
     const lastProfile = ctx.db.getLastJob('repo-profile');
     const gapMs = lastProfile ? Date.now() - new Date(lastProfile.startedAt).getTime() : Infinity;
     const minGapMs = 2 * 60 * 60 * 1000; // 2h minimum between profiles
@@ -38,7 +38,7 @@ export async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedStat
   };
 }
 
-export async function handleRepoProfile(ctx: JobContext): Promise<JobHandlerResult> {
+export async function handleRepoProfile(ctx: JobContext, shared: DaemonSharedState): Promise<JobHandlerResult> {
   ctx.setPhase('repo-profile');
 
   const job = ctx.db.getJob(ctx.jobId);
@@ -52,40 +52,46 @@ export async function handleRepoProfile(ctx: JobContext): Promise<JobHandlerResu
 
   const { profiledRepoIds, profiledRepoNames } = result;
 
-  // Reactive triggers — scoped to actually profiled repos
+  // Reactive triggers — scoped to actually profiled repos. Skipped when the Mac
+  // is in darkwake/offline so we don't spawn LLM children that will fail mid-flight.
+  const canSpawnReactive = shared.networkAvailable && shared.systemAwake;
 
   // 1. First-time suggest-deep trigger for newly profiled repos
-  try {
-    for (const repoId of profiledRepoIds) {
-      const prevDeepScans = ctx.db.listJobs({ type: 'suggest-deep', limit: 50 })
-        .filter(j => (j.result as Record<string, unknown>)?.repoId === repoId);
-      if (prevDeepScans.length === 0 && !ctx.db.hasQueuedOrRunningWithParams('suggest-deep', 'repoId', repoId)) {
-        ctx.db.enqueueJob('suggest-deep', { priority: 6, triggerSource: 'first-scan', params: { repoId } });
-        console.error(`[daemon] First-time suggest-deep triggered for repo ${repoId.slice(0, 8)}`);
-        break; // one at a time
-      }
-    }
-  } catch { /* best-effort */ }
-
-  // 2. Reactive project-profile trigger — only for projects containing profiled repos
-  try {
-    const projects = ctx.db.listProjects().filter(p => {
-      const rIds: string[] = p.repoIds ?? [];
-      return rIds.length >= 2 && rIds.some(id => profiledRepoIds.includes(id));
-    });
-    for (const project of projects) {
-      if (!ctx.db.hasQueuedOrRunningWithParams('project-profile', 'projectId', project.id)) {
-        const lastPp = ctx.db.listJobs({ type: 'project-profile', status: 'completed', limit: 20 })
-          .find(j => (j.result as Record<string, unknown>)?.projectId === project.id);
-        const gap = lastPp ? Date.now() - new Date(lastPp.startedAt).getTime() : Infinity;
-        if (gap >= ctx.config.projectProfileMinGapMs) {
-          ctx.db.enqueueJob('project-profile', { priority: 4, triggerSource: 'reactive', params: { projectId: project.id } });
-          console.error(`[daemon] Reactive project-profile triggered for ${project.name}`);
-          break;
+  if (canSpawnReactive) {
+    try {
+      for (const repoId of profiledRepoIds) {
+        const prevDeepScans = ctx.db.listJobs({ type: 'suggest-deep', limit: 50 })
+          .filter(j => (j.result as Record<string, unknown>)?.repoId === repoId);
+        if (prevDeepScans.length === 0 && !ctx.db.hasQueuedOrRunningWithParams('suggest-deep', 'repoId', repoId)) {
+          ctx.db.enqueueJob('suggest-deep', { priority: 6, triggerSource: 'first-scan', params: { repoId } });
+          console.error(`[daemon] First-time suggest-deep triggered for repo ${repoId.slice(0, 8)}`);
+          break; // one at a time
         }
       }
-    }
-  } catch { /* best-effort */ }
+    } catch { /* best-effort */ }
+  }
+
+  // 2. Reactive project-profile trigger — only for projects containing profiled repos
+  if (canSpawnReactive) {
+    try {
+      const projects = ctx.db.listProjects().filter(p => {
+        const rIds: string[] = p.repoIds ?? [];
+        return rIds.length >= 2 && rIds.some(id => profiledRepoIds.includes(id));
+      });
+      for (const project of projects) {
+        if (!ctx.db.hasQueuedOrRunningWithParams('project-profile', 'projectId', project.id)) {
+          const lastPp = ctx.db.listJobs({ type: 'project-profile', status: 'completed', limit: 20 })
+            .find(j => (j.result as Record<string, unknown>)?.projectId === project.id);
+          const gap = lastPp ? Date.now() - new Date(lastPp.startedAt).getTime() : Infinity;
+          if (gap >= ctx.config.projectProfileMinGapMs) {
+            ctx.db.enqueueJob('project-profile', { priority: 4, triggerSource: 'reactive', params: { projectId: project.id } });
+            console.error(`[daemon] Reactive project-profile triggered for ${project.name}`);
+            break;
+          }
+        }
+      }
+    } catch { /* best-effort */ }
+  }
 
   return {
     llmCalls: result.llmCalls, tokensUsed: result.tokensUsed,

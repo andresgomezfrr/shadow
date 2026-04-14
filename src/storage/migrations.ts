@@ -970,6 +970,24 @@ export const migrations: Migration[] = [
         ('u-08', 8, 'placeholder', '???', 'Kindred, complete', datetime('now'));
     `,
   },
+  {
+    version: 50,
+    name: 'digests_unique_period',
+    sql: `
+      DELETE FROM digests WHERE id NOT IN (SELECT MIN(id) FROM digests GROUP BY kind, period_start);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_digests_kind_period_unique ON digests(kind, period_start);
+    `,
+  },
+  {
+    version: 51,
+    name: 'rename_closed_outcomes',
+    sql: `
+      UPDATE runs SET outcome = 'no_changes'
+        WHERE outcome = 'closed' AND closed_note = 'No changes needed';
+      UPDATE runs SET outcome = 'closed_manual'
+        WHERE outcome = 'closed';
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

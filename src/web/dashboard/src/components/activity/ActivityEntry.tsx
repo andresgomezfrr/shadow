@@ -538,7 +538,7 @@ function renderExpandedDetail(entry: ActivityEntryType) {
           <span className="text-accent">{kind} digest{periodFull ? ` for ${periodFull}` : ''}</span>
           {words > 0 && <span className="text-text-dim">, {words} words</span>}
           {digestId && (
-            <a href={`/digests?kind=${kind}`} className="text-accent hover:underline ml-2" onClick={e => e.stopPropagation()}>
+            <a href={`/digests?kind=${kind}${ps ? `&periodStart=${encodeURIComponent(ps)}` : ''}`} className="text-accent hover:underline ml-2" onClick={e => e.stopPropagation()}>
               view digest
             </a>
           )}
