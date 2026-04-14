@@ -158,6 +158,14 @@ _No high priority items right now._
 
 ---
 
+### Optimize `/ghost/` assets — PNG → WebP + resize pipeline *(2026-04-15)* · [area:dashboard]
+
+**Context**: 49 static PNG ghost illustrations under `src/web/dashboard/public/ghost/` (outside `chronicle/`) weigh ~6-8 MB each, total ~276 MB. They're UI assets (page headers, ghost phases, empty states, 404) that don't need anywhere near that resolution. Dashboard loads them on-demand, so every page view downloads multi-MB images. The Chronicle session (2026-04-15) applied a resize + cwebp pipeline to 20 PNGs and got 95 MB → 768 KB (123× smaller) — same approach would shrink the rest of `/ghost/` from ~276 MB to ~5 MB. Tools already installed from that session (`webp`, `ffmpeg`). Note: git history keeps the raw PNGs — repo size on fresh clone doesn't drop unless `git filter-repo` is run (destructive, skip). The real gain is dashboard runtime (fewer bytes per page view) and future working trees.
+
+**Fix**: (1) batch convert with `cwebp -q 85..90 -resize <target> 0` — target widths per use case: heroes/page illustrations at 1024, ghost phase frames at 512, small icons at 256. (2) Move originals to `internal/ghost-assets/` (gitignored) as backup for future regeneration. (3) Grep + replace `.png` references in `.tsx`/`.ts` (MorningPage, WorkspacePage, SuggestionsPage, ObservationsPage, MemoriesPage, ProjectsPage, RepoPage, SystemPage, TeamPage, ActivityPage, DigestsPage, 404, Guide, `useGhostPhase.ts` hook). (4) Visual review every page before commit. (5) Leave MP4 files alone — they're already video-compressed.
+
+---
+
 ### Depth axis doesn't grow: job-created memories don't count *(2026-04-14)* · [area:bond]
 
 **Context**: `computeDepthAxis` in `src/profile/bond.ts` only counts memories with `kind IN ('taught','correction','knowledge_summary','soul_reflection')`. But automated jobs (heartbeat, consolidation, enrichment) create memories with kinds like `convention`, `preference`, `infrastructure`, `workflow`, etc. that aren't in that list. Post-reset only memories of those kinds exist → depth = 0 permanently.
