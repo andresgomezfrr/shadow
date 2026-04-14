@@ -24,7 +24,16 @@ Renderizado por filtro, transiciones de estado del feed unificado y context pane
 El stale detector en `src/daemon/runtime.ts:676-686` tiene un timeout hardcoded de 10min, pero el runner timeout real es 30min (`runnerTimeoutMs`). El detector no consulta si el run tiene un proceso activo en `RunQueue.active` — solo mira `status='running'` + elapsed time en DB. Resultado: runs legítimamente lentos (multi-repo, plan mode con mucho contexto) son matados a los 10min con `errorSummary="Stale: exceeded 10min timeout"`. Ref: run `1e4dea01`. Fix: (1) usar `config.runnerTimeoutMs` en vez del hardcoded 10min, (2) consultar `RunQueue.active` antes de marcar como stale — si el runner lo tiene en su map, está vivo y no es stale.
 
 ### Plan vacío no se trata como fallo *(2026-04-14)*
-Cuando un plan run completa con exit code 0 pero `capturePlanFromSession` no encuentra plan (Claude no escribió a `~/.claude/plans/`) y `result.output` es vacío, el runner guarda `resultSummaryMd = ""` y marca el run como `planned`. La confidence eval corre sobre una string vacía y genera doubts, pero el run queda en estado `planned` sin plan real. Ref: run `7a426733`. Fix: en `src/runner/service.ts` después de la captura del plan (~L228), si `effectivePlan` es vacío/whitespace, tratar como fallo (`status=failed`, `errorSummary="Plan mode produced no output"`). No correr confidence eval sin plan.
+Cuando un plan run completa con exit code 0 pero `capturePlanFromSession` no encuentra plan (Claude no escribió a `~/.claude/plans/`) y `result.output` es vacío, el runner guarda `resultSummaryMd = ""` y marca el run como `planned`. La confidence eval corre sobre una string vacía y genera doubts, pero el run queda en estado `planned` sin plan real. Ref: runs `7a426733`, `8b061e52`. Fix: en `src/runner/service.ts` después de la captura del plan (~L228), si `effectivePlan` es vacío/whitespace, tratar como fallo (`status=failed`, `errorSummary="Plan mode produced no output"`). No correr confidence eval sin plan. Nota: la confidence eval dio `high` con plan vacío en `8b061e52` — la eval debe rechazar plans vacíos antes de invocar al LLM.
+
+### `AskUserQuestion` no debe estar disponible en runner sessions *(2026-04-14)*
+Causa raíz de que ambos runs `3d668e1d` y `8b061e52` no produjeran plan. Claude hizo investigación excelente, tenía toda la información, pero en vez de escribir el plan con assumptions razonables, llamó `AskUserQuestion` — que no tiene humano al otro lado. En run 1, las preguntas tenían respuesta obvia (Claude las marcó como "Recommended" en su thinking). En run 2, `AskUserQuestion` falló x2 y la sesión murió sin output. Fix de dos capas: (1) excluir `AskUserQuestion` del `allowedTools` en `src/runner/service.ts` (~L176) para runner sessions, (2) añadir al briefing (~L148): "You are running autonomously — there is no human to answer questions. Make reasonable assumptions and document them in the plan."
+
+### Runner no limita retries en tool permission denied *(2026-04-14)*
+En run `8b061e52`, Claude reintentó `oliver__list_dashboards` 7 veces tras permission denied, y `shadow_check_in` 2 veces. Cada retry gasta un turno sin resultado. No es un bug del runner directamente (es comportamiento de Claude), pero el briefing debería incluir una instrucción: "If a tool call is denied, do NOT retry — adapt your approach using other available tools." Alternativamente, evaluar si `--allowedTools 'mcp__*'` realmente matchea los tools de Oliver/Shadow en la sesión del runner, o si hay un gap en el patrón.
+
+### Soul injection en briefing causa check_in redundante *(2026-04-14)*
+El briefing del runner inyecta la soul completa de Shadow (vía `shadow mcp-context`), que incluye la instrucción "call `shadow_check_in` at session start". Claude obedece y gasta 1-2 turnos llamando `shadow_check_in` que es redundante (la soul ya está en el prompt) y a veces falla por permisos. Fix: o bien no inyectar la instrucción de check_in en el contexto del runner, o bien hacer que `mcp-context` tenga un mode `runner` que omita instrucciones interactivas (check_in, greeting, events).
 
 ### Ejecución paralela de runs (plan + execute)
 Actualmente el runner procesa 1 run a la vez — los demás se quedan en `queued` hasta que termina. Permitir concurrencia configurable (N runs simultáneos) para plan y execute. Evaluar: límite por defecto, impacto en SQLite WAL contention, y si el JobQueue necesita un semaphore o pool.
@@ -79,6 +88,9 @@ El journey del Workspace muestra las sugerencias relacionadas de una tarea, pero
 
 ### Mostrar múltiples PRs en descripción de tareas
 Cuando una tarea tiene más de un run con PR asociado, la UI solo muestra 1 PR. Mostrar todas las PRs vinculadas (lista o badges) en la tarjeta/detalle de la tarea en Workspace.
+
+### Filtro por repo en Workspace
+El Workspace muestra tasks y runs de todos los repos mezclados. Añadir un filtro/selector de repo que permita ver solo las tasks/runs asociadas a un repo específico. Usar `repo_ids_json` de tasks y el repo del run para filtrar. Incluir opción "All repos" como default.
 
 ### Radar: labels de ejes se salen del SVG *(2026-04-14)*
 En `BondRadar.tsx`, los labels se posicionan a 125% del radio (`pointAt(i, 125)`). Con `size=300` y `radius=96px`, los textos largos como "Momentum 54" o "Alignment 51" exceden el viewBox `0 0 300 300` y se recortan. Fix: ampliar el viewBox con padding (e.g. `-30 -30 360 360`), o reducir el radio, o recalcular la posición de labels dinámicamente según la longitud del texto.
