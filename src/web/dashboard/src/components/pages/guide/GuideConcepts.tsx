@@ -43,7 +43,7 @@ export function GuideConcepts() {
       <section className="bg-card border border-border rounded-lg p-5 mb-6">
         <h2 className="text-base font-semibold mb-3">Bond System</h2>
         <p className="text-sm text-text-dim mb-4">
-          Shadow and Andrés grow a bond over time, tracked on <span className="text-text">5 axes and 8 tiers</span>.
+          Shadow and the developer grow a bond over time, tracked on <span className="text-text">5 axes and 8 tiers</span>.
           Time flows. Depth, momentum, alignment and autonomy grow with use. A tier is reached when BOTH the time
           gate and the quality floor (average of the 4 dynamic axes) are met. Tiers are monotonic — they never decrease.
         </p>

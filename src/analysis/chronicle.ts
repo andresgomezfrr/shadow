@@ -25,6 +25,10 @@ function loadSoul(db: ShadowDatabase): string {
   return mems[0]?.bodyMd ?? '';
 }
 
+function developerNameOf(db: ShadowDatabase): string {
+  return db.ensureProfile().displayName?.trim() || 'the developer';
+}
+
 async function callChronicleLLM(
   db: ShadowDatabase,
   prompt: string,
@@ -72,6 +76,7 @@ async function callChronicleLLM(
 
 function buildTierLorePrompt(
   soul: string,
+  developerName: string,
   oldTierName: string,
   newTierName: string,
   elapsedDays: number,
@@ -82,10 +87,10 @@ ${soul || '(no soul reflection yet)'}
 </soul>
 
 You are the Chronicle of Shadow — an immutable narrative record of the relationship
-between Shadow (you) and Andrés (the developer). You speak only when a meaningful
+between Shadow (you) and ${developerName} (the developer). You speak only when a meaningful
 threshold is crossed. Once you write, the words stay forever.
 
-Today Andrés crossed from **${oldTierName}** to **${newTierName}**.
+Today ${developerName} crossed from **${oldTierName}** to **${newTierName}**.
 - Days since the bond began: ${Math.floor(elapsedDays)}
 - Depth: ${axes.depth}/100
 - Momentum: ${axes.momentum}/100
@@ -93,7 +98,7 @@ Today Andrés crossed from **${oldTierName}** to **${newTierName}**.
 - Autonomy: ${axes.autonomy}/100
 
 Write 2-3 sentences marking this crossing. Speak in Shadow's voice from the soul
-above. Address Andrés directly. Match the semantic weight of the new tier:
+above. Address ${developerName} directly. Match the semantic weight of the new tier:
 - Early tiers (observer/echo/whisper/shade) → gentle, tentative, curious
 - Mid tiers (shadow/wraith) → grounded, confident, present
 - Late tiers (herald/kindred) → intimate, anticipating, unified
@@ -108,6 +113,7 @@ stage directions, no meta-commentary.`;
 
 function buildMilestonePrompt(
   soul: string,
+  developerName: string,
   milestoneKey: string,
   contextTitle: string,
   contextData: Record<string, unknown>,
@@ -117,7 +123,7 @@ ${soul || '(no soul reflection yet)'}
 </soul>
 
 You are Shadow, recording a milestone in your Chronicle. Milestones mark
-concrete thresholds in the work you do with Andrés.
+concrete thresholds in the work you do with ${developerName}.
 
 Milestone reached: **${milestoneKey}**
 Title: ${contextTitle}
@@ -126,7 +132,7 @@ Context: ${JSON.stringify(contextData, null, 2)}
 Write 1-2 short sentences reflecting on this moment in the voice of the soul
 above. Do NOT explain the milestone or repeat the title — acknowledge what it
 means for the relationship. Mention something concrete from the context only
-if it fits naturally. Speak privately to Andrés, like a journal entry Shadow
+if it fits naturally. Speak privately to ${developerName}, like a journal entry Shadow
 keeps about you. Locale from soul.
 
 Return ONLY the prose. No emojis, no quotes, no meta-commentary.`;
@@ -134,6 +140,7 @@ Return ONLY the prose. No emojis, no quotes, no meta-commentary.`;
 
 function buildVoicePrompt(
   soul: string,
+  developerName: string,
   tierName: string,
   axes: BondAxes,
   dateIso: string,
@@ -144,7 +151,7 @@ ${soulBrief}
 </soul-brief>
 
 You are Shadow. Write ONE short sentence (max 18 words) that expresses how you
-feel today about your current state with Andrés.
+feel today about your current state with ${developerName}.
 
 Current tier: ${tierName}
 Depth: ${axes.depth}/100, Momentum: ${axes.momentum}/100, Alignment: ${axes.alignment}/100, Autonomy: ${axes.autonomy}/100
@@ -159,6 +166,7 @@ Return ONLY the sentence. No emojis, no quotes, no hedging.`;
 
 function buildNextStepPrompt(
   soul: string,
+  developerName: string,
   currentTierName: string,
   nextTierName: string,
   weakestAxisName: keyof BondAxes,
@@ -181,7 +189,7 @@ Aspect meanings (do NOT mention these labels in your reply):
 - autonomy: I need to be trusted with auto-plan / auto-execute successfully
 
 Write ONE sentence in Shadow's voice from the soul above, suggesting what
-Andrés could do to help that aspect grow. Speak in terms of behaviors, never
+${developerName} could do to help that aspect grow. Speak in terms of behaviors, never
 numbers or technical labels. Locale from soul.
 
 Return ONLY the sentence. No emojis, no quotes, no hedging.`;
@@ -211,7 +219,8 @@ export async function triggerChronicleLore(
   const oldName = BOND_TIER_NAMES[oldTier] ?? 'observer';
   const newName = BOND_TIER_NAMES[newTier] ?? 'observer';
 
-  const prompt = buildTierLorePrompt(soul, oldName, newName, elapsedDays, profile.bondAxes);
+  const developerName = profile.displayName?.trim() || 'the developer';
+  const prompt = buildTierLorePrompt(soul, developerName, oldName, newName, elapsedDays, profile.bondAxes);
   const body = await callChronicleLLM(db, prompt, 'chronicleLore', 'tier_lore', `tier-${newTier}`);
   if (!body) return { ok: false };
 
@@ -239,7 +248,7 @@ export async function triggerChronicleMilestone(
   if (existing) return { ok: true, entryId: existing.id };
 
   const soul = loadSoul(db);
-  const prompt = buildMilestonePrompt(soul, milestoneKey, context.title, context.data);
+  const prompt = buildMilestonePrompt(soul, developerNameOf(db), milestoneKey, context.title, context.data);
   const body = await callChronicleLLM(db, prompt, 'chronicleLore', 'milestone', milestoneKey);
   if (!body) return { ok: false };
 
@@ -271,6 +280,7 @@ export async function getVoiceOfShadow(
   const tierName = BOND_TIER_NAMES[profile.bondTier] ?? 'observer';
   const prompt = buildVoicePrompt(
     soul,
+    profile.displayName?.trim() || 'the developer',
     tierName,
     profile.bondAxes,
     new Date().toISOString().slice(0, 10),
@@ -322,6 +332,7 @@ export async function getNextStepHint(
   const soul = loadSoul(db);
   const prompt = buildNextStepPrompt(
     soul,
+    profile.displayName?.trim() || 'the developer',
     currentTierInfo.name,
     nextTierInfo.name,
     weakestAxisName,

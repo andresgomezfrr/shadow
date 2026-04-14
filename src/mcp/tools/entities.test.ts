@@ -1,9 +1,14 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { createTestToolContext, callTool, assertNotFound, seedRepo, seedProject, seedContact, seedSystem, seedObservation } from './_test-helpers.js';
 import { entityTools } from './entities.js';
 import type { McpTool } from './types.js';
+
+// Use the git toplevel of wherever the tests run from — any checkout of this
+// repo is a valid git directory for the repo-add tests.
+const GIT_ROOT = execSync('git rev-parse --show-toplevel', { encoding: 'utf8' }).trim();
 
 // ---------------------------------------------------------------------------
 // Repos
@@ -61,14 +66,13 @@ describe('shadow_repo_add', () => {
   });
 
   it('adds repo from real git directory', async () => {
-    // Use the shadow project root which IS a git repo
-    const result = await callTool(tools, 'shadow_repo_add', { path: '/Users/andresgomezfrr/workspace/shadow', name: 'shadow-test' }) as any;
+    const result = await callTool(tools, 'shadow_repo_add', { path: GIT_ROOT, name: 'shadow-test' }) as any;
     assert.ok(result.id);
     assert.equal(result.name, 'shadow-test');
   });
 
   it('rejects duplicate path', async () => {
-    const result = await callTool(tools, 'shadow_repo_add', { path: '/Users/andresgomezfrr/workspace/shadow' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_repo_add', { path: GIT_ROOT }) as Record<string, unknown>;
     assert.equal(result.isError, true);
     assert.ok((result.message as string).includes('already registered'));
   });
