@@ -47,7 +47,7 @@ export async function handleProfileRoutes(
         lastHeartbeat,
         nextHeartbeatAt,
         jobSchedule: {
-          heartbeat: { intervalMs: 30 * 60 * 1000, nextAt: nextHeartbeatAt },
+          heartbeat: { intervalMs: config.heartbeatIntervalMs, nextAt: nextHeartbeatAt },
           suggest: (() => {
             return { trigger: 'reactive post-heartbeat', nextAt: null };
           })(),

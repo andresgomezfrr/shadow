@@ -15,8 +15,12 @@ npm run dev -- daemon start
 
 `shadow init` hace tres cosas:
 1. Crea la base de datos en `~/.shadow/shadow.db`
-2. Genera `~/.shadow/SOUL.md` — la personalidad de Shadow (editable)
-3. Escribe la identidad de Shadow en `~/.claude/CLAUDE.md`
+2. Escribe la identidad de Shadow en `~/.claude/CLAUDE.md`
+3. Instala hooks, MCP server y el servicio launchd
+
+La personalidad (soul) vive como `soul_reflection` dentro de la base de
+datos, escrita y evolucionada automáticamente por el job `reflect` diario.
+Se puede ver y editar desde la dashboard en `/profile`.
 
 Configura Shadow como MCP server en Claude Code. Añade a `~/.claude/settings.json`:
 
@@ -227,24 +231,21 @@ SHADOW_MODEL_ANALYZE=sonnet           # Modelo para analisis
 SHADOW_MODEL_SUGGEST=opus             # Modelo para sugerencias
 SHADOW_MODEL_CONSOLIDATE=sonnet       # Modelo para consolidacion
 SHADOW_MODEL_RUNNER=opus              # Modelo para ejecucion
-SHADOW_HEARTBEAT_INTERVAL_MS=900000   # 15 min
+SHADOW_HEARTBEAT_INTERVAL_MS=1800000  # 30 min
 ```
 
 ---
 
 ## Personalidad
 
-Shadow tiene personalidad configurable (1-5). Se define en `~/.shadow/SOUL.md`.
+La personalidad de Shadow vive como una memoria `soul_reflection` dentro de
+la base de datos. No hay niveles fijos: el job diario `reflect` reescribe la
+soul en base a cómo has estado trabajando con Shadow, y ese texto se inyecta
+en todos los prompts de Shadow.
 
-| Nivel | Tono |
-|-------|------|
-| 1 | Tecnico. Sin personalidad. Conciso. |
-| 2 | Profesional. Ocasionalmente calido. |
-| 3 | Amigable. Conversacional pero enfocado. |
-| 4 | **Compañero (defecto)**. Cercano, personal, recuerda contexto. |
-| 5 | Expresivo. Playful. Vinculo profundo. |
-
-Para cambiarlo: "Shadow, pon tu personalidad a nivel 3" o edita `~/.shadow/SOUL.md` directamente.
+Para verla o editarla: dashboard → `/profile` → sección **Soul**. También se
+puede influir en ella vía correcciones (`shadow_correct`) y enseñanzas
+(`shadow_memory_teach`) — Shadow las absorbe en la siguiente reflect.
 
 Cuando abres Claude CLI, Shadow se presenta segun su personalidad porque:
 1. `~/.claude/CLAUDE.md` le dice a Claude que ES Shadow

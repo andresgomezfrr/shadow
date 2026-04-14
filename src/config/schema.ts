@@ -41,7 +41,7 @@ export const ConfigSchema = z.object({
   claudeBin: z.string().min(1).default('claude'),
   claudeExtraPath: z.string().min(1).optional(),
   runnerTimeoutMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
-  heartbeatIntervalMs: z.coerce.number().int().positive().default(15 * 60 * 1000),
+  heartbeatIntervalMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
   daemonPollIntervalMs: z.coerce.number().int().positive().default(30_000),
   proactivityLevel: z.coerce.number().int().min(1).max(10).default(5),
   thoughtsEnabled: z.coerce.boolean().default(true),

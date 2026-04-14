@@ -166,7 +166,7 @@ Kinds: `improvement`, `risk`, `opportunity`, `pattern`, `infrastructure`. Source
 
 ```bash
 # Setup
-shadow init                     # Bootstrap (DB, hooks, launchd, SOUL.md)
+shadow init                     # Bootstrap (DB, hooks, launchd)
 
 # Daily use (primary interface is Claude CLI, not these)
 shadow ask "question"           # One-shot question with personality
@@ -218,7 +218,7 @@ SHADOW_MODEL_CONSOLIDATE=sonnet      # Memory consolidation
 SHADOW_MODEL_RUNNER=opus             # Task execution + confidence eval
 SHADOW_MODEL_CHRONICLE_LORE=opus     # Chronicle tier/milestone lore
 SHADOW_MODEL_CHRONICLE_DAILY=haiku   # Voice of shadow + next-step hint
-SHADOW_HEARTBEAT_INTERVAL_MS=900000  # 15 min
+SHADOW_HEARTBEAT_INTERVAL_MS=1800000  # 30 min
 SHADOW_DATA_DIR=~/.shadow            # Data directory
 ```
 

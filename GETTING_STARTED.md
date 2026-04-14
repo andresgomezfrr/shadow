@@ -27,10 +27,13 @@ npx tsx src/cli.ts daemon start
 
 `shadow init` does the following:
 - Creates `~/.shadow/` with SQLite database
-- Generates `~/.shadow/SOUL.md` — Shadow's editable personality
 - Writes Shadow's identity to `~/.claude/CLAUDE.md`
 - Installs hooks and MCP server in `~/.claude/settings.json`
 - Installs a launchd service for auto-start on login (macOS)
+
+Shadow's personality lives as a `soul_reflection` memory inside the database,
+authored and evolved automatically by the daily `reflect` job. You can view
+and edit it from the dashboard at `/profile`.
 
 ## Register the MCP server
 
@@ -149,7 +152,7 @@ SHADOW_PROACTIVITY_LEVEL=5          # 1-10 (how proactive Shadow is)
 SHADOW_PERSONALITY_LEVEL=4          # 1-5 (1=technical, 4=companion, 5=expressive)
 SHADOW_MODEL_ANALYZE=sonnet         # Model for heartbeat analysis
 SHADOW_MODEL_SUGGEST=opus           # Model for suggestions
-SHADOW_HEARTBEAT_INTERVAL_MS=900000 # 15 minutes
+SHADOW_HEARTBEAT_INTERVAL_MS=1800000 # 30 minutes
 SHADOW_LOCALE=es                    # Language (Shadow speaks your language)
 ```
 
