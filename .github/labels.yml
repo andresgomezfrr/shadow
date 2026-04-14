@@ -1,0 +1,102 @@
+# Shadow — GitHub labels (declarative)
+#
+# Living source of truth for repository labels. Sync with
+# https://github.com/Financial-Times/github-label-sync or similar:
+#
+#   npx github-label-sync --labels .github/labels.yml andresgomezfrr/shadow
+#
+# Keep in sync when adding/removing labels on the repo.
+
+# ── Tier 1 — type ────────────────────────────────────────────────────────────
+
+- name: bug
+  color: d73a4a
+  description: Something broken
+
+- name: feature
+  color: 0e8a16
+  description: New capability or feature
+
+- name: improvement
+  color: bfe5bf
+  description: Polish or enhancement of existing behavior
+
+- name: docs
+  color: 0075ca
+  description: Documentation changes
+
+- name: refactor
+  color: 6c757d
+  description: Internal cleanup, no functional change
+
+- name: question
+  color: d876e3
+  description: Discussion needed before deciding
+
+- name: tech-debt
+  color: f9a825
+  description: Known debt, not urgent
+
+- name: breaking-change
+  color: e99695
+  description: Breaks API, schema, or config
+
+# ── Tier 2 — area ────────────────────────────────────────────────────────────
+
+- name: "area:daemon"
+  color: bfd4f2
+  description: Daemon core, scheduling, lifecycle
+
+- name: "area:dashboard"
+  color: bfd4f2
+  description: React dashboard, routes, UX
+
+- name: "area:mcp"
+  color: bfd4f2
+  description: MCP tools, server, JSON-RPC
+
+- name: "area:db"
+  color: bfd4f2
+  description: SQLite schema, migrations, FTS5, vec
+
+- name: "area:cli"
+  color: bfd4f2
+  description: shadow CLI commands
+
+- name: "area:llm"
+  color: bfd4f2
+  description: Prompts, adapter, model selection
+
+- name: "area:bond"
+  color: bfd4f2
+  description: Bond system, chronicle, unlockables
+
+- name: "area:runner"
+  color: bfd4f2
+  description: Runner, autonomy, tasks, runs
+
+# ── Tier 3 — status + special ────────────────────────────────────────────────
+
+- name: needs-design
+  color: fbca04
+  description: Requires design discussion before code
+
+- name: needs-repro
+  color: fff5cc
+  description: Bug report without clear reproduction
+
+- name: good first issue
+  color: 7057ff
+  description: Approachable entry point for new contributors
+
+- name: performance
+  color: c5def5
+  description: Performance impact (positive or regression)
+
+- name: dependencies
+  color: 006b75
+  description: Dependency updates
+
+- name: blocked
+  color: b60205
+  description: Waiting on external dependency
