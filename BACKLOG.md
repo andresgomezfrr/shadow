@@ -1,189 +1,189 @@
 # Shadow — Backlog
 
-Actualizado 2026-04-13. Items completados en [COMPLETED.md](COMPLETED.md).
+Last updated 2026-04-13. Completed items in [COMPLETED.md](COMPLETED.md).
 
 ---
 
-## Auditoría #2 — Pendiente (2026-04-11)
+## Audit #2 — Pending (2026-04-11)
 
-### P3: Tablas sin mecanismo de limpieza
-`interactions`, `event_queue`, `llm_usage`, `jobs`, `feedback` crecen sin límite. Sin retention policy ni cleanup job. Implementar como job type `cleanup` (IO, daily). Bajo impacto actual, relevante a largo plazo.
-
----
-
-## Prioridad media — Tests
-
-### Tests WorkspacePage filtros + lifecycle
-Renderizado por filtro, transiciones de estado del feed unificado y context panel.
+### P3: Tables without cleanup mechanism
+`interactions`, `event_queue`, `llm_usage`, `jobs`, `feedback` grow without limit. No retention policy or cleanup job. Implement as job type `cleanup` (IO, daily). Low current impact, relevant long-term.
 
 ---
 
-## Prioridad media — Runner
+## Medium priority — Tests
 
-### Stale run detector mata runs activos prematuramente *(2026-04-14)*
-El stale detector en `src/daemon/runtime.ts:676-686` tiene un timeout hardcoded de 10min, pero el runner timeout real es 30min (`runnerTimeoutMs`). El detector no consulta si el run tiene un proceso activo en `RunQueue.active` — solo mira `status='running'` + elapsed time en DB. Resultado: runs legítimamente lentos (multi-repo, plan mode con mucho contexto) son matados a los 10min con `errorSummary="Stale: exceeded 10min timeout"`. Ref: run `1e4dea01`. Fix: (1) usar `config.runnerTimeoutMs` en vez del hardcoded 10min, (2) consultar `RunQueue.active` antes de marcar como stale — si el runner lo tiene en su map, está vivo y no es stale.
-
-### Plan vacío no se trata como fallo *(2026-04-14)*
-Cuando un plan run completa con exit code 0 pero `capturePlanFromSession` no encuentra plan (Claude no escribió a `~/.claude/plans/`) y `result.output` es vacío, el runner guarda `resultSummaryMd = ""` y marca el run como `planned`. La confidence eval corre sobre una string vacía y genera doubts, pero el run queda en estado `planned` sin plan real. Ref: runs `7a426733`, `8b061e52`. Fix: en `src/runner/service.ts` después de la captura del plan (~L228), si `effectivePlan` es vacío/whitespace, tratar como fallo (`status=failed`, `errorSummary="Plan mode produced no output"`). No correr confidence eval sin plan. Nota: la confidence eval dio `high` con plan vacío en `8b061e52` — la eval debe rechazar plans vacíos antes de invocar al LLM.
-
-### `AskUserQuestion` no debe estar disponible en runner sessions *(2026-04-14)*
-Causa raíz de que ambos runs `3d668e1d` y `8b061e52` no produjeran plan. Claude hizo investigación excelente, tenía toda la información, pero en vez de escribir el plan con assumptions razonables, llamó `AskUserQuestion` — que no tiene humano al otro lado. En run 1, las preguntas tenían respuesta obvia (Claude las marcó como "Recommended" en su thinking). En run 2, `AskUserQuestion` falló x2 y la sesión murió sin output. Fix de dos capas: (1) excluir `AskUserQuestion` del `allowedTools` en `src/runner/service.ts` (~L176) para runner sessions, (2) añadir al briefing (~L148): "You are running autonomously — there is no human to answer questions. Make reasonable assumptions and document them in the plan."
-
-### Runner no limita retries en tool permission denied *(2026-04-14)*
-En run `8b061e52`, Claude reintentó `oliver__list_dashboards` 7 veces tras permission denied, y `shadow_check_in` 2 veces. Cada retry gasta un turno sin resultado. No es un bug del runner directamente (es comportamiento de Claude), pero el briefing debería incluir una instrucción: "If a tool call is denied, do NOT retry — adapt your approach using other available tools." Alternativamente, evaluar si `--allowedTools 'mcp__*'` realmente matchea los tools de Oliver/Shadow en la sesión del runner, o si hay un gap en el patrón.
-
-### Soul injection en briefing causa check_in redundante *(2026-04-14)*
-El briefing del runner inyecta la soul completa de Shadow (vía `shadow mcp-context`), que incluye la instrucción "call `shadow_check_in` at session start". Claude obedece y gasta 1-2 turnos llamando `shadow_check_in` que es redundante (la soul ya está en el prompt) y a veces falla por permisos. Fix: o bien no inyectar la instrucción de check_in en el contexto del runner, o bien hacer que `mcp-context` tenga un mode `runner` que omita instrucciones interactivas (check_in, greeting, events).
-
-### Ejecución paralela de runs (plan + execute)
-Actualmente el runner procesa 1 run a la vez — los demás se quedan en `queued` hasta que termina. Permitir concurrencia configurable (N runs simultáneos) para plan y execute. Evaluar: límite por defecto, impacto en SQLite WAL contention, y si el JobQueue necesita un semaphore o pool.
-
-### Repos sin suggest-deep inicial quedan excluidos del scheduler *(2026-04-14)*
-El scheduler periódico de `suggest-deep` en `runtime.ts:645` hace `if (!lastDeep) continue` — solo re-programa repos que ya tuvieron un primer scan. El primer scan se dispara desde `repo-profile` (`profiling.ts:59-69`), pero si ese trigger se pierde (network, darkwake, `break` tras el primero), el repo queda permanentemente excluido del ciclo de sugerencias. Fix: tratar repos sin `lastDeep` como candidatos con `daysSince = Infinity`, no saltarlos.
-
-### Observaciones linkeadas a repo incorrecto no generan sugerencias *(2026-04-14)*
-Las observaciones generadas por el heartbeat pueden linkar entity type `repo` a un repo distinto del que realmente tratan (e.g. linkan a un repo de monitoring cuando la observación es sobre el servicio). El suggest normal (`notify.ts` / `activitySuggest`) filtra observaciones por entity type `repo` → esas observaciones no alimentan sugerencias del repo correcto. Dos problemas: (1) el LLM de heartbeat no siempre asocia el `repo_id` correcto en `entities_json`, (2) el pipeline de sugerencias debería considerar también links por `project`, no solo por `repo`, para capturar observaciones cross-repo.
-
-### revalidate-suggestion falla cuando el LLM responde narrativo en vez de JSON *(2026-04-14)*
-El prompt de revalidate pide "FINAL message must be ONLY a JSON object" pero cuando el LLM investiga con herramientas (Read, Grep) y concluye que la sugerencia ya está resuelta, a veces responde con análisis narrativo con code blocks en vez de JSON. `extractJson` en `src/backend/json-repair.ts:6-18` usa la heurística "primer `{` hasta último `}`" que captura `{` de code fences (TypeScript objects) confundiéndolos con el JSON de respuesta. El job se marca como `completed` con `error: "Parse failed"` pero no reintenta ni aplica fallback. Fix propuesto: (1) si `extractJson` falla, hacer un segundo intento con regex que busque específicamente el patrón `{"verdict":` para distinguir el JSON de respuesta del código citado, (2) si no hay JSON válido en el output, reintentar la LLM call una vez con prompt reforzado ("respond ONLY with JSON, no markdown"), (3) marcar el job como `failed` en vez de `completed` con error silencioso para que sea visible en Activity como fallo real.
-
-### Pendiente de evaluar
-- **Plan demasiado largo**: repos con archivos grandes pueden saturar contexto. Evaluar file size hints en briefing o exclusión de archivos grandes.
+### WorkspacePage filter + lifecycle tests
+Rendering per filter, state transitions of the unified feed and context panel.
 
 ---
 
-## Prioridad media — Workspace & Runs
+## Medium priority — Runner
 
-### Detectar PRs creados fuera de Shadow
-Si un run tiene worktree pero no prUrl, detectar si existe un PR con `gh pr list --head shadow/{id}`.
+### Stale run detector kills active runs prematurely *(2026-04-14)*
+The stale detector in `src/daemon/runtime.ts:676-686` has a hardcoded 10min timeout, but the actual runner timeout is 30min (`runnerTimeoutMs`). The detector doesn't check whether the run has an active process in `RunQueue.active` — it only looks at `status='running'` + elapsed time in DB. Result: legitimately slow runs (multi-repo, plan mode with heavy context) get killed at 10min with `errorSummary="Stale: exceeded 10min timeout"`. Ref: run `1e4dea01`. Fix: (1) use `config.runnerTimeoutMs` instead of the hardcoded 10min, (2) check `RunQueue.active` before marking as stale — if the runner has it in its map, it's alive and not stale.
 
----
+### Empty plan not treated as failure *(2026-04-14)*
+When a plan run completes with exit code 0 but `capturePlanFromSession` finds no plan (Claude didn't write to `~/.claude/plans/`) and `result.output` is empty, the runner saves `resultSummaryMd = ""` and marks the run as `planned`. The confidence eval runs over an empty string and produces doubts, but the run stays in `planned` state with no real plan. Ref: runs `7a426733`, `8b061e52`. Fix: in `src/runner/service.ts` after plan capture (~L228), if `effectivePlan` is empty/whitespace, treat as failure (`status=failed`, `errorSummary="Plan mode produced no output"`). Don't run confidence eval without a plan. Note: the confidence eval returned `high` with an empty plan in `8b061e52` — the eval should reject empty plans before invoking the LLM.
 
-## Prioridad media — Digests
+### `AskUserQuestion` should not be available in runner sessions *(2026-04-14)*
+Root cause of both runs `3d668e1d` and `8b061e52` producing no plan. Claude did excellent investigation, had all the information, but instead of writing the plan with reasonable assumptions, it called `AskUserQuestion` — which has no human on the other end. In run 1, the questions had obvious answers (Claude marked them as "Recommended" in its thinking). In run 2, `AskUserQuestion` failed x2 and the session died with no output. Two-layer fix: (1) exclude `AskUserQuestion` from `allowedTools` in `src/runner/service.ts` (~L176) for runner sessions, (2) add to the briefing (~L148): "You are running autonomously — there is no human to answer questions. Make reasonable assumptions and document them in the plan."
 
-### Digest/Morning no se actualizan tras re-ejecutar job
-Escenario: job de digest falla con timeout ("Process timed out"), se relanza manualmente para el día anterior, el job ejecuta OK pero ni la página de Digests ni el Morning reflejan el resultado nuevo. Posibles causas: (1) el digest se inserta con period_start/period_end que no matchea la query del día anterior, (2) la UI cachea o filtra por fecha de forma que excluye digests regenerados, (3) el morning page usa una query distinta que no recoge el digest actualizado. Investigar query boundaries, upsert vs insert duplicado, y si el frontend refetch es correcto.
+### Runner doesn't limit retries on tool permission denied *(2026-04-14)*
+In run `8b061e52`, Claude retried `oliver__list_dashboards` 7 times after permission denied, and `shadow_check_in` 2 times. Each retry burns a turn with no result. Not strictly a runner bug (it's Claude behavior), but the briefing should include an instruction: "If a tool call is denied, do NOT retry — adapt your approach using other available tools." Alternatively, evaluate whether `--allowedTools 'mcp__*'` actually matches Oliver/Shadow tools in the runner session, or if there's a gap in the pattern.
 
----
+### Soul injection in briefing causes redundant check_in *(2026-04-14)*
+The runner briefing injects the full Shadow soul (via `shadow mcp-context`), which includes the instruction "call `shadow_check_in` at session start". Claude obeys and burns 1-2 turns calling `shadow_check_in`, which is redundant (the soul is already in the prompt) and sometimes fails on permissions. Fix: either don't inject the check_in instruction into the runner context, or make `mcp-context` support a `runner` mode that omits interactive instructions (check_in, greeting, events).
 
-## Prioridad media — Dashboard UX
+### Parallel execution of runs (plan + execute)
+Currently the runner processes 1 run at a time — the others stay `queued` until it finishes. Allow configurable concurrency (N simultaneous runs) for plan and execute. Evaluate: default limit, impact on SQLite WAL contention, and whether JobQueue needs a semaphore or pool.
 
-### Mostrar sesiones de plan y execute en el Journey
-El Journey muestra los steps (plan, execution, PR) pero no expone las sesiones de Claude Code asociadas a cada fase. Sería útil ver en cada step un enlace/referencia a la sesión que generó ese resultado — tanto la sesión de plan como la de ejecución — para poder inspeccionar el transcript o resumirla desde el dashboard.
+### Repos without initial suggest-deep stay excluded from the scheduler *(2026-04-14)*
+The periodic `suggest-deep` scheduler in `runtime.ts:645` does `if (!lastDeep) continue` — it only re-schedules repos that already had a first scan. The first scan is triggered from `repo-profile` (`profiling.ts:59-69`), but if that trigger is missed (network, darkwake, `break` after the first), the repo stays permanently excluded from the suggestion cycle. Fix: treat repos without `lastDeep` as candidates with `daysSince = Infinity`, don't skip them.
 
-### Mejorar UX de attempts en el Journey (retry de runs)
-La sección "Execution attempts" en `RunJourney.tsx` es demasiado escueta cuando hay múltiples intentos. Problemas: (1) cada attempt es una línea plana sin enlace — no se puede hacer drill-down al child run para ver su detalle, (2) solo se muestra el `errorSummary` del último attempt activo, los errores de attempts anteriores desaparecen, (3) los attempts archivados se muestran tachados sin contexto de por qué fallaron, (4) no hay diferenciación visual clara entre el attempt activo y los anteriores. Mejorar: añadir link clickable por attempt que navegue al child run, mostrar error colapsable por attempt fallido, y mejor jerarquía visual activo vs anteriores.
+### Observations linked to the wrong repo don't generate suggestions *(2026-04-14)*
+Observations generated by the heartbeat can link entity type `repo` to a different repo than the one they're actually about (e.g. they link to a monitoring repo when the observation is about the service). Normal suggest (`notify.ts` / `activitySuggest`) filters observations by entity type `repo` → those observations don't feed suggestions for the correct repo. Two problems: (1) the heartbeat LLM doesn't always associate the correct `repo_id` in `entities_json`, (2) the suggestion pipeline should also consider links by `project`, not just by `repo`, to capture cross-repo observations.
 
-### Enlace al dashboard en la status line
-Añadir un icono/enlace clickable en la status line de Claude Code (`scripts/statusline.sh`) que al pinchar abra el navegador con el dashboard (`localhost:3700`). Evaluar si la status line soporta links clickables o si se necesita otro mecanismo (e.g. atajo de teclado, output con URL que el terminal renderice como link).
+### revalidate-suggestion fails when the LLM responds narratively instead of JSON *(2026-04-14)*
+The revalidate prompt asks for "FINAL message must be ONLY a JSON object" but when the LLM investigates with tools (Read, Grep) and concludes that the suggestion is already resolved, it sometimes responds with narrative analysis with code blocks instead of JSON. `extractJson` in `src/backend/json-repair.ts:6-18` uses the "first `{` to last `}`" heuristic that captures `{` from code fences (TypeScript objects), confusing them with the response JSON. The job is marked as `completed` with `error: "Parse failed"` but doesn't retry or apply a fallback. Proposed fix: (1) if `extractJson` fails, make a second attempt with a regex that specifically looks for the `{"verdict":` pattern to distinguish the response JSON from quoted code, (2) if no valid JSON in the output, retry the LLM call once with a reinforced prompt ("respond ONLY with JSON, no markdown"), (3) mark the job as `failed` instead of `completed` with silent error so it's visible in Activity as a real failure.
 
-### Unificar spinner de runs en RunsPage con el del Workspace
-La RunsPage usa `animate-pulse` en un dot de 2x2px (`RunPipeline.tsx:11`) para el estado `running`, mientras que el Workspace usa el `RunSpinner` de `FeedRunCard.tsx:8-12` (border-spinner circular 3.5x3.5 con keyframe `rotation`). Extraer `RunSpinner` a un componente compartido y usarlo también en `RunPipeline` y en el Journey (`RunJourney.tsx:223`) para consistencia visual.
-
-### Nota de cierre al cerrar una tarea
-`shadow_task_close` no acepta comentario ni razón de cierre. Permitir un `closedNote` opcional (como ya tienen los runs) para indicar el estado final: movido a backlog, implementado, descartado, etc. Reflejar en el MCP tool, la API, y la UI del Workspace.
-
-### Mostrar related suggestions en la página Tasks
-El journey del Workspace muestra las sugerencias relacionadas de una tarea, pero la vista de detalle en la página Tasks no. Añadir la misma sección de related suggestions al detalle de tarea en Tasks.
-
-### Mostrar múltiples PRs en descripción de tareas
-Cuando una tarea tiene más de un run con PR asociado, la UI solo muestra 1 PR. Mostrar todas las PRs vinculadas (lista o badges) en la tarjeta/detalle de la tarea en Workspace.
-
-### Filtro por repo en Workspace
-El Workspace muestra tasks y runs de todos los repos mezclados. Añadir un filtro/selector de repo que permita ver solo las tasks/runs asociadas a un repo específico. Usar `repo_ids_json` de tasks y el repo del run para filtrar. Incluir opción "All repos" como default.
-
-### Radar: labels de ejes se salen del SVG *(2026-04-14)*
-En `BondRadar.tsx`, los labels se posicionan a 125% del radio (`pointAt(i, 125)`). Con `size=300` y `radius=96px`, los textos largos como "Momentum 54" o "Alignment 51" exceden el viewBox `0 0 300 300` y se recortan. Fix: ampliar el viewBox con padding (e.g. `-30 -30 360 360`), o reducir el radio, o recalcular la posición de labels dinámicamente según la longitud del texto.
-
-### Depth axis no crece: memorias de jobs no cuentan *(2026-04-14)*
-`computeDepthAxis` en `src/profile/bond.ts` solo cuenta memorias con `kind IN ('taught','correction','knowledge_summary','soul_reflection')`. Pero los jobs automatizados (heartbeat, consolidation, enrichment) crean memorias con kinds como `convention`, `preference`, `infrastructure`, `workflow`, etc. que no están en esa lista. Post-reset solo hay memorias de esos kinds → depth = 0 permanentemente. Evaluar: (1) ampliar la lista de kinds elegibles, (2) que consolidation produzca `knowledge_summary`, (3) que `shadow_memory_teach` desde MCP siempre use `taught` independientemente del kind que pida el LLM. Lo más limpio probablemente es (1) — reconocer que todas las memorias no-efímeras representan depth.
-
-### Chronicle "The Path": badges se recortan por arriba *(2026-04-14)*
-En `PathVisualizer.tsx`, los circles de tier (`w-11 h-11`) con el badge emoji y el label superior se cortan visualmente por la parte superior del contenedor. El `flex items-center` con `overflow-x-auto` no deja espacio vertical suficiente para el contenido completo de cada nodo. Fix: añadir padding-top al contenedor, o cambiar `items-center` por `items-start` con margen, o dar `min-h` explícito al wrapper de cada tier.
-
-### Eventos de observaciones se re-crean infinitamente *(2026-04-14)*
-Bug confirmado. En `src/analysis/notify.ts:42-48`, el dedup de `observation_notable` solo consulta `listPendingEvents()` (delivered=0). Cuando el usuario marca los eventos como leídos (delivered=1), el siguiente heartbeat no los ve y re-crea un evento para cada observación high/critical que siga en `open`. Resultado: una observación puede acumular 91+ eventos (verificado en DB). Fix: el dedup debe consultar **todos** los eventos para esa observación (no solo pending), o usar un flag en la propia observación (`notifiedAt`) para no re-notificar.
-
-### Evaluar: bond por repo en vez de global *(2026-04-08)*
-Bond global vs per-repo. Shadow puede saber mucho de un repo y poco de otro. Hablar antes de diseñar.
+### Pending evaluation
+- **Plan too long**: repos with large files can saturate context. Evaluate file size hints in briefing or exclusion of large files.
 
 ---
 
-## Prioridad media — Infraestructura de datos
+## Medium priority — Workspace & Runs
 
-### MCP server ordering en dashboard *(2026-04-08)*
-Drag-drop para reordenar MCP servers en Enrichment. El orden como hint para el LLM.
+### Detect PRs created outside Shadow
+If a run has a worktree but no prUrl, detect whether a PR exists with `gh pr list --head shadow/{id}`.
 
 ---
 
-## Prioridad baja
+## Medium priority — Digests
 
-### Guard de detección de suspend/sleep para Linux
-`isSystemAwake()` en `src/daemon/runtime.ts` usa `pmset -g assertions` (macOS-only). En Linux falla silenciosamente y retorna `true` (fail-open), así que el daemon no distingue full-wake de suspend y schedula jobs durante sleep. Implementar detección equivalente en Linux (p.ej. `systemd-inhibit --list`, `/sys/power/state`, o suscripción a DBus `org.freedesktop.login1` PrepareForSleep). Añadir platform guard que elija la estrategia correcta por OS.
+### Digest/Morning don't update after re-running job
+Scenario: digest job fails with timeout ("Process timed out"), gets relaunched manually for the previous day, the job runs OK but neither the Digests page nor the Morning reflect the new result. Possible causes: (1) the digest is inserted with period_start/period_end that don't match the previous day's query, (2) the UI caches or filters by date in a way that excludes regenerated digests, (3) the morning page uses a different query that doesn't pick up the updated digest. Investigate query boundaries, upsert vs duplicate insert, and whether frontend refetch is correct.
+
+---
+
+## Medium priority — Dashboard UX
+
+### Show plan and execute sessions in the Journey
+The Journey shows steps (plan, execution, PR) but doesn't expose the Claude Code sessions associated with each phase. It would be useful to see a link/reference in each step to the session that generated that result — both the plan session and the execution session — to inspect the transcript or summarize it from the dashboard.
+
+### Improve attempts UX in the Journey (run retries)
+The "Execution attempts" section in `RunJourney.tsx` is too terse when there are multiple attempts. Problems: (1) each attempt is a flat line with no link — no drill-down to the child run for detail, (2) only the `errorSummary` of the last active attempt is shown, errors from previous attempts disappear, (3) archived attempts are shown struck through with no context for why they failed, (4) no clear visual differentiation between the active attempt and previous ones. Improve: add a clickable link per attempt navigating to the child run, show collapsible error per failed attempt, and better visual hierarchy active vs previous.
+
+### Dashboard link in the status line
+Add a clickable icon/link in the Claude Code status line (`scripts/statusline.sh`) that opens the browser with the dashboard (`localhost:3700`). Evaluate whether the status line supports clickable links or whether another mechanism is needed (e.g. keyboard shortcut, output with URL that the terminal renders as a link).
+
+### Unify run spinner in RunsPage with the Workspace one
+The RunsPage uses `animate-pulse` on a 2x2px dot (`RunPipeline.tsx:11`) for the `running` state, while the Workspace uses the `RunSpinner` from `FeedRunCard.tsx:8-12` (circular border-spinner 3.5x3.5 with `rotation` keyframe). Extract `RunSpinner` to a shared component and also use it in `RunPipeline` and in the Journey (`RunJourney.tsx:223`) for visual consistency.
+
+### Closing note when closing a task
+`shadow_task_close` doesn't accept a comment or close reason. Allow an optional `closedNote` (like runs already have) to indicate the final state: moved to backlog, implemented, discarded, etc. Reflect in the MCP tool, the API, and the Workspace UI.
+
+### Show related suggestions on the Tasks page
+The Workspace journey shows related suggestions for a task, but the detail view on the Tasks page doesn't. Add the same related suggestions section to task detail on Tasks.
+
+### Show multiple PRs in task description
+When a task has more than one run with an associated PR, the UI only shows 1 PR. Show all linked PRs (list or badges) in the task card/detail in Workspace.
+
+### Repo filter in Workspace
+The Workspace shows tasks and runs from all repos mixed together. Add a repo filter/selector that allows viewing only the tasks/runs associated with a specific repo. Use `repo_ids_json` from tasks and the run's repo to filter. Include an "All repos" option as default.
+
+### Radar: axis labels overflow the SVG *(2026-04-14)*
+In `BondRadar.tsx`, labels are positioned at 125% of the radius (`pointAt(i, 125)`). With `size=300` and `radius=96px`, long texts like "Momentum 54" or "Alignment 51" exceed the `0 0 300 300` viewBox and get clipped. Fix: expand the viewBox with padding (e.g. `-30 -30 360 360`), or reduce the radius, or recalculate label position dynamically based on text length.
+
+### Depth axis doesn't grow: job-created memories don't count *(2026-04-14)*
+`computeDepthAxis` in `src/profile/bond.ts` only counts memories with `kind IN ('taught','correction','knowledge_summary','soul_reflection')`. But automated jobs (heartbeat, consolidation, enrichment) create memories with kinds like `convention`, `preference`, `infrastructure`, `workflow`, etc. that aren't in that list. Post-reset only memories of those kinds exist → depth = 0 permanently. Evaluate: (1) widen the eligible kinds list, (2) have consolidation produce `knowledge_summary`, (3) have `shadow_memory_teach` from MCP always use `taught` regardless of the kind requested by the LLM. The cleanest is probably (1) — recognize that all non-ephemeral memories represent depth.
+
+### Chronicle "The Path": badges get clipped at the top *(2026-04-14)*
+In `PathVisualizer.tsx`, tier circles (`w-11 h-11`) with the emoji badge and the top label get visually cut off at the top of the container. The `flex items-center` with `overflow-x-auto` doesn't leave enough vertical space for each node's full content. Fix: add padding-top to the container, or switch `items-center` to `items-start` with margin, or give an explicit `min-h` to each tier's wrapper.
+
+### Observation events get re-created infinitely *(2026-04-14)*
+Confirmed bug. In `src/analysis/notify.ts:42-48`, the `observation_notable` dedup only queries `listPendingEvents()` (delivered=0). When the user marks events as read (delivered=1), the next heartbeat doesn't see them and re-creates an event for each high/critical observation still `open`. Result: one observation can accumulate 91+ events (verified in DB). Fix: dedup must check **all** events for that observation (not just pending), or use a flag on the observation itself (`notifiedAt`) to avoid re-notifying.
+
+### Evaluate: bond per repo instead of global *(2026-04-08)*
+Global bond vs per-repo. Shadow may know a lot about one repo and little about another. Discuss before designing.
+
+---
+
+## Medium priority — Data infrastructure
+
+### MCP server ordering in dashboard *(2026-04-08)*
+Drag-drop to reorder MCP servers in Enrichment. Order as a hint for the LLM.
+
+---
+
+## Low priority
+
+### Suspend/sleep detection guard for Linux
+`isSystemAwake()` in `src/daemon/runtime.ts` uses `pmset -g assertions` (macOS-only). On Linux it fails silently and returns `true` (fail-open), so the daemon doesn't distinguish full-wake from suspend and schedules jobs during sleep. Implement equivalent detection on Linux (e.g. `systemd-inhibit --list`, `/sys/power/state`, or subscribing to DBus `org.freedesktop.login1` PrepareForSleep). Add a platform guard that picks the right strategy per OS.
 
 
-### Logs del daemon en dashboard
-Los `console.error` van a `daemon.stderr.log` pero no son accesibles desde el dashboard.
+### Daemon logs in dashboard
+`console.error` goes to `daemon.stderr.log` but is not accessible from the dashboard.
 
-### `tsc` no limpia `dist/` tras renames de módulo
-`npm run build` llama a `tsc` directo, que NO borra archivos del dist correspondientes a sources ya eliminados. Descubierto en v49: el rename de `src/heartbeat/` → `src/analysis/` (commit anterior) dejó `dist/heartbeat/` con `profile/trust.js` importando desde un path muerto, y como el MCP server del daemon carga desde `dist/`, el `shadow_memory_teach` tool falló con `Cannot find module 'profile/trust.js'` tras `shadow daemon restart` pese a tener el TS source limpio. Workaround actual: correr `npm run clean && npm run build` tras cualquier rename de módulo. Fix opciones: (a) hacer que `npm run build` llame `clean` antes de `tsc`, (b) migrar a un bundler que hace tree-shake (esbuild/tsup), (c) añadir `tsc --build --clean` prestep. Opción (a) es la más pragmática.
+### `tsc` doesn't clean `dist/` after module renames
+`npm run build` calls `tsc` directly, which does NOT delete dist files corresponding to sources that have been removed. Discovered in v49: the rename of `src/heartbeat/` → `src/analysis/` (previous commit) left `dist/heartbeat/` with `profile/trust.js` importing from a dead path, and since the daemon's MCP server loads from `dist/`, the `shadow_memory_teach` tool failed with `Cannot find module 'profile/trust.js'` after `shadow daemon restart` despite the TS source being clean. Current workaround: run `npm run clean && npm run build` after any module rename. Fix options: (a) make `npm run build` call `clean` before `tsc`, (b) migrate to a bundler that tree-shakes (esbuild/tsup), (c) add a `tsc --build --clean` prestep. Option (a) is the most pragmatic.
 
-### MCP STDIO server no se reinicia con `shadow daemon restart`
-El MCP server STDIO que Claude Code arranca al inicio de cada sesión queda pegado a esa sesión. `shadow daemon restart` solo reinicia el daemon web (puerto 3700) + launchd background jobs, pero el STDIO MCP server no. Si hay un rename mid-session (p.ej. el `trust.ts` → `bond.ts` de hoy), las dynamic imports cacheadas en el STDIO MCP server siguen apuntando al path viejo y las MCP tool calls fallan hasta reiniciar Claude Code. Impacto bajo en sesiones normales, material durante refactors grandes. Fix opciones: (a) detectar cambios en `src/` y auto-reiniciar el MCP server, (b) añadir un `shadow mcp restart` CLI que envíe señal al MCP STDIO process, (c) aceptar la limitación y documentar el workaround (restart Claude Code tras refactors de módulos importados dinámicamente). Opción (c) probablemente suficiente — es un caso raro.
+### MCP STDIO server doesn't restart with `shadow daemon restart`
+The STDIO MCP server that Claude Code starts at the beginning of each session stays pinned to that session. `shadow daemon restart` only restarts the web daemon (port 3700) + launchd background jobs, but not the STDIO MCP server. If there's a rename mid-session (e.g. today's `trust.ts` → `bond.ts`), the dynamic imports cached in the STDIO MCP server still point to the old path and MCP tool calls fail until Claude Code is restarted. Low impact in normal sessions, material during large refactors. Fix options: (a) detect changes in `src/` and auto-restart the MCP server, (b) add a `shadow mcp restart` CLI that signals the MCP STDIO process, (c) accept the limitation and document the workaround (restart Claude Code after refactors of dynamically imported modules). Option (c) is probably enough — it's a rare case.
 
 ---
 
 ## Long-term — Autonomy evolution
 
-### L5 — auto-merge selectivo
-Autonomía por repo/scope configurable. Shadow mergea donde tiene permiso. Requiere evaluación post-L4.
+### L5 — selective auto-merge
+Configurable autonomy per repo/scope. Shadow merges where it has permission. Requires post-L4 evaluation.
 
 ### Unlockables content (v49 follow-up)
-8 placeholder slots seeded en v49 con `kind='placeholder'` y `title='???'`. Ir llenándolos con contenido real (ghost variants, status phrase pools, theme overrides, badge emojis) vía direct DB update o futura MCP tool `shadow_unlock_define`.
+8 placeholder slots seeded in v49 with `kind='placeholder'` and `title='???'`. Fill them gradually with real content (ghost variants, status phrase pools, theme overrides, badge emojis) via direct DB update or a future `shadow_unlock_define` MCP tool.
 
 ### Drop v49 legacy columns (v50 cleanup)
-Después de al menos un mes en v49, dropear `user_profile.trust_level`, `trust_score`, `bond_level`, `suggestions.required_trust_level`, `interactions.trust_delta`. Todos están unused desde v49 pero se mantuvieron por la convención ADD-only de las migraciones anteriores.
+After at least a month in v49, drop `user_profile.trust_level`, `trust_score`, `bond_level`, `suggestions.required_trust_level`, `interactions.trust_delta`. All unused since v49 but kept due to the ADD-only convention of previous migrations.
 
 ---
 
-## Long-term — Arquitectura
+## Long-term — Architecture
 
-### Evaluar: asegurar entity linking en memorias, observaciones, sugerencias y runs *(2026-04-08)*
-Auditar si siempre estamos asociando `entities_json` cuando la información lo permite.
+### Evaluate: enforce entity linking in memories, observations, suggestions and runs *(2026-04-08)*
+Audit whether we always associate `entities_json` when the information allows it.
 
-### Soporte monorepo: un repo, múltiples proyectos con path prefixes *(2026-04-08)*
-Path prefixes por proyecto, detección de fronteras (BUILD.bazel, package.json), heartbeat scoping, entity linking granular.
+### Monorepo support: one repo, multiple projects with path prefixes *(2026-04-08)*
+Path prefixes per project, boundary detection (BUILD.bazel, package.json), heartbeat scoping, granular entity linking.
 
 ---
 
-## Long-term — Features (evaluar)
+## Long-term — Features (evaluate)
 
-### Circuit breaker para MCP servers en enrichment
-El enrichment pipeline (`src/analysis/enrichment.ts`) no tiene tracking de fallos por servidor. Cada run incluye todos los MCP servers habilitados aunque fallen consistentemente — el LLM no sabe que un server falló la vez anterior y gasta budget reintentando. Implementar per-server failure tracking (in-memory o DB), excluir servers con circuito abierto del prompt y `allowedTools`, auto-recover tras cooldown configurable. Extensible a circuit breaker genérico para todas las LLM calls.
+### Circuit breaker for MCP servers in enrichment
+The enrichment pipeline (`src/analysis/enrichment.ts`) has no per-server failure tracking. Every run includes all enabled MCP servers even if they fail consistently — the LLM doesn't know that a server failed the previous time and spends budget retrying. Implement per-server failure tracking (in-memory or DB), exclude servers with open circuit from the prompt and `allowedTools`, auto-recover after a configurable cooldown. Extensible to a generic circuit breaker for all LLM calls.
 
-### Incluir enrichment_cache en hybrid search (FTS5 + vec0)
-`shadow_search` y `/api/search` solo consultan memories, observations y suggestions. Los datos de enrichment tienen embeddings generados (`enrichment_vectors` vec0 table existe) pero nunca se consultan — son write-only desde la perspectiva de búsqueda. Falta: (1) crear `enrichment_fts` virtual table + sync triggers en nueva migración, (2) añadir `'enrichment'` al `SearchSchema` en `src/mcp/tools/data.ts`, (3) añadir branch en handler de `shadow_search` y en `src/web/routes/search.ts`, (4) merge en RRF scoring existente. El vector infrastructure ya está — es wiring, no arquitectura nueva.
+### Include enrichment_cache in hybrid search (FTS5 + vec0)
+`shadow_search` and `/api/search` only query memories, observations and suggestions. Enrichment data has embeddings generated (`enrichment_vectors` vec0 table exists) but is never queried — it's write-only from the search perspective. Missing: (1) create `enrichment_fts` virtual table + sync triggers in a new migration, (2) add `'enrichment'` to `SearchSchema` in `src/mcp/tools/data.ts`, (3) add a branch in the `shadow_search` handler and in `src/web/routes/search.ts`, (4) merge into existing RRF scoring. The vector infrastructure is already there — it's wiring, not new architecture.
 
-### Cap de resultSummaryMd en runs
-`src/runner/service.ts:271` persiste `resultSummaryMd` sin truncar. Plans complejos pueden alcanzar decenas de KB y los runs se acumulan sin pruning. El contenido completo ya se escribe en `summary.md` en el artifact directory, haciendo el campo DB parcialmente redundante para outputs largos. Truncar a un max configurable (e.g. 128KB) manteniendo la cola (más útil para diagnóstico), con marker de truncación.
+### Cap on resultSummaryMd in runs
+`src/runner/service.ts:271` persists `resultSummaryMd` without truncating. Complex plans can reach tens of KB and runs accumulate without pruning. The full content is already written to `summary.md` in the artifact directory, making the DB field partially redundant for long outputs. Truncate to a configurable max (e.g. 128KB) keeping the tail (more useful for diagnostics), with a truncation marker.
 
-### Scoring de señal en conversaciones
-Ponderar conversaciones por densidad antes del prompt de analyze.
+### Signal scoring in conversations
+Weight conversations by density before the analyze prompt.
 
-### Seguridad: CSP headers + rate limiting
-Dashboard sin Content-Security-Policy. Sin rate limiting en API/MCP.
+### Security: CSP headers + rate limiting
+Dashboard without Content-Security-Policy. No rate limiting in API/MCP.
 
 ### `shadow docs check` — drift detection
-Comparar CLAUDE.md contra código real: tools count, routes, schema tables.
+Compare CLAUDE.md against real code: tools count, routes, schema tables.
 
 ### LLM Memory Extraction post-Run
-Cuando un run completa, analizar output con LLM para extraer memorias.
+When a run completes, analyze output with an LLM to extract memories.
 
 ### Suggestion Expiry → Preference Memory
-Sugerencia expirada sin respuesta → memoria de preferencia implícita.
+Expired suggestion with no response → implicit preference memory.
 
 ### Configurable allowedTools
-User configura qué MCPs externos puede usar Shadow. (Plan en `internal/docs/plan-allowed-tools-config.md`.)
+User configures which external MCPs Shadow can use. (Plan in `internal/docs/plan-allowed-tools-config.md`.)
 
-### Correct button en Observations y Memories pages
-Extender CorrectionPanel contextual a observation cards y memory cards.
+### Correct button in Observations and Memories pages
+Extend the CorrectionPanel contextually to observation cards and memory cards.
