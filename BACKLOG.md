@@ -1,6 +1,6 @@
 # Shadow — Backlog
 
-Last updated 2026-04-13. Completed items in [COMPLETED.md](COMPLETED.md).
+Last updated 2026-04-15. Completed items in [COMPLETED.md](COMPLETED.md).
 
 ---
 
@@ -92,14 +92,8 @@ When a task has more than one run with an associated PR, the UI only shows 1 PR.
 ### Repo filter in Workspace
 The Workspace shows tasks and runs from all repos mixed together. Add a repo filter/selector that allows viewing only the tasks/runs associated with a specific repo. Use `repo_ids_json` from tasks and the run's repo to filter. Include an "All repos" option as default.
 
-### Radar: axis labels overflow the SVG *(2026-04-14)*
-In `BondRadar.tsx`, labels are positioned at 125% of the radius (`pointAt(i, 125)`). With `size=300` and `radius=96px`, long texts like "Momentum 54" or "Alignment 51" exceed the `0 0 300 300` viewBox and get clipped. Fix: expand the viewBox with padding (e.g. `-30 -30 360 360`), or reduce the radius, or recalculate label position dynamically based on text length.
-
 ### Depth axis doesn't grow: job-created memories don't count *(2026-04-14)*
 `computeDepthAxis` in `src/profile/bond.ts` only counts memories with `kind IN ('taught','correction','knowledge_summary','soul_reflection')`. But automated jobs (heartbeat, consolidation, enrichment) create memories with kinds like `convention`, `preference`, `infrastructure`, `workflow`, etc. that aren't in that list. Post-reset only memories of those kinds exist → depth = 0 permanently. Evaluate: (1) widen the eligible kinds list, (2) have consolidation produce `knowledge_summary`, (3) have `shadow_memory_teach` from MCP always use `taught` regardless of the kind requested by the LLM. The cleanest is probably (1) — recognize that all non-ephemeral memories represent depth.
-
-### Chronicle "The Path": badges get clipped at the top *(2026-04-14)*
-In `PathVisualizer.tsx`, tier circles (`w-11 h-11`) with the emoji badge and the top label get visually cut off at the top of the container. The `flex items-center` with `overflow-x-auto` doesn't leave enough vertical space for each node's full content. Fix: add padding-top to the container, or switch `items-center` to `items-start` with margin, or give an explicit `min-h` to each tier's wrapper.
 
 ### Observation events get re-created infinitely *(2026-04-14)*
 Confirmed bug. In `src/analysis/notify.ts:42-48`, the `observation_notable` dedup only queries `listPendingEvents()` (delivered=0). When the user marks events as read (delivered=1), the next heartbeat doesn't see them and re-creates an event for each high/critical observation still `open`. Result: one observation can accumulate 91+ events (verified in DB). Fix: dedup must check **all** events for that observation (not just pending), or use a flag on the observation itself (`notifiedAt`) to avoid re-notifying.

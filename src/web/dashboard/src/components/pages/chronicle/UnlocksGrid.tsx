@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { Unlockable } from '../../../api/types';
-import { BOND_TIER_BADGES } from '../../../api/types';
+import { UNLOCK_PLACEHOLDER, TIER_PORTRAITS } from './images';
+import { ChronicleLightbox } from './ChronicleLightbox';
 
 type Props = {
   unlockables: Unlockable[];
@@ -7,7 +9,7 @@ type Props = {
 };
 
 export function UnlocksGrid({ unlockables, currentTier }: Props) {
-  // Sort by tier required
+  const [selected, setSelected] = useState<Unlockable | null>(null);
   const sorted = [...unlockables].sort((a, b) => a.tierRequired - b.tierRequired);
 
   return (
@@ -17,6 +19,7 @@ export function UnlocksGrid({ unlockables, currentTier }: Props) {
         {sorted.map((u) => {
           const reached = u.tierRequired <= currentTier;
           const showTitle = u.unlocked || reached;
+          const iconSrc = u.unlocked ? TIER_PORTRAITS[u.tierRequired] : UNLOCK_PLACEHOLDER;
           return (
             <div
               key={u.id}
@@ -25,11 +28,28 @@ export function UnlocksGrid({ unlockables, currentTier }: Props) {
               `}
             >
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">
-                  {u.unlocked ? '✨' : '🔒'}
-                </span>
+                {u.unlocked ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelected(u)}
+                    className="focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-full flex-shrink-0"
+                    aria-label={`View ${u.title}`}
+                  >
+                    <img
+                      src={iconSrc}
+                      alt=""
+                      className="w-8 h-8 rounded-full object-cover cursor-pointer transition-all hover:brightness-110 hover:scale-110"
+                    />
+                  </button>
+                ) : (
+                  <img
+                    src={iconSrc}
+                    alt=""
+                    className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                  />
+                )}
                 <span className="text-[10px] uppercase tracking-wider text-text-muted">
-                  Lv.{u.tierRequired} {BOND_TIER_BADGES[u.tierRequired]}
+                  Lv.{u.tierRequired}
                 </span>
               </div>
               <p className={`text-sm font-semibold ${u.unlocked ? 'text-accent' : 'text-text-muted'}`}>
@@ -42,6 +62,15 @@ export function UnlocksGrid({ unlockables, currentTier }: Props) {
           );
         })}
       </div>
+
+      {selected && (
+        <ChronicleLightbox
+          src={TIER_PORTRAITS[selected.tierRequired]}
+          title={selected.title}
+          subtitle={`Unlock · Lv.${selected.tierRequired}`}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </section>
   );
 }

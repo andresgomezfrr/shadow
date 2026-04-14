@@ -15,6 +15,7 @@ const AXIS_LABELS: Record<keyof BondAxes, string> = {
 };
 
 export function BondRadar({ axes, size = 320 }: Props) {
+  const labelPad = 70;
   const cx = size / 2;
   const cy = size / 2;
   const radius = size * 0.32;
@@ -37,7 +38,12 @@ export function BondRadar({ axes, size = 320 }: Props) {
   );
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="text-accent">
+    <svg
+      width={size + labelPad * 2}
+      height={size}
+      viewBox={`${-labelPad} 0 ${size + labelPad * 2} ${size}`}
+      className="text-accent max-w-full h-auto"
+    >
       {grid.map((pts, i) => (
         <polygon
           key={i}

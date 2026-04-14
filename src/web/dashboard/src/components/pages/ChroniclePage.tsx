@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApi } from '../../hooks/useApi';
 import { fetchChronicle } from '../../api/client';
 import { TierBadge } from './chronicle/TierBadge';
@@ -7,8 +8,12 @@ import { NextStep } from './chronicle/NextStep';
 import { ChronicleTimeline } from './chronicle/ChronicleTimeline';
 import { UnlocksGrid } from './chronicle/UnlocksGrid';
 import { VoiceOfShadow } from './chronicle/VoiceOfShadow';
+import { CHRONICLE_HERO } from './chronicle/images';
+
+const HERO_VIDEO = '/ghost/chronicle/hero.mp4';
 
 export function ChroniclePage() {
+  const [heroVideoEnded, setHeroVideoEnded] = useState(false);
   const { data, loading, error } = useApi(fetchChronicle, []);
 
   if (loading) return <div className="max-w-5xl mx-auto text-text-dim">Loading the Chronicle...</div>;
@@ -23,20 +28,35 @@ export function ChroniclePage() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      {/* Voice of Shadow — atmospheric epigraph */}
+      {heroVideoEnded ? (
+        <img
+          src={CHRONICLE_HERO}
+          alt="The Chronicle"
+          className="w-full h-auto rounded-lg mb-6 object-cover"
+        />
+      ) : (
+        <video
+          autoPlay
+          muted
+          playsInline
+          poster={CHRONICLE_HERO}
+          onEnded={() => setHeroVideoEnded(true)}
+          src={HERO_VIDEO}
+          className="w-full h-auto rounded-lg mb-6 object-cover"
+        />
+      )}
+
       <VoiceOfShadow
         initialBody={voiceOfShadow.body}
         className="text-center mb-4"
       />
 
-      {/* Tier badge + current lore */}
       <TierBadge
         tier={profile.bondTier}
         name={currentTierInfo?.name ?? 'observer'}
         loreEntry={currentLore}
       />
 
-      {/* Two-column: radar + next-step */}
       <div className="grid md:grid-cols-2 gap-6 mb-2">
         <section className="bg-card border border-border rounded-lg p-5">
           <h2 className="text-base font-semibold mb-3">Bond Radar</h2>
@@ -47,13 +67,10 @@ export function ChroniclePage() {
         <NextStep nextStep={nextStep} />
       </div>
 
-      {/* Path visualizer */}
       <PathVisualizer tiers={tiers} />
 
-      {/* Chronicle timeline */}
       <ChronicleTimeline entries={entries} />
 
-      {/* Unlocks grid */}
       <UnlocksGrid unlockables={unlockables} currentTier={profile.bondTier} />
 
       <p className="text-center text-[11px] text-text-muted italic mt-8 mb-4">
