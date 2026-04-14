@@ -182,8 +182,8 @@ Cuando un run completa, analizar output con LLM para extraer memorias.
 ### Suggestion Expiry → Preference Memory
 Sugerencia expirada sin respuesta → memoria de preferencia implícita.
 
-### Configurable allowedTools → [`docs/plan-allowed-tools-config.md`](docs/plan-allowed-tools-config.md)
-User configura qué MCPs externos puede usar Shadow.
+### Configurable allowedTools
+User configura qué MCPs externos puede usar Shadow. (Plan en `internal/docs/plan-allowed-tools-config.md`.)
 
 ### Correct button en Observations y Memories pages
 Extender CorrectionPanel contextual a observation cards y memory cards.
