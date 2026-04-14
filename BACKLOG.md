@@ -65,6 +65,12 @@ El Journey muestra los steps (plan, execution, PR) pero no expone las sesiones d
 ### Mejorar UX de attempts en el Journey (retry de runs)
 La sección "Execution attempts" en `RunJourney.tsx` es demasiado escueta cuando hay múltiples intentos. Problemas: (1) cada attempt es una línea plana sin enlace — no se puede hacer drill-down al child run para ver su detalle, (2) solo se muestra el `errorSummary` del último attempt activo, los errores de attempts anteriores desaparecen, (3) los attempts archivados se muestran tachados sin contexto de por qué fallaron, (4) no hay diferenciación visual clara entre el attempt activo y los anteriores. Mejorar: añadir link clickable por attempt que navegue al child run, mostrar error colapsable por attempt fallido, y mejor jerarquía visual activo vs anteriores.
 
+### Enlace al dashboard en la status line
+Añadir un icono/enlace clickable en la status line de Claude Code (`scripts/statusline.sh`) que al pinchar abra el navegador con el dashboard (`localhost:3700`). Evaluar si la status line soporta links clickables o si se necesita otro mecanismo (e.g. atajo de teclado, output con URL que el terminal renderice como link).
+
+### Unificar spinner de runs en RunsPage con el del Workspace
+La RunsPage usa `animate-pulse` en un dot de 2x2px (`RunPipeline.tsx:11`) para el estado `running`, mientras que el Workspace usa el `RunSpinner` de `FeedRunCard.tsx:8-12` (border-spinner circular 3.5x3.5 con keyframe `rotation`). Extraer `RunSpinner` a un componente compartido y usarlo también en `RunPipeline` y en el Journey (`RunJourney.tsx:223`) para consistencia visual.
+
 ### Nota de cierre al cerrar una tarea
 `shadow_task_close` no acepta comentario ni razón de cierre. Permitir un `closedNote` opcional (como ya tienen los runs) para indicar el estado final: movido a backlog, implementado, descartado, etc. Reflejar en el MCP tool, la API, y la UI del Workspace.
 
