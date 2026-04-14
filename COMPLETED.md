@@ -197,7 +197,7 @@ Second comprehensive codebase audit. 6 exploration agents across runner, migrati
 
 ## Audit 2026-04-06/07 (comprehensive codebase audit)
 
-Full audit report: [`AUDIT-2026-04-06.md`](AUDIT-2026-04-06.md). ~100 findings, all actionable items resolved.
+Full audit report archived in `internal/AUDIT-2026-04-06.md` (not tracked). ~100 findings, all actionable items resolved.
 
 **P0 fixes (data loss prevention):**
 - JSONL rotation: atomic rename-then-append pattern (no more lost hook writes)
@@ -241,7 +241,6 @@ Full audit report: [`AUDIT-2026-04-06.md`](AUDIT-2026-04-06.md). ~100 findings, 
 
 **Documentation:**
 - CLAUDE.md fully updated with new project structure, 53 tools, dashboard routes, analysis/ directory, storage/stores/, web/routes/, cli/cmd-*
-- AUDIT-2026-04-06.md: full audit report
 
 **FTS5 dedup:** sanitizeFtsQuery extracted to memory/search.ts, reused from database.ts
 **removeEntityReferences:** wrapped in transaction (was N+1)

@@ -12,7 +12,6 @@ The authoritative source of truth for Shadow's current state is:
 These documents describe designed-but-not-fully-implemented features:
 
 - **[plan-trust-levels.md](plan-trust-levels.md)** — L1-5 trust level redesign. L2 implemented, L3+ designed.
-- **[plan-job-system.md](plan-job-system.md)** — Job system. Phase 1 done (heartbeat, suggest, consolidate, reflect).
 - **[plan-feedback-loop.md](plan-feedback-loop.md)** — Feedback loop. Implemented.
 - **[plan-mcp-delegation-pattern.md](plan-mcp-delegation-pattern.md)** — MCP delegation for runner + future jobs.
 - **[plan-allowed-tools-config.md](plan-allowed-tools-config.md)** — User-configurable allowedTools for MCP access.
