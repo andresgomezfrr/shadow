@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            src/web/dashboard/package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install dashboard deps
+        run: npm ci
+        working-directory: src/web/dashboard
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm run test:dev
+
+      - name: Build
+        run: npm run build

@@ -1,5 +1,7 @@
 # Shadow
 
+[![CI](https://github.com/andresgomezfrr/shadow/actions/workflows/ci.yml/badge.svg)](https://github.com/andresgomezfrr/shadow/actions/workflows/ci.yml)
+
 > A local-first memory, observation, and autonomy layer for Claude.
 
 ![Shadow dashboard](assets/readme/dashboard.png)
