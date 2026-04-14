@@ -20,6 +20,9 @@ Renderizado por filtro, transiciones de estado del feed unificado y context pane
 
 ## Prioridad media — Runner
 
+### Plan vacío no se trata como fallo *(2026-04-14)*
+Cuando un plan run completa con exit code 0 pero `capturePlanFromSession` no encuentra plan (Claude no escribió a `~/.claude/plans/`) y `result.output` es vacío, el runner guarda `resultSummaryMd = ""` y marca el run como `planned`. La confidence eval corre sobre una string vacía y genera doubts, pero el run queda en estado `planned` sin plan real. Ref: run `7a426733`. Fix: en `src/runner/service.ts` después de la captura del plan (~L228), si `effectivePlan` es vacío/whitespace, tratar como fallo (`status=failed`, `errorSummary="Plan mode produced no output"`). No correr confidence eval sin plan.
+
 ### Ejecución paralela de runs (plan + execute)
 Actualmente el runner procesa 1 run a la vez — los demás se quedan en `queued` hasta que termina. Permitir concurrencia configurable (N runs simultáneos) para plan y execute. Evaluar: límite por defecto, impacto en SQLite WAL contention, y si el JobQueue necesita un semaphore o pool.
 
@@ -44,6 +47,15 @@ Escenario: job de digest falla con timeout ("Process timed out"), se relanza man
 
 ## Prioridad media — Dashboard UX
 
+### Mejorar UX de attempts en el Journey (retry de runs)
+La sección "Execution attempts" en `RunJourney.tsx` es demasiado escueta cuando hay múltiples intentos. Problemas: (1) cada attempt es una línea plana sin enlace — no se puede hacer drill-down al child run para ver su detalle, (2) solo se muestra el `errorSummary` del último attempt activo, los errores de attempts anteriores desaparecen, (3) los attempts archivados se muestran tachados sin contexto de por qué fallaron, (4) no hay diferenciación visual clara entre el attempt activo y los anteriores. Mejorar: añadir link clickable por attempt que navegue al child run, mostrar error colapsable por attempt fallido, y mejor jerarquía visual activo vs anteriores.
+
+### Mostrar related suggestions en la página Tasks
+El journey del Workspace muestra las sugerencias relacionadas de una tarea, pero la vista de detalle en la página Tasks no. Añadir la misma sección de related suggestions al detalle de tarea en Tasks.
+
+### Mostrar múltiples PRs en descripción de tareas
+Cuando una tarea tiene más de un run con PR asociado, la UI solo muestra 1 PR. Mostrar todas las PRs vinculadas (lista o badges) en la tarjeta/detalle de la tarea en Workspace.
+
 ### Evaluar: bond por repo en vez de global *(2026-04-08)*
 Bond global vs per-repo. Shadow puede saber mucho de un repo y poco de otro. Hablar antes de diseñar.
 
@@ -57,6 +69,10 @@ Drag-drop para reordenar MCP servers en Enrichment. El orden como hint para el L
 ---
 
 ## Prioridad baja
+
+### Guard de detección de suspend/sleep para Linux
+`isSystemAwake()` en `src/daemon/runtime.ts` usa `pmset -g assertions` (macOS-only). En Linux falla silenciosamente y retorna `true` (fail-open), así que el daemon no distingue full-wake de suspend y schedula jobs durante sleep. Implementar detección equivalente en Linux (p.ej. `systemd-inhibit --list`, `/sys/power/state`, o suscripción a DBus `org.freedesktop.login1` PrepareForSleep). Añadir platform guard que elija la estrategia correcta por OS.
+
 
 ### Logs del daemon en dashboard
 Los `console.error` van a `daemon.stderr.log` pero no son accesibles desde el dashboard.
