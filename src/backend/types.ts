@@ -29,6 +29,7 @@ export type ObjectivePack = {
   effort?: string;
   systemPrompt?: string | null; // string = override, null = no --system-prompt, undefined = JSON-only default
   allowedTools?: string[];       // extra tools beyond mcp__shadow__*. undefined = default MCP, [] = no tools at all
+  disallowedTools?: string[];    // explicit deny list — takes precedence over allowedTools (deny rules win)
   permissionMode?: 'plan' | 'acceptEdits' | 'bypassPermissions';
   timeoutMs?: number;
 };

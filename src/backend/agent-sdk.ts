@@ -32,6 +32,7 @@ export class AgentSdkAdapter implements BackendAdapter {
       const agent = new sdk.Agent({
         model,
         tools: pack.allowedTools ?? [],
+        // TODO: pack.disallowedTools is not yet wired to the SDK adapter — only the CLI backend honors deny lists.
       });
 
       const result = await agent.run(pack.prompt, {

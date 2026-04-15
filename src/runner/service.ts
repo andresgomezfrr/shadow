@@ -145,6 +145,11 @@ export class RunnerService {
         'You have access to the filesystem and any available MCP tools.',
         'Use them to gather any additional context you need.',
         '',
+        '**You are running autonomously.** There is no human to answer questions.',
+        '- Make reasonable assumptions when faced with ambiguity and document them in the plan.',
+        '- If a tool call is denied or fails, do NOT retry it — adapt your approach using other available tools.',
+        '- Never ask questions: proceed with your best interpretation.',
+        '',
         planOnly
           ? [
               'Generate a detailed IMPLEMENTATION PLAN. Do NOT write code.',
@@ -174,6 +179,9 @@ export class RunnerService {
 
       // All MCP tools always available. Execution also gets filesystem write access.
       const allowedTools = planOnly ? ['mcp__*'] : ['mcp__*', 'Edit', 'Write', 'Bash'];
+      // AskUserQuestion has no place in autonomous sessions — no human is listening.
+      // Built-in tools are not covered by --allowedTools globs, so deny explicitly.
+      const disallowedTools = ['AskUserQuestion'];
       const permissionMode = planOnly ? 'plan' as const : 'acceptEdits' as const;
 
       const pack: ObjectivePack = {
@@ -189,6 +197,7 @@ export class RunnerService {
         effort: this.config.efforts.runner,
         systemPrompt: null, // No override — Claude uses default behavior with MCP tools + filesystem
         allowedTools,
+        disallowedTools,
         permissionMode,
         timeoutMs: this.config.runnerTimeoutMs,
       };
@@ -654,6 +663,7 @@ export class RunnerService {
         effort: 'high',
         systemPrompt: 'Respond with ONLY valid JSON. No markdown, no explanation, no code fences.',
         timeoutMs: 90_000,
+        disallowedTools: ['AskUserQuestion'],
       };
 
       const evalResult = await adapter.execute(evalPack);

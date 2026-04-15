@@ -102,6 +102,12 @@ export class ClaudeCliAdapter implements BackendAdapter {
       args.push('--allowedTools', tools.join(','));
     }
 
+    // Explicit deny list — deny rules win over allowedTools in Claude CLI.
+    // Used by runner to block built-in tools that have no place in autonomous sessions (e.g. AskUserQuestion).
+    if (pack.disallowedTools && pack.disallowedTools.length > 0) {
+      args.push('--disallowedTools', pack.disallowedTools.join(','));
+    }
+
     // Prompt via stdin — avoids ARG_MAX limit with large prompts (conversations, memories, etc.)
 
     const env: Record<string, string | undefined> = { ...process.env, SHADOW_JOB: '1' }; // Mark daemon LLM calls so hooks can skip them
