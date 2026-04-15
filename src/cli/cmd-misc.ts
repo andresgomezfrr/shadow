@@ -161,6 +161,15 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
     .description('output personality and context for session injection (used by SessionStart hook)')
     .action(() =>
       withDb((db) => {
+        // Skip injection for daemon-spawned Claude sessions (runner, heartbeat, jobs).
+        // They build their own prompts with the soul inline — a second injection via the
+        // SessionStart hook is redundant and makes the model burn turns on shadow_check_in.
+        if (process.env.SHADOW_JOB === '1') {
+          // Emit a benign comment (not empty) to avoid "hook error" warnings in the CLI.
+          console.log('# shadow runner context — soul injected by runner briefing');
+          return;
+        }
+
         const profile = db.ensureProfile();
 
         // Load soul from DB
