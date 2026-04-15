@@ -6,11 +6,23 @@ Last updated 2026-04-15. Completed items in [COMPLETED.md](COMPLETED.md).
 
 ## High priority
 
-_No high priority items right now._
+### Audit and unify Claude plugin vs `shadow init` installation paths *(2026-04-15)* · [area:cli]
+
+**Context**: Two divergent installation paths exist: (1) `shadow init` writes hooks directly into `~/.claude/settings.json` + registers MCP via `claude mcp add`, (2) `.claude-plugin/plugin.json` offers `claude plugin install` as an alternative. They've drifted apart: plugin is at `v0.1.0` (project is `v0.4.1`), `hooks.json` path is relative to repo root but lives outside `.claude-plugin/`, plugin hooks use `npx tsx` + `${CLAUDE_PLUGIN_ROOT}` while init uses absolute paths to `dist/`, plugin is missing the `StatusLine` hook that init installs, and `GETTING_STARTED.md` documents the plugin path but init doesn't use it. Result: two installation surfaces to maintain, neither fully correct.
+
+**Fix**: Evaluate which path should be canonical (plugin vs init) and consolidate. Whichever wins: sync hooks, version, MCP transport, StatusLine, and update GETTING_STARTED.md to match. Remove or deprecate the other path.
 
 ---
 
 ## Medium priority
+
+### Repos page UX refactor: search bar + design improvements *(2026-04-15)* · [area:dashboard]
+
+**Context**: `ReposPage.tsx` is a flat list of expandable cards with no filtering. With 14 repos, finding a specific one requires scrolling. The expanded card mixes profile overview, suggestion guidance, commands, and action buttons in a dense inline block — no dedicated detail route (unlike Projects which has `/projects/:id`). Two improvements: (1) add a search bar that filters repos by name, language, phase, or stack, (2) improve the visual design of both the list view (card layout, key info at a glance) and the detail view (better section hierarchy, possibly a dedicated `/repos/:id` route or a side panel instead of inline expand).
+
+**Fix**: (1) Add a search input at the top with client-side filtering over `repo.name`, `repo.languageHint`, and `contextMd` fields (phase, stack, summary). (2) Redesign the card collapsed state to surface more useful info at a glance (last observed, open observations/suggestions count per repo). (3) Redesign the expanded state or move to a detail route — separate sections for profile, commands, and actions with clearer visual hierarchy. Reference other pages that already do this well (Projects detail, Workspace journey).
+
+---
 
 ### WorkspacePage filter + lifecycle tests · [area:dashboard]
 
@@ -158,11 +170,27 @@ _No high priority items right now._
 
 ---
 
+### Morning briefing: "What's happening" from Slack channels *(2026-04-15)* · [area:daemon, area:dashboard]
+
+**Context**: The Morning page has "Yesterday's summary" (digest-daily) but no awareness of what happened in team channels. Feature: a new daemon job that reads configured Slack channels via `slack_read_channel` MCP, follows links found in messages (GDrive docs via `get_drive_file_content`/`get_document_preview`, etc.), and produces an executive summary of what you can't miss. Displayed as a new section in the Morning page next to the daily digest.
+
+**Fix**: (1) Add a channel list config — either a new field in `user_profile` or extend the enrichment config UI in Profile (already has MCP server config). (2) New job type `briefing` in `src/daemon/job-handlers.ts`: reads channels for the last 24h, extracts links, fetches linked resources via available MCPs, sends everything to the LLM for an executive summary. (3) Store result in `digests` table with `kind='briefing'`. (4) New `MorningBriefing.tsx` component in the Morning page that fetches the latest briefing digest. (5) LLM prompt should prioritize: decisions made, action items, announcements, incidents — skip noise/chatter.
+
+---
+
 ### Optimize `/ghost/` assets — PNG → WebP + resize pipeline *(2026-04-15)* · [area:dashboard]
 
 **Context**: 49 static PNG ghost illustrations under `src/web/dashboard/public/ghost/` (outside `chronicle/`) weigh ~6-8 MB each, total ~276 MB. They're UI assets (page headers, ghost phases, empty states, 404) that don't need anywhere near that resolution. Dashboard loads them on-demand, so every page view downloads multi-MB images. The Chronicle session (2026-04-15) applied a resize + cwebp pipeline to 20 PNGs and got 95 MB → 768 KB (123× smaller) — same approach would shrink the rest of `/ghost/` from ~276 MB to ~5 MB. Tools already installed from that session (`webp`, `ffmpeg`). Note: git history keeps the raw PNGs — repo size on fresh clone doesn't drop unless `git filter-repo` is run (destructive, skip). The real gain is dashboard runtime (fewer bytes per page view) and future working trees.
 
 **Fix**: (1) batch convert with `cwebp -q 85..90 -resize <target> 0` — target widths per use case: heroes/page illustrations at 1024, ghost phase frames at 512, small icons at 256. (2) Move originals to `internal/ghost-assets/` (gitignored) as backup for future regeneration. (3) Grep + replace `.png` references in `.tsx`/`.ts` (MorningPage, WorkspacePage, SuggestionsPage, ObservationsPage, MemoriesPage, ProjectsPage, RepoPage, SystemPage, TeamPage, ActivityPage, DigestsPage, 404, Guide, `useGhostPhase.ts` hook). (4) Visual review every page before commit. (5) Leave MP4 files alone — they're already video-compressed.
+
+---
+
+### "Days together" counts full 24h periods instead of calendar days *(2026-04-15)* · [area:bond]
+
+**Context**: `NextStep` in Chronicle shows `daysElapsed` which is computed in `src/web/routes/chronicle.ts:73` as `Math.floor(elapsedDays)`. This counts complete 24h periods since `bondResetAt`, not calendar days. Example: reset at 10:02 UTC on April 13, checking at 08:00 UTC on April 15 → 1.9 days → displays "1" even though the user is on their second full day. The label "Days together" creates a calendar-day expectation.
+
+**Fix**: Replace `Math.floor` with calendar-day difference (strip time, diff dates) or `Math.ceil`. Calendar-day diff is more intuitive: reset on day X, today is day Y → `Y - X` days together regardless of time of day.
 
 ---
 
@@ -194,6 +222,14 @@ _No high priority items right now._
 
 ---
 
+### Evaluate custom ghost-style icons for sidebar navigation *(2026-04-15)* · [area:dashboard]
+
+**Context**: The sidebar (`Sidebar.tsx`) uses 19 native emojis (☀️, 🌒, 📥, 👁, 💡, etc.) as nav icons. The rest of the dashboard has a strong ghost visual identity via `/ghost/` illustrations (63 assets for page headers, mood states, empty states). The sidebar doesn't participate in that identity. Evaluate generating ~19 small ghost-style icons (24x24 or 32x32) — minimal silhouettes or line-art that fit the 60px sidebar and stay legible at small size, while giving the nav a cohesive Shadow look.
+
+**Fix**: (1) Define the icon set needed (19 nav items + 1 correction button). (2) Generate or commission ghost-themed icons — could be AI-generated in the same style as existing `/ghost/` illustrations, then resized and optimized. (3) Replace emoji strings in the `NAV` array with `<img>` tags pointing to `/ghost/icons/`. (4) Ensure active/hover states still work visually (current emoji doesn't change on active — icons could have an accent-tinted variant). (5) Keep emoji as fallback if icons fail to load.
+
+---
+
 ## Low priority
 
 ### P3: Tables without cleanup mechanism · [area:db]
@@ -202,11 +238,19 @@ _No high priority items right now._
 
 ---
 
+### `shadow init` should install a systemd service on Linux · [area:cli, area:daemon]
+
+**Context**: `cmd-init.ts:256` checks `process.platform === 'darwin'` and generates a launchd plist with `KeepAlive`, `RunAtLoad`, and auto-restart on crash. The `else` branch (line 344) just spawns a detached process with no service manager — the daemon dies on logout and doesn't survive reboots. Linux has no equivalent persistent installation path.
+
+**Fix**: (1) On `process.platform === 'linux'`, generate a systemd user unit file (`~/.config/systemd/user/shadow-daemon.service`) with `Restart=on-failure`, `WantedBy=default.target`. (2) Run `systemctl --user daemon-reload && systemctl --user enable --now shadow-daemon`. (3) Mirror the interactive prompt pattern from the macOS path ("Install Shadow daemon as a systemd user service?"). (4) `shadow daemon start/stop/restart/status` should also branch on platform to use `systemctl --user` on Linux vs `launchctl` on macOS.
+
+---
+
 ### Suspend/sleep detection guard for Linux · [area:daemon]
 
-**Context**: `isSystemAwake()` in `src/daemon/runtime.ts` uses `pmset -g assertions` (macOS-only). On Linux it fails silently and returns `true` (fail-open), so the daemon doesn't distinguish full-wake from suspend and schedules jobs during sleep.
+**Context**: `isSystemAwake()` in `src/daemon/runtime.ts` uses `pmset -g assertions` (macOS-only). On Linux it fails silently and returns `true` (fail-open), so the daemon doesn't distinguish full-wake from suspend and schedules jobs during sleep. There's no OS detection — the function assumes macOS unconditionally.
 
-**Fix**: Implement equivalent detection on Linux (e.g. `systemd-inhibit --list`, `/sys/power/state`, or subscribing to DBus `org.freedesktop.login1` PrepareForSleep). Add a platform guard that picks the right strategy per OS.
+**Fix**: (1) Detect platform via `process.platform` (`darwin` vs `linux`) and branch to the appropriate strategy. (2) macOS: keep existing `pmset -g assertions`. (3) Linux: use `systemd-inhibit --list`, `/sys/power/state`, or subscribe to DBus `org.freedesktop.login1` PrepareForSleep. (4) Unsupported platforms: fail-open with a logged warning (current behavior, but explicit).
 
 ---
 
@@ -240,9 +284,11 @@ _No high priority items right now._
 
 ---
 
-### Unlockables content (v49 follow-up) · [area:bond]
+### Define and implement unlockable content for Chronicle tiers *(2026-04-15)* · [area:bond, area:dashboard]
 
-**Context**: 8 placeholder slots seeded in v49 with `kind='placeholder'` and `title='???'`. Fill them gradually with real content (ghost variants, status phrase pools, theme overrides, badge emojis) via direct DB update or a future `shadow_unlock_define` MCP tool.
+**Context**: 8 placeholder slots in `unlockables` table (one per tier, all `kind='placeholder'`, `title='???'`). The infrastructure works: `evaluateUnlocks()` marks them unlocked on tier rise, emits an event, and `UnlocksGrid.tsx` renders them with tier portraits. But there's no real content — every slot is empty. The `payload_json` column exists for arbitrary data but is unused. Need to decide what each unlock actually *is* and implement it.
+
+**Fix**: (1) Design what each tier unlocks. Ideas per tier: **Lv.1 observer** — ghost avatar variant (new idle image for sidebar). **Lv.2 echo** — custom mood phrase pool (Shadow speaks with a different voice). **Lv.3 whisper** — dashboard theme variant (color scheme unlock). **Lv.4 shade** — ghost animation variant (new MP4 for sidebar/Ghost TV). **Lv.5 shadow** — custom status line badge/emoji. **Lv.6 wraith** — chronicle background art or parallax effect. **Lv.7 herald** — unique ghost illustration (full-page art in Chronicle). **Lv.8 kindred** — capstone unlock TBD (could be a hidden page, a special digest format, or a unique ghost form). (2) Update the migration seed data with real `kind`, `title`, `description` per slot. (3) Store unlock assets in `payload_json` (e.g. `{"imagePath": "/ghost/unlocks/...", "themeId": "..."}`) or as direct references to `/ghost/` assets. (4) Make the dashboard actually *apply* unlocks — currently `UnlocksGrid` only displays them, but nothing changes when you unlock (no new ghost, no new theme, no new phrases). (5) No MCP tool needed — unlocks are static content defined in code/migrations, not runtime-configurable.
 
 ---
 
