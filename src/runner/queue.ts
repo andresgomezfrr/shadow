@@ -111,4 +111,8 @@ export class RunQueue {
   get activeCount(): number {
     return this.active.size;
   }
+
+  isActive(runId: string): boolean {
+    return this.active.has(runId);
+  }
 }

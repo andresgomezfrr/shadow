@@ -674,14 +674,21 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       }
 
       // --- Stale run detector ---
+      // Kills runs that exceed runnerTimeoutMs AND are no longer tracked by RunQueue.active.
+      // A run present in the queue has a live adapter — it is not stale even if slow.
+      // Orphaned runs (DB says 'running' but no adapter) are caught once they cross the timeout.
       const staleRunCandidates = _db.listRuns({ status: 'running' });
-      const STALE_RUN_MS = 10 * 60 * 1000; // 10min
       for (const sr of staleRunCandidates) {
+        if (runQueue.isActive(sr.id)) continue; // live in the queue — not stale
         const elapsed = sr.startedAt ? Date.now() - new Date(sr.startedAt).getTime() : 0;
-        if (elapsed > STALE_RUN_MS) {
-          console.error(`[daemon] Marked stale run ${sr.id.slice(0, 8)} as failed (${Math.round(elapsed / 60000)}m)`);
+        if (elapsed > config.runnerTimeoutMs) {
+          const timeoutMin = Math.round(config.runnerTimeoutMs / 60000);
+          console.error(`[daemon] Marked stale run ${sr.id.slice(0, 8)} as failed (${Math.round(elapsed / 60000)}m, orphaned from queue)`);
           _db.transitionRun(sr.id, 'failed');
-          _db.updateRun(sr.id, { errorSummary: 'Stale: exceeded 10min timeout', finishedAt: new Date().toISOString() });
+          _db.updateRun(sr.id, {
+            errorSummary: `Stale: exceeded ${timeoutMin}min timeout (orphaned from queue)`,
+            finishedAt: new Date().toISOString(),
+          });
         }
       }
 
