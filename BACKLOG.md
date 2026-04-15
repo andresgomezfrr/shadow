@@ -30,46 +30,6 @@ Last updated 2026-04-15. Completed items in [COMPLETED.md](COMPLETED.md).
 
 ---
 
-### Stale run detector kills active runs prematurely *(2026-04-14)* · [area:runner]
-
-**Context**: The stale detector in `src/daemon/runtime.ts:676-686` has a hardcoded 10min timeout, but the actual runner timeout is 30min (`runnerTimeoutMs`). The detector doesn't check whether the run has an active process in `RunQueue.active` — it only looks at `status='running'` + elapsed time in DB. Result: legitimately slow runs (multi-repo, plan mode with heavy context) get killed at 10min with `errorSummary="Stale: exceeded 10min timeout"`. Ref: run `1e4dea01`.
-
-**Fix**: (1) use `config.runnerTimeoutMs` instead of the hardcoded 10min, (2) check `RunQueue.active` before marking as stale — if the runner has it in its map, it's alive and not stale.
-
----
-
-### Empty plan not treated as failure *(2026-04-14)* · [area:runner]
-
-**Context**: When a plan run completes with exit code 0 but `capturePlanFromSession` finds no plan (Claude didn't write to `~/.claude/plans/`) and `result.output` is empty, the runner saves `resultSummaryMd = ""` and marks the run as `planned`. The confidence eval runs over an empty string and produces doubts, but the run stays in `planned` state with no real plan. Ref: runs `7a426733`, `8b061e52`.
-
-**Fix**: in `src/runner/service.ts` after plan capture (~L228), if `effectivePlan` is empty/whitespace, treat as failure (`status=failed`, `errorSummary="Plan mode produced no output"`). Don't run confidence eval without a plan. Note: the confidence eval returned `high` with an empty plan in `8b061e52` — the eval should reject empty plans before invoking the LLM.
-
----
-
-### `AskUserQuestion` should not be available in runner sessions *(2026-04-14)* · [area:runner]
-
-**Context**: Root cause of both runs `3d668e1d` and `8b061e52` producing no plan. Claude did excellent investigation, had all the information, but instead of writing the plan with reasonable assumptions, it called `AskUserQuestion` — which has no human on the other end. In run 1, the questions had obvious answers (Claude marked them as "Recommended" in its thinking). In run 2, `AskUserQuestion` failed x2 and the session died with no output.
-
-**Fix**: Two-layer fix: (1) exclude `AskUserQuestion` from `allowedTools` in `src/runner/service.ts` (~L176) for runner sessions, (2) add to the briefing (~L148): "You are running autonomously — there is no human to answer questions. Make reasonable assumptions and document them in the plan."
-
----
-
-### Runner doesn't limit retries on tool permission denied *(2026-04-14)* · [area:runner]
-
-**Context**: In run `8b061e52`, Claude retried `oliver__list_dashboards` 7 times after permission denied, and `shadow_check_in` 2 times. Each retry burns a turn with no result. Not strictly a runner bug (it's Claude behavior), but the briefing should include an instruction: "If a tool call is denied, do NOT retry — adapt your approach using other available tools."
-
-**Fix**: Alternatively, evaluate whether `--allowedTools 'mcp__*'` actually matches Oliver/Shadow tools in the runner session, or if there's a gap in the pattern.
-
----
-
-### Soul injection in briefing causes redundant check_in *(2026-04-14)* · [area:runner]
-
-**Context**: The runner briefing injects the full Shadow soul (via `shadow mcp-context`), which includes the instruction "call `shadow_check_in` at session start". Claude obeys and burns 1-2 turns calling `shadow_check_in`, which is redundant (the soul is already in the prompt) and sometimes fails on permissions.
-
-**Fix**: either don't inject the check_in instruction into the runner context, or make `mcp-context` support a `runner` mode that omits interactive instructions (check_in, greeting, events).
-
----
-
 ### Parallel execution of runs (plan + execute) · [area:runner]
 
 **Context**: Currently the runner processes 1 run at a time — the others stay `queued` until it finishes. Allow configurable concurrency (N simultaneous runs) for plan and execute. Evaluate: default limit, impact on SQLite WAL contention, and whether JobQueue needs a semaphore or pool.
