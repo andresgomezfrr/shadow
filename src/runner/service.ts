@@ -227,6 +227,54 @@ export class RunnerService {
         }
       }
 
+      // 5a-bis. Empty plan = failure.
+      // Claude can exit 0 without writing to ~/.claude/plans/ (e.g. blocked on a question
+      // it couldn't ask, hit permission errors, or gave up). Treat that as a real failure
+      // instead of passing it downstream as a 'planned' run with empty resultSummaryMd.
+      if (planOnly && isSuccess && !effectivePlan.trim()) {
+        const emptyFinishedAt = new Date().toISOString();
+        this.db.transitionRun(run.id, 'failed');
+        this.db.updateRun(run.id, {
+          errorSummary: 'Plan mode produced no output — no plan written to ~/.claude/plans/',
+          artifactDir,
+          sessionId: result.sessionId ?? null,
+          finishedAt: emptyFinishedAt,
+        });
+
+        if (run.parentRunId) {
+          const siblings = this.db.listRuns({ parentRunId: run.parentRunId });
+          const parentStatus = aggregateParentStatus(siblings);
+          if (parentStatus !== null) {
+            this.db.transitionRun(run.parentRunId, parentStatus);
+            this.db.updateRun(run.parentRunId, { finishedAt: emptyFinishedAt });
+          }
+        }
+
+        try {
+          const { applyBondDelta } = await import('../profile/bond.js');
+          applyBondDelta(this.db, 'run_failed');
+        } catch (e) { console.error('[runner] bond delta failed:', e); }
+
+        this.db.createEvent({
+          kind: 'run_failed',
+          priority: 7,
+          payload: { message: 'Run failed: empty plan', runId: run.id, repoId: run.repoId },
+        });
+
+        this.db.createAuditEvent({
+          interface: 'runner',
+          action: 'run-failure',
+          targetKind: 'run',
+          targetId: run.id,
+          detail: { reason: 'empty_plan', sessionId: result.sessionId },
+        });
+
+        this.setActivity(run.id, run.kind, null);
+        const updatedRun = this.db.getRun(run.id)!;
+        this.cleanupWorktree(worktreePath, mainRepoCwd);
+        return { processed: true, run: updatedRun };
+      }
+
       // 5b. Evaluate confidence on plans (signal for the user, no auto-execute)
       if (planOnly && isSuccess) {
         this.setActivity(run.id, run.kind, 'evaluating');
@@ -556,6 +604,10 @@ export class RunnerService {
     pack: ObjectivePack,
   ): Promise<ConfidenceEvaluation> {
     const FALLBACK: ConfidenceEvaluation = { confidence: 'low', doubts: ['evaluation failed — defaulting to manual review'] };
+
+    if (!planOutput || !planOutput.trim()) {
+      return { confidence: 'low', doubts: ['plan output is empty — cannot evaluate'] };
+    }
 
     try {
       const adapter = selectAdapter(this.config);
