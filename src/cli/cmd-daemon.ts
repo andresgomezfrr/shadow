@@ -46,39 +46,76 @@ function resolveDaemonRunner(): { command: string; args: string[]; cwd: string }
   };
 }
 
+/**
+ * Poll `launchctl list | grep -q com.shadow.daemon` until grep exits
+ * non-zero (service unloaded). Returns true on unload, false on timeout.
+ *
+ * `launchctl list LABEL` and `launchctl print` both return exit 0 even for
+ * nonexistent services (error to stderr only), so we pipe to grep which
+ * gives a reliable binary signal.
+ */
+async function waitForLaunchdUnload(
+  execSync: typeof import('node:child_process').execSync,
+  timeoutMs: number = 5_000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      execSync('launchctl list | grep -q com.shadow.daemon', { stdio: 'pipe' });
+      // grep exit 0 → still loaded
+      await new Promise(r => setTimeout(r, 200));
+    } catch {
+      // grep exit non-0 → not loaded
+      return true;
+    }
+  }
+  return false;
+}
+
+type StopResult = 'not_running' | 'graceful' | 'forced';
+
 async function gracefulStopDaemon(opts: {
   config: ShadowConfig;
   execSync: typeof import('node:child_process').execSync;
   plistPath: string;
-  timeoutMs?: number;
-}): Promise<'graceful' | 'forced'> {
-  const { config, execSync, plistPath, timeoutMs = 30_000 } = opts;
-  const { stopDaemon, isDaemonRunning } = await import('../daemon/runtime.js');
+  drainTimeoutMs?: number;
+  log?: (msg: string) => void;
+}): Promise<StopResult> {
+  const { config, execSync, plistPath, drainTimeoutMs = 65_000, log } = opts;
+  const { stopDaemon, isDaemonRunning, waitForDaemonStopped } = await import('../daemon/runtime.js');
 
-  const wasStopped = stopDaemon(config);
-
-  if (wasStopped) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline && isDaemonRunning(config)) {
-      await new Promise(r => setTimeout(r, 500));
-    }
-  }
-
-  if (!isDaemonRunning(config)) {
-    if (existsSync(plistPath)) {
-      try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
-    }
-    await new Promise(r => setTimeout(r, 500));
-    return 'graceful';
-  }
-
+  // 1. Unload launchd FIRST so KeepAlive cannot respawn mid-shutdown.
+  //    (Harmless if the plist isn't loaded or doesn't exist.)
   if (existsSync(plistPath)) {
     try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
+    await waitForLaunchdUnload(execSync, 5_000);
   }
-  try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
-  try { execSync('pkill -f "claude.*--allowedTools.*mcp__shadow"', { stdio: 'pipe' }); } catch { /* ok */ }
+
+  // 2. Already dead?
+  if (!isDaemonRunning(config)) return 'not_running';
+
+  // 3. Send SIGTERM to the process in the pid file (covers the tsx-wrapper
+  //    orphan case — launchd only signals the wrapper, so we kill the
+  //    child daemon directly).
+  stopDaemon(config);
+
+  // 4. Wait for graceful drain, reporting progress every 5 s.
+  const stopped = await waitForDaemonStopped(config, drainTimeoutMs, (elapsedSec, jobCount) => {
+    if (!log) return;
+    if (jobCount !== null && jobCount > 0) {
+      log(`waiting for ${jobCount} job(s) to drain (${elapsedSec}s elapsed)…`);
+    } else {
+      log(`waiting for daemon to stop (${elapsedSec}s elapsed)…`);
+    }
+  });
+  if (stopped) return 'graceful';
+
+  // 5. Graceful timeout exceeded — force-kill everything.
+  if (log) log('graceful timeout exceeded — force-killing');
+  try { execSync('pkill -9 -f "shadow/.*daemon/runtime"', { stdio: 'pipe' }); } catch { /* ok */ }
+  try { execSync('pkill -9 -f "claude.*--allowedTools.*mcp__shadow"', { stdio: 'pipe' }); } catch { /* ok */ }
   try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
-  await new Promise(r => setTimeout(r, 1500));
+  await new Promise(r => setTimeout(r, 500));
   return 'forced';
 }
 
@@ -141,22 +178,21 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
     .action(async () => {
       const { execSync } = await import('node:child_process');
       const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
+      const json = Boolean(program.opts().json);
 
-      // Unload launchd service
-      if (existsSync(plistPath)) {
-        try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
-      }
+      const result = await gracefulStopDaemon({
+        config,
+        execSync,
+        plistPath,
+        log: json ? undefined : (msg) => console.error(msg),
+      });
 
-      // Kill ALL shadow daemon processes (tsx runtime.ts + node on port 3700) + orphaned claude
-      try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
-      try { execSync('pkill -f "claude.*--allowedTools.*mcp__shadow"', { stdio: 'pipe' }); } catch { /* ok */ }
-      try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'pipe' }); } catch { /* ok */ }
-
-      // Clean up PID file
-      const { stopDaemon } = await import('../daemon/runtime.js');
-      stopDaemon(config);
-
-      printOutput({ ok: true, message: 'daemon stopped' }, Boolean(program.opts().json));
+      const messages: Record<StopResult, string> = {
+        not_running: 'daemon was not running',
+        graceful: 'daemon stopped gracefully',
+        forced: 'daemon force-killed after graceful timeout',
+      };
+      printOutput({ ok: true, status: result, message: messages[result] }, json);
     });
 
   daemon
@@ -165,19 +201,68 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
     .action(async () => {
       const { execSync } = await import('node:child_process');
       const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
+      const json = Boolean(program.opts().json);
 
-      await gracefulStopDaemon({ config, execSync, plistPath });
+      const stopResult = await gracefulStopDaemon({
+        config,
+        execSync,
+        plistPath,
+        log: json ? undefined : (msg) => console.error(msg),
+      });
 
-      // Start
-      if (existsSync(plistPath)) {
-        try {
-          execSync(`launchctl bootstrap gui/$(id -u) ${plistPath} 2>/dev/null || launchctl kickstart gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
-          printOutput({ ok: true, message: 'daemon restarted via launchd' }, Boolean(program.opts().json));
-          return;
-        } catch { /* fallback */ }
+      if (!existsSync(plistPath)) {
+        printOutput({ error: 'could not restart — plist not found (run `shadow init` or `shadow daemon reinstall`)' }, json);
+        return;
       }
 
-      printOutput({ error: 'could not restart — plist not found' }, Boolean(program.opts().json));
+      // Prefer bootstrap (clean load after bootout). Fall back to kickstart -k
+      // (force-restart) if bootstrap fails because the service is in a
+      // transitional state.
+      try {
+        execSync(`launchctl bootstrap gui/$(id -u) ${plistPath}`, { stdio: 'pipe' });
+        printOutput({ ok: true, status: stopResult, message: 'daemon restarted via launchd' }, json);
+        return;
+      } catch {
+        try {
+          execSync(`launchctl kickstart -k gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
+          printOutput({ ok: true, status: stopResult, message: 'daemon restarted via kickstart' }, json);
+          return;
+        } catch (e) {
+          printOutput({ error: `failed to restart launchd service: ${(e as Error).message}` }, json);
+          return;
+        }
+      }
+    });
+
+  daemon
+    .command('reinstall')
+    .description('regenerate the launchd plist from the current template and reload')
+    .action(async () => {
+      const { execSync } = await import('node:child_process');
+      const { PLIST_PATH, writeAndReloadPlist } = await import('./plist.js');
+      const json = Boolean(program.opts().json);
+
+      // Stop the current daemon first (if running). This also unloads launchd
+      // so writeAndReloadPlist's bootstrap gets a clean slate.
+      await gracefulStopDaemon({
+        config,
+        execSync,
+        plistPath: PLIST_PATH,
+        log: json ? undefined : (msg) => console.error(msg),
+      });
+
+      const runner = resolveDaemonRunner();
+      const result = await writeAndReloadPlist(config, runner);
+      if (result.status === 'failed') {
+        printOutput({ error: `failed to reinstall plist: ${result.error}` }, json);
+        return;
+      }
+      printOutput({
+        ok: true,
+        status: result.status,
+        plist: PLIST_PATH,
+        message: `plist ${result.status} and daemon restarted via launchd`,
+      }, json);
     });
 
   daemon

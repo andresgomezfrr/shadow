@@ -247,12 +247,23 @@ ${endMarker}`;
 
         // Install launchd service for persistent daemon
         let daemonResult: Record<string, unknown> = {};
-        const launchAgentDir = resolve(homedir(), 'Library', 'LaunchAgents');
-        const plistPath = resolve(launchAgentDir, 'com.shadow.daemon.plist');
-        const alreadyInstalled = existsSync(plistPath);
+        const { PLIST_PATH, PLIST_VERSION, readPlistVersion, writeAndReloadPlist } = await import('./plist.js');
+        const plistPath = PLIST_PATH;
+        const installedVersion = readPlistVersion(plistPath);
 
-        if (alreadyInstalled) {
-          daemonResult = { launchd: 'already installed', plist: plistPath };
+        if (installedVersion !== null && installedVersion >= PLIST_VERSION) {
+          daemonResult = { launchd: 'already installed', plist: plistPath, version: installedVersion };
+        } else if (installedVersion !== null && installedVersion < PLIST_VERSION) {
+          // Auto-heal: plist exists but is an older template. Regenerate.
+          const runner = resolveDaemonRunner();
+          const result = await writeAndReloadPlist(config, runner);
+          daemonResult = {
+            launchd: result.status === 'failed'
+              ? `failed to upgrade plist v${installedVersion} → v${PLIST_VERSION}: ${result.error}`
+              : `plist upgraded v${installedVersion} → v${PLIST_VERSION}`,
+            plist: plistPath,
+            version: PLIST_VERSION,
+          };
         } else if (process.platform === 'darwin') {
           // Non-interactive mode (piped stdin): auto-accept
           const isInteractive = process.stdin.isTTY === true;
@@ -274,60 +285,11 @@ ${endMarker}`;
           }
 
           if (answer === '' || answer.toLowerCase().startsWith('y')) {
-            mkdirSync(launchAgentDir, { recursive: true });
-
             const runner = resolveDaemonRunner();
-            // Build PATH that includes the directory of the resolved node binary
-            const nodeBinDir = dirname(runner.command);
-            const envPath = [nodeBinDir, `${homedir()}/.local/bin`, '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', '/bin']
-              .filter((v, i, a) => a.indexOf(v) === i)  // dedupe
-              .join(':');
-
-            const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>com.shadow.daemon</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${runner.command}</string>
-${runner.args.map(a => `    <string>${a}</string>`).join('\n')}
-  </array>
-  <key>WorkingDirectory</key>
-  <string>${runner.cwd}</string>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <dict>
-    <key>Crashed</key>
-    <true/>
-  </dict>
-  <key>StandardOutPath</key>
-  <string>${resolve(config.resolvedDataDir, 'daemon.stdout.log')}</string>
-  <key>StandardErrorPath</key>
-  <string>${resolve(config.resolvedDataDir, 'daemon.stderr.log')}</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>PATH</key>
-    <string>${envPath}</string>
-    <key>SHADOW_DATA_DIR</key>
-    <string>${config.resolvedDataDir}</string>
-  </dict>
-</dict>
-</plist>`;
-
-            writeFileSync(plistPath, plistContent, 'utf8');
-
-            // Load the service
-            const { execSync } = await import('node:child_process');
-            try {
-              execSync(`launchctl bootout gui/$(id -u) ${plistPath} 2>/dev/null || true`, { stdio: 'ignore' });
-              execSync(`launchctl bootstrap gui/$(id -u) ${plistPath}`, { stdio: 'pipe' });
-              daemonResult = { launchd: 'installed and started', plist: plistPath };
-            } catch (e) {
-              daemonResult = { launchd: 'installed but failed to start', plist: plistPath, error: String(e) };
-            }
+            const result = await writeAndReloadPlist(config, runner);
+            daemonResult = result.status === 'failed'
+              ? { launchd: 'installed but failed to start', plist: plistPath, error: result.error }
+              : { launchd: 'installed and started', plist: plistPath, version: PLIST_VERSION };
           } else {
             daemonResult = { launchd: 'skipped by user' };
             // Fallback: start daemon manually

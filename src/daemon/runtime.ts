@@ -199,7 +199,10 @@ export function stopDaemon(config: ShadowConfig): boolean {
 
   try {
     const pid = parseInt(readFileSync(pidPath, 'utf-8').trim(), 10);
-    if (isNaN(pid)) return false;
+    if (isNaN(pid)) {
+      removePidFile(config);
+      return false;
+    }
 
     if (!isProcessAlive(pid)) {
       removePidFile(config);
@@ -207,12 +210,48 @@ export function stopDaemon(config: ShadowConfig): boolean {
     }
 
     process.kill(pid, 'SIGTERM');
-    removePidFile(config);
+    // Do NOT remove the pid file here. The daemon's own shutdown handler
+    // removes it as the last step of its graceful drain (can take up to
+    // 60 s due to JobQueue.drainAll). Removing it now would make
+    // isDaemonRunning() return false while the process is still alive,
+    // misleading any polling caller waiting for the daemon to stop.
     return true;
   } catch {
-    removePidFile(config);
     return false;
   }
+}
+
+/**
+ * Poll isDaemonRunning() until it returns false or timeoutMs elapses.
+ * Returns true if the daemon stopped within the timeout, false otherwise.
+ * The optional onProgress callback fires every 5 s with the elapsed seconds
+ * and the last known active job count from daemon.json (null if unknown).
+ */
+export async function waitForDaemonStopped(
+  config: ShadowConfig,
+  timeoutMs: number = 30_000,
+  onProgress?: (elapsedSec: number, activeJobCount: number | null) => void,
+): Promise<boolean> {
+  const start = Date.now();
+  const deadline = start + timeoutMs;
+  let lastProgressAt = start;
+
+  while (Date.now() < deadline) {
+    if (!isDaemonRunning(config)) return true;
+    if (onProgress && Date.now() - lastProgressAt >= 5_000) {
+      lastProgressAt = Date.now();
+      const elapsedSec = Math.floor((Date.now() - start) / 1000);
+      let activeJobCount: number | null = null;
+      try {
+        const raw = readFileSync(daemonStatePath(config), 'utf-8');
+        const state = JSON.parse(raw);
+        activeJobCount = typeof state?.activeJobCount === 'number' ? state.activeJobCount : null;
+      } catch { /* best-effort */ }
+      onProgress(elapsedSec, activeJobCount);
+    }
+    await sleep(250);
+  }
+  return false;
 }
 
 export async function startDaemon(config: ShadowConfig): Promise<void> {
@@ -296,8 +335,24 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     try {
       const { startWebServer } = await import('../web/server.js');
       webServer = await startWebServer(3700, config.webBindHost, db, eventBus, daemonShared);
-    } catch {
-      // web module not available — continue without it
+    } catch (err) {
+      // A daemon without a web server is useless (no dashboard, no MCP
+      // HTTP endpoint). Fail loud so the user sees it in logs, but exit
+      // cleanly (code 0) so launchd's KeepAlive: { Crashed: true } does
+      // NOT trigger a restart loop on a persistent error like EADDRINUSE.
+      const e = err as NodeJS.ErrnoException;
+      console.error(`[daemon] FATAL: web server failed to start on :3700`);
+      console.error(`[daemon] ${e?.message ?? String(err)}`);
+      if (e?.code === 'EADDRINUSE') {
+        console.error(`[daemon] Port 3700 is already in use — likely an orphan`);
+        console.error(`[daemon] from a previous shadow instance. Run:`);
+        console.error(`[daemon]   shadow daemon stop && shadow daemon start`);
+      }
+      if (db) try { db.close(); } catch { /* best-effort */ }
+      removePidFile(config);
+      process.off('SIGTERM', shutdown);
+      process.off('SIGINT', shutdown);
+      process.exit(0);
     }
 
     // Step 3d: Start filesystem watcher
@@ -876,7 +931,9 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
 
 // --- Auto-start when executed directly ---
 
-const isDirectExecution = process.argv[1]?.includes('daemon/runtime');
+// Match the exact entry-point filename so `.test.ts` files don't trigger auto-start.
+const entryFile = (process.argv[1] ?? '').split('/').pop() ?? '';
+const isDirectExecution = entryFile === 'runtime.ts' || entryFile === 'runtime.js';
 if (isDirectExecution) {
   const { loadConfig } = await import('../config/load-config.js');
   const config = loadConfig();
