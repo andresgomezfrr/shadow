@@ -56,16 +56,6 @@ Alternatively, you can register it manually:
 claude mcp add --transport http shadow http://localhost:3700/api/mcp
 ```
 
-## Plugin (alternative registration)
-
-Shadow ships as a Claude Code plugin. Instead of manual MCP registration, you can install it as a plugin:
-
-```bash
-claude plugin install /path/to/shadow
-```
-
-This registers the MCP server and all 4 hooks (SessionStart, PostToolUse, UserPromptSubmit, Stop) automatically.
-
 ## Verify it works
 
 ```bash
@@ -140,7 +130,7 @@ You ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
                                   │   ├── Soul reflection (daily)
                                   │   ├── Git remote sync (30min)
                                   │   └── Context enrichment
-                                  └── 4 hooks (auto-learning from your sessions)
+                                  └── 6 hooks + statusLine (auto-learning from your sessions)
 ```
 
 ## Configuration

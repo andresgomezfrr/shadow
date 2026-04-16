@@ -1,6 +1,0 @@
-{
-  "shadow": {
-    "type": "http",
-    "url": "http://localhost:3700/api/mcp"
-  }
-}

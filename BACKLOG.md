@@ -4,16 +4,6 @@ Last updated 2026-04-15. Completed items in [COMPLETED.md](COMPLETED.md).
 
 ---
 
-## High priority
-
-### Audit and unify Claude plugin vs `shadow init` installation paths *(2026-04-15)* · [area:cli]
-
-**Context**: Two divergent installation paths exist: (1) `shadow init` writes hooks directly into `~/.claude/settings.json` + registers MCP via `claude mcp add`, (2) `.claude-plugin/plugin.json` offers `claude plugin install` as an alternative. They've drifted apart: plugin is at `v0.1.0` (project is `v0.4.1`), `hooks.json` path is relative to repo root but lives outside `.claude-plugin/`, plugin hooks use `npx tsx` + `${CLAUDE_PLUGIN_ROOT}` while init uses absolute paths to `dist/`, plugin is missing the `StatusLine` hook that init installs, and `GETTING_STARTED.md` documents the plugin path but init doesn't use it. Result: two installation surfaces to maintain, neither fully correct.
-
-**Fix**: Evaluate which path should be canonical (plugin vs init) and consolidate. Whichever wins: sync hooks, version, MCP transport, StatusLine, and update GETTING_STARTED.md to match. Remove or deprecate the other path.
-
----
-
 ## Medium priority
 
 ### Repos page UX refactor: search bar + design improvements *(2026-04-15)* · [area:dashboard]
