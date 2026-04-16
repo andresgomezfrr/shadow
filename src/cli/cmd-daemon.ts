@@ -84,6 +84,11 @@ async function gracefulStopDaemon(opts: {
   const { config, execSync, plistPath, drainTimeoutMs = 65_000, log } = opts;
   const { stopDaemon, isDaemonRunning, waitForDaemonStopped } = await import('../daemon/runtime.js');
 
+  // Capture initial state so we can tell "was never running" from
+  // "running but stopped during bootout" (fast graceful drain via
+  // launchd's own SIGTERM).
+  const wasRunning = isDaemonRunning(config);
+
   // 1. Unload launchd FIRST so KeepAlive cannot respawn mid-shutdown.
   //    (Harmless if the plist isn't loaded or doesn't exist.)
   if (existsSync(plistPath)) {
@@ -91,12 +96,14 @@ async function gracefulStopDaemon(opts: {
     await waitForLaunchdUnload(execSync, 5_000);
   }
 
-  // 2. Already dead?
-  if (!isDaemonRunning(config)) return 'not_running';
+  // 2. Not running after bootout → decide between "was never running"
+  //    and "ran, then exited cleanly via launchd's SIGTERM".
+  if (!isDaemonRunning(config)) {
+    return wasRunning ? 'graceful' : 'not_running';
+  }
 
-  // 3. Send SIGTERM to the process in the pid file (covers the tsx-wrapper
-  //    orphan case — launchd only signals the wrapper, so we kill the
-  //    child daemon directly).
+  // 3. Still alive (tsx orphan, or no launchd, or long drain). Send SIGTERM
+  //    directly to the pid in the file.
   stopDaemon(config);
 
   // 4. Wait for graceful drain, reporting progress every 5 s.
