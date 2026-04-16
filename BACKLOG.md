@@ -64,6 +64,14 @@ Last updated 2026-04-15. Completed items in [COMPLETED.md](COMPLETED.md).
 
 ---
 
+### Runner awaiting_pr path is dead for autonomous execution *(2026-04-16)* · [area:runner]
+
+**Context**: The entire `awaiting_pr` → `pr-sync` pipeline is unreachable for auto-executed runs. `service.ts:340` transitions to `awaiting_pr` only when `prUrl` is set, but `prUrl` is only written by the manual web API endpoint (`runs.ts:502`). The runner itself never creates a PR or sets `prUrl`, so it always falls through to `done` with `outcome: 'executed'`. The `pr-sync` job, the `awaiting_pr` state, and all dashboard UI for it are fully implemented but unreachable from the autonomous flow. Subsumes "Detect PRs created outside Shadow" below.
+
+**Fix**: Runner should auto-push the worktree branch and create a PR via `gh pr create` when `diffStat` is non-empty, or at minimum transition to `awaiting_pr` when changes exist so a new job can handle PR creation.
+
+---
+
 ### Detect PRs created outside Shadow · [area:runner]
 
 **Context**: If a run has a worktree but no prUrl, detect whether a PR exists with `gh pr list --head shadow/{id}`.
@@ -75,6 +83,38 @@ Last updated 2026-04-15. Completed items in [COMPLETED.md](COMPLETED.md).
 **Context**: Scenario: digest job fails with timeout ("Process timed out"), gets relaunched manually for the previous day, the job runs OK but neither the Digests page nor the Morning reflect the new result. Possible causes: (1) the digest is inserted with period_start/period_end that don't match the previous day's query, (2) the UI caches or filters by date in a way that excludes regenerated digests, (3) the morning page uses a different query that doesn't pick up the updated digest.
 
 **Fix**: Investigate query boundaries, upsert vs duplicate insert, and whether frontend refetch is correct.
+
+---
+
+### RunQueue tracks a phantom adapter — run kill is a no-op *(2026-04-16)* · [area:runner]
+
+**Context**: `RunQueue.startRun()` creates a `ClaudeCliAdapter` at `queue.ts:81` and stores it in the `active` map, but this adapter is never used for execution. `processRun()` calls `selectAdapter()` which creates a second adapter that actually spawns the Claude process. `killAll()` calls `kill()` on the phantom adapter (no child process → no-op), causing `drainAll(60s)` to time out. The real adapter is only reachable through the global `adapterInstances` set via `killAllActiveChildren()`.
+
+**Fix**: Remove the adapter from `RunQueue` entirely, or have `processRun` register its adapter back into the queue's `active` map.
+
+---
+
+### Task and memory multi-step writes lack transaction boundaries *(2026-04-16)* · [area:db]
+
+**Context**: `createTask`, `updateTask`, `deleteTask` in `tasks.ts` perform multi-step writes (row INSERT/UPDATE + `syncEntityLinks` DELETE+INSERT) without wrapping in a transaction. Same pattern in `knowledge.ts` for `updateMemory`. `syncEntityLinks` docs say "caller controls transaction" but no caller does. Crash between steps leaves `entity_links` out of sync with `entities_json`. The correct pattern already exists in `updateEntityLinks` and `database.ts` delete methods.
+
+**Fix**: Wrap each multi-step function in `BEGIN`/`COMMIT`/`ROLLBACK`, following the existing pattern.
+
+---
+
+### All 7 task MCP tools skip Zod parsing — schemas are decorative *(2026-04-16)* · [area:mcp]
+
+**Context**: Every tool file in `src/mcp/tools/` calls `Schema.parse(params)` for runtime validation — except `tasks.ts`. All 7 task handlers cast `params` directly with `as string`, `as number`, etc. Zod schemas are defined (passed to `mcpSchema()` for client hints) but `.parse()` is never called. Same gap in `src/web/routes/tasks.ts` web endpoints. Invalid inputs bypass validation and hit the DB layer directly.
+
+**Fix**: Add `const input = Schema.parse(params)` at the top of each handler. For web routes, add Zod schemas and use `parseBody()`.
+
+---
+
+### Suggestions score-sort fetches entire table on every request *(2026-04-16)* · [area:dashboard]
+
+**Context**: `GET /api/suggestions` with score-sort passes `limit: undefined` — loads all suggestions into memory, computes `rankScore` per item, sorts, then paginates. The context endpoint (`GET /api/suggestions/:id/context`) loads all runs to filter by `suggestionId` in JS. Dashboard auto-refreshes every 30s, compounding O(n) cost per page view.
+
+**Fix**: Either pre-compute rank scores in DB (`rank_score` column, SQL ORDER BY) or cap the score-sort query (`LIMIT 500`). For context endpoint, add `suggestionId` filter to `listRuns`.
 
 ---
 
@@ -333,3 +373,11 @@ Last updated 2026-04-15. Completed items in [COMPLETED.md](COMPLETED.md).
 ### Correct button in Observations and Memories pages · [area:dashboard]
 
 **Context**: Extend the CorrectionPanel contextually to observation cards and memory cards.
+
+---
+
+### MCP tool to close/complete a run manually · [area:mcp, area:runner]
+
+**Context**: Runs that are planned but executed manually (outside the runner) have no way to be marked as `done`. The only MCP tool available is `shadow_run_archive`, which hides the run but doesn't transition its status. The `run_list` supports filtering by status `done` but there's no `shadow_run_close` or `shadow_run_update` tool to set that status. This means manually executed work leaves runs stuck in `planned` forever.
+
+**Fix**: Add a `shadow_run_close` MCP tool (or extend `shadow_run_archive` with an optional `status` parameter) that transitions a run to `done` with an optional `closedNote` and `prUrl`. The DB schema already has `status`, `outcome`, `closedNote`, and `prUrl` columns — just needs the MCP surface.
