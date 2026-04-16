@@ -501,6 +501,21 @@ export async function handleRunRoutes(
         const prUrl = prOutput.split('\n').pop()?.trim() ?? prOutput;
         db.updateRun(runId, { prUrl });
 
+        // Reopen parent to awaiting_pr so pr-sync finalizes merge/close.
+        // Without this the parent stays done/executed forever and a merged PR
+        // never updates Shadow's view of the run.
+        if (run.parentRunId) {
+          const parent = db.getRun(run.parentRunId);
+          if (parent && parent.status === 'done' && parent.outcome === 'executed') {
+            try {
+              db.transitionRun(parent.id, 'awaiting_pr');
+              db.updateRun(parent.id, { outcome: null });
+            } catch (e) {
+              console.error('[draft-pr] Failed to reopen parent to awaiting_pr:', e instanceof Error ? e.message : e);
+            }
+          }
+        }
+
         db.createAuditEvent({
           interface: 'web',
           action: 'create-draft-pr',

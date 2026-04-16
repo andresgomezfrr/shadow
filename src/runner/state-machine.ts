@@ -29,7 +29,9 @@ const TRANSITIONS: Record<RunStatus, ReadonlySet<RunStatus>> = {
   running:     new Set(['planned', 'done', 'failed']),
   planned:     new Set(['done', 'dismissed', 'failed', 'awaiting_pr']),
   awaiting_pr: new Set(['done', 'dismissed', 'failed']),
-  done:        new Set(),  // terminal
+  // `done → awaiting_pr` allows reopening a parent run when the user creates a
+  // draft PR manually after execution already finalized the parent as done/executed.
+  done:        new Set(['awaiting_pr']),
   dismissed:   new Set(),  // terminal
   failed:      new Set(),  // terminal
 };
