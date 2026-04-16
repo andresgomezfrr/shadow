@@ -277,6 +277,22 @@ export function JobOutputSummary({ entry }: Props) {
     return parts.length > 0 ? <span className="inline-flex items-center gap-1.5 flex-wrap">{parts}</span> : null;
   }
 
+  if (type === 'pr-sync') {
+    const checked = num(r, 'runsChecked');
+    if (checked === 0) return <span className="text-text-muted text-xs">no awaiting runs</span>;
+    const merged = num(r, 'merged');
+    const closed = num(r, 'closed');
+    const stillOpen = num(r, 'stillOpen');
+    const errors = num(r, 'errors');
+    const parts: ReactNode[] = [];
+    if (merged > 0) parts.push(<Badge key="m" className="text-green bg-green/15">{merged} merged</Badge>);
+    if (closed > 0) parts.push(<Badge key="c" className="text-orange bg-orange/15">{closed} closed</Badge>);
+    if (stillOpen > 0) parts.push(<Badge key="o" className="text-text-dim bg-border">{stillOpen} still open</Badge>);
+    if (errors > 0) parts.push(<Badge key="e" className="text-red bg-red/15">{errors} error{errors !== 1 ? 's' : ''}</Badge>);
+    if (parts.length === 0) return <span className="text-text-muted text-xs">checked {checked}</span>;
+    return <span className="inline-flex items-center gap-1.5 flex-wrap">{parts}</span>;
+  }
+
   if (type === 'run:plan') {
     const doubts = arr(r, 'doubts');
     const taskTitle = entry.taskTitle;

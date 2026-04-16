@@ -118,6 +118,7 @@ const JOB_PHASES: Record<string, string[]> = {
   'revalidate-suggestion': ['prepare', 'evaluate', 'apply'],
   'auto-plan': ['filtering', 'revalidating', 'planning'],
   'auto-execute': ['filtering', 'executing', 'verifying'],
+  'pr-sync': ['pr-sync'],
 };
 
 
@@ -695,18 +696,70 @@ function renderExpandedDetail(entry: ActivityEntryType) {
     );
   }
 
+  if (type === 'pr-sync') {
+    const processed = (r.processed ?? []) as Array<{ runId: string; action: 'merged' | 'closed' | 'error'; prUrl?: string; error?: string }>;
+    const checked = num(r, 'runsChecked');
+    const ACTION_COLOR: Record<string, string> = {
+      merged: 'text-green',
+      closed: 'text-orange',
+      error: 'text-red',
+    };
+    return (
+      <>
+        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['pr-sync']} />
+        {checked === 0 ? (
+          <div className="text-text-muted">No awaiting runs to check</div>
+        ) : processed.length === 0 ? (
+          <div className="text-text-muted">Checked {checked} run{checked !== 1 ? 's' : ''} — all still open</div>
+        ) : (
+          <div>
+            <span className="text-accent">Processed ({processed.length}):</span>
+            <ul className="ml-3 mt-0.5 space-y-0.5">
+              {processed.map(p => (
+                <li key={p.runId}>
+                  <a href={`/workspace?item=${p.runId}&itemType=run`} className="text-text-dim hover:text-accent hover:underline font-mono" onClick={e => e.stopPropagation()}>
+                    {p.runId.slice(0, 8)}
+                  </a>
+                  <span className={`ml-2 ${ACTION_COLOR[p.action] ?? 'text-text-dim'}`}>{p.action}</span>
+                  {p.error && <span className="text-red ml-2">— {p.error}</span>}
+                  {p.prUrl && (
+                    <>
+                      {' · '}
+                      <a href={p.prUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline" onClick={e => e.stopPropagation()}>View PR →</a>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </>
+    );
+  }
+
   // Fallback: generic key-value dump
   return (
     <>
       {(entry.phases.length > 0 || JOB_PHASES[type]) && <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES[type]} />}
       {Object.entries(r)
         .filter(([, v]) => v != null && v !== 0 && v !== '' && v !== false)
-        .map(([k, v]) => (
-          <div key={k}>
-            <span className="text-accent">{k.replace(/([A-Z])/g, ' $1').toLowerCase()}:</span>{' '}
-            {Array.isArray(v) ? v.join(', ') : String(v)}
-          </div>
-        ))}
+        .map(([k, v]) => {
+          const label = k.replace(/([A-Z])/g, ' $1').toLowerCase();
+          const isObjectLike = typeof v === 'object' && v !== null;
+          const isArrayOfObjects = Array.isArray(v) && v.length > 0 && v.every(x => typeof x === 'object' && x !== null);
+          return (
+            <div key={k}>
+              <span className="text-accent">{label}:</span>{' '}
+              {isArrayOfObjects || (isObjectLike && !Array.isArray(v)) ? (
+                <pre className="mt-0.5 text-[10px] text-text-dim bg-bg-elevated/50 rounded px-2 py-1 overflow-x-auto">{JSON.stringify(v, null, 2)}</pre>
+              ) : Array.isArray(v) ? (
+                v.join(', ')
+              ) : (
+                String(v)
+              )}
+            </div>
+          );
+        })}
     </>
   );
 }
