@@ -203,6 +203,7 @@ Be concise. Each field 1-3 lines max. Respond with JSON: { "contextMd": "..." }`
   });
 
   const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+  ctx.db.recordLlmUsage({ source: 'project_profile', sourceId: project.id, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
   if (result.status === 'success' && result.output) {
     const { safeParseJson } = await import('../../backend/json-repair.js');

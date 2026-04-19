@@ -137,6 +137,7 @@ Generate 1-5 suggestions. Quality over quantity.`;
   });
 
   const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+  ctx.db.recordLlmUsage({ source: 'suggest_deep', sourceId: repo.id, model: ctx.config.models.suggestDeep, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
   let suggestionsCreated = 0;
   const suggestionItems: Array<{ id: string; title: string }> = [];
 
@@ -333,6 +334,7 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
   });
 
   const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+  ctx.db.recordLlmUsage({ source: 'suggest_project', sourceId: project.id, model: ctx.config.models.suggestProject, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
   let suggestionsCreated = 0;
   const suggestionItems: Array<{ id: string; title: string }> = [];
 
@@ -492,6 +494,7 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
   });
 
   const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+  ctx.db.recordLlmUsage({ source: 'revalidate_suggestion', sourceId: suggestionId, model: ctx.config.models.revalidate, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
   if (result.status !== 'success' || !result.output) {
     return { llmCalls: 1, tokensUsed: tokens, phases: ['prepare', 'evaluate'], result: { error: 'LLM call failed', suggestionId }, lastError: errorHint(result) };
@@ -535,6 +538,7 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
     });
     llmCallsTotal = 2;
     tokensTotal += (retryResult.inputTokens ?? 0) + (retryResult.outputTokens ?? 0);
+    ctx.db.recordLlmUsage({ source: 'revalidate_suggestion_retry', sourceId: suggestionId, model: ctx.config.models.revalidate, inputTokens: retryResult.inputTokens ?? 0, outputTokens: retryResult.outputTokens ?? 0 });
 
     if (retryResult.status === 'success' && retryResult.output) {
       parsed = safeParseJson(retryResult.output, schema, 'revalidate-suggestion-retry');
