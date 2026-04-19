@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useApi } from '../../hooks/useApi';
 import { useDialog } from '../../hooks/useDialog';
+import { useEventStream } from '../../hooks/useEventStream';
 import { fetchDailySummary, fetchDigests, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
 import { BOND_TIER_NAMES, MOOD_EMOJIS } from '../../api/types';
 import { VoiceOfShadow } from './chronicle/VoiceOfShadow';
@@ -33,7 +34,17 @@ function formatDate(): string {
 
 export function MorningPage() {
   const { data, refresh } = useApi(fetchDailySummary, [], 60_000);
-  const { data: digests } = useApi(() => fetchDigests({ kind: 'daily' }), [], 60_000);
+  const { data: digests, refresh: refreshDigests } = useApi(() => fetchDigests({ kind: 'daily' }), [], 60_000);
+
+  // Push refresh when a digest job completes — without this, freshly generated
+  // digests don't appear until the next 60s poll (audit UI-09).
+  useEventStream(['job:complete'], (_type, payload) => {
+    const data = payload as { type?: string } | null;
+    if (data?.type?.startsWith('digest-')) {
+      refresh();
+      refreshDigests();
+    }
+  });
   const now = new Date();
   const yesterdayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
   const yesterday = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
