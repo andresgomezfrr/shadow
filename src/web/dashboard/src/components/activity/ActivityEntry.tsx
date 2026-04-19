@@ -1,126 +1,22 @@
-import { useState, useCallback } from 'react';
-import { timeAgo, formatTokens } from '../../utils/format';
-import { num, str, arr, items } from '../../utils/job-results';
+import { useState } from 'react';
+import { timeAgo } from '../../utils/format';
+import { num } from '../../utils/job-results';
 import { JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
-import { ConfidenceIndicator } from '../common/ConfidenceIndicator';
-import { Markdown } from '../common/Markdown';
-import { JobOutputSummary } from './JobOutputSummary';
+import { ActivityEntryHeader } from './ActivityEntryHeader';
+import { ActivityEntryExpandedDetail } from './ActivityEntryExpandedDetail';
+import { PhasePipeline, RUN_PLAN_PHASES, RUN_EXEC_PHASES, JOB_PHASES } from './ActivityEntryPhases';
 import { triggerJobWithParams } from '../../api/client';
 import type { ActivityEntry as ActivityEntryType } from '../../api/types';
 
-const STATUS_BADGE: Record<string, string> = {
-  completed: 'text-green bg-green/15',
-  running: 'text-blue bg-blue/15',
-  failed: 'text-red bg-red/15',
-  queued: 'text-orange bg-orange/15',
-  planned: 'text-indigo-300 bg-indigo-500/15',
-  awaiting_pr: 'text-fuchsia-300 bg-fuchsia-500/15',
-  done: 'text-purple bg-purple/15',
-  dismissed: 'text-text-muted bg-text-muted/10',
-};
-
-const PHASE_DOT: Record<string, string> = {
-  observe: 'bg-blue',
-  cleanup: 'bg-text-muted',
-  analyze: 'bg-purple',
-  suggest: 'bg-green',
-  notify: 'bg-text-muted',
-  consolidate: 'bg-orange',
-  'layer-maintenance': 'bg-orange',
-  corrections: 'bg-yellow-400',
-  merge: 'bg-amber-400',
-  'meta-patterns': 'bg-orange',
-  reflect: 'bg-blue',
-  'reflect-delta': 'bg-blue',
-  'reflect-evolve': 'bg-purple',
-  enrich: 'bg-amber-400',
-  discover: 'bg-indigo-400',
-  'remote-sync': 'bg-pink-400',
-  'repo-profile': 'bg-teal-400',
-  scan: 'bg-green-600',
-  profile: 'bg-emerald-400',
-  digest: 'bg-cyan',
-  prepare: 'bg-sky-400',
-  summarize: 'bg-amber-400',
-  extract: 'bg-purple',
-  evaluate: 'bg-sky-500',
-  apply: 'bg-sky-300',
-  validate: 'bg-green-400',
-  'digest-daily': 'bg-cyan-400',
-  'digest-weekly': 'bg-cyan-400',
-  'digest-brag': 'bg-cyan-400',
-  // Run phases
-  preparing: 'bg-text-muted',
-  planning: 'bg-indigo-400',
-  evaluating: 'bg-sky-400',
-  executing: 'bg-fuchsia-400',
-  verifying: 'bg-green-400',
-};
-
-const PHASE_TEXT: Record<string, string> = {
-  observe: 'text-blue',
-  cleanup: 'text-text-muted',
-  analyze: 'text-purple',
-  suggest: 'text-green',
-  notify: 'text-text-muted',
-  consolidate: 'text-orange',
-  'layer-maintenance': 'text-orange',
-  corrections: 'text-yellow-400',
-  merge: 'text-amber-400',
-  'meta-patterns': 'text-orange',
-  reflect: 'text-blue',
-  'reflect-delta': 'text-blue',
-  'reflect-evolve': 'text-purple',
-  enrich: 'text-amber-400',
-  discover: 'text-indigo-400',
-  'remote-sync': 'text-pink-400',
-  'repo-profile': 'text-teal-400',
-  scan: 'text-green-600',
-  profile: 'text-emerald-400',
-  digest: 'text-cyan',
-  prepare: 'text-sky-400',
-  summarize: 'text-amber-400',
-  extract: 'text-purple',
-  evaluate: 'text-sky-500',
-  apply: 'text-sky-300',
-  validate: 'text-green-400',
-  'digest-daily': 'text-cyan-400',
-  'digest-weekly': 'text-cyan-400',
-  'digest-brag': 'text-cyan-400',
-  // Run phases
-  preparing: 'text-text-muted',
-  planning: 'text-indigo-300',
-  evaluating: 'text-sky-300',
-  executing: 'text-fuchsia-300',
-  verifying: 'text-green-300',
-};
-
-// Run phases (computed by prefix, not per-kind)
-const RUN_PLAN_PHASES = ['preparing', 'planning', 'evaluating'];
-const RUN_EXEC_PHASES = ['preparing', 'executing', 'verifying'];
-
-const JOB_PHASES: Record<string, string[]> = {
-  heartbeat: ['prepare', 'summarize', 'extract', 'cleanup', 'observe', 'notify'],
-  suggest: ['suggest', 'notify'],
-  consolidate: ['layer-maintenance', 'corrections', 'merge', 'meta-patterns'],
-  reflect: ['reflect-delta', 'reflect-evolve'],
-  'remote-sync': ['remote-sync'],
-  'repo-profile': ['repo-profile'],
-  'suggest-deep': ['scan', 'validate', 'notify'],
-  'suggest-project': ['analyze', 'validate', 'notify'],
-  'project-profile': ['profile'],
-  'context-enrich': ['enrich'],
-  'mcp-discover': ['discover'],
-  'digest-daily': ['digest'],
-  'digest-weekly': ['digest'],
-  'digest-brag': ['digest'],
-  'revalidate-suggestion': ['prepare', 'evaluate', 'apply'],
-  'auto-plan': ['filtering', 'revalidating', 'planning'],
-  'auto-execute': ['filtering', 'executing', 'verifying'],
-  'pr-sync': ['pr-sync'],
-};
-
+/**
+ * ActivityEntryCard — row in the Activity feed representing one job or run.
+ *
+ * Dispatches to dedicated layouts for queued/running/skip, falls through to
+ * the common header + expanded detail for completed/failed. Sub-components
+ * live in ActivityEntryHeader.tsx, ActivityEntryExpandedDetail.tsx, and
+ * ActivityEntryPhases.tsx — split during audit UI-01 (was 941 lines).
+ */
 
 function isSkip(entry: ActivityEntryType): boolean {
   if (entry.status === 'running' || entry.status === 'queued') return false;
@@ -130,638 +26,10 @@ function isSkip(entry: ActivityEntryType): boolean {
   return !Object.values(result).some(v => v !== null && v !== undefined && v !== 0 && v !== false && v !== '');
 }
 
-function interestingPhases(phases: string[]): string[] {
-  return phases.filter((p) => !['wake', 'idle', 'notify'].includes(p));
-}
-
 function formatDuration(ms: number | null): string {
   if (ms == null) return '--';
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${(ms / 60_000).toFixed(1)}m`;
-}
-
-// --- Phase Pipeline Component ---
-
-/** Job type → active phase color (dot + text). Active phase pulses in the job's color, not its own. */
-const JOB_ACTIVE_DOT: Record<string, string> = {
-  heartbeat: 'bg-purple-400',
-  suggest: 'bg-green-400',
-  'suggest-deep': 'bg-green-500',
-  'suggest-project': 'bg-emerald-400',
-  consolidate: 'bg-orange-400',
-  reflect: 'bg-blue-400',
-  'remote-sync': 'bg-pink-400',
-  'repo-profile': 'bg-teal-400',
-  'project-profile': 'bg-emerald-400',
-  'context-enrich': 'bg-amber-400',
-  'mcp-discover': 'bg-indigo-400',
-  'digest-daily': 'bg-cyan-400',
-  'digest-weekly': 'bg-cyan-400',
-  'digest-brag': 'bg-cyan-400',
-  'revalidate-suggestion': 'bg-sky-400',
-  'auto-plan': 'bg-lime-400',
-  'auto-execute': 'bg-rose-400',
-  // Run types
-  'run:plan': 'bg-indigo-400',
-  'run:execute': 'bg-fuchsia-400',
-};
-const JOB_ACTIVE_TEXT: Record<string, string> = {
-  heartbeat: 'text-purple-300',
-  suggest: 'text-green-300',
-  'suggest-deep': 'text-green-400',
-  'suggest-project': 'text-emerald-300',
-  consolidate: 'text-orange-300',
-  reflect: 'text-blue-300',
-  'remote-sync': 'text-pink-300',
-  'repo-profile': 'text-teal-300',
-  'project-profile': 'text-emerald-300',
-  'context-enrich': 'text-amber-300',
-  'mcp-discover': 'text-indigo-300',
-  'digest-daily': 'text-cyan-300',
-  'digest-weekly': 'text-cyan-300',
-  'digest-brag': 'text-cyan-300',
-  'revalidate-suggestion': 'text-sky-300',
-  'auto-plan': 'text-lime-300',
-  'auto-execute': 'text-rose-300',
-  // Run types
-  'run:plan': 'text-indigo-300',
-  'run:execute': 'text-fuchsia-300',
-};
-
-function PhasePipeline({ phases, currentPhase, allPhases, jobType }: { phases: string[]; currentPhase?: string; allPhases?: string[]; jobType?: string }) {
-  const displayPhases = allPhases ?? interestingPhases(phases);
-  if (displayPhases.length === 0) return null;
-
-  return (
-    <div className="flex items-center gap-0 mb-2">
-      {displayPhases.map((phase, i) => {
-        // Match "remote-sync: shadow (1/13)" against "remote-sync"
-        const isCurrent = currentPhase === phase || (currentPhase?.startsWith(phase + ':') ?? false) || (currentPhase?.startsWith(phase + ' ') ?? false);
-        const isCompleted = !allPhases || phases.includes(phase);
-        const isFuture = allPhases && !isCompleted && !isCurrent;
-        // Extract detail from phase like "enrich: Flyte (2/3)" → "Flyte (2/3)"
-        const detail = isCurrent && currentPhase && currentPhase !== phase
-          ? currentPhase.slice(phase.length).replace(/^[:\s]+/, '')
-          : undefined;
-        // Active phase: job color. Completed (no active phase): uniform dim. Future: muted.
-        const jobDone = !currentPhase;
-        const dotColor = isCurrent && jobType
-          ? (JOB_ACTIVE_DOT[jobType] ?? 'bg-text-muted')
-          : isFuture ? 'bg-border'
-          : jobDone ? 'bg-text-muted' : (PHASE_DOT[phase] ?? 'bg-text-muted');
-        const textColor = isCurrent && jobType
-          ? (JOB_ACTIVE_TEXT[jobType] ?? 'text-text-muted')
-          : isFuture ? 'text-text-muted/40'
-          : jobDone ? 'text-text-muted' : (PHASE_TEXT[phase] ?? 'text-text-muted');
-        return (
-          <div key={phase} className="flex items-center">
-            {i > 0 && <div className={`w-4 h-px ${isFuture ? 'bg-border/50' : 'bg-border'} mx-0.5`} />}
-            <div className={`flex items-center gap-1 ${isCurrent ? 'animate-pulse' : ''}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-              <span className={`text-[10px] ${textColor}`}>{phase}{detail ? ` (${detail})` : ''}</span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// --- Per-Type Expanded Detail ---
-
-function renderExpandedDetail(entry: ActivityEntryType) {
-  const r = entry.result ?? {};
-  const type = entry.type;
-
-  if (type === 'heartbeat') {
-    const obsItems = items(r, 'observationItems');
-    const memItems = items(r, 'memoryItems');
-    const repos = arr(r, 'reposAnalyzed');
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['heartbeat']} />
-        {num(r, 'observationsCreated') > 0 && (
-          <div>
-            <span className="text-accent">Observations ({num(r, 'observationsCreated')}):</span>
-            {obsItems.length > 0 ? (
-              <ul className="ml-3 mt-0.5 space-y-0.5">
-                {obsItems.map((item) => (
-                  <li key={item.id}>
-                    <a href={`/observations?highlight=${item.id}`} className="text-text-dim hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>
-                      - {item.title}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span className="text-text-muted ml-1">{num(r, 'observationsCreated')} created</span>
-            )}
-          </div>
-        )}
-        {num(r, 'memoriesCreated') > 0 && (
-          <div>
-            <span className="text-accent">Memories ({num(r, 'memoriesCreated')}):</span>
-            {memItems.length > 0 ? (
-              <ul className="ml-3 mt-0.5 space-y-0.5">
-                {memItems.map((item) => (
-                  <li key={item.id}>
-                    <a href={`/memories?highlight=${item.id}`} className="text-text-dim hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>
-                      - {item.title}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span className="text-text-muted ml-1">{num(r, 'memoriesCreated')} created</span>
-            )}
-          </div>
-        )}
-        {repos.length > 0 && (
-          <div><span className="text-accent">Repos:</span> <span className="text-text-dim">{repos.join(', ')}</span></div>
-        )}
-      </>
-    );
-  }
-
-  if (type === 'suggest') {
-    const sugItems = items(r, 'suggestionItems');
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['suggest']} />
-        {num(r, 'suggestionsCreated') > 0 ? (
-          <div>
-            <span className="text-accent">Suggestions ({num(r, 'suggestionsCreated')}):</span>
-            {sugItems.length > 0 ? (
-              <ul className="ml-3 mt-0.5 space-y-0.5">
-                {sugItems.map((item) => (
-                  <li key={item.id}>
-                    <a href={`/suggestions?highlight=${item.id}`} className="text-text-dim hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>
-                      - {item.title}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span className="text-text-muted ml-1">{num(r, 'suggestionsCreated')} created</span>
-            )}
-          </div>
-        ) : (
-          <div className="text-text-muted">No suggestions generated</div>
-        )}
-      </>
-    );
-  }
-
-  if (type === 'suggest-deep') {
-    const sugItems = items(r, 'suggestionItems');
-    const repoName = str(r, 'repoName');
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['suggest-deep']} />
-        {repoName && <div><span className="text-accent">Repo:</span> <span className="text-text-dim">{repoName}</span></div>}
-        {num(r, 'suggestionsCreated') > 0 ? (
-          <div>
-            <span className="text-accent">Suggestions ({num(r, 'suggestionsCreated')}):</span>
-            <ul className="ml-3 mt-0.5 space-y-0.5">
-              {sugItems.map((item) => (
-                <li key={item.id}>
-                  <a href={`/suggestions?highlight=${item.id}`} className="text-text-dim hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>- {item.title}</a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : (
-          <div className="text-text-muted">No suggestions generated</div>
-        )}
-      </>
-    );
-  }
-
-  if (type === 'suggest-project') {
-    const sugItems = items(r, 'suggestionItems');
-    const projectName = str(r, 'projectName');
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['suggest-project']} />
-        {projectName && <div><span className="text-accent">Project:</span> <span className="text-text-dim">{projectName}</span></div>}
-        {num(r, 'suggestionsCreated') > 0 ? (
-          <div>
-            <span className="text-accent">Cross-repo suggestions ({num(r, 'suggestionsCreated')}):</span>
-            <ul className="ml-3 mt-0.5 space-y-0.5">
-              {sugItems.map((item) => (
-                <li key={item.id}>
-                  <a href={`/suggestions?highlight=${item.id}`} className="text-text-dim hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>- {item.title}</a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : (
-          <div className="text-text-muted">No cross-repo suggestions</div>
-        )}
-      </>
-    );
-  }
-
-  if (type === 'project-profile') {
-    const projectName = str(r, 'projectName');
-    const repoCount = num(r, 'repoCount');
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['project-profile']} />
-        <div>
-          <span className="text-accent">Profiled:</span>{' '}
-          <span className="text-text-dim">{projectName ?? 'unknown'} ({repoCount} repos)</span>
-        </div>
-      </>
-    );
-  }
-
-  if (type === 'revalidate-suggestion') {
-    const verdict = str(r, 'verdict');
-    const verdictNote = str(r, 'verdictNote');
-    const title = str(r, 'suggestionTitle');
-    const count = num(r, 'newCount');
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['revalidate-suggestion']} />
-        {title && <div><span className="text-accent">Suggestion:</span> <span className="text-text-dim">{title}</span></div>}
-        {verdict && (
-          <div className="flex items-center gap-2">
-            <span className="text-accent">Verdict:</span>
-            <Badge className={verdict === 'valid' ? 'text-green bg-green/15' : verdict === 'partial' ? 'text-orange bg-orange/15' : 'text-red bg-red/15'}>
-              {verdict === 'valid' ? '✓ valid' : verdict === 'partial' ? '◐ partial' : '✕ outdated'}
-            </Badge>
-            {count > 1 && <span className="text-text-muted text-xs">(revalidation #{count})</span>}
-          </div>
-        )}
-        {verdictNote && <div className="text-text-dim text-xs">{verdictNote}</div>}
-      </>
-    );
-  }
-
-  if (type === 'consolidate') {
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['consolidate']} />
-        <div className="flex items-center gap-3 flex-wrap">
-          <span><span className="text-accent">Promoted:</span> <span className="text-text-dim">{num(r, 'memoriesPromoted')}</span></span>
-          <span><span className="text-accent">Demoted:</span> <span className="text-text-dim">{num(r, 'memoriesDemoted')}</span></span>
-          <span><span className="text-accent">Expired:</span> <span className="text-text-dim">{num(r, 'memoriesExpired')}</span></span>
-          {num(r, 'memoriesMerged') > 0 && (
-            <span><span className="text-accent">Merged:</span> <span className="text-text-dim">{num(r, 'memoriesMerged')} clusters ({num(r, 'memoriesArchivedByMerge')} archived)</span></span>
-          )}
-          {num(r, 'memoriesDeduped') > 0 && (
-            <span><span className="text-accent">Deduped:</span> <span className="text-text-dim">{num(r, 'memoriesDeduped')}</span></span>
-          )}
-        </div>
-      </>
-    );
-  }
-
-  if (type === 'reflect') {
-    const preview = str(r, 'deltaPreview');
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['reflect']} />
-        {r.skipped ? (
-          <div className="text-text-muted">Skipped{str(r, 'reason') ? ` — ${str(r, 'reason')}` : ' — no changes since last reflect'}</div>
-        ) : str(r, 'reason') && !r.soulUpdated ? (
-          <div className="text-red">Rejected — {str(r, 'reason')}</div>
-        ) : (
-          <div>
-            <a href="/profile#section-soul" className="text-accent hover:underline" onClick={e => e.stopPropagation()}>Soul updated</a>
-            {preview && <div className="text-text-dim mt-0.5 italic">"{preview}"</div>}
-          </div>
-        )}
-      </>
-    );
-  }
-
-  if (type === 'remote-sync') {
-    const summaries = (r.repoSummaries ?? []) as Array<{ name: string; newCommits: number }>;
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['remote-sync']} />
-        <div>
-          <span className="text-accent">{num(r, 'reposSynced')} repos synced</span>
-          <span className="text-text-muted">, {num(r, 'reposWithChanges')} with changes</span>
-        </div>
-        {summaries.length > 0 && (
-          <ul className="ml-3 mt-0.5 space-y-0.5">
-            {summaries.map((s, i) => (
-              <li key={i} className="text-text-dim">- {s.name}: {s.newCommits} new commit{s.newCommits !== 1 ? 's' : ''}</li>
-            ))}
-          </ul>
-        )}
-      </>
-    );
-  }
-
-  if (type === 'repo-profile') {
-    const names = arr(r, 'repoNames');
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['repo-profile']} />
-        <div>
-          <span className="text-accent">Profiled:</span>{' '}
-          <span className="text-text-dim">{names.length > 0 ? names.join(', ') : `${num(r, 'reposProfiled')} repos`}</span>
-        </div>
-      </>
-    );
-  }
-
-  if (type === 'context-enrich') {
-    const projectResults = r.projectResults as Array<{
-      projectName: string; itemsCollected: number; sources: string[]; error?: string;
-      findings?: Array<{ source: string; summary: string }>;
-    }> | undefined;
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['context-enrich']} />
-        {projectResults && projectResults.length > 0 ? (
-          <div className="space-y-3">
-            {projectResults.map(pr => (
-              <div key={pr.projectName}>
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-accent font-medium">{pr.projectName}</span>
-                  {pr.error ? (
-                    <span className="text-red text-[10px]">error: {pr.error}</span>
-                  ) : pr.itemsCollected > 0 ? (
-                    <span className="text-text-muted text-[10px]">{pr.itemsCollected} finding{pr.itemsCollected !== 1 ? 's' : ''} via {pr.sources.join(', ')}</span>
-                  ) : (
-                    <span className="text-text-muted text-[10px]">no findings</span>
-                  )}
-                </div>
-                {pr.findings && pr.findings.length > 0 && (
-                  <ul className="ml-3 space-y-0.5">
-                    {pr.findings.map((f, i) => (
-                      <li key={i} className="text-text-dim text-[11px]">
-                        <span className="text-text-muted">[{f.source}]</span> {f.summary}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-text-muted">{num(r, 'itemsCollected')} items collected</div>
-        )}
-      </>
-    );
-  }
-
-  if (type.startsWith('digest-')) {
-    const words = num(r, 'wordCount');
-    const digestId = str(r, 'digestId');
-    const ps = str(r, 'periodStart');
-    const kind = type.replace('digest-', '');
-
-    let periodFull = '';
-    if (ps) {
-      if (kind === 'brag') {
-        const year = ps.slice(0, 4);
-        const q = Math.ceil(parseInt(ps.slice(5, 7)) / 3);
-        periodFull = `Q${q} ${year}`;
-      } else if (kind === 'weekly') {
-        const start = new Date(ps);
-        const end = new Date(start); end.setDate(end.getDate() + 6);
-        periodFull = `${start.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
-      } else {
-        periodFull = new Date(ps).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-      }
-    }
-
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES[type] ?? [type]} />
-        <div>
-          <span className="text-accent">{kind} digest{periodFull ? ` for ${periodFull}` : ''}</span>
-          {words > 0 && <span className="text-text-dim">, {words} words</span>}
-          {digestId && (
-            <a href={`/digests?kind=${kind}${ps ? `&periodStart=${encodeURIComponent(ps)}` : ''}`} className="text-accent hover:underline ml-2" onClick={e => e.stopPropagation()}>
-              view digest
-            </a>
-          )}
-        </div>
-      </>
-    );
-  }
-
-  if (type === 'auto-plan' || type === 'auto-execute') {
-    const candidates = (r.candidates ?? []) as Array<{ title?: string; suggestionId?: string; action: string; reason?: string; runId?: string }>;
-
-    const ACTION_STYLES: Record<string, { color: string; label: string }> = {
-      skip: { color: 'text-text-muted', label: 'skip' },
-      dismissed: { color: 'text-orange', label: 'dismissed' },
-      planned: { color: 'text-lime-300', label: 'planned' },
-      needs_review: { color: 'text-amber-300', label: 'needs review' },
-      auto_executed: { color: 'text-rose-300', label: 'executed' },
-      error: { color: 'text-red', label: 'error' },
-    };
-
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES[type]} />
-        {candidates.length > 0 ? (
-          <div className="space-y-0.5">
-            {candidates.map((c, i) => {
-              const style = ACTION_STYLES[c.action] ?? ACTION_STYLES.skip;
-              const title = c.title ?? c.runId?.slice(0, 8) ?? '?';
-              const isRunLink = (c.action === 'planned' || c.action === 'auto_executed') && c.reason;
-              // Title link: suggestion page for auto-plan actions, workspace run for auto-execute/needs_review
-              const titleHref = c.suggestionId
-                ? `/suggestions?highlight=${c.suggestionId}`
-                : c.runId
-                ? `/workspace?item=${c.runId}&itemType=run`
-                : undefined;
-              return (
-                <div key={i} className="flex items-start gap-1.5 text-xs">
-                  <span className={`font-medium ${style.color} shrink-0`}>{style.label}</span>
-                  {titleHref ? (
-                    <a
-                      href={titleHref}
-                      className="text-text-dim hover:text-accent hover:underline"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {title}
-                    </a>
-                  ) : (
-                    <span className="text-text-dim">{title}</span>
-                  )}
-                  {isRunLink ? (
-                    <a href={`/workspace?item=${c.reason}&itemType=run`} className="text-accent text-[10px] hover:underline shrink-0" onClick={e => e.stopPropagation()}>
-                      → run {c.reason!.slice(0, 8)}
-                    </a>
-                  ) : (
-                    c.reason && <span className="text-text-muted/70 text-[10px]">— {c.reason}</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-text-muted">No candidates</div>
-        )}
-      </>
-    );
-  }
-
-  if (type.startsWith('run:')) {
-    const error = str(r, 'error');
-    const diffStat = str(r, 'diffStat');
-    const outcome = str(r, 'outcome');
-    const doubts = arr(r, 'doubts');
-    const verification = (r.verification ?? {}) as Record<string, { passed: boolean; output: string; durationMs: number }>;
-    const summaryMd = str(r, 'summaryMd');
-    return (
-      <>
-        {entry.taskTitle && entry.taskId && (
-          <div>
-            <span className="text-accent">Task:</span>{' '}
-            <a
-              href={`/workspace?item=${entry.taskId}&itemType=task`}
-              className="text-text-dim hover:text-accent hover:underline"
-              onClick={e => e.stopPropagation()}
-            >
-              {entry.taskTitle}
-            </a>
-          </div>
-        )}
-        {entry.confidence && (
-          <div className="flex items-center gap-2">
-            <span className="text-accent">Confidence:</span>
-            <ConfidenceIndicator confidence={entry.confidence} doubts={doubts.length} />
-            {outcome && <span className="text-text-muted text-[10px]">outcome: {outcome}</span>}
-          </div>
-        )}
-        {doubts.length > 0 && (
-          <ul className="ml-3 space-y-0.5">
-            {doubts.map((d, i) => (
-              <li key={i} className="text-orange text-[11px] flex gap-1.5">
-                <span className="shrink-0">⚠</span>
-                <span className="text-text-dim">{d}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {diffStat && (
-          <div>
-            <span className="text-accent">Diff:</span>
-            <pre className="mt-0.5 text-[11px] text-text-dim whitespace-pre-wrap font-mono bg-border/30 rounded p-2 max-h-32 overflow-y-auto">{diffStat}</pre>
-          </div>
-        )}
-        {Object.keys(verification).length > 0 && (
-          <div>
-            <span className="text-accent">Verification:</span>
-            <div className="ml-3 mt-0.5 space-y-0.5">
-              {Object.entries(verification).map(([cmd, result]) => (
-                <div key={cmd} className="flex items-center gap-1.5 text-[11px]">
-                  <span className={result.passed ? 'text-green' : 'text-red'}>{result.passed ? '✓' : '✗'}</span>
-                  <span className="text-text-dim">{cmd}</span>
-                  <span className="text-text-muted">({result.durationMs}ms)</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {error && (
-          <div className="bg-red/5 border border-red/20 rounded p-2 text-[11px] text-red whitespace-pre-wrap max-h-24 overflow-y-auto">
-            {error === 'orphaned — daemon restarted'
-              ? 'Orphaned by daemon restart — no auto-retry. Open in Workspace and click Retry to run again.'
-              : error}
-          </div>
-        )}
-        {summaryMd && (
-          <div>
-            <span className="text-accent">Summary:</span>
-            <div className="mt-0.5 max-h-64 overflow-y-auto">
-              <Markdown>{summaryMd}</Markdown>
-            </div>
-          </div>
-        )}
-        <div className="flex items-center gap-3 pt-1">
-          {entry.runId && (
-            <a href={`/workspace?item=${entry.runId}&itemType=run`} className="text-accent hover:underline" onClick={e => e.stopPropagation()}>
-              View in Workspace →
-            </a>
-          )}
-          {entry.prUrl && (
-            <a href={entry.prUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline" onClick={e => e.stopPropagation()}>
-              View PR →
-            </a>
-          )}
-        </div>
-      </>
-    );
-  }
-
-  if (type === 'pr-sync') {
-    const processed = (r.processed ?? []) as Array<{ runId: string; action: 'merged' | 'closed' | 'error'; prUrl?: string; error?: string }>;
-    const checked = num(r, 'runsChecked');
-    const ACTION_COLOR: Record<string, string> = {
-      merged: 'text-green',
-      closed: 'text-orange',
-      error: 'text-red',
-    };
-    return (
-      <>
-        <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['pr-sync']} />
-        {checked === 0 ? (
-          <div className="text-text-muted">No awaiting runs to check</div>
-        ) : processed.length === 0 ? (
-          <div className="text-text-muted">Checked {checked} run{checked !== 1 ? 's' : ''} — all still open</div>
-        ) : (
-          <div>
-            <span className="text-accent">Processed ({processed.length}):</span>
-            <ul className="ml-3 mt-0.5 space-y-0.5">
-              {processed.map(p => (
-                <li key={p.runId}>
-                  <a href={`/workspace?item=${p.runId}&itemType=run`} className="text-text-dim hover:text-accent hover:underline font-mono" onClick={e => e.stopPropagation()}>
-                    {p.runId.slice(0, 8)}
-                  </a>
-                  <span className={`ml-2 ${ACTION_COLOR[p.action] ?? 'text-text-dim'}`}>{p.action}</span>
-                  {p.error && <span className="text-red ml-2">— {p.error}</span>}
-                  {p.prUrl && (
-                    <>
-                      {' · '}
-                      <a href={p.prUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline" onClick={e => e.stopPropagation()}>View PR →</a>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </>
-    );
-  }
-
-  // Fallback: generic key-value dump
-  return (
-    <>
-      {(entry.phases.length > 0 || JOB_PHASES[type]) && <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES[type]} />}
-      {Object.entries(r)
-        .filter(([, v]) => v != null && v !== 0 && v !== '' && v !== false)
-        .map(([k, v]) => {
-          const label = k.replace(/([A-Z])/g, ' $1').toLowerCase();
-          const isObjectLike = typeof v === 'object' && v !== null;
-          const isArrayOfObjects = Array.isArray(v) && v.length > 0 && v.every(x => typeof x === 'object' && x !== null);
-          return (
-            <div key={k}>
-              <span className="text-accent">{label}:</span>{' '}
-              {isArrayOfObjects || (isObjectLike && !Array.isArray(v)) ? (
-                <pre className="mt-0.5 text-[10px] text-text-dim bg-bg-elevated/50 rounded px-2 py-1 overflow-x-auto">{JSON.stringify(v, null, 2)}</pre>
-              ) : Array.isArray(v) ? (
-                v.join(', ')
-              ) : (
-                String(v)
-              )}
-            </div>
-          );
-        })}
-    </>
-  );
 }
 
 // --- Main Component ---
@@ -815,7 +83,7 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
     );
   }
 
-  // Running state
+  // Running state — shows phases as they progress
   if (isRunning) {
     const expectedPhases = isRun
       ? (entry.type === 'run:execute' ? RUN_EXEC_PHASES : RUN_PLAN_PHASES)
@@ -836,6 +104,7 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
     );
   }
 
+  // Completed / failed — expandable card
   return (
     <div
       onClick={() => setExpanded(!expanded)}
@@ -843,36 +112,12 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
         skip ? 'border-border/50' : 'border-border'
       }`}
     >
-      {/* Collapsed row */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Badge className={typeColor}>{entry.type}</Badge>
-        {isRun && entry.repoName && <Badge className="text-text-dim bg-border">{entry.repoName}</Badge>}
-        {isRun && entry.confidence && (
-          <ConfidenceIndicator confidence={entry.confidence} compact />
-        )}
-        {isRun && entry.status && (
-          <Badge className={STATUS_BADGE[entry.status] ?? 'text-text-dim bg-border'}>{entry.status.replace('_', ' ')}</Badge>
-        )}
-        <span className="flex-1 min-w-0">
-          <JobOutputSummary entry={entry} />
-        </span>
-        {isFailed && !!entry.result?.error && (
-          <span className="text-red text-xs truncate max-w-60">
-            {String(entry.result.error).slice(0, 60)}
-          </span>
-        )}
-        {entry.tokensUsed > 0 && (
-          <span className="font-mono text-xs text-text-muted">{formatTokens(entry.tokensUsed)} tok</span>
-        )}
-        <span className="font-mono text-xs text-text-muted">{formatDuration(entry.durationMs)}</span>
-        {entry.startedAt && <span className="text-xs text-text-muted shrink-0">{timeAgo(entry.startedAt)}</span>}
-      </div>
+      <ActivityEntryHeader entry={entry} />
 
-      {/* Expanded view */}
       {expanded && (
         <div className="mt-3 animate-fade-in bg-bg rounded p-3 text-xs text-text-dim space-y-1.5" onClick={(e) => e.stopPropagation()}>
           {/* Per-type detail */}
-          {renderExpandedDetail(entry)}
+          <ActivityEntryExpandedDetail entry={entry} />
 
           {/* Common metadata */}
           {entry.llmCalls > 0 && (
@@ -912,30 +157,34 @@ export function ActivityEntryCard({ entry, defaultExpanded = false }: Props) {
 
 function RetryButton({ entry }: { entry: ActivityEntryType }) {
   const [triggered, setTriggered] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleRetry = useCallback(() => {
-    if (triggered) return;
-    setTriggered(true);
+  const handleRetry = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const params = (entry.result ?? {}) as Record<string, unknown>;
+    // Remove the error field from params before retry
+    const cleanParams = { ...params };
+    delete cleanParams.error;
 
-    // Extract original params from the job result (repoId, projectId, periodStart, suggestionId, etc.)
-    const r = entry.result ?? {};
-    const params: Record<string, string> = {};
-    if (r.repoId) params.repoId = String(r.repoId);
-    if (r.projectId) params.projectId = String(r.projectId);
-    if (r.periodStart) params.periodStart = String(r.periodStart);
-    if (r.suggestionId) params.suggestionId = String(r.suggestionId);
+    try {
+      await triggerJobWithParams(entry.type, cleanParams);
+      setTriggered(true);
+      setTimeout(() => setTriggered(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'retry failed');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
 
-    triggerJobWithParams(entry.type, Object.keys(params).length > 0 ? params : undefined);
-    setTimeout(() => setTriggered(false), 15_000);
-  }, [triggered, entry]);
+  if (triggered) return <span className="ml-auto text-green text-xs">✓ retried</span>;
+  if (error) return <span className="ml-auto text-red text-xs">✗ {error}</span>;
 
   return (
     <button
       onClick={handleRetry}
-      disabled={triggered}
-      className="ml-auto px-2 py-0.5 rounded text-[10px] bg-red/15 text-red hover:bg-red/25 border-none cursor-pointer transition-colors disabled:opacity-50"
+      className="ml-auto text-accent text-xs bg-accent/10 hover:bg-accent/20 px-2 py-0.5 rounded border-none cursor-pointer"
     >
-      {triggered ? 'Retrying...' : 'Retry'}
+      retry
     </button>
   );
 }
