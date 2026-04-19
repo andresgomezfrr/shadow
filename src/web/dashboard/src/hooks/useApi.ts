@@ -48,6 +48,7 @@ export function useApi<T>(
       timer = setInterval(() => { if (mounted) load(); }, intervalMs);
     };
     const onVisibility = () => {
+      if (!mounted) return;  // audit UI-05: visibilitychange may fire after unmount
       if (document.hidden) {
         if (timer) { clearInterval(timer); timer = null; }
       } else {
