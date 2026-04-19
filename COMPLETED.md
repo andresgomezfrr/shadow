@@ -4,6 +4,20 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-19 (Audit block 5B — web perf)
+
+Bloque 5B cierra 4 bugs 🟠 alta de dashboard/web perf. Scope inicial era 6 (D-05, W-02, W-03, W-04, W-05, W-06); en el primer scan de contexto aparecieron dos ya cerrados (W-02 antes de 5B y W-05 antes del audit) — marcados en el audit sin commit nuevo. 3 fixes + 1 docs, 317 tests verdes (+2 nuevos).
+
+- **SSE client drop en backpressure [audit W-06]** (`src/web/event-bus.ts`, commit `239b283`) — `EventBus.emit()` escribía a cada cliente sin chequear el retorno de `client.write()`. Si el TCP send buffer estaba lleno (cliente lento o colgado), Node acumulaba los writes en memoria — riesgo de leak a escala. Ahora si `write()` devuelve `false`, loguea, cierra el socket y lo retira del set. EventSource reconecta en 1-5s, cubierto por el polling 30s para no perder eventos. Zero drain/resume state tracking — más simple que correcto a medias.
+
+- **buildRepoProjectsMap en detectActiveProjects [audit D-05, W-02]** (`src/analysis/project-detection.ts`, commit `6a97f05`) — El heartbeat llamaba `findProjectsForRepo(repo.id)` en loop sobre todos los repos registrados — N queries cada 30min. Con 50+ repos profesionales esto escalaba mal. Sustituido por `db.buildRepoProjectsMap()` que devuelve el índice completo en una query con `json_each`. Callsites single-repo (status.ts, shared.ts/`autoLinkFromRepo`) se quedan con `findProjectsForRepo` — una query puntual es correcta. Workspace feed ya usaba el helper desde antes — cierre de W-02 junto con D-05.
+
+- **listRuns suggestionId filter + limits en contexts [audit W-03, W-04]** (`src/storage/stores/execution.ts`, `src/web/routes/suggestions.ts`, `src/web/routes/observations.ts`, commit `d7bd531`) — `/api/suggestions/:id/context` y `/api/observations/:id/context` hacían `db.listRuns({ archived: undefined })` — fetch de TODA la tabla de runs y filter en memoria. Crecía linealmente con histórico; riesgo OOM + latencia siempre presente. Añadido filter `suggestionId` a `listRuns` store. Suggestions context usa ese filter directamente + `limit: 50`. Observations context mantiene el patrón suggestion-chain (múltiples obs → múltiples sug → runs) pero con `limit: 200` en el scan.
+
+**Marcados como already done (sin commit)**: W-02 (workspace feed ya usaba buildRepoProjectsMap), W-05 (cache momentum TTL 5min en `suggestions.ts:12-30` implementado antes del audit).
+
+---
+
 ## Session 2026-04-19 (Audit block 5A — data safety & runner robustness)
 
 Bloque 5A cierra 5 bugs 🟠 alta del audit: 2 del runner (empty plan, parent aggregation) + 3 de DB (LIKE perf, cascade integrity, junction table). 5 commits + docs, 315 tests verdes (de 310 → +5 nuevos), daemon restart clean. Sin tocar schema para D-06 (política mixta SET NULL/CASCADE vía DELETE/UPDATE explícitos).
