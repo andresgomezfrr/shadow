@@ -314,6 +314,8 @@ export class ShadowDatabase {
   touchObservationLastSeen(id: string): void { return knowledge.touchObservationLastSeen(this.database, id); }
   touchObservationsLastSeen(ids: string[]): void { return knowledge.touchObservationsLastSeen(this.database, ids); }
   bumpObservationVotes(id: string, context?: Record<string, unknown>): void { return knowledge.bumpObservationVotes(this.database, id, context); }
+  setObservationNotifiedAt(id: string, ts: string): void { return knowledge.setObservationNotifiedAt(this.database, id, ts); }
+  buildRepoProjectsMap(): Map<string, ProjectRecord[]> { return entities.buildRepoProjectsMap(this.database); }
   reopenObservation(id: string, context?: Record<string, unknown>): void { return knowledge.reopenObservation(this.database, id, context); }
 
   // --- Suggestions ---
@@ -402,6 +404,11 @@ export class ShadowDatabase {
   recordLlmUsage(input: CreateLlmUsageInput): LlmUsageRecord { return tracking.recordLlmUsage(this.database, input); }
   getLlmUsage(id: string): LlmUsageRecord | null { return tracking.getLlmUsage(this.database, id); }
   getUsageSummary(period: 'day' | 'week' | 'month' = 'day'): { totalInputTokens: number; totalOutputTokens: number; totalCalls: number; byModel: Record<string, { input: number; output: number; calls: number }> } { return tracking.getUsageSummary(this.database, period); }
+  rollupLlmUsageDaily(olderThanDays: number): number { return tracking.rollupLlmUsageDaily(this.database, olderThanDays); }
+  deleteOldLlmUsage(olderThanDays: number): number { return tracking.deleteOldLlmUsage(this.database, olderThanDays); }
+  deleteOldInteractions(olderThanDays: number): number { return tracking.deleteOldInteractions(this.database, olderThanDays); }
+  deleteOldDeliveredEvents(olderThanDays: number): number { return tracking.deleteOldDeliveredEvents(this.database, olderThanDays); }
+  deleteOldJobs(olderThanDays: number): number { return tracking.deleteOldJobs(this.database, olderThanDays); }
 
   // --- Chronicle Entries (v49) ---
 

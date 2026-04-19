@@ -206,6 +206,7 @@ export type ObservationRecord = {
   lastSeenAt: string;
   processed: boolean;
   suggestionId: string | null;
+  lastNotifiedAt: string | null;
   createdAt: string;
 };
 

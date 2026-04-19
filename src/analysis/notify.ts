@@ -32,13 +32,18 @@ export async function activityNotify(
     eventsQueued++;
   }
 
-  // Check for high-severity active observations that should trigger immediate notifications
+  // Check for high-severity active observations that should trigger immediate notifications.
+  // Throttle 24h per observation via observations.last_notified_at — prevents the historical
+  // bug where dedup only checked undelivered events and every heartbeat re-queued a new one
+  // for the same observation (one obs accumulated 90+ events in prod).
+  const THROTTLE_MS = 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
   const recentObservations = ctx.db.listObservations({ status: 'open', limit: 50 });
   const criticalObservations = recentObservations.filter(
     (obs) => obs.severity === 'high' || obs.severity === 'critical',
   );
 
-  // Collect observation IDs that already have a pending (undelivered) event to avoid duplicates
+  // Still skip if there's a pending event for the same obs — avoids same-tick duplicates
   const pendingEvents = ctx.db.listPendingEvents();
   const notifiedObsIds = new Set(
     pendingEvents
@@ -49,8 +54,13 @@ export async function activityNotify(
 
   for (const obs of criticalObservations) {
     if (notifiedObsIds.has(obs.id)) continue;
+    if (obs.lastNotifiedAt) {
+      const lastMs = Date.parse(obs.lastNotifiedAt);
+      if (Number.isFinite(lastMs) && nowMs - lastMs < THROTTLE_MS) continue;
+    }
 
     // Always notify on critical/high observations regardless of proactivity level
+    const nowIso = new Date(nowMs).toISOString();
     ctx.db.createEvent({
       kind: 'observation_notable',
       priority: obs.severity === 'critical' ? 9 : 7,
@@ -62,6 +72,7 @@ export async function activityNotify(
         repoId: obs.repoId,
       },
     });
+    ctx.db.setObservationNotifiedAt(obs.id, nowIso);
     eventsQueued++;
   }
 

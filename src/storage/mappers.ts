@@ -280,6 +280,7 @@ export function mapObservation(row: unknown): ObservationRecord {
     lastSeenAt: str(d.last_seen_at ?? d.created_at),
     processed: bool(d.processed),
     suggestionId: strOrNull(d.suggestion_id),
+    lastNotifiedAt: strOrNull(d.last_notified_at),
     createdAt: str(d.created_at),
   };
 }

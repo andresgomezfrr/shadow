@@ -988,6 +988,30 @@ export const migrations: Migration[] = [
         WHERE outcome = 'closed';
     `,
   },
+  {
+    version: 52,
+    name: 'observations_last_notified_at',
+    sql: `
+      ALTER TABLE observations ADD COLUMN last_notified_at TEXT DEFAULT NULL;
+      CREATE INDEX IF NOT EXISTS idx_observations_last_notified_at ON observations(last_notified_at);
+    `,
+  },
+  {
+    version: 53,
+    name: 'llm_usage_daily_rollup',
+    sql: `
+      CREATE TABLE IF NOT EXISTS llm_usage_daily (
+        date TEXT NOT NULL,
+        source TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input_tokens_sum INTEGER NOT NULL DEFAULT 0,
+        output_tokens_sum INTEGER NOT NULL DEFAULT 0,
+        calls INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (date, source, model)
+      );
+      CREATE INDEX IF NOT EXISTS idx_llm_usage_daily_date ON llm_usage_daily(date);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

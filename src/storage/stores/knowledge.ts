@@ -392,6 +392,10 @@ export function bumpObservationVotes(db: DatabaseSync, id: string, context?: Rec
   db.prepare('UPDATE observations SET votes = votes + 1, last_seen_at = ? WHERE id = ?').run(now, id);
 }
 
+export function setObservationNotifiedAt(db: DatabaseSync, id: string, ts: string): void {
+  db.prepare('UPDATE observations SET last_notified_at = ? WHERE id = ?').run(ts, id);
+}
+
 export function reopenObservation(db: DatabaseSync, id: string, context?: Record<string, unknown>): void {
   const now = new Date().toISOString();
   if (context) {
