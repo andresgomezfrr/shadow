@@ -41,9 +41,13 @@ export const SuggestResponseSchema = z.object({
   })).default([]),
 });
 
-// Phase 2: validation verdicts from code review
+// Phase 2: validation verdicts from code review.
+// `index` is the 0-based position of the candidate this verdict refers to —
+// dedup happens on index (not title) so two candidates sharing a title both
+// get scored independently. See audit P-06.
 export const SuggestValidateResponseSchema = z.object({
   verdicts: z.array(z.object({
+    index: z.number().int().min(0),
     title: z.string(),
     keep: z.boolean(),
     reason: z.string(),
@@ -66,4 +70,4 @@ export const SUGGEST_FORMAT =
   '{ "suggestions": [{ "kind": string, "title": string, "summaryMd": string, "reasoningMd": string, "impactScore": 1-5, "confidenceScore": 0-100, "riskScore": 1-5, "effort": "small"|"medium"|"large", "repoId": string|null }] }';
 
 export const SUGGEST_VALIDATE_FORMAT =
-  '{ "verdicts": [{ "title": string, "keep": true/false, "reason": string }] }';
+  '{ "verdicts": [{ "index": number (0-based candidate index), "title": string, "keep": true/false, "reason": string }] }';

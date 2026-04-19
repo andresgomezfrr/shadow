@@ -171,9 +171,9 @@ export async function activitySuggest(
       repo.contextMd ? `## Repository Context\n${repo.contextMd}\n` : '',
       pendingTitles ? `## Pending suggestions already in queue\n${pendingTitles}\n` : '',
       '',
-      '## Candidates to validate',
+      '## Candidates to validate (each header shows its 0-based index)',
       ...candidates.map((c, i) => [
-        `### Candidate ${i + 1}: ${c.title}`,
+        `### Candidate [index=${i}]: ${c.title}`,
         `Kind: ${c.kind} | Impact: ${c.impactScore} | Confidence: ${c.confidenceScore} | Risk: ${c.riskScore} | Effort: ${c.effort}`,
         c.summaryMd,
         c.reasoningMd || '',
@@ -187,7 +187,7 @@ export async function activitySuggest(
       '4. Verify: Is it redundant with pending suggestions?',
       '5. Judge: Given this repo\'s context, is this worth doing?',
       '',
-      'Respond with JSON:',
+      'Respond with JSON. Include the 0-based `index` from each candidate header so duplicates-by-title can be distinguished:',
       SUGGEST_VALIDATE_FORMAT,
     ].join('\n');
 
@@ -210,17 +210,22 @@ export async function activitySuggest(
       if (valResult.status === 'success' && valResult.output) {
         const valParsed = safeParseJson(valResult.output, SuggestValidateResponseSchema, 'suggest-validate');
         if (valParsed.success) {
-          const kept = new Set<string>();
+          // Dedup by candidate index (not title) — two candidates may share a
+          // title and previously only the second verdict "won". See audit P-06.
+          const keptIndices = new Set<number>();
           for (const v of valParsed.data.verdicts) {
+            if (v.index < 0 || v.index >= candidates.length) {
+              console.error(`[shadow:suggest] Phase 2 IGNORE (${repo.name}): out-of-range index ${v.index}`);
+              continue;
+            }
             if (v.keep) {
-              kept.add(v.title);
-              console.error(`[shadow:suggest] Phase 2 KEEP (${repo.name}): "${v.title}" — ${v.reason}`);
+              keptIndices.add(v.index);
+              console.error(`[shadow:suggest] Phase 2 KEEP (${repo.name}) [${v.index}]: "${v.title}" — ${v.reason}`);
             } else {
-              console.error(`[shadow:suggest] Phase 2 DROP (${repo.name}): "${v.title}" — ${v.reason}`);
+              console.error(`[shadow:suggest] Phase 2 DROP (${repo.name}) [${v.index}]: "${v.title}" — ${v.reason}`);
             }
           }
-          // Filter candidates to only kept ones
-          candidates = candidates.filter(c => kept.has(c.title));
+          candidates = candidates.filter((_, i) => keptIndices.has(i));
         } else {
           console.error(`[shadow:suggest] Phase 2 parse failed (${repo.name}): ${valParsed.error} — discarding all candidates (fail-close)`);
           candidates = [];
