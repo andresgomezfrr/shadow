@@ -127,7 +127,11 @@ export class JobQueue {
     // Per-job setPhase closure
     const setPhase = (phase: string | null) => {
       activeEntry.phase = phase;
-      try { this.db.updateJob(job.id, { activity: phase }); } catch { /* best-effort */ }
+      try {
+        this.db.updateJob(job.id, { activity: phase });
+      } catch (e) {
+        console.error(`[job-queue] phase update failed for job ${job.id.slice(0, 8)} (${job.type}):`, e instanceof Error ? e.message : e);
+      }
       this.eventBus.emit({ type: 'job:phase', data: { jobId: job.id, jobType: job.type, phase } });
       // Backward compat: also emit heartbeat:phase for heartbeat jobs
       if (job.type === 'heartbeat') {

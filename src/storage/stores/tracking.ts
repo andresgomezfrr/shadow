@@ -38,7 +38,11 @@ export function createInteraction(db: DatabaseSync, input: { interface: string; 
       now,
     );
   // Increment totalInteractions on profile
-  try { db.prepare('UPDATE user_profile SET total_interactions = total_interactions + 1').run(); } catch { /* */ }
+  try {
+    db.prepare('UPDATE user_profile SET total_interactions = total_interactions + 1').run();
+  } catch (e) {
+    console.error('[tracking] profile counter update failed:', e instanceof Error ? e.message : e);
+  }
   return getInteraction(db, id)!;
 }
 

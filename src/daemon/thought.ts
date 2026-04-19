@@ -206,7 +206,9 @@ function gatherBriefContext(ctx: ThoughtContext): string {
     if (obs.length > 0) {
       parts.push(`recent observations: ${obs.map(o => o.title).join(', ')}`);
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    console.error('[thought] listObservations failed:', e instanceof Error ? e.message : e);
+  }
 
   return parts.join('; ') || 'idle, no recent activity';
 }
