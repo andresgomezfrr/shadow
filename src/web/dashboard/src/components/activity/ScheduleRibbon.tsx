@@ -36,6 +36,7 @@ const TRIGGER_COLORS: Record<string, string> = {
   'digest-brag': 'bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25',
   'auto-plan': 'bg-lime-500/15 text-lime-300 hover:bg-lime-500/25',
   'auto-execute': 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25',
+  cleanup: 'bg-slate-400/15 text-slate-300 hover:bg-slate-400/25',
 };
 
 const JOB_GROUPS: Array<{ label: string; jobs: string[] }> = [
@@ -44,6 +45,7 @@ const JOB_GROUPS: Array<{ label: string; jobs: string[] }> = [
   { label: 'Sync', jobs: ['remote-sync', 'repo-profile', 'project-profile', 'context-enrich', 'mcp-discover'] },
   { label: 'Autonomy', jobs: ['auto-plan', 'auto-execute'] },
   { label: 'Digests', jobs: ['digest-daily', 'digest-weekly', 'digest-brag'] },
+  { label: 'Maintenance', jobs: ['cleanup'] },
 ];
 
 const ALL_JOBS = JOB_GROUPS.flatMap(g => g.jobs);
@@ -65,6 +67,7 @@ const JOB_DESCRIPTIONS: Record<string, string> = {
   'digest-brag': 'Quarterly brag doc for performance reviews',
   'auto-plan': 'Scans mature suggestions, revalidates against code, creates plan runs (every 3h)',
   'auto-execute': 'Executes planned runs with high confidence + zero doubts (every 3h, offset 1.5h)',
+  cleanup: 'Purges rows > 90d from interactions/event_queue/llm_usage/jobs; rolls up llm_usage_daily first',
 };
 
 function intervalLabel(entry: ScheduleEntry): string {

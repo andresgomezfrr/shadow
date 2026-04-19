@@ -260,6 +260,18 @@ revalidate-suggestion (on-demand from Workspace)`}</pre>
             output="Quarterly brag doc in Digests page"
             reactive={false}
           />
+
+          <JobCard
+            name="cleanup"
+            color="bg-slate-400/20 text-slate-300"
+            purpose="Retention: purges rows > 90d from interactions, event_queue (delivered only), llm_usage, and jobs. Feedback and audit_events are preserved (load-bearing). Rolls raw llm_usage into llm_usage_daily before purging so historical token views stay queryable."
+            trigger="03:30 daily"
+            model="None (IO only)"
+            phases={['cleanup']}
+            output="{ rolledUp, deleted: { llm_usage, interactions, event_queue, jobs } } in Activity"
+            reactive={false}
+            note="Pending events (delivered=0) are never purged — stuck pending signals a bug, not churn. Feedback preserved for checkSuggestionDuplicate dismissed dedup + correction lifecycle."
+          />
         </div>
       </section>
 

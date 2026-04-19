@@ -5,7 +5,7 @@ import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 import { json, readBody, parseBody, FocusSchema, FeedbackSchema } from '../helpers.js';
 import { ProfileUpdateSchema } from '../../config/schema.js';
-import { DIGEST_SCHEDULES, nextScheduledAt } from '../../daemon/schedules.js';
+import { DIGEST_SCHEDULES, CLEANUP_SCHEDULE, nextScheduledAt } from '../../daemon/schedules.js';
 import { loadConfig } from '../../config/load-config.js';
 import { loadAutonomyConfig } from '../../autonomy/rules.js';
 
@@ -123,6 +123,10 @@ export async function handleProfileRoutes(
             const tz = db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
             return [type, { schedule: sched.label, nextAt: nextScheduledAt(sched, tz) }];
           })),
+          cleanup: (() => {
+            const tz = db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+            return { schedule: CLEANUP_SCHEDULE.label, nextAt: nextScheduledAt(CLEANUP_SCHEDULE, tz) };
+          })(),
         },
         recentActivity: (() => {
           try {
