@@ -3,13 +3,15 @@ import { useEventStream } from './useEventStream';
 
 /**
  * Enhanced version of useApi that also subscribes to SSE events for push-based refresh.
- * Falls back to polling at a longer interval (120s default vs 30s in useApi).
+ * Falls back to polling at the same cadence as useApi (30s) so a stale SSE
+ * connection doesn't leave the UI two minutes out of date — see audit UI-08.
+ * Callers that legitimately want longer polling can override pollingIntervalMs.
  */
 export function useSSERefresh<T>(
   fetcher: () => Promise<T | null>,
   deps: unknown[] = [],
   eventTypes: string[] = [],
-  pollingIntervalMs = 120_000,
+  pollingIntervalMs = 30_000,
 ) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
