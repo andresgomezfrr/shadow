@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { printOutput } from './output.js';
+import { JOB_TYPES } from '../daemon/job-types.js';
 
 function parseLatestSemver(tagOutput: string): string | null {
   const tags = tagOutput
@@ -287,25 +288,8 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
 
   // --- job <type> ---
 
-  const JOB_TYPES: Record<string, { priority: number; description: string }> = {
-    heartbeat:              { priority: 10, description: 'analyze recent activity (4-phase)' },
-    suggest:                { priority: 8,  description: 'generate suggestions from observations' },
-    'suggest-deep':         { priority: 6,  description: 'full codebase review for suggestions' },
-    'suggest-project':      { priority: 5,  description: 'cross-repo project analysis' },
-    reflect:                { priority: 5,  description: 'evolve soul reflection' },
-    consolidate:            { priority: 3,  description: 'memory layer maintenance + merge' },
-    'repo-profile':         { priority: 3,  description: 'generate repo profile' },
-    'project-profile':      { priority: 4,  description: 'generate project profile' },
-    'remote-sync':          { priority: 2,  description: 'git ls-remote + selective fetch' },
-    'pr-sync':              { priority: 3,  description: 'detect PR merge/close for awaiting_pr runs' },
-    'context-enrich':       { priority: 4,  description: 'query external MCP servers' },
-    'mcp-discover':         { priority: 2,  description: 'discover MCP server capabilities' },
-    'digest-daily':         { priority: 5,  description: 'generate daily standup digest' },
-    'digest-weekly':        { priority: 5,  description: 'generate weekly digest' },
-    'digest-brag':          { priority: 5,  description: 'generate brag doc' },
-    'revalidate-suggestion': { priority: 3, description: 'revalidate open suggestions' },
-    cleanup:                { priority: 2,  description: 'purge interactions/event_queue/llm_usage/jobs older than 90d; rollup llm_usage_daily' },
-  };
+  // JOB_TYPES lives in src/daemon/job-types.ts so the web route's allowlist
+  // and this CLI share a single source of truth.
 
   program
     .command('job <type>')

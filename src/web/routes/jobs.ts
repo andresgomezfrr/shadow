@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 import { json, clampLimit, clampOffset, parseOptionalBody, DigestTriggerSchema, JobTriggerParamsSchema } from '../helpers.js';
+import { JOB_TYPES, JOB_TYPE_NAMES } from '../../daemon/job-types.js';
 
 export async function handleJobRoutes(
   req: IncomingMessage, res: ServerResponse,
@@ -46,14 +47,10 @@ export async function handleJobRoutes(
     const jobTriggerMatch = pathname.match(/^\/api\/jobs\/trigger\/(.+)$/);
     if (jobTriggerMatch) {
       const type = decodeURIComponent(jobTriggerMatch[1]);
-      const VALID_TYPES = new Set(['heartbeat', 'suggest', 'suggest-deep', 'suggest-project', 'consolidate', 'reflect', 'remote-sync', 'repo-profile', 'project-profile', 'context-enrich', 'mcp-discover', 'digest-daily', 'digest-weekly', 'digest-brag', 'revalidate-suggestion', 'auto-plan', 'auto-execute', 'pr-sync', 'cleanup', 'version-check']);
-      if (!VALID_TYPES.has(type)) {
+      if (!JOB_TYPE_NAMES.includes(type)) {
         return json(res, { error: `Unknown job type: ${type}` }, 400), true;
       }
-      const PRIORITIES: Record<string, number> = {
-        heartbeat: 10, suggest: 8, 'suggest-deep': 6, 'suggest-project': 5, reflect: 5, 'digest-daily': 5, 'digest-weekly': 5, 'digest-brag': 5,
-        'context-enrich': 4, 'project-profile': 4, 'auto-plan': 4, 'auto-execute': 4, consolidate: 3, 'repo-profile': 3, 'pr-sync': 3, 'mcp-discover': 2, 'remote-sync': 2, cleanup: 2, 'version-check': 1,
-      };
+      const priority = JOB_TYPES[type]?.priority ?? 5;
       const body = await parseOptionalBody(req, res, JobTriggerParamsSchema);
       if (!body) return true;
 
@@ -74,7 +71,7 @@ export async function handleJobRoutes(
         }
       }
 
-      db.enqueueJob(type, { priority: PRIORITIES[type] ?? 5, triggerSource: 'manual', params: Object.keys(body).length > 0 ? body : undefined });
+      db.enqueueJob(type, { priority, triggerSource: 'manual', params: Object.keys(body).length > 0 ? body : undefined });
       return json(res, { triggered: true, type }), true;
     }
 
