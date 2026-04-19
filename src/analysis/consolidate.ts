@@ -1,12 +1,25 @@
+import { z } from 'zod';
 import type { ObjectivePack } from '../backend/types.js';
 
 import { maintainMemoryLayers } from '../memory/layers.js';
 import { checkMemoryDuplicate } from '../memory/dedup.js';
 import { generateAndStoreEmbedding } from '../memory/lifecycle.js';
 import { selectAdapter } from '../backend/index.js';
+import { safeParseJson } from '../backend/json-repair.js';
 
 import type { HeartbeatContext } from './state-machine.js';
 import { getModel } from './shared.js';
+
+const MetaPatternSchema = z.object({
+  title: z.string().min(1),
+  bodyMd: z.string().min(10),
+  confidence: z.number().min(0).max(100).optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+const ConsolidateSchema = z.object({
+  metaPatterns: z.array(MetaPatternSchema).default([]),
+});
 
 export async function activityConsolidate(
   ctx: HeartbeatContext,
@@ -61,21 +74,12 @@ export async function activityConsolidate(
       });
 
       if (result.status === 'success' && result.output) {
-        try {
-          const parsed = JSON.parse(result.output) as {
-            metaPatterns?: Array<{
-              title?: string;
-              bodyMd?: string;
-              confidence?: number;
-              tags?: string[];
-            }>;
-          };
-
-          if (parsed.metaPatterns && Array.isArray(parsed.metaPatterns)) {
-            for (const pattern of parsed.metaPatterns) {
-              if (!pattern.title || !pattern.bodyMd) continue;
-
-              try {
+        const parsed = safeParseJson(result.output, ConsolidateSchema, 'consolidate');
+        if (!parsed.success) {
+          console.error('[shadow:consolidate] Failed to parse LLM output — skipping meta-pattern detection this tick');
+        } else {
+          for (const pattern of parsed.data.metaPatterns) {
+            try {
                 // Semantic dedup: check if a similar meta_pattern already exists
                 const decision = await checkMemoryDuplicate(ctx.db, {
                   kind: 'meta_pattern', title: pattern.title, bodyMd: pattern.bodyMd,
@@ -123,13 +127,10 @@ export async function activityConsolidate(
                   ctx.db.createFeedback({ targetKind: 'memory', targetId: mem.id, action: 'consolidated', note: `merged into meta_pattern: ${pattern.title}` });
                   console.error(`[shadow:consolidate] Archived hot source: ${mem.title}`);
                 }
-              } catch (e) {
-                console.error(`[shadow:consolidate] Meta-pattern failed: ${pattern.title}:`, e instanceof Error ? e.message : e);
-              }
+            } catch (e) {
+              console.error(`[shadow:consolidate] Meta-pattern failed: ${pattern.title}:`, e instanceof Error ? e.message : e);
             }
           }
-        } catch (e) {
-          console.error('[shadow:consolidate] Failed to parse LLM output:', e instanceof Error ? e.message : e);
         }
       }
     } catch (e) {
