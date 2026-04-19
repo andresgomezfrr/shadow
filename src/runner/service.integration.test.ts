@@ -41,10 +41,18 @@ mock.module('../analysis/chronicle.js', {
 });
 
 // Plan capture reads ~/.claude/plans/... which doesn't exist in tests.
-// Return null and let processRun fall back to result.output as effectivePlan.
+// Default: return null so processRun falls back to result.output. Individual tests
+// can override via setPlanCaptureImpl() to simulate a real JSONL session.
+type PlanCaptureFn = (sessionId: string, cwd: string) => { content: string | null; brief: string | null; filePath: string | null };
+const NULL_CAPTURE: ReturnType<PlanCaptureFn> = { content: null, brief: null, filePath: null };
+let planCaptureImpl: PlanCaptureFn = () => NULL_CAPTURE;
+function setPlanCaptureImpl(fn: PlanCaptureFn | null): void {
+  planCaptureImpl = fn ?? (() => NULL_CAPTURE);
+}
+
 mock.module('./plan-capture.js', {
   namedExports: {
-    capturePlanFromSession: () => ({ content: null, filePath: null }),
+    capturePlanFromSession: (sessionId: string, cwd: string) => planCaptureImpl(sessionId, cwd),
   },
 });
 
@@ -278,6 +286,88 @@ describe('RunnerService.processRun — integration', () => {
     // The main repo path always shows up; the test worktree should be gone.
     const lines = worktreesOut.split('\n').filter(Boolean);
     assert.equal(lines.length, 1, `expected only main repo worktree, got:\n${worktreesOut}`);
+  });
+
+  it('11. plan capture returns content from session JSONL [T-01c]', async () => {
+    const planContent = '# Captured Plan\n\n## Steps\n1. Captured from the JSONL session transcript, not from result.output';
+    setPlanCaptureImpl(() => ({ content: planContent, brief: 'Plan ready for review', filePath: '/tmp/captured-plan.md' }));
+
+    try {
+      // Empty output forces processRun to rely on capturePlanFromSession to fill effectivePlan
+      const adapter = makeMockAdapter({
+        scripted: { plan: { output: '', sessionId: 'test-session-fixture-01' } },
+      });
+      setMockAdapter(adapter);
+
+      const run = seedPlanRun(env.db, { repoId: env.repo.id });
+      const service = new RunnerService(env.config, env.db, env.eventBus);
+      await service.processRun(run.id);
+
+      const updated = env.db.getRun(run.id)!;
+      assert.equal(updated.status, 'planned', 'plan captured from JSONL fixture → planned status');
+      assert.ok(updated.resultSummaryMd?.includes('Captured Plan'), 'resultSummaryMd sources content from the session stub');
+      assert.ok(updated.resultSummaryMd?.includes('Captured from the JSONL session transcript'), 'full plan body persisted');
+    } finally {
+      setPlanCaptureImpl(null);
+    }
+  });
+
+  it('10. confidence eval returns low → plan persisted with doubts [T-01b]', async () => {
+    const adapter = makeMockAdapter({
+      scripted: {
+        plan: { output: '# Plan\n\n## Steps\n1. Risky change under-specified' },
+        confidence: { output: JSON.stringify({ confidence: 'low', doubts: ['Not sure about X', 'Y is ambiguous'] }) },
+      },
+    });
+    setMockAdapter(adapter);
+
+    const run = seedPlanRun(env.db, { repoId: env.repo.id });
+    const service = new RunnerService(env.config, env.db, env.eventBus);
+    await service.processRun(run.id);
+
+    const updated = env.db.getRun(run.id)!;
+    assert.equal(updated.status, 'planned', 'plan run finishes as planned even with low confidence');
+    assert.equal(updated.confidence, 'low', 'confidence value persisted');
+    assert.deepEqual(updated.doubts, ['Not sure about X', 'Y is ambiguous'], 'doubts array persisted');
+  });
+
+  it('12. autonomous chain: plan → execute → parent done [T-01d]', async () => {
+    // Phase 1: plan run with high confidence
+    const adapter = makeMockAdapter({
+      scripted: {
+        plan: { output: '# Plan\n\n## Steps\n1. Edit foo.ts' },
+        confidence: { output: JSON.stringify({ confidence: 'high', doubts: [] }) },
+        execution: { output: 'Completed the work as planned.' },
+      },
+      onExecute: (pack) => {
+        // Dirty the worktree only for the actual execution call
+        if (pack.permissionMode !== 'plan' && !/confidence|evaluate/i.test(pack.title)) {
+          const worktreeCwd = pack.repos[0]?.path;
+          if (worktreeCwd) makeRepoChange(worktreeCwd, 'foo.ts', 'modified\n');
+        }
+      },
+    });
+    setMockAdapter(adapter);
+
+    const planRun = seedPlanRun(env.db, { repoId: env.repo.id });
+    const service = new RunnerService(env.config, env.db, env.eventBus);
+
+    await service.processRun(planRun.id);
+    const planned = env.db.getRun(planRun.id)!;
+    assert.equal(planned.status, 'planned', 'plan phase completes as planned');
+    assert.equal(planned.confidence, 'high', 'plan has high confidence');
+
+    // Phase 2: execution child (simulates auto-execute enqueuing the child)
+    const execRun = seedExecutionRun(env.db, { repoId: env.repo.id, parentRunId: planRun.id });
+    await service.processRun(execRun.id);
+
+    const executed = env.db.getRun(execRun.id)!;
+    const parent = env.db.getRun(planRun.id)!;
+
+    assert.equal(executed.status, 'done', 'execution child transitions to done');
+    assert.ok(executed.diffStat && executed.diffStat.length > 0, 'execution produced a diff');
+    assert.equal(parent.status, 'done', 'parent aggregates to done after child executed');
+    assert.equal(parent.outcome, 'executed', 'parent outcome is executed (not no_changes or merged)');
   });
 });
 
