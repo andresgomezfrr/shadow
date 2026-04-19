@@ -505,10 +505,45 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
     dismissReason: z.string().nullable().optional(),
   });
 
-  const parsed = safeParseJson(result.output, schema, 'revalidate-suggestion');
+  let parsed = safeParseJson(result.output, schema, 'revalidate-suggestion');
+  let tokensTotal = tokens;
+  let llmCallsTotal = 1;
+
+  // Retry once with a reinforced prompt if the LLM went narrative (common when it
+  // explored with tools and forgot the JSON contract at the end). See audit A-02.
   if (!parsed.success) {
-    console.error(`[daemon] revalidate-suggestion parse error: ${parsed.error}\nRaw output (first 500): ${result.output.slice(0, 500)}`);
-    return { llmCalls: 1, tokensUsed: tokens, phases: ['prepare', 'evaluate', 'apply'], result: { error: `Parse failed: ${parsed.error?.slice(0, 100)}`, suggestionId, rawSnippet: result.output.slice(0, 200) } };
+    console.error(`[daemon] revalidate-suggestion first-pass parse failed: ${parsed.error} — retrying with reinforced prompt`);
+    const reinforcedPrompt = prompt + '\n\n---\nIMPORTANT: Your FINAL message must be ONLY the JSON object described above. No prose before or after, no markdown code fences, no explanation. Start with { and end with }.';
+    const retryResult = await adapter.execute({
+      repos: [{ id: repo.id, name: repo.name, path: repo.path }],
+      title: `Revalidate: ${suggestion.title} (retry)`,
+      goal: 'Re-evaluate suggestion against current codebase (JSON-only retry)',
+      prompt: reinforcedPrompt,
+      relevantMemories: [],
+      model: ctx.config.models.revalidate,
+      effort: ctx.config.efforts.revalidate,
+      systemPrompt: null,
+      allowedTools: ['Read', 'Grep', 'Glob', 'Bash'],
+    });
+    llmCallsTotal = 2;
+    tokensTotal += (retryResult.inputTokens ?? 0) + (retryResult.outputTokens ?? 0);
+
+    if (retryResult.status === 'success' && retryResult.output) {
+      parsed = safeParseJson(retryResult.output, schema, 'revalidate-suggestion-retry');
+    }
+
+    if (!parsed.success) {
+      // Mark the job as failed (not silently completed with an error blob) — the
+      // dashboard Activity will show this as a real failure, not a zombie "ok".
+      console.error(`[daemon] revalidate-suggestion parse failed after retry: ${parsed.error}`);
+      return {
+        llmCalls: llmCallsTotal,
+        tokensUsed: tokensTotal,
+        phases: ['prepare', 'evaluate', 'apply'],
+        result: { error: 'LLM failed to produce valid JSON after retry', suggestionId, parseError: parsed.error?.slice(0, 200) },
+        lastError: 'parse_failed_after_retry',
+      };
+    }
   }
 
   const v = parsed.data;
@@ -552,8 +587,8 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
   } catch { /* non-fatal */ }
 
   return {
-    llmCalls: 1,
-    tokensUsed: tokens,
+    llmCalls: llmCallsTotal,
+    tokensUsed: tokensTotal,
     phases: ['prepare', 'evaluate', 'apply'],
     result: {
       suggestionId,

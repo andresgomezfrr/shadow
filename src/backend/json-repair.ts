@@ -2,11 +2,31 @@ import type { ZodType } from 'zod';
 
 // --- Extract JSON from LLM output ---
 
-/** Strip markdown fences and preamble, find the JSON object */
+/**
+ * Strip markdown fences and preamble, find the JSON object.
+ *
+ * Strategies in order:
+ *   1. Markdown fence (```json ... ``` or ``` ... ```)
+ *   2. Schema-specific beacon patterns — used when the LLM explored with tools
+ *      and peppered the response with TypeScript-looking code blocks that
+ *      mislead the first-{-to-last-} heuristic. Currently: {"verdict": ...}
+ *      (revalidate-suggestion response shape — see audit A-02).
+ *   3. First `{` to last `}` heuristic.
+ */
 export function extractJson(output: string): string {
   let s = output.trim();
   const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) return fenceMatch[1].trim();
+
+  // Schema beacon: look for a JSON object that starts with a key the caller expects.
+  // Balances braces to extract the full object rather than relying on first-{-to-last-}
+  // which may span multiple unrelated code blocks.
+  const verdictStart = s.search(/\{\s*"verdict"\s*:/);
+  if (verdictStart !== -1) {
+    const extracted = extractBalancedObject(s, verdictStart);
+    if (extracted) return extracted;
+  }
+
   if (!s.startsWith('{')) {
     const start = s.indexOf('{');
     const end = s.lastIndexOf('}');
@@ -15,6 +35,26 @@ export function extractJson(output: string): string {
     if (start !== -1) return s.slice(start);
   }
   return s;
+}
+
+/** Walk from startAt balancing braces, return substring through the matching `}`. */
+function extractBalancedObject(s: string, startAt: number): string | null {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = startAt; i < s.length; i++) {
+    const ch = s[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return s.slice(startAt, i + 1);
+    }
+  }
+  return null;
 }
 
 // --- JSON Repair ---
