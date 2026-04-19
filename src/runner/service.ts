@@ -386,8 +386,39 @@ export class RunnerService {
         } catch { /* non-fatal — verification failure shouldn't block the run */ }
       }
 
-      // Propagate to parent via multi-child aggregation — PR-aware for execution children
-      if (run.parentRunId) {
+      // 6d. Summary-diff coherence check: detect silent hallucination where the LLM's
+      //     summary claims modifications but the diff is empty. Overrides verified and
+      //     blocks parent propagation so the user reviews before anything merges.
+      let summaryDiffMismatch = false;
+      if (run.kind === 'execution' && isSuccess) {
+        const current = this.db.getRun(run.id) ?? run;
+        const diffEmpty = !current.diffStat || current.diffStat.trim() === '';
+        const summary = current.resultSummaryMd ?? '';
+        const CHANGE_VERBS = /\b(modif\w+|add\w+|remov\w+|fix\w+|refactor\w+|implement\w+|creat\w+|delet\w+|updat\w+|writ\w+|renam\w+)\b/i;
+        if (diffEmpty && CHANGE_VERBS.test(summary)) {
+          summaryDiffMismatch = true;
+          this.db.updateRun(run.id, {
+            verified: 'needs_review',
+            closedNote: 'Summary claims changes but diff is empty — review before merging',
+          } as Parameters<typeof this.db.updateRun>[1]);
+          this.db.createEvent({
+            kind: 'plan_needs_review',
+            priority: 7,
+            payload: {
+              runId: run.id,
+              reason: 'summary_mismatch',
+              title: suggestion?.title ?? `Run ${run.id.slice(0, 8)}`,
+              repoId: run.repoId,
+            },
+          });
+          console.error(`[runner] summary-diff mismatch flagged for run ${run.id.slice(0, 8)}`);
+        }
+      }
+
+      // Propagate to parent via multi-child aggregation — PR-aware for execution children.
+      // Skip propagation entirely if summary-diff mismatch: user must review the child
+      // before the parent can finalize. Parent stays in 'planned'.
+      if (run.parentRunId && !summaryDiffMismatch) {
         const siblings = this.db.listRuns({ parentRunId: run.parentRunId });
         const aggregated = aggregateParentStatus(siblings);
         if (aggregated === 'done' && run.kind === 'execution') {
