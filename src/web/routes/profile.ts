@@ -127,6 +127,18 @@ export async function handleProfileRoutes(
             const tz = db.ensureProfile().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
             return { schedule: CLEANUP_SCHEDULE.label, nextAt: nextScheduledAt(CLEANUP_SCHEDULE, tz) };
           })(),
+          'pr-sync': (() => {
+            const last = db.getLastJob('pr-sync');
+            const intervalMs = 30 * 60 * 1000;
+            const nextAt = last ? new Date(new Date(last.startedAt).getTime() + intervalMs).toISOString() : null;
+            return { intervalMs, nextAt, lastRanAt: last?.startedAt ?? null };
+          })(),
+          'version-check': (() => {
+            const last = db.getLastJob('version-check');
+            const intervalMs = 12 * 60 * 60 * 1000;
+            const nextAt = last ? new Date(new Date(last.startedAt).getTime() + intervalMs).toISOString() : null;
+            return { intervalMs, nextAt, lastRanAt: last?.startedAt ?? null };
+          })(),
         },
         recentActivity: (() => {
           try {

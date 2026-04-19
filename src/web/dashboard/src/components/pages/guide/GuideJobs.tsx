@@ -272,6 +272,18 @@ revalidate-suggestion (on-demand from Workspace)`}</pre>
             reactive={false}
             note="Pending events (delivered=0) are never purged — stuck pending signals a bug, not churn. Feedback preserved for checkSuggestionDuplicate dismissed dedup + correction lifecycle."
           />
+
+          <JobCard
+            name="pr-sync"
+            color="bg-fuchsia-400/20 text-fuchsia-300"
+            purpose="Polls GitHub for awaiting_pr runs and finalizes their parent on merge or close. Runs gh pr view in parallel batches of 8 with a 30s per-batch timeout; skips when network is unavailable."
+            trigger="Every 30min (gated on network + awaiting_pr count > 0)"
+            model="None (IO only — gh CLI)"
+            phases={['pr-sync']}
+            output="{ runsChecked, merged, closed, stillOpen, errors, processed[] } in Activity"
+            reactive={false}
+            note="Parent transitions to done/outcome=merged + emits pr_merged event on MERGED, dismissed + closedNote on CLOSED. Failures per child are isolated via Promise.allSettled — one bad repo doesn't abort the batch."
+          />
         </div>
       </section>
 
