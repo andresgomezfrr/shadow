@@ -45,9 +45,12 @@ export type KnowledgeSummaryResult = {
   themes?: string[];
   llmCalls?: number;
   tokensUsed?: number;
+  clustered?: { checked: number; merged: number };
 };
 
 const KNOWLEDGE_SUMMARY_MIN_NEW = 10;
+const CLUSTER_MERGE_SIMILARITY = 0.80;
+const CLUSTER_MERGE_HOUR = 3;
 
 export async function activityConsolidate(
   ctx: HeartbeatContext,
@@ -173,6 +176,18 @@ export async function activityConsolidate(
   });
   llmCalls += knowledgeSummary.llmCalls ?? 0;
   tokensUsed += knowledgeSummary.tokensUsed ?? 0;
+
+  // Step 4: Cluster-merge similar knowledge_summary memories (gated to low-traffic hour)
+  if (shouldRunClusterMerge()) {
+    try {
+      const clustered = await clusterMergeKnowledgeSummaries(ctx);
+      if (clustered.merged > 0) {
+        knowledgeSummary.clustered = clustered;
+      }
+    } catch (e) {
+      console.error('[shadow:consolidate] cluster merge failed:', e instanceof Error ? e.message : e);
+    }
+  }
 
   return {
     memoriesPromoted: layerResult.promoted,
@@ -379,6 +394,77 @@ async function synthesizeKnowledgeSummary(ctx: HeartbeatContext): Promise<Knowle
   });
 
   return { action: 'created', memoryId: mem.id, themes, llmCalls, tokensUsed };
+}
+
+// ---------------------------------------------------------------------------
+// Cluster merge between knowledge_summary memories (audit F-14 phase 2)
+//
+// As new summaries accumulate, nearby summaries (similarity > 0.80) should
+// collapse into the older one to preserve the timeline while consolidating
+// redundant narrative. Gated to local hour 3 (~1/day on a 6h consolidate
+// cadence) to amortize cost.
+// ---------------------------------------------------------------------------
+
+function shouldRunClusterMerge(now: Date = new Date()): boolean {
+  return now.getHours() === CLUSTER_MERGE_HOUR;
+}
+
+async function clusterMergeKnowledgeSummaries(
+  ctx: HeartbeatContext,
+): Promise<{ checked: number; merged: number }> {
+  const { vectorSearch } = await import('../memory/search.js');
+  const summaries = ctx.db.listMemories({ kind: 'knowledge_summary', archived: false });
+  if (summaries.length < 3) return { checked: summaries.length, merged: 0 };
+
+  // Oldest first — so newer duplicates merge into older anchors.
+  summaries.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  const archived = new Set<string>();
+  let merged = 0;
+
+  for (const anchor of summaries) {
+    if (archived.has(anchor.id)) continue;
+
+    const matches = await vectorSearch({
+      db: ctx.db.rawDb,
+      text: anchor.title + '\n' + anchor.bodyMd.slice(0, 500),
+      vecTable: 'memory_vectors',
+      limit: 10,
+    });
+
+    for (const match of matches) {
+      if (match.id === anchor.id) continue;
+      if (archived.has(match.id)) continue;
+      if (match.similarity < CLUSTER_MERGE_SIMILARITY) break;
+
+      const candidate = ctx.db.getMemory(match.id);
+      if (!candidate || candidate.kind !== 'knowledge_summary') continue;
+      if (candidate.archivedAt) continue;
+      if (candidate.createdAt <= anchor.createdAt) continue;
+
+      ctx.db.mergeMemoryBody(anchor.id, candidate.bodyMd, candidate.tags);
+      ctx.db.updateMemory(candidate.id, { archivedAt: new Date().toISOString() });
+      ctx.db.deleteEmbedding('memory_vectors', candidate.id);
+      ctx.db.createFeedback({
+        targetKind: 'memory',
+        targetId: candidate.id,
+        action: 'consolidated',
+        note: `merged into sibling knowledge_summary ${anchor.id.slice(0, 8)}`,
+      });
+
+      const updatedAnchor = ctx.db.getMemory(anchor.id);
+      if (updatedAnchor) {
+        await generateAndStoreEmbedding(ctx.db, 'memory', updatedAnchor.id, {
+          kind: updatedAnchor.kind, title: updatedAnchor.title, bodyMd: updatedAnchor.bodyMd,
+        });
+      }
+
+      archived.add(candidate.id);
+      merged += 1;
+    }
+  }
+
+  return { checked: summaries.length, merged };
 }
 
 function filterValidEntities(
