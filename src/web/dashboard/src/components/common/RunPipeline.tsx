@@ -1,3 +1,5 @@
+import { RunSpinner } from './RunSpinner';
+
 type StepStatus = 'done' | 'running' | 'failed' | 'pending';
 
 type Props = {
@@ -8,7 +10,7 @@ type Props = {
 
 const STEP_STYLES: Record<StepStatus, { dot: string; line: string }> = {
   done: { dot: 'bg-green', line: 'bg-green/40' },
-  running: { dot: 'bg-blue animate-pulse', line: 'bg-blue/40' },
+  running: { dot: '', line: 'bg-blue/40' },  // running renders RunSpinner instead of a dot
   failed: { dot: 'bg-red', line: 'bg-red/40' },
   pending: { dot: 'bg-border', line: 'bg-border' },
 };
@@ -20,7 +22,10 @@ function Step({ status, label, isLast }: { status: StepStatus; label: string; is
   return (
     <div className="flex items-center gap-0">
       <div className="flex flex-col items-center">
-        <div className={`w-2 h-2 rounded-full ${style.dot}`} title={`${label}: ${status}`} />
+        {status === 'running'
+          ? <RunSpinner size="sm" />
+          : <div className={`w-2 h-2 rounded-full ${style.dot}`} title={`${label}: ${status}`} />
+        }
         <span className="text-[9px] text-text-muted mt-0.5 leading-none">{label}</span>
       </div>
       {!isLast && (

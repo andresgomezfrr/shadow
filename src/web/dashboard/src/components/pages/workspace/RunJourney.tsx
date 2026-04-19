@@ -1,7 +1,9 @@
 import { useApi } from '../../../hooks/useApi';
+import { useDialog } from '../../../hooks/useDialog';
 import { fetchRunContext, fetchPrStatus, createRunSession, executeRun, discardRun, retryRun, archiveRun, closeRun, cleanupWorktree, createDraftPr } from '../../../api/client';
 import { ConfidenceIndicator } from '../../common/ConfidenceIndicator';
 import { Badge } from '../../common/Badge';
+import { RunSpinner } from '../../common/RunSpinner';
 import { timeAgo } from '../../../utils/format';
 import { useState, useCallback, useEffect } from 'react';
 import { useWorkspace } from './WorkspaceContext';
@@ -17,7 +19,10 @@ function Step({ status, label, children }: { status: 'done' | 'active' | 'pendin
   return (
     <div className="flex gap-3">
       <div className="flex flex-col items-center">
-        <div className={`w-3 h-3 rounded-full shrink-0 ${parts[0] ?? 'bg-border'} ${status === 'active' ? 'animate-pulse' : ''}`} />
+        {status === 'active'
+          ? <RunSpinner className="shrink-0" />
+          : <div className={`w-3 h-3 rounded-full shrink-0 ${parts[0] ?? 'bg-border'}`} />
+        }
         <div className="w-px flex-1 bg-border" />
       </div>
       <div className="pb-4 flex-1 min-w-0">
@@ -34,6 +39,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
   const [sessionInfo, setSessionInfo] = useState<{ command: string } | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const { drillToItem, expandedPlan, setExpandedPlan } = useWorkspace();
+  const { dialog, prompt } = useDialog();
 
   const run = ctx?.run;
   const childRuns = ctx?.childRuns ?? [];
@@ -81,17 +87,19 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
 
   const handleDiscard = useCallback(async () => {
     if (!run) return;
-    const note = window.prompt('Reason for discarding (optional):');
+    const note = await prompt({ title: 'Discard run', message: 'Reason for discarding (optional):', placeholder: 'Why is this being discarded?' });
+    if (note === null) return;
     await discardRun(run.id, note || undefined);
     doRefresh();
-  }, [run, doRefresh]);
+  }, [run, prompt, doRefresh]);
 
   const handleClose = useCallback(async () => {
     if (!run) return;
-    const note = window.prompt('Reason for closing (optional):');
+    const note = await prompt({ title: 'Close run', message: 'Reason for closing (optional):', placeholder: 'Why is this being closed?' });
+    if (note === null) return;
     await closeRun(run.id, note || undefined);
     doRefresh();
-  }, [run, doRefresh]);
+  }, [run, prompt, doRefresh]);
 
   const handleRetry = useCallback(async (targetId?: string) => {
     const id = targetId ?? run?.id;
@@ -147,6 +155,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
 
   return (
     <div className="space-y-2">
+      {dialog}
       {/* Origin — Observation */}
       {sourceObservation && (
         <Step status="done" label="Origin">

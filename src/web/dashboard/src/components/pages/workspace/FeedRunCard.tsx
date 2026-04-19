@@ -1,16 +1,10 @@
 import { timeAgo } from '../../../utils/format';
 import { Badge } from '../../common/Badge';
 import { ConfidenceIndicator } from '../../common/ConfidenceIndicator';
+import { RunSpinner } from '../../common/RunSpinner';
 import { JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../../utils/job-colors';
 import type { Run } from '../../../api/types';
 import type { SelectedItem } from './WorkspaceContext';
-
-function RunSpinner({ className = '' }: { className?: string }) {
-  return (
-    <span className={`inline-block w-3.5 h-3.5 border-[1.5px] border-blue border-b-transparent rounded-full animate-[rotation_1s_linear_infinite] ${className}`} />
-  );
-}
-
 import { RUN_STATUS_BORDER, RUN_STATUS_ICON, RUN_STATUS_ICON_COLOR } from '../../../utils/run-colors';
 
 type Props = {
