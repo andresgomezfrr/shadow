@@ -204,14 +204,15 @@ export async function activityAnalyze(
       ].join('\n');
 
       onPhase?.('summarize');
+      const summarizeModel = getModel(ctx, 'summarize');
       const summaryResult = await adapter.execute({
         repos: [], title: 'Heartbeat Summarize', goal: 'Summarize session',
-        prompt: summarizePrompt, relevantMemories: [], model: 'opus', effort,
+        prompt: summarizePrompt, relevantMemories: [], model: summarizeModel, effort,
       });
       llmCalls++;
       tokensUsed += (summaryResult.inputTokens ?? 0) + (summaryResult.outputTokens ?? 0);
       console.error(`[shadow:summarize] status=${summaryResult.status} tokens=${(summaryResult.inputTokens ?? 0) + (summaryResult.outputTokens ?? 0)}`);
-      ctx.db.recordLlmUsage({ source: 'heartbeat_summarize', sourceId: heartbeatId ?? null, model: 'opus', inputTokens: summaryResult.inputTokens ?? 0, outputTokens: summaryResult.outputTokens ?? 0 });
+      ctx.db.recordLlmUsage({ source: 'heartbeat_summarize', sourceId: heartbeatId ?? null, model: summarizeModel, inputTokens: summaryResult.inputTokens ?? 0, outputTokens: summaryResult.outputTokens ?? 0 });
 
       if (summaryResult.status === 'success' && summaryResult.output) {
         sessionSummary = summaryResult.output;
@@ -306,14 +307,15 @@ export async function activityAnalyze(
     ].join('\n');
 
     onPhase?.('extract');
+    const extractModel = getModel(ctx, 'extract');
     const result = await adapter.execute({
       repos: [], title: 'Heartbeat Extract', goal: 'Extract knowledge + mood', prompt: extractPrompt,
-      relevantMemories, model: 'opus', effort,
+      relevantMemories, model: extractModel, effort,
     });
     llmCalls++;
     tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
     console.error(`[shadow:extract] status=${result.status} tokens=${(result.inputTokens ?? 0) + (result.outputTokens ?? 0)}`);
-    ctx.db.recordLlmUsage({ source: 'heartbeat_extract', sourceId: heartbeatId ?? null, model: 'opus', inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+    ctx.db.recordLlmUsage({ source: 'heartbeat_extract', sourceId: heartbeatId ?? null, model: extractModel, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
     if (result.status === 'success' && result.output) {
       const parseResult = safeParseJson(result.output, ExtractResponseSchema, 'extract');
@@ -493,13 +495,14 @@ export async function activityAnalyze(
     ].join('\n');
 
     onPhase?.('observe');
+    const observeModel = getModel(ctx, 'observe');
     const result = await adapter.execute({
       repos: [], title: 'Heartbeat Observe', goal: 'Generate observations', prompt: observePrompt,
-      relevantMemories: [], model: 'opus', effort,
+      relevantMemories: [], model: observeModel, effort,
     });
     llmCalls++;
     tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
-    ctx.db.recordLlmUsage({ source: 'heartbeat_observe', sourceId: heartbeatId ?? null, model: 'opus', inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
+    ctx.db.recordLlmUsage({ source: 'heartbeat_observe', sourceId: heartbeatId ?? null, model: observeModel, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
     if (result.status === 'success' && result.output) {
       const parseResult = safeParseJson(result.output, ObserveResponseSchema, 'observe');

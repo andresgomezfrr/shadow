@@ -19,6 +19,10 @@ export const ModelsSchema = z.object({
   revalidate: z.string().default('opus'),
   chronicleLore: z.string().default('opus'),
   chronicleDaily: z.string().default('haiku'),
+  // Heartbeat phases — previously hardcoded as 'opus' in src/analysis/extract.ts
+  summarize: z.string().default('opus'),
+  extract: z.string().default('opus'),
+  observe: z.string().default('opus'),
 });
 
 export const EffortsSchema = z.object({
@@ -67,6 +71,9 @@ export const ConfigSchema = z.object({
     revalidate: 'opus',
     chronicleLore: 'opus',
     chronicleDaily: 'haiku',
+    summarize: 'opus',
+    extract: 'opus',
+    observe: 'opus',
   }),
   efforts: EffortsSchema.default({
     analyze: 'medium',
