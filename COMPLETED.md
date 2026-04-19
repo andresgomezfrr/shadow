@@ -4,6 +4,28 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-19 (Audit block 4C — dashboard polish)
+
+Block 4C closes 5 dashboard polish items before open-source: stable keys, calendar-day counting, unified spinner, custom dialogs, and the 941-line ActivityEntry split. 5 commits, 303 tests green, build + daemon restart clean.
+
+- **Stable key for FeedTaskCard externalRefs [audit UI-10]** (commit `4f67c1f`) — One-line fix: `key={i}` → `key={source-key}`. Prevents React identity desync if refs reorder.
+
+- **Calendar-day "days together" count [audit UI-26]** (`src/web/routes/chronicle.ts`, commit `9843f16`) — `Math.floor(elapsedDays)` counted 24h periods, off-by-one at any intraday moment. Strip time to midnight + diff + `+1` so reset day = día 1. Verified: bondResetAt 2026-04-13 10:02, check 2026-04-19 → `daysElapsed=7` (was `6`).
+
+- **Unified RunSpinner [audit UI-06]** (`src/web/dashboard/src/components/common/RunSpinner.tsx` new, + 3 callers, commit `24bbd02`) — Three separate in-progress indicators (circular rotation in FeedRunCard, 2×2 animate-pulse dot in RunPipeline, 3×3 animate-pulse dot in RunJourney) unified to the rotating style. Single `<RunSpinner size="sm"|"md">` in `common/`. Andrés confirmed visual choice before extraction.
+
+- **Custom dialogs replacing native prompt [audit UI-02]** (`src/web/dashboard/src/components/common/Dialog.tsx` new, `src/web/dashboard/src/hooks/useDialog.ts` new, 7 consumers patched, commit `6d8092e`) — 9 `window.prompt('Reason for X (optional):')` callsites across ObservationsPage, ObservationDetail, WorkspaceFeed (3x), MorningPage, RunsPage, RunJourney (2x) broke the dark theme and were unstylable. Replaced with `<ConfirmDialog>` + `<InputDialog>` rendered via React Portal (same pattern as `ChronicleLightbox` to escape ancestor transforms). New `useDialog()` hook returns `{ dialog, confirm, prompt }` async — caller renders `{dialog}` at root and awaits `prompt({...})`. ESC and click-outside close. All 9 sites converted to the hook; themed cancel/confirm buttons.
+
+- **ActivityEntry split 941→190 lines [audit UI-01]** (4 files in `src/web/dashboard/src/components/activity/`, commit `0bd0eb8`) — The god component mixed collapsed-row rendering, queued/running/skip dedicated layouts, PhasePipeline timeline, and per-type expanded details in one 941-line file. Split:
+    - `ActivityEntry.tsx` (190 lines, under <300 target) — orchestrator. Status-dispatches to dedicated layouts for queued/running/skip, composes Header + ExpandedDetail for the common path. Keeps RetryButton (tightly coupled to failed-UI).
+    - `ActivityEntryHeader.tsx` (66 lines) — collapsed row. Reuses existing `JobOutputSummary`; no Results.tsx created (per plan D1).
+    - `ActivityEntryPhases.tsx` (197 lines) — PhasePipeline + color maps + exports `JOB_PHASES`, `RUN_PLAN_PHASES`, `RUN_EXEC_PHASES` consumed by both Main and ExpandedDetail.
+    - `ActivityEntryExpandedDetail.tsx` (549 lines) — per-type dispatch (one branch per job type, fallback key-value dump). Isolated from chrome.
+
+  Zero behavioural change. Visual smoke pending user verification on `/activity`.
+
+---
+
 ## Session 2026-04-19 (Audit block 4B — analysis/LLM critical fixes)
 
 Block 4B closes 5 items in the analysis/LLM pipeline that were silent pain points: bond depth stuck, revalidate-suggestion silent failures, hardcoded opus in heartbeat, consolidate crash-prone, silent catches blocking debugging. 5 commits, 303 tests green, typecheck + build clean.
