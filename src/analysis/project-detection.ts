@@ -34,13 +34,9 @@ export function detectActiveProjects(
   const projects = db.listProjects({ status: 'active' });
   if (projects.length === 0) return [];
 
-  // Build repo→project index
-  const repoToProjects = new Map<string, ProjectRecord[]>();
+  // Build repo→project index — one query, not per-repo (audit D-05)
+  const repoToProjects = db.buildRepoProjectsMap();
   const repos = db.listRepos();
-  for (const repo of repos) {
-    const linked = db.findProjectsForRepo(repo.id);
-    if (linked.length > 0) repoToProjects.set(repo.id, linked);
-  }
 
   // Build path→repo index (path prefix matching)
   const pathToRepo = new Map<string, string>();

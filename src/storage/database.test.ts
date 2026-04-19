@@ -561,6 +561,21 @@ describe('projects + entity cascade', () => {
     const after = db.getTask(task.id)!;
     assert.deepEqual(after.repoIds, [repoB.id]);
   });
+
+  it('buildRepoProjectsMap returns all non-archived projects indexed by repoId', () => {
+    const repoA = db.createRepo({ name: 'map-a', path: '/tmp/map-a' });
+    const repoB = db.createRepo({ name: 'map-b', path: '/tmp/map-b' });
+    const projA = db.createProject({ name: 'proj-map-a', repoIds: [repoA.id] });
+    const projBoth = db.createProject({ name: 'proj-map-both', repoIds: [repoA.id, repoB.id] });
+
+    const map = db.buildRepoProjectsMap();
+
+    const aProjects = (map.get(repoA.id) ?? []).map(p => p.id).sort();
+    assert.deepEqual(aProjects, [projA.id, projBoth.id].sort());
+
+    const bProjects = (map.get(repoB.id) ?? []).map(p => p.id).sort();
+    assert.deepEqual(bProjects, [projBoth.id]);
+  });
 });
 
 // ---------------------------------------------------------------------------
