@@ -134,6 +134,10 @@ export function useEventStream(
         sharedSource = null;
         refCount = 0;
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        // Reset reconnect counter so next subscriber starts with a clean budget
+        // instead of inheriting attempts from a previous (now-defunct) session
+        // — fixes the "dead state after attempts exhausted" path (audit UI-04).
+        reconnectAttempt = 0;
       }
     };
   }, [eventTypes.join(',')]);
@@ -159,6 +163,7 @@ export function useSSEConnected(): boolean {
         sharedSource = null;
         refCount = 0;
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        reconnectAttempt = 0;  // audit UI-04: clean budget for next subscriber
       }
     };
   }, []);
