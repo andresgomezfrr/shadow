@@ -1,6 +1,38 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { z } from 'zod';
 import type { ShadowDatabase } from '../../storage/database.js';
-import { json, readBody, clampLimit, clampOffset } from '../helpers.js';
+import { json, clampLimit, clampOffset, parseBody } from '../helpers.js';
+
+const ExternalRefSchema = z.object({
+  source: z.string(),
+  key: z.string(),
+  url: z.string(),
+});
+
+const TaskCreateBodySchema = z.object({
+  title: z.string().min(1),
+  status: z.enum(['open', 'active', 'blocked']).optional(),
+  suggestionId: z.string().optional(),
+  contextMd: z.string().optional(),
+  externalRefs: z.array(ExternalRefSchema).optional(),
+  repoIds: z.array(z.string()).optional(),
+  projectId: z.string().optional(),
+  sessionId: z.string().optional(),
+  sessionRepoPath: z.string().optional(),
+});
+
+const TaskUpdateBodySchema = z.object({
+  title: z.string().optional(),
+  status: z.enum(['open', 'active', 'blocked', 'done']).optional(),
+  contextMd: z.string().optional(),
+  externalRefs: z.array(ExternalRefSchema).optional(),
+  repoIds: z.array(z.string()).optional(),
+  projectId: z.string().nullable().optional(),
+  sessionId: z.string().nullable().optional(),
+  sessionRepoPath: z.string().nullable().optional(),
+  prUrls: z.array(z.string()).optional(),
+  archived: z.boolean().optional(),
+});
 
 export async function handleTaskRoutes(
   req: IncomingMessage, res: ServerResponse,
@@ -54,19 +86,9 @@ export async function handleTaskRoutes(
 
   // POST /api/tasks — create
   if (req.method === 'POST' && pathname === '/api/tasks') {
-    let body: Record<string, unknown>;
-    try { body = JSON.parse(await readBody(req)); } catch { return json(res, { error: 'Invalid JSON' }, 400), true; }
-    if (!body.title || typeof body.title !== 'string') return json(res, { error: 'title required' }, 400), true;
-    const task = db.createTask({
-      title: body.title,
-      status: body.status as string | undefined,
-      contextMd: body.contextMd as string | undefined,
-      externalRefs: body.externalRefs as { source: string; key: string; url: string }[] | undefined,
-      repoIds: body.repoIds as string[] | undefined,
-      projectId: body.projectId as string | undefined,
-      sessionId: body.sessionId as string | undefined,
-      sessionRepoPath: body.sessionRepoPath as string | undefined,
-    });
+    const body = await parseBody(req, res, TaskCreateBodySchema);
+    if (!body) return true;
+    const task = db.createTask(body);
     return json(res, task, 201), true;
   }
 
@@ -75,12 +97,9 @@ export async function handleTaskRoutes(
   if (req.method === 'POST' && updateMatch) {
     const task = db.getTask(updateMatch[1]);
     if (!task) return json(res, { error: 'Not found' }, 404), true;
-    let body: Record<string, unknown>;
-    try { body = JSON.parse(await readBody(req)); } catch { return json(res, { error: 'Invalid JSON' }, 400), true; }
-    const updates: Record<string, unknown> = {};
-    for (const key of ['title', 'status', 'contextMd', 'externalRefs', 'repoIds', 'projectId', 'sessionId', 'sessionRepoPath', 'prUrls']) {
-      if (body[key] !== undefined) updates[key] = body[key];
-    }
+    const body = await parseBody(req, res, TaskUpdateBodySchema);
+    if (!body) return true;
+    const updates: Record<string, unknown> = { ...body };
     if (updates.status === 'done' && !task.closedAt) updates.closedAt = new Date().toISOString();
     if (updates.status && updates.status !== 'done') updates.closedAt = null;
     db.updateTask(task.id, updates as Parameters<typeof db.updateTask>[1]);
