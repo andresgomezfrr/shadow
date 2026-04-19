@@ -41,11 +41,20 @@ function createTestDb(): { db: ShadowDatabase; cleanup: () => void } {
 const DAY_MS = 86_400_000;
 
 // ---------------------------------------------------------------------------
+// Relative-date helpers (audit T-11): replace hardcoded '2026-XX-YY' anchors
+// with offsets from "now" so tests stay valid in any future calendar year.
+// ---------------------------------------------------------------------------
+
+const NOW_MS = Date.now();
+const RESET_AT_ISO = new Date(NOW_MS - 0).toISOString();  // anchor = "now"
+const daysFromReset = (n: number): Date => new Date(NOW_MS + n * DAY_MS);
+
+// ---------------------------------------------------------------------------
 // computeTimeAxis
 // ---------------------------------------------------------------------------
 
 describe('computeTimeAxis', () => {
-  const resetAt = '2026-01-01T00:00:00.000Z';
+  const resetAt = RESET_AT_ISO;
 
   it('returns 0 at resetAt', () => {
     const result = computeTimeAxis(new Date(resetAt), resetAt);
@@ -53,25 +62,22 @@ describe('computeTimeAxis', () => {
   });
 
   it('returns 0 for future resetAt (clamp)', () => {
-    const result = computeTimeAxis(new Date('2025-12-01'), resetAt);
+    const result = computeTimeAxis(daysFromReset(-30), resetAt);
     assert.equal(result, 0);
   });
 
   it('returns ~50 at ~91 days elapsed (sqrt curve)', () => {
-    const later = new Date('2026-04-02T00:00:00.000Z');  // 91 days
-    const result = computeTimeAxis(later, resetAt);
+    const result = computeTimeAxis(daysFromReset(91), resetAt);
     assert.ok(result > 48 && result < 52, `expected ~50, got ${result}`);
   });
 
   it('caps at 100 at 365 days', () => {
-    const later = new Date('2027-01-01T00:00:00.000Z');
-    const result = computeTimeAxis(later, resetAt);
+    const result = computeTimeAxis(daysFromReset(365), resetAt);
     assert.equal(Math.round(result), 100);
   });
 
   it('caps at 100 far beyond 365 days', () => {
-    const later = new Date('2030-01-01T00:00:00.000Z');
-    const result = computeTimeAxis(later, resetAt);
+    const result = computeTimeAxis(daysFromReset(365 * 4), resetAt);
     assert.equal(result, 100);
   });
 });
@@ -81,7 +87,7 @@ describe('computeTimeAxis', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeBondTier', () => {
-  const resetAt = '2026-01-01T00:00:00.000Z';
+  const resetAt = RESET_AT_ISO;
   const zero = { ...ZERO_AXES };
 
   it('stays at tier 1 with no quality and no time', () => {
@@ -92,8 +98,7 @@ describe('computeBondTier', () => {
 
   it('rises to tier 2 after 3 days + quality >= 15', () => {
     const axes: BondAxes = { time: 0, depth: 60, momentum: 0, alignment: 0, autonomy: 0 };
-    const now = new Date('2026-01-05T00:00:00.000Z');  // 4 days
-    const { tier, rose } = computeBondTier(axes, now, resetAt, 1);
+    const { tier, rose } = computeBondTier(axes, daysFromReset(4), resetAt, 1);
     assert.equal(tier, 2);
     assert.equal(rose, true);
   });
@@ -105,24 +110,21 @@ describe('computeBondTier', () => {
   });
 
   it('blocks on quality-only gate (100 days, quality 0)', () => {
-    const now = new Date('2026-04-11T00:00:00.000Z');  // ~100 days
-    const { tier } = computeBondTier(zero, now, resetAt, 1);
+    const { tier } = computeBondTier(zero, daysFromReset(100), resetAt, 1);
     assert.equal(tier, 1);
   });
 
   it('is monotonic: currentTier=5, computed=3 stays at 5', () => {
-    const now = new Date('2026-02-01T00:00:00.000Z');  // 31 days, but low quality
     const axes: BondAxes = { time: 0, depth: 40, momentum: 40, alignment: 40, autonomy: 40 };
     // quality avg = 40, meets tier 4 qualityFloor but not 5. currentTier=5 holds.
-    const { tier, rose } = computeBondTier(axes, now, resetAt, 5);
+    const { tier, rose } = computeBondTier(axes, daysFromReset(31), resetAt, 5);
     assert.equal(tier, 5);
     assert.equal(rose, false);
   });
 
   it('reaches tier 8 with 240+ days and quality >= 86', () => {
-    const now = new Date('2026-09-01T00:00:00.000Z');  // ~243 days
     const axes: BondAxes = { time: 90, depth: 90, momentum: 90, alignment: 90, autonomy: 90 };
-    const { tier, rose } = computeBondTier(axes, now, resetAt, 7);
+    const { tier, rose } = computeBondTier(axes, daysFromReset(243), resetAt, 7);
     assert.equal(tier, 8);
     assert.equal(rose, true);
   });
