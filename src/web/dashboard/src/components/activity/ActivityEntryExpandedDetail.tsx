@@ -184,6 +184,13 @@ export function ActivityEntryExpandedDetail({ entry }: { entry: ActivityEntryTyp
   }
 
   if (type === 'consolidate') {
+    const ks = r.knowledgeSummary as {
+      action?: 'created' | 'merged' | 'skipped';
+      memoryId?: string;
+      reason?: string;
+      themes?: string[];
+      clustered?: { checked: number; merged: number };
+    } | undefined;
     return (
       <>
         <PhasePipeline phases={entry.phases} currentPhase={entry.activity ?? undefined} jobType={entry.type} allPhases={JOB_PHASES['consolidate']} />
@@ -198,6 +205,46 @@ export function ActivityEntryExpandedDetail({ entry }: { entry: ActivityEntryTyp
             <span><span className="text-accent">Deduped:</span> <span className="text-text-dim">{num(r, 'memoriesDeduped')}</span></span>
           )}
         </div>
+        {ks && (
+          <div className="pt-1 mt-1 border-t border-border/30 text-[11px]">
+            <span className="text-accent">Knowledge summary:</span>{' '}
+            {ks.action === 'created' && (
+              <>
+                <span className="text-text-dim">created</span>
+                {ks.themes && ks.themes.length > 0 && (
+                  <span className="text-text-muted"> — themes: {ks.themes.join(', ')}</span>
+                )}
+                {ks.memoryId && (
+                  <a
+                    href={`/memories?highlight=${ks.memoryId}`}
+                    className="text-accent hover:underline ml-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >view →</a>
+                )}
+              </>
+            )}
+            {ks.action === 'merged' && (
+              <>
+                <span className="text-text-dim">merged into existing summary (semantic dedup)</span>
+                {ks.memoryId && (
+                  <a
+                    href={`/memories?highlight=${ks.memoryId}`}
+                    className="text-accent hover:underline ml-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >view →</a>
+                )}
+              </>
+            )}
+            {ks.action === 'skipped' && (
+              <span className="text-text-muted">skipped{ks.reason ? ` — ${ks.reason}` : ''}</span>
+            )}
+            {ks.clustered && ks.clustered.merged > 0 && (
+              <span className="text-text-muted ml-2">
+                · clustered {ks.clustered.merged}/{ks.clustered.checked}
+              </span>
+            )}
+          </div>
+        )}
       </>
     );
   }
