@@ -4,6 +4,22 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-19 (Audit F-14 — knowledge_summary synthesis)
+
+Feature nueva diferida al final del audit: nueva fase en `consolidate` que produce memorias `kind='knowledge_summary'` como síntesis narrativa del estado actual de conocimiento, complementaria (no redundante) a `meta_pattern` y a los digests. 4 commits + actualización audit, 303 tests verdes.
+
+- **Phase 1 — Synthesis step [audit F-14 phase 1]** (`src/analysis/consolidate.ts`, `src/profile/bond.ts`, commit `27058de`) — Nuevo `synthesizeKnowledgeSummary` dentro de `activityConsolidate` tras el meta-patterns. Gate dinámico: cuenta memorias durables (`DEPTH_ELIGIBLE_KINDS` exportado desde `bond.ts`) creadas desde el último `knowledge_summary` (o desde `bondResetAt` si no hay); skip si <10 con reason logueado. Input pack: top 50 memorias durables de los últimos 14 días + top-20 por `access_count` (deduped). Prompt marca boundaries explícitos: "no listes eventos (eso es digest), no repitas meta-patterns, narrativo no dry listing". Zod `KnowledgeSummaryLLMSchema` = `{ summary, themes, highlights, entities? }`. Semantic dedup via `checkMemoryDuplicate` antes de crear: skip >0.85, merge 0.70-0.85, create <0.70. Hallucinated entity UUIDs filtradas contra `repos/projects/systems/contacts`. Sub-object `result.knowledgeSummary` con `{ action, memoryId?, themes?, reason?, llmCalls, tokensUsed }` para transparencia en Activity.
+
+- **Phase 2 — Cluster merge entre summaries [audit F-14 phase 2]** (`src/analysis/consolidate.ts`, commit `96a6c6e`) — Nuevo helper `clusterMergeKnowledgeSummaries` post-synthesis. Walks summaries oldest-first; para cada anchor, vector-search top-10 y colapsa vecinos con similarity >0.80 en el anchor más antiguo via `mergeMemoryBody` + archivar el nuevo + `deleteEmbedding` + feedback row `consolidated`. Preserva historicidad (los viejos absorben a los nuevos). Gated a hora local 3 (~1/día en cadencia 6h) para amortizar coste del vector search extra. Solo corre si hay ≥3 summaries. Resultado en `knowledgeSummary.clustered = { checked, merged }`.
+
+- **Phase 3 — Activity transparency [audit F-14 phase 3]** (`src/web/dashboard/src/components/activity/ActivityEntryExpandedDetail.tsx`, commit `403fc92`) — Extiende el caso `consolidate` con una sub-row separada por `border-t` mostrando la acción del knowledge_summary: `created` (con themes + link al memory via `highlight=`), `merged` (con link), `skipped` (con razón). Si hubo cluster merge, append `· clustered N/M`. Zero cambio en render de counts básicos (promoted/demoted/expired).
+
+- **Phase 4 — Kind filter en MemoriesPage [audit F-14 phase 4]** (`src/web/routes/knowledge.ts`, `src/web/dashboard/src/api/client.ts`, `src/web/dashboard/src/components/pages/MemoriesPage.tsx`, commit `ccff45a`) — Exposición básica para inspección: `/api/memories` acepta `?kind=` threaded a `listMemories` + `countMemories` (search path filtra post-hoc). `fetchMemories` signature añade `kind?: string`. Dropdown en MemoriesPage junto a los tabs de layer con las 14 opciones durables (`taught`, `correction`, `knowledge_summary`, `soul_reflection`, `convention`, `preference`, `infrastructure`, `workflow`, `tech_stack`, `design_decision`, `architecture`, `pattern`, `insight`, `meta_pattern`) + "All kinds". URL persisted via `useFilterParams`. Zero card dedicada en Morning — diferido a F-14b si el contenido demuestra valor user-facing en 2-3 semanas.
+
+**Riesgos aceptados**: prompt puede devolver summaries genéricos en los primeros ticks (mitigación: 50+ memorias concretas como input, tuning iterativo); dedup con threshold 0.85 puede dejar pasar variantes (mitigación: cluster-merge absorbe post-hoc en hora 3); cluster-merge agresivo puede colapsar demasiado (mitigación: threshold 0.80 alto, solo el más reciente se absorbe, anchor viejo preserva historia).
+
+---
+
 ## Session 2026-04-19 (Audit block 4C — dashboard polish)
 
 Block 4C closes 5 dashboard polish items before open-source: stable keys, calendar-day counting, unified spinner, custom dialogs, and the 941-line ActivityEntry split. 5 commits, 303 tests green, build + daemon restart clean.
