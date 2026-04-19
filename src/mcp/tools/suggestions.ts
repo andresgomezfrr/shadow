@@ -2,17 +2,17 @@ import { z } from 'zod';
 import { mcpSchema, ok, err, type McpTool, type ToolContext } from './types.js';
 
 const SuggestionsSchema = z.object({
-  status: z.string().describe('Filter by status: open (default), accepted, dismissed, snoozed').optional(),
+  status: z.string().default('open').describe('Filter by status: open (default), accepted, dismissed, snoozed'),
   projectId: z.string().describe('Filter by project ID (returns suggestions linked to this project via entities)').optional(),
   repoId: z.string().describe('Filter by repository ID').optional(),
-  limit: z.number().describe('Max results (default 20)').optional(),
-  offset: z.number().describe('Offset for pagination (default 0)').optional(),
-  detail: z.boolean().describe('Include full summaryMd and reasoningMd (default false)').optional(),
+  limit: z.number().default(20).describe('Max results (default 20)'),
+  offset: z.number().default(0).describe('Offset for pagination (default 0)'),
+  detail: z.boolean().default(false).describe('Include full summaryMd and reasoningMd (default false)'),
 });
 
 const SuggestAcceptSchema = z.object({
   suggestionId: z.string().describe('The suggestion ID to accept'),
-  category: z.string().describe('Accept category: execute (run via runner, default), manual (already implemented), planned (add to backlog)').optional(),
+  category: z.string().default('execute').describe('Accept category: execute (run via runner, default), manual (already implemented), planned (add to backlog)'),
 });
 
 const SuggestDismissSchema = z.object({
@@ -23,7 +23,7 @@ const SuggestDismissSchema = z.object({
 
 const SuggestSnoozeSchema = z.object({
   suggestionId: z.string().describe('The suggestion ID to snooze'),
-  hours: z.number().describe('Hours to snooze (default: 72 = 3 days)').optional(),
+  hours: z.number().default(72).describe('Hours to snooze (default: 72 = 3 days)'),
 });
 
 export function suggestionTools(ctx: ToolContext): McpTool[] {
@@ -35,11 +35,7 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
       description: 'Returns suggestions with pagination. Default: open, limit 20, compact (no body). Use detail=true for full response. Filter by projectId to see suggestions linked to a project.',
       inputSchema: mcpSchema(SuggestionsSchema),
       handler: async (params) => {
-        const { status: rawStatus, projectId, repoId, limit: rawLimit, offset: rawOffset, detail: rawDetail } = SuggestionsSchema.parse(params);
-        const status = rawStatus ?? 'open';
-        const limit = rawLimit ?? 20;
-        const offset = rawOffset ?? 0;
-        const detail = rawDetail ?? false;
+        const { status, projectId, repoId, limit, offset, detail } = SuggestionsSchema.parse(params);
         const items = db.listSuggestions({ status, repoId, projectId, limit, offset });
         const total = db.countSuggestions({ status, repoId, projectId });
         if (detail) return ok({ items, total });
@@ -59,8 +55,7 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(SuggestAcceptSchema),
       handler: async (params) => {
 
-        const { suggestionId, category: rawCategory } = SuggestAcceptSchema.parse(params);
-        const category = rawCategory ?? 'execute';
+        const { suggestionId, category } = SuggestAcceptSchema.parse(params);
         const suggestion = db.getSuggestion(suggestionId);
         if (!suggestion) {
           return err(`Suggestion not found: ${suggestionId}`);
@@ -98,8 +93,7 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(SuggestSnoozeSchema),
       handler: async (params) => {
 
-        const { suggestionId, hours: rawHours } = SuggestSnoozeSchema.parse(params);
-        const hours = rawHours ?? 72;
+        const { suggestionId, hours } = SuggestSnoozeSchema.parse(params);
         const suggestion = db.getSuggestion(suggestionId);
         if (!suggestion) {
           return err(`Suggestion not found: ${suggestionId}`);

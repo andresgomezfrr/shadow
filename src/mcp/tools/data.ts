@@ -8,8 +8,8 @@ import { mcpSchema, ok, err, type McpTool, type ToolContext } from './types.js';
 
 const SearchSchema = z.object({
   query: z.string().describe('Natural language search query'),
-  types: z.array(z.enum(['memory', 'observation', 'suggestion'])).describe('Entity types to search (default: all three)').optional(),
-  limit: z.number().describe('Max results per type (default 5)').optional(),
+  types: z.array(z.enum(['memory', 'observation', 'suggestion'])).default(['memory', 'observation', 'suggestion']).describe('Entity types to search (default: all three)'),
+  limit: z.number().default(5).describe('Max results per type (default 5)'),
 });
 
 const RunListSchema = z.object({
@@ -48,16 +48,16 @@ const DigestsSchema = z.object({
 });
 
 const EnrichmentConfigSchema = z.object({
-  includeCache: z.boolean().describe('Include recent cache entries (default false)').optional(),
-  limit: z.number().describe('Max cache entries to return (default 10)').optional(),
+  includeCache: z.boolean().default(false).describe('Include recent cache entries (default false)'),
+  limit: z.number().default(10).describe('Max cache entries to return (default 10)'),
 });
 
 const EnrichmentQuerySchema = z.object({
   source: z.string().describe('Filter by MCP server name').optional(),
   entityName: z.string().describe('Filter by entity name (case-insensitive substring match)').optional(),
-  unreportedOnly: z.boolean().describe('Only return new/unreported items (default false)').optional(),
-  limit: z.number().describe('Max results (default 20)').optional(),
-  offset: z.number().describe('Offset for pagination (default 0)').optional(),
+  unreportedOnly: z.boolean().default(false).describe('Only return new/unreported items (default false)'),
+  limit: z.number().default(20).describe('Max results (default 20)'),
+  offset: z.number().default(0).describe('Offset for pagination (default 0)'),
 });
 
 // ---------------------------------------------------------------------------
@@ -94,9 +94,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       description: 'Unified semantic search across memories, observations, and suggestions using hybrid search (FTS5 + embeddings).',
       inputSchema: mcpSchema(SearchSchema),
       handler: async (params) => {
-        const { query, types: rawTypes, limit: rawLimit } = SearchSchema.parse(params);
-        const types = rawTypes ?? ['memory', 'observation', 'suggestion'];
-        const limit = rawLimit ?? 5;
+        const { query, types, limit } = SearchSchema.parse(params);
         const { hybridSearch } = await import('../../memory/search.js');
 
         const results: Array<{ type: string; id: string; title: string; kind: string; score: number; similarity?: number }> = [];
@@ -285,9 +283,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
         const { discoverMcpServerNames } = await import('../../observation/mcp-discovery.js');
         const discovered = discoverMcpServerNames();
-        const { includeCache: rawIncludeCache, limit: rawLimit } = EnrichmentConfigSchema.parse(params);
-        const includeCache = rawIncludeCache ?? false;
-        const limit = rawLimit ?? 10;
+        const { includeCache, limit } = EnrichmentConfigSchema.parse(params);
 
         const profile = db.ensureProfile();
         const prefs = profile.preferences as Record<string, unknown> | undefined;
@@ -327,10 +323,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       description: 'Query enrichment cache entries. Returns external context gathered from MCP tools.',
       inputSchema: mcpSchema(EnrichmentQuerySchema),
       handler: async (params) => {
-        const { source, entityName, unreportedOnly: rawUnreported, limit: rawLimit, offset: rawOffset } = EnrichmentQuerySchema.parse(params);
-        const unreportedOnly = rawUnreported ?? false;
-        const limit = rawLimit ?? 20;
-        const offset = rawOffset ?? 0;
+        const { source, entityName, unreportedOnly, limit, offset } = EnrichmentQuerySchema.parse(params);
         try {
           let items = db.listEnrichment({ source, reported: unreportedOnly ? false : undefined, limit: entityName ? 100 : limit, offset: entityName ? 0 : offset });
           if (entityName) {
