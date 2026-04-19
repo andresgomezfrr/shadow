@@ -21,27 +21,34 @@ type CreateTaskInput = {
 export function createTask(db: DatabaseSync, input: CreateTaskInput): TaskRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO tasks (id, title, status, context_md, external_refs_json, repo_ids_json, project_id, entities_json, suggestion_id, session_id, session_repo_path, pr_urls_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id,
-    input.title,
-    input.status ?? 'open',
-    input.contextMd ?? null,
-    JSON.stringify(input.externalRefs ?? []),
-    JSON.stringify(input.repoIds ?? []),
-    input.projectId ?? null,
-    JSON.stringify(input.entities ?? []),
-    input.suggestionId ?? null,
-    input.sessionId ?? null,
-    input.sessionRepoPath ?? null,
-    JSON.stringify(input.prUrls ?? []),
-    now,
-    now,
-  );
-  if (input.entities?.length) {
-    syncEntityLinks(db, 'tasks', id, input.entities as EntityLink[]);
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare(`
+      INSERT INTO tasks (id, title, status, context_md, external_refs_json, repo_ids_json, project_id, entities_json, suggestion_id, session_id, session_repo_path, pr_urls_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      input.title,
+      input.status ?? 'open',
+      input.contextMd ?? null,
+      JSON.stringify(input.externalRefs ?? []),
+      JSON.stringify(input.repoIds ?? []),
+      input.projectId ?? null,
+      JSON.stringify(input.entities ?? []),
+      input.suggestionId ?? null,
+      input.sessionId ?? null,
+      input.sessionRepoPath ?? null,
+      JSON.stringify(input.prUrls ?? []),
+      now,
+      now,
+    );
+    if (input.entities?.length) {
+      syncEntityLinks(db, 'tasks', id, input.entities as EntityLink[]);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
   }
   return getTask(db, id)!;
 }
@@ -92,13 +99,27 @@ export function updateTask(db: DatabaseSync, id: string, updates: Partial<Pick<T
     values.push(toSqlValue(value));
   }
   values.push(id);
-  db.prepare(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ?`).run(...values);
-  if (updates.entities) {
-    syncEntityLinks(db, 'tasks', id, updates.entities as EntityLink[]);
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    if (updates.entities) {
+      syncEntityLinks(db, 'tasks', id, updates.entities as EntityLink[]);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
   }
 }
 
 export function deleteTask(db: DatabaseSync, id: string): void {
-  db.prepare("DELETE FROM entity_links WHERE source_table = 'tasks' AND source_id = ?").run(id);
-  db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare("DELETE FROM entity_links WHERE source_table = 'tasks' AND source_id = ?").run(id);
+    db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }

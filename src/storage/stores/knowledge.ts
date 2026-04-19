@@ -204,9 +204,16 @@ export function updateMemory(db: DatabaseSync, id: string, updates: Partial<Pick
   sets.push('updated_at = ?');
   values.push(new Date().toISOString());
   values.push(id);
-  db.prepare(`UPDATE memories SET ${sets.join(', ')} WHERE id = ?`).run(...values);
-  if (updates.entities) {
-    syncEntityLinks(db, 'memories', id, updates.entities as EntityLink[]);
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare(`UPDATE memories SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    if (updates.entities) {
+      syncEntityLinks(db, 'memories', id, updates.entities as EntityLink[]);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
   }
 }
 
