@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { useApi } from '../../../hooks/useApi';
 import { fetchSoulHistory } from '../../../api/client';
 import { Markdown } from '../../common/Markdown';
+import { POLL_VERY_SLOW } from '../../../constants/polling';
 
 type Props = {
   visible: boolean;
 };
 
 export function SectionSoul({ visible }: Props) {
-  const { data } = useApi(fetchSoulHistory, [], 120_000);
+  const { data } = useApi(fetchSoulHistory, [], POLL_VERY_SLOW);
   const [expandedSnapshot, setExpandedSnapshot] = useState<string | null>(null);
 
   if (!data || !data.current) return null;

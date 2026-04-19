@@ -5,6 +5,7 @@ import { fetchActivity, fetchStatus } from '../../api/client';
 import { useNow, formatCountdown } from '../../utils/format';
 import { JOB_TYPE_COLORS } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
+import { POLL_FAST } from '../../constants/polling';
 import type { ActivityEntry } from '../../api/types';
 
 const SSE_EVENTS = ['job:started', 'job:phase', 'job:complete', 'job:enqueued', 'run:phase'];
@@ -29,7 +30,7 @@ export function LiveStatusBar() {
 
   useEventStream(SSE_EVENTS, handleSSE);
 
-  const { data: status } = useApi(fetchStatus, [], 15_000);
+  const { data: status } = useApi(fetchStatus, [], POLL_FAST);
   const nextHb = (status as Record<string, unknown>)?.nextHeartbeatAt as string | null | undefined;
 
   if (running.length === 0) {

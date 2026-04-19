@@ -5,9 +5,10 @@ import { fetchStatus } from '../../api/client';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { CommandPalette } from '../common/CommandPalette';
+import { POLL_FAST } from '../../constants/polling';
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { data } = useApi(fetchStatus, [], 15_000);
+  const { data } = useApi(fetchStatus, [], POLL_FAST);
   const { open: cmdKOpen, setOpen: setCmdKOpen } = useCommandPalette();
 
   return (

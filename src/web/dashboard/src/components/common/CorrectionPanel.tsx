@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApi } from '../../hooks/useApi';
 import { fetchRepos, fetchProjects, fetchSystems, createCorrection } from '../../api/client';
+import { POLL_SLOW } from '../../constants/polling';
 
 type Props = {
   open: boolean;
@@ -23,9 +24,9 @@ export function CorrectionPanel({ open, onClose, defaultScope, defaultEntityType
   const [success, setSuccess] = useState(false);
 
   // Fetch entities for dropdowns
-  const { data: repos } = useApi(fetchRepos, [], 60_000);
-  const { data: projects } = useApi(() => fetchProjects(), [], 60_000);
-  const { data: systems } = useApi(() => fetchSystems(), [], 60_000);
+  const { data: repos } = useApi(fetchRepos, [], POLL_SLOW);
+  const { data: projects } = useApi(() => fetchProjects(), [], POLL_SLOW);
+  const { data: systems } = useApi(() => fetchSystems(), [], POLL_SLOW);
 
   // Reset on open
   useEffect(() => {

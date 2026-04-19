@@ -11,6 +11,7 @@ import { Pagination } from '../common/Pagination';
 import { LiveStatusBar } from '../activity/LiveStatusBar';
 import { ScheduleRibbon } from '../activity/ScheduleRibbon';
 import { ActivityEntryCard } from '../activity/ActivityEntry';
+import { POLL_FAST, POLL_NORMAL } from '../../constants/polling';
 
 const TYPE_FILTERS = [
   { label: 'All', value: '' },
@@ -94,7 +95,7 @@ export function ActivityPage() {
   const { data: rawData, refresh } = useApi(
     () => fetchActivity(fetchParams),
     [params.type, params.period, params.offset],
-    15_000,
+    POLL_FAST,
   );
   const items = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
@@ -102,10 +103,10 @@ export function ActivityPage() {
   const { data: summary } = useApi(
     () => fetchActivitySummary(params.period),
     [params.period],
-    30_000,
+    POLL_NORMAL,
   );
 
-  const { data: status } = useApi(fetchStatus, [], 15_000);
+  const { data: status } = useApi(fetchStatus, [], POLL_FAST);
   const schedule = (status as Record<string, unknown>)?.jobSchedule as Record<string, { intervalMs?: number; nextAt?: string | null; trigger?: string; schedule?: string; enabled?: boolean }> | undefined;
 
   const itemsProduced = (summary?.observationsCreated ?? 0)

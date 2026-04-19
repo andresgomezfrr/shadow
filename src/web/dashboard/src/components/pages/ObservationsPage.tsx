@@ -2,6 +2,7 @@ import { useApi } from '../../hooks/useApi';
 import { useDialog } from '../../hooks/useDialog';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchObservations, fetchRepos, fetchProjects, acknowledgeObservation, resolveObservation, reopenObservation, lookupEntity } from '../../api/client';
+import { POLL_NORMAL, POLL_SLOW } from '../../constants/polling';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { CorrectionPanel } from '../common/CorrectionPanel';
 import { Pagination } from '../common/Pagination';
@@ -37,10 +38,10 @@ export function ObservationsPage() {
   const { data: rawData, refresh } = useApi(
     () => fetchObservations({ limit: PAGE_SIZE, offset: Number(params.offset) || 0, status: params.status, severity: params.severity || undefined, kind: params.kind || undefined, repoId: params.repoId || undefined, projectId: params.projectId || undefined }),
     [params.status, params.severity, params.kind, params.repoId, params.projectId, params.offset],
-    30_000,
+    POLL_NORMAL,
   );
-  const { data: repos } = useApi(fetchRepos, [], 60_000);
-  const { data: projects } = useApi(() => fetchProjects(), [], 60_000);
+  const { data: repos } = useApi(fetchRepos, [], POLL_SLOW);
+  const { data: projects } = useApi(() => fetchProjects(), [], POLL_SLOW);
   const rawItems = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
   const fbState = rawData?.feedbackState ?? null;

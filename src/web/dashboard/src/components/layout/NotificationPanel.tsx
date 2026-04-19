@@ -4,6 +4,7 @@ import { fetchNotifications, markNotificationsRead, markAllNotificationsRead } f
 import { useNavigate } from 'react-router-dom';
 import { useCallback, useState } from 'react';
 import { timeAgo } from '../../utils/format';
+import { POLL_REALTIME } from '../../constants/polling';
 import type { EventRecord } from '../../api/types';
 
 type NotificationGroup = {
@@ -72,7 +73,7 @@ function eventNavTarget(event: EventRecord): string | null {
 }
 
 export function NotificationPanel({ onClose, onRead }: { onClose: () => void; onRead?: () => void }) {
-  const { data: events, refresh } = useApi(fetchNotifications, [], 10_000);
+  const { data: events, refresh } = useApi(fetchNotifications, [], POLL_REALTIME);
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 

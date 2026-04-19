@@ -5,6 +5,7 @@ import { useSSEConnected, useSSEStaleness } from '../../hooks/useEventStream';
 import { useApi } from '../../hooks/useApi';
 import { fetchNotifications } from '../../api/client';
 import { NotificationPanel } from './NotificationPanel';
+import { POLL_REALTIME } from '../../constants/polling';
 
 function formatAgo(sec: number): string {
   if (sec < 60) return `${sec}s ago`;
@@ -21,7 +22,7 @@ export function Topbar({ status }: { status?: StatusResponse | null }) {
   const focusActive = profile?.focusMode === 'focus';
   const [panelOpen, setPanelOpen] = useState(false);
 
-  const { data: notifications, refresh } = useApi(fetchNotifications, [], 10_000);
+  const { data: notifications, refresh } = useApi(fetchNotifications, [], POLL_REALTIME);
   const pendingCount = notifications?.length ?? 0;
 
   return (

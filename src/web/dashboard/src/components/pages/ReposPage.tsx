@@ -7,6 +7,7 @@ import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
 import { CorrectionPanel } from '../common/CorrectionPanel';
+import { POLL_NORMAL } from '../../constants/polling';
 import type { Repo } from '../../api/types';
 
 // --- helpers ---
@@ -274,7 +275,7 @@ function RepoCard({
 // --- page ---
 
 export function ReposPage() {
-  const { data } = useApi(fetchRepos, [], 30_000);
+  const { data } = useApi(fetchRepos, [], POLL_NORMAL);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { isRunning } = useRunningJobs();
 

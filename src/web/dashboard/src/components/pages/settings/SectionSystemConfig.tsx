@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApi } from '../../../hooks/useApi';
 import { fetchConfig } from '../../../api/client';
+import { POLL_VERY_SLOW } from '../../../constants/polling';
 
 type Props = {
   visible: boolean;
@@ -30,7 +31,7 @@ function formatValue(value: unknown, format: string): string {
 }
 
 export function SectionSystemConfig({ visible }: Props) {
-  const { data } = useApi(fetchConfig, [], 120_000);
+  const { data } = useApi(fetchConfig, [], POLL_VERY_SLOW);
   const [expanded, setExpanded] = useState(false);
 
   const config = data?.config;

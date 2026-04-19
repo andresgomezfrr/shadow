@@ -4,6 +4,7 @@ import { useDialog } from '../../hooks/useDialog';
 import { useEventStream } from '../../hooks/useEventStream';
 import { fetchDailySummary, fetchDigests, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
 import { BOND_TIER_NAMES, MOOD_EMOJIS } from '../../api/types';
+import { POLL_SLOW } from '../../constants/polling';
 import { VoiceOfShadow } from './chronicle/VoiceOfShadow';
 import { MorningMetrics } from './morning/MorningMetrics';
 import { MorningJobs } from './morning/MorningJobs';
@@ -33,8 +34,8 @@ function formatDate(): string {
 }
 
 export function MorningPage() {
-  const { data, refresh } = useApi(fetchDailySummary, [], 60_000);
-  const { data: digests, refresh: refreshDigests } = useApi(() => fetchDigests({ kind: 'daily' }), [], 60_000);
+  const { data, refresh } = useApi(fetchDailySummary, [], POLL_SLOW);
+  const { data: digests, refresh: refreshDigests } = useApi(() => fetchDigests({ kind: 'daily' }), [], POLL_SLOW);
 
   // Push refresh when a digest job completes — without this, freshly generated
   // digests don't appear until the next 60s poll (audit UI-09).

@@ -5,6 +5,7 @@ import { useRunningJobs } from '../../hooks/useRunningJobs';
 import { JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
 import { triggerJob, triggerJobWithParams, fetchRepos, fetchProjects } from '../../api/client';
+import { POLL_SLOW } from '../../constants/polling';
 
 type ScheduleEntry = {
   intervalMs?: number;
@@ -93,8 +94,8 @@ export function ScheduleRibbon({ schedule, onTrigger }: Props) {
   const [selectorFor, setSelectorFor] = useState<string | null>(null);
   const { isRunning, refresh: refreshRunning } = useRunningJobs();
 
-  const { data: repos } = useApi(fetchRepos, [], 60_000);
-  const { data: projects } = useApi(() => fetchProjects(), [], 60_000);
+  const { data: repos } = useApi(fetchRepos, [], POLL_SLOW);
+  const { data: projects } = useApi(() => fetchProjects(), [], POLL_SLOW);
 
   const handleTriggerJob = useCallback(async (jobType: string, params?: Record<string, string>) => {
     const result = params

@@ -2,6 +2,7 @@ import { timeAgo, formatTokens, useNow, formatCountdown } from '../../utils/form
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchJobs, fetchStatus, triggerHeartbeat } from '../../api/client';
+import { POLL_FAST } from '../../constants/polling';
 import { JOB_TYPE_COLORS, JOB_TYPE_COLOR_DEFAULT } from '../../utils/job-colors';
 import { Badge } from '../common/Badge';
 import { MetricCard } from '../common/MetricCard';
@@ -61,10 +62,10 @@ export function JobsPage() {
     type: isDigestFilter ? undefined : (params.type || undefined),
     typePrefix: isDigestFilter ? 'digest-' : undefined,
     limit: PAGE_SIZE, offset: Number(params.offset) || 0,
-  }), [params.type, params.offset], 15_000);
+  }), [params.type, params.offset], POLL_FAST);
   const data = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
-  const { data: status } = useApi(fetchStatus, [], 15_000);
+  const { data: status } = useApi(fetchStatus, [], POLL_FAST);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const now = useNow();
   const schedule = (status as Record<string, unknown>)?.jobSchedule as Record<string, { intervalMs?: number; nextAt?: string | null; trigger?: string }> | undefined;

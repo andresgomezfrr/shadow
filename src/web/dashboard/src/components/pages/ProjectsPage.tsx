@@ -4,13 +4,14 @@ import { fetchProjects, fetchRepos, fetchSystems, fetchObservations, fetchSugges
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
 import { PROJECT_KIND_COLORS, PROJECT_KIND_COLOR_DEFAULT, PROJECT_STATUS_COLORS, PROJECT_STATUS_COLOR_DEFAULT } from '../../utils/project-colors';
+import { POLL_NORMAL, POLL_SLOW } from '../../constants/polling';
 
 export function ProjectsPage() {
-  const { data: projects } = useApi(fetchProjects, [], 30_000);
-  const { data: repos } = useApi(fetchRepos, [], 60_000);
-  const { data: systems } = useApi(fetchSystems, [], 60_000);
-  const { data: obsData } = useApi(() => fetchObservations({ status: 'open', limit: 100 }), [], 60_000);
-  const { data: sugData } = useApi(() => fetchSuggestions({ status: 'open', limit: 100 }), [], 60_000);
+  const { data: projects } = useApi(fetchProjects, [], POLL_NORMAL);
+  const { data: repos } = useApi(fetchRepos, [], POLL_SLOW);
+  const { data: systems } = useApi(fetchSystems, [], POLL_SLOW);
+  const { data: obsData } = useApi(() => fetchObservations({ status: 'open', limit: 100 }), [], POLL_SLOW);
+  const { data: sugData } = useApi(() => fetchSuggestions({ status: 'open', limit: 100 }), [], POLL_SLOW);
 
   const repoName = (id: string) => repos?.find((r) => r.id === id)?.name ?? id.slice(0, 8);
   const systemName = (id: string) => systems?.find((s) => s.id === id)?.name ?? id.slice(0, 8);

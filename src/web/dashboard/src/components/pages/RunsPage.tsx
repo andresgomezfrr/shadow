@@ -4,6 +4,7 @@ import { useDialog } from '../../hooks/useDialog';
 import { useHighlight } from '../../hooks/useHighlight';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, closeRun, archiveRun, retryRun, rollbackRun, createDraftPr, lookupEntity } from '../../api/client';
+import { POLL_FAST, POLL_SLOW } from '../../constants/polling';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
@@ -68,7 +69,7 @@ export function RunsPage() {
       limit: PAGE_SIZE, offset: Number(params.offset) || 0,
     }),
     [params.status, params.offset],
-    15_000,
+    POLL_FAST,
   );
   const rawItems = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
@@ -92,7 +93,7 @@ export function RunsPage() {
     if (!prefetched || rawItems.some(r => r.id === prefetched.id)) return rawItems;
     return [prefetched, ...rawItems];
   }, [rawItems, prefetched]);
-  const { data: repos } = useApi(fetchRepos, [], 60_000);
+  const { data: repos } = useApi(fetchRepos, [], POLL_SLOW);
   const githubRepoIds = new Set(
     (repos ?? []).filter((r) => r.remoteUrl?.includes('github')).map((r) => r.id),
   );
