@@ -255,11 +255,14 @@ export class RunnerService {
         });
 
         if (run.parentRunId) {
-          const siblings = this.db.listRuns({ parentRunId: run.parentRunId });
+          const parentId = run.parentRunId;
+          const siblings = this.db.listRuns({ parentRunId: parentId });
           const parentStatus = aggregateParentStatus(siblings);
           if (parentStatus !== null) {
-            this.db.transitionRun(run.parentRunId, parentStatus);
-            this.db.updateRun(run.parentRunId, { finishedAt: emptyFinishedAt });
+            this.db.withTransaction(() => {
+              this.db.transitionRun(parentId, parentStatus);
+              this.db.updateRun(parentId, { finishedAt: emptyFinishedAt });
+            });
           }
         }
 
@@ -423,33 +426,38 @@ export class RunnerService {
       // Skip propagation entirely if summary-diff mismatch: user must review the child
       // before the parent can finalize. Parent stays in 'planned'.
       if (run.parentRunId && !summaryDiffMismatch) {
-        const siblings = this.db.listRuns({ parentRunId: run.parentRunId });
+        const parentId = run.parentRunId;
+        const siblings = this.db.listRuns({ parentRunId: parentId });
         const aggregated = aggregateParentStatus(siblings);
         if (aggregated === 'done' && run.kind === 'execution') {
           // Re-fetch current run to get fresh diffStat/prUrl after updates above
           const current = this.db.getRun(run.id) ?? run;
           const hasChanges = !!(current.diffStat && current.diffStat.trim());
-          if (current.prUrl) {
-            // PR created → parent waits for merge/close (pr-sync job will finalize)
-            this.db.transitionRun(run.parentRunId, 'awaiting_pr');
-            this.db.updateRun(run.parentRunId, { finishedAt });
-          } else if (!hasChanges) {
-            // No-op: Claude ran but nothing to change
-            const justification = current.resultSummaryMd?.slice(0, 500) || 'No changes needed';
-            this.db.transitionRun(run.parentRunId, 'done');
-            this.db.updateRun(run.parentRunId, {
-              finishedAt,
-              outcome: 'no_changes',
-              closedNote: justification,
-            });
-          } else {
-            // Changes committed but no PR (direct push or manual PR flow)
-            this.db.transitionRun(run.parentRunId, 'done');
-            this.db.updateRun(run.parentRunId, { finishedAt, outcome: 'executed' });
-          }
+          this.db.withTransaction(() => {
+            if (current.prUrl) {
+              // PR created → parent waits for merge/close (pr-sync job will finalize)
+              this.db.transitionRun(parentId, 'awaiting_pr');
+              this.db.updateRun(parentId, { finishedAt });
+            } else if (!hasChanges) {
+              // No-op: Claude ran but nothing to change
+              const justification = current.resultSummaryMd?.slice(0, 500) || 'No changes needed';
+              this.db.transitionRun(parentId, 'done');
+              this.db.updateRun(parentId, {
+                finishedAt,
+                outcome: 'no_changes',
+                closedNote: justification,
+              });
+            } else {
+              // Changes committed but no PR (direct push or manual PR flow)
+              this.db.transitionRun(parentId, 'done');
+              this.db.updateRun(parentId, { finishedAt, outcome: 'executed' });
+            }
+          });
         } else if (aggregated !== null) {
-          this.db.transitionRun(run.parentRunId, aggregated);
-          this.db.updateRun(run.parentRunId, { finishedAt });
+          this.db.withTransaction(() => {
+            this.db.transitionRun(parentId, aggregated);
+            this.db.updateRun(parentId, { finishedAt });
+          });
         }
       }
 
@@ -534,11 +542,14 @@ export class RunnerService {
 
       // Propagate failure to parent via multi-child aggregation
       if (run.parentRunId) {
-        const siblings = this.db.listRuns({ parentRunId: run.parentRunId });
+        const parentId = run.parentRunId;
+        const siblings = this.db.listRuns({ parentRunId: parentId });
         const parentStatus = aggregateParentStatus(siblings);
         if (parentStatus !== null) {
-          this.db.transitionRun(run.parentRunId, parentStatus);
-          this.db.updateRun(run.parentRunId, { finishedAt });
+          this.db.withTransaction(() => {
+            this.db.transitionRun(parentId, parentStatus);
+            this.db.updateRun(parentId, { finishedAt });
+          });
         }
       }
 
