@@ -24,7 +24,7 @@ SQLite file under `~/.shadow/`.
   suggestions into tasks and run them in isolated worktrees
 - **Bond system**: Shadow grows with you across 5 axes and 8 tiers, with a
   narrative Chronicle authored by the LLM as you cross thresholds
-- **67 MCP tools** give Claude typed, safe access to everything in Shadow
+- **68 MCP tools** give Claude typed, safe access to everything in Shadow
 - **Web dashboard** with 15+ routes: Morning brief, Workspace, Chronicle,
   Memories, Observations, Suggestions, Activity, Runs, and more
 
@@ -89,7 +89,7 @@ shadow web          # http://localhost:3700
 
 Shadow exposes three surfaces that share the same SQLite state.
 
-1. **Claude CLI (primary).** Shadow exposes 67 MCP tools (`mcp__shadow__*`).
+1. **Claude CLI (primary).** Shadow exposes 68 MCP tools (`mcp__shadow__*`).
    Claude reaches for them naturally — `shadow_check_in` on every session
    start, `shadow_suggestions` for advice, `shadow_task_create` when an idea
    crystallizes.
