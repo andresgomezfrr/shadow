@@ -1,3 +1,4 @@
+import { ZodError } from 'zod';
 import type { ShadowDatabase } from '../storage/database.js';
 import type { ShadowConfig } from '../config/load-config.js';
 import type { UserProfileRecord } from '../storage/models.js';
@@ -135,6 +136,14 @@ export async function handleJsonRpcRequest(
         result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
       } satisfies JsonRpcResponse;
     } catch (err) {
+      if (err instanceof ZodError) {
+        const detail = err.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
+        return {
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32602, message: `Invalid params — ${detail}` },
+        } satisfies JsonRpcResponse;
+      }
       const message = err instanceof Error ? err.message : String(err);
       return {
         jsonrpc: '2.0',
