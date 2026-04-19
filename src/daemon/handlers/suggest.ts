@@ -88,13 +88,17 @@ ${observations.length > 0 ? `## Active Observations\n${observations.map(o => `- 
 
 ${memories.length > 0 ? `## What Shadow Knows\n${memories.map(m => `- [${m.kind}] ${m.title}`).join('\n')}` : ''}
 
-${dismissPatterns.length > 0 ? `## DO NOT suggest (user rejected these patterns)\n${dismissPatterns.map(p => `- ${p.category}: ${p.count} dismissals${p.recentNotes?.length ? ` (${p.recentNotes[0]})` : ''}`).join('\n')}` : ''}
+${dismissPatterns.length > 0 ? `## DO NOT suggest (user rejected these patterns)\n${dismissPatterns.slice(0, 10).map(p => `- ${p.category}: ${p.count} dismissals${p.recentNotes?.length ? ` (${p.recentNotes[0]})` : ''}`).join('\n')}` : ''}
 
 ${recentAccepted.length > 0 ? `## Recently Accepted (this direction works)\n${recentAccepted.map(s => `- ${s.title}`).join('\n')}` : ''}
 
 Your mission: explore the codebase and find high-value improvements.
 Look for: architecture issues, tech debt, missing features, dependency problems,
 security concerns, test coverage gaps, refactoring opportunities, performance issues.
+
+BUDGET: use at most 20 tool calls total for this scan. Prioritize breadth (survey
+many files with Grep/Glob + targeted Reads) over depth (deep-reading a handful).
+Stop exploring once you have enough signal to write 1-5 high-value suggestions.
 
 Use Read, Grep, Glob, Bash to explore the code. Use shadow_memory_search for context.
 Be thorough but selective — only suggest things that genuinely matter.
@@ -279,7 +283,7 @@ ${memories.length > 0 ? `## Project Memories\n${memories.map(m => `- ${m.title}`
 
 ${enrichSection ? `## External Context (from MCP enrichment)\n${enrichSection}` : ''}
 
-${dismissPatterns.length > 0 ? `## Dismissed Patterns (avoid)\n${dismissPatterns.map(p => `- ${p.category}: ${p.count}x`).join('\n')}` : ''}
+${dismissPatterns.length > 0 ? `## Dismissed Patterns (avoid)\n${dismissPatterns.slice(0, 10).map(p => `- ${p.category}: ${p.count}x`).join('\n')}` : ''}
 
 Look for cross-repo opportunities:
 - Shared libraries that could be extracted
@@ -288,6 +292,10 @@ Look for cross-repo opportunities:
 - Dependency version mismatches
 - Convention drift between repos
 - Shared infrastructure improvements
+
+BUDGET: use at most 20 tool calls total for this cross-repo scan. Prioritize
+breadth (survey many files across repos) over depth. Stop exploring once you
+have enough signal to write meaningful cross-project suggestions.
 
 Use Read, Grep, Glob to compare code across repos. Use shadow_memory_search for context.
 
