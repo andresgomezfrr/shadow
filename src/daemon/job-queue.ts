@@ -46,14 +46,28 @@ export class JobQueue {
       }
     }
 
-    if (!allowClaim) {
-      return this.active.size > 0;
-    }
-
     // Compute types to exclude (same-type mutual exclusion)
     const excludeTypes = [...new Set([...this.active.values()].map(a => a.type))];
 
-    // Claim loop: LLM jobs capped by maxConcurrentJobs, IO jobs unlimited
+    // Manual triggers bypass the canSchedule gate — the user explicitly clicked
+    // Trigger (or invoked `shadow job X`), their intent overrides darkwake/offline
+    // gates. Scheduled jobs still wait for a fully-awake/online tick.
+    if (!allowClaim) {
+      this.claimLoop(excludeTypes, 'manual');
+      return this.active.size > 0;
+    }
+
+    // Full claim loop — all trigger sources
+    this.claimLoop(excludeTypes, null);
+    return this.active.size > 0;
+  }
+
+  /**
+   * Claim eligible queued jobs up to capacity. If `triggerSource` is set, only
+   * jobs with that source are considered. Mutates `excludeTypes` as it claims
+   * (same-type mutual exclusion per tick).
+   */
+  private claimLoop(excludeTypes: string[], triggerSource: string | null): void {
     while (true) {
       const currentLlm = [...this.active.values()].filter(a => a.category === 'llm').length;
 
@@ -65,9 +79,11 @@ export class JobQueue {
         }
       }
 
-      const claimed = this.db.claimNextJob(
-        exclude.length > 0 ? { excludeTypes: exclude } : undefined,
-      );
+      const claimOpts: { excludeTypes?: string[]; triggerSource?: string } = {};
+      if (exclude.length > 0) claimOpts.excludeTypes = exclude;
+      if (triggerSource) claimOpts.triggerSource = triggerSource;
+
+      const claimed = this.db.claimNextJob(Object.keys(claimOpts).length > 0 ? claimOpts : undefined);
       if (!claimed) break;
 
       const entry = this.handlers.get(claimed.type);
@@ -81,10 +97,12 @@ export class JobQueue {
       }
 
       this.startJob(claimed, entry);
-      excludeTypes.push(claimed.type); // same-type mutual exclusion
-    }
+      excludeTypes.push(claimed.type);
 
-    return this.active.size > 0;
+      if (triggerSource === 'manual') {
+        console.error(`[job-queue] Claimed manual job '${claimed.type}' (bypassing canSchedule=false)`);
+      }
+    }
   }
 
   private startJob(job: JobRecord, entry: JobHandlerEntry): void {

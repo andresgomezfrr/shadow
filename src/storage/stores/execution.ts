@@ -196,7 +196,7 @@ export function enqueueJob(db: DatabaseSync, type: string, opts?: { priority?: n
   return getJob(db, id)!;
 }
 
-export function claimNextJob(db: DatabaseSync, opts?: { types?: string[]; excludeTypes?: string[] }): JobRecord | null {
+export function claimNextJob(db: DatabaseSync, opts?: { types?: string[]; excludeTypes?: string[]; triggerSource?: string }): JobRecord | null {
   const params: SQLValue[] = [];
   let where = "status = 'queued'";
   if (opts?.types?.length) {
@@ -206,6 +206,10 @@ export function claimNextJob(db: DatabaseSync, opts?: { types?: string[]; exclud
   if (opts?.excludeTypes?.length) {
     where += ` AND type NOT IN (${opts.excludeTypes.map(() => '?').join(',')})`;
     params.push(...opts.excludeTypes);
+  }
+  if (opts?.triggerSource) {
+    where += ' AND trigger_source = ?';
+    params.push(opts.triggerSource);
   }
   const row = db
     .prepare(`SELECT id FROM jobs WHERE ${where} ORDER BY priority DESC, created_at ASC LIMIT 1`)
