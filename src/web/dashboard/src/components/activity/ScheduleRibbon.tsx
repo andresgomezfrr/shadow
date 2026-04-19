@@ -91,7 +91,7 @@ export function ScheduleRibbon({ schedule, onTrigger }: Props) {
   const now = useNow();
   const [expanded, setExpanded] = useState(false);
   const [selectorFor, setSelectorFor] = useState<string | null>(null);
-  const { isRunning } = useRunningJobs();
+  const { isRunning, refresh: refreshRunning } = useRunningJobs();
 
   const { data: repos } = useApi(fetchRepos, [], 60_000);
   const { data: projects } = useApi(() => fetchProjects(), [], 60_000);
@@ -102,9 +102,13 @@ export function ScheduleRibbon({ schedule, onTrigger }: Props) {
       : await triggerJob(jobType);
     if (result) {
       setSelectorFor(null);
+      // Refresh running jobs immediately so the button flips to "Running..." without waiting
+      // for the 30s poll. /api/jobs/running includes status='queued', so newly-enqueued
+      // jobs are picked up right away (status becomes running once the queue tick claims them).
+      await refreshRunning();
       onTrigger?.();
     }
-  }, [onTrigger]);
+  }, [onTrigger, refreshRunning]);
 
   const handleTriggerClick = useCallback((jobType: string) => {
     if (REPO_JOBS.has(jobType) || PROJECT_JOBS.has(jobType)) {

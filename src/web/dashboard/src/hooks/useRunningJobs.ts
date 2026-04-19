@@ -39,5 +39,5 @@ export function useRunningJobs() {
 
   const isRunning = useCallback((type: string) => runningTypes.has(type), [runningTypes]);
 
-  return { runningTypes, isRunning };
+  return { runningTypes, isRunning, refresh };
 }
