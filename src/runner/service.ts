@@ -11,6 +11,7 @@ import type { EventBus } from '../web/event-bus.js';
 import { selectAdapter } from '../backend/index.js';
 import { ConfidenceEvaluationSchema, type ConfidenceEvaluation } from './schemas.js';
 import { aggregateParentStatus } from './state-machine.js';
+import { isEmptyPlanInDisguise } from './plan-validation.js';
 
 const DEFAULT_RUNNER_PERSONALITY = 'You are Shadow, a proactive coding companion. Show initiative and personality.';
 
@@ -240,11 +241,14 @@ export class RunnerService {
       // Claude can exit 0 without writing to ~/.claude/plans/ (e.g. blocked on a question
       // it couldn't ask, hit permission errors, or gave up). Treat that as a real failure
       // instead of passing it downstream as a 'planned' run with empty resultSummaryMd.
-      if (planOnly && isSuccess && !effectivePlan.trim()) {
+      if (planOnly && isSuccess && isEmptyPlanInDisguise(effectivePlan)) {
         const emptyFinishedAt = new Date().toISOString();
+        const reason = !effectivePlan.trim()
+          ? 'Plan mode produced no output — no plan written to ~/.claude/plans/'
+          : 'Plan mode produced no actionable content — missing structure and insufficient detail';
         this.db.transitionRun(run.id, 'failed');
         this.db.updateRun(run.id, {
-          errorSummary: 'Plan mode produced no output — no plan written to ~/.claude/plans/',
+          errorSummary: reason,
           artifactDir,
           sessionId: result.sessionId ?? null,
           finishedAt: emptyFinishedAt,
