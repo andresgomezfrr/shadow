@@ -34,7 +34,7 @@ export async function handleObservationRoutes(
       const generatedSuggestions = db.listSuggestions({ limit: 50 }).filter(s => s.sourceObservationId === observation.id);
       // Runs created from those suggestions
       const suggestionIds = new Set(generatedSuggestions.map(s => s.id));
-      const linkedRuns = db.listRuns({ archived: undefined }).filter(r => r.suggestionId && suggestionIds.has(r.suggestionId) && !r.parentRunId);
+      const linkedRuns = db.listRuns({ archived: undefined, limit: 200 }).filter(r => r.suggestionId && suggestionIds.has(r.suggestionId) && !r.parentRunId);
       return json(res, { observation, generatedSuggestions, linkedRuns }), true;
     }
   }

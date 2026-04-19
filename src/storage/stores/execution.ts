@@ -39,7 +39,7 @@ export function getRun(db: DatabaseSync, id: string): RunRecord | null {
   return row ? mapRun(row) : null;
 }
 
-export function listRuns(db: DatabaseSync, filters?: { status?: string; repoId?: string; parentRunId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] {
+export function listRuns(db: DatabaseSync, filters?: { status?: string; repoId?: string; parentRunId?: string; suggestionId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
 
@@ -54,6 +54,10 @@ export function listRuns(db: DatabaseSync, filters?: { status?: string; repoId?:
   if (filters?.parentRunId) {
     clauses.push('parent_run_id = ?');
     values.push(filters.parentRunId);
+  }
+  if (filters?.suggestionId) {
+    clauses.push('suggestion_id = ?');
+    values.push(filters.suggestionId);
   }
   // Default: hide archived unless explicitly requested
   if (filters?.archived === true) {

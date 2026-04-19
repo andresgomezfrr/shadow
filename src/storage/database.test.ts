@@ -562,6 +562,18 @@ describe('projects + entity cascade', () => {
     assert.deepEqual(after.repoIds, [repoB.id]);
   });
 
+  it('listRuns with suggestionId filter returns only runs for that suggestion', () => {
+    const repo = db.createRepo({ name: 'list-run-filter', path: '/tmp/list-run-filter' });
+    const sugA = db.createSuggestion({ repoId: repo.id, kind: 'plan', title: 'sA', summaryMd: 'sm' });
+    const sugB = db.createSuggestion({ repoId: repo.id, kind: 'plan', title: 'sB', summaryMd: 'sm' });
+    const runA = db.createRun({ repoId: repo.id, kind: 'execution', prompt: 'a', suggestionId: sugA.id });
+    db.createRun({ repoId: repo.id, kind: 'execution', prompt: 'b', suggestionId: sugB.id });
+
+    const onlyA = db.listRuns({ suggestionId: sugA.id, archived: undefined });
+    assert.equal(onlyA.length, 1);
+    assert.equal(onlyA[0].id, runA.id);
+  });
+
   it('buildRepoProjectsMap returns all non-archived projects indexed by repoId', () => {
     const repoA = db.createRepo({ name: 'map-a', path: '/tmp/map-a' });
     const repoB = db.createRepo({ name: 'map-b', path: '/tmp/map-b' });

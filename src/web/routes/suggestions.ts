@@ -71,7 +71,7 @@ export async function handleSuggestionRoutes(
       const suggestion = db.getSuggestion(contextMatch[1]);
       if (!suggestion) return json(res, { error: 'Suggestion not found' }, 404), true;
       const sourceObservation = suggestion.sourceObservationId ? db.getObservation(suggestion.sourceObservationId) : null;
-      const linkedRuns = db.listRuns({ archived: undefined }).filter(r => r.suggestionId === suggestion.id && !r.parentRunId);
+      const linkedRuns = db.listRuns({ suggestionId: suggestion.id, archived: undefined, limit: 50 }).filter(r => !r.parentRunId);
 
       // Compute rank score (momentum values cached 5min)
       const { computeRankScore } = await import('../../suggestion/ranking.js');
