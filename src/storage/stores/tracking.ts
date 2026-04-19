@@ -60,16 +60,23 @@ export function listRecentInteractions(db: DatabaseSync, limit = 20): Interactio
 
 // --- Event Queue ---
 
-const EVENT_DEDUP_WINDOW_MS = 15 * 60 * 1000; // 15min — skip duplicate events within this window
+export const EVENT_DEDUP_WINDOW_MS = 15 * 60 * 1000; // 15min — skip duplicate events within this window
 
-export function createEvent(db: DatabaseSync, input: { kind: string; priority?: number; payload?: Record<string, unknown> }): EventRecord | null {
+/**
+ * @param opts.now — wall-clock override for tests (audit T-06). Production
+ * callers omit it and the function uses Date.now(). Tests inject deterministic
+ * values to exercise the boundary at exactly 15min cutoff without being
+ * subject to scheduling jitter.
+ */
+export function createEvent(db: DatabaseSync, input: { kind: string; priority?: number; payload?: Record<string, unknown> }, opts?: { now?: number }): EventRecord | null {
+  const nowMs = opts?.now ?? Date.now();
   // Dedup: check for recent event with same kind + target within window.
   // targetId is canonical — derived from runId/suggestionId/observationId and
   // persisted in payload.$.targetId so dedup can use a json_extract index
   // instead of a LIKE scan (audit D-04).
   const targetId = (input.payload?.targetId ?? input.payload?.runId ?? input.payload?.suggestionId ?? input.payload?.observationId ?? null) as string | null;
   if (targetId) {
-    const cutoff = new Date(Date.now() - EVENT_DEDUP_WINDOW_MS).toISOString();
+    const cutoff = new Date(nowMs - EVENT_DEDUP_WINDOW_MS).toISOString();
     const existing = db
       .prepare(`SELECT id FROM event_queue WHERE kind = ? AND json_extract(payload_json, '$.targetId') = ? AND created_at > ? LIMIT 1`)
       .get(input.kind, targetId, cutoff) as { id: string } | undefined;
@@ -80,7 +87,7 @@ export function createEvent(db: DatabaseSync, input: { kind: string; priority?: 
     ? { ...(input.payload ?? {}), targetId }
     : (input.payload ?? {});
   const id = randomUUID();
-  const now = new Date().toISOString();
+  const now = new Date(nowMs).toISOString();
   db
     .prepare(
       'INSERT INTO event_queue (id, kind, priority, payload_json, created_at) VALUES (?, ?, ?, ?, ?)',
