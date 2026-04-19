@@ -40,7 +40,15 @@ export class EventBus {
 
     for (const client of this.clients) {
       try {
-        client.write(payload);
+        const ok = client.write(payload);
+        if (!ok) {
+          // TCP send buffer is full — client is slow or stalled. Kick it;
+          // EventSource will reconnect cleanly instead of us holding an
+          // unbounded in-memory queue (audit W-06).
+          console.error('[event-bus] dropping slow SSE client (write backpressure)');
+          try { client.end(); } catch { /* best-effort */ }
+          this.removeClient(client);
+        }
       } catch {
         this.removeClient(client);
       }
