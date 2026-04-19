@@ -4,6 +4,30 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-19 (Audit block 5C+5D — MCP polish + analysis bugs)
+
+Bloque combinado 5C+5D cierra 6 items: 4 de MCP polish (envelope shape, enum keys, defaults, descriptions) + 2 de analysis/LLM bugs (suggest validate dedup, deep-scan budget). Durante el context-load aparecieron 4 items de 5D ya cerrados (A-01, A-02, A-03, P-05) — marcados como "already done" en audit sin commit nuevo. 6 fixes + docs, 317 tests verdes en cada commit.
+
+- **Unified envelope shape `{ok, data?, error?}` [audit M-03]** (`src/mcp/tools/types.ts` + 8 tool files + 8 test files, commit `c05e076`) — 68 MCP tools evolucionaron independientemente a 5 shapes distintos (`{ok, ...data}`, `{isError, message}`, `{task, message}`, `{items, total}`, registro bare). Consumidor LLM no podía escribir un error-handling pattern único. Añadidos helpers `ok(data)` y `err(message)` en `types.ts` + type discriminated union `ToolResult<T>`. Migrados los 68 handlers: cada return pasa por `ok()` o `err()`. Tests (~200 asserts) reescritos: `result.X` → `result.data.X`, `result.isError` → `result.ok === false`, `result.message` → `result.error`. `server.ts` no tocado — hace JSON.stringify sin inspeccionar shape. 317 tests verdes. Commit atómico (cambio de contract no se puede splittear).
+
+- **profile_set enum keys [audit M-04]** (`src/mcp/tools/profile.ts`, commit `1562ee3`) — `ProfileSetSchema.key` aceptaba `z.string()`; validación real ocurría después con `ProfileUpdateSchema.safeParse({[key]: rawValue})` produciendo errores crípticos sobre shape si el LLM mandaba key inexistente. Enum explícito (`displayName`, `timezone`, `locale`, `proactivityLevel`) rechaza en el boundary con error claro.
+
+- **Defaults centralizados via `.default()` [audit M-07]** (`src/mcp/tools/data.ts`, `observations.ts`, `suggestions.ts`, commit `9c08217`) — Patrón `const X = rawX ?? Y` en handlers (16 callsites) dejaba los defaults invisibles al JSON schema exportado — Claude CLI no los veía. Movidos a Zod `.default(Y)`; handlers desestructuran directamente. Defaults derivados/condicionales (`limit = entityName ? 100 : limit`) se quedaron como estaban. Ahora el LLM consumer ve los defaults en la tool definition y sabe que puede omitir el param.
+
+- **Expanded tool descriptions [audit M-08]** (8 tool files, commit `6c17030`) — 54 descriptions ampliadas con pattern what+when para mejorar tool-selection accuracy del LLM consumer. 13 dejadas intactas (ya 120+ chars y claras, p.ej. `shadow_check_in`, `shadow_suggestions`). Trust-level suffixes preservados verbatim. No schemas, handlers, o tool names tocados.
+
+- **Suggest validate dedup por index [audit P-06]** (`src/analysis/schemas.ts`, `src/analysis/suggest.ts`, commit `eecc09f`) — Phase 2 dedup usaba `kept = Set<string>` con `title` como key; dos candidates con mismo título → segundo verdict pisaba al primero y el primer candidate se descartaba aunque el LLM lo hubiera aprobado. `SuggestValidateResponseSchema` añade `index` (0-based); dedup a `Set<number>`. Prompt renderiza `[index=N]` explícito y pide eco. Out-of-range indices logged + skipped. Fail-close path intacto.
+
+- **Deep scan budget + dismissPatterns limit [audit P-07]** (`src/daemon/handlers/suggest.ts`, commit `b6bddd7`) — Ni el deep scan ni el cross-project tenían cap explícito de tool calls; el LLM podía gastar 40-60 Read/Grep/Bash en exploración antes de escribir suggestions. Añadido "BUDGET: use at most 20 tool calls total. Prioritize breadth over depth" a ambos prompts. `dismissPatterns` capado a top 10 (con 30+ históricos el list completo era ruido y sobre-filtraba).
+
+**Already done, marked in audit (no commit)**:
+- A-01 notify dedup (throttle 24h con `last_notified_at`)
+- A-02 json-repair (beacon + balanced + retry + fail-close)
+- A-03 bond depth (DEPTH_ELIGIBLE_KINDS widen)
+- P-05 consolidate parse (safeParseJson)
+
+---
+
 ## Session 2026-04-19 (Audit block 5B — web perf)
 
 Bloque 5B cierra 4 bugs 🟠 alta de dashboard/web perf. Scope inicial era 6 (D-05, W-02, W-03, W-04, W-05, W-06); en el primer scan de contexto aparecieron dos ya cerrados (W-02 antes de 5B y W-05 antes del audit) — marcados en el audit sin commit nuevo. 3 fixes + 1 docs, 317 tests verdes (+2 nuevos).
