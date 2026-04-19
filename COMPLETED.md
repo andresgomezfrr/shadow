@@ -4,6 +4,24 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-19 (Audit block 5A — data safety & runner robustness)
+
+Bloque 5A cierra 5 bugs 🟠 alta del audit: 2 del runner (empty plan, parent aggregation) + 3 de DB (LIKE perf, cascade integrity, junction table). 5 commits + docs, 315 tests verdes (de 310 → +5 nuevos), daemon restart clean. Sin tocar schema para D-06 (política mixta SET NULL/CASCADE vía DELETE/UPDATE explícitos).
+
+- **Empty-in-disguise plan guard [audit R-05]** (`src/runner/plan-validation.ts` new + test, `src/runner/service.ts`, commit `22befb8`) — El guard previo `!effectivePlan.trim()` dejaba pasar respuestas tipo "No changes needed. The code is good." como planes válidos; el downstream execute alucinaba cambios sobre nada. Nuevo `isEmptyPlanInDisguise(plan)`: rechaza cuando falla AMBAS — sin estructura (sin bullet `-`/`*`, sin numbered `1.`, sin `file:`, sin `step N:`) Y con <200 chars de contenido real (tras strip de headings y blancos). Heading-only `# Plan\n## Summary\n` también cae (real content = 0 tras strip). Defense-in-depth contra ambos fallos individuales. 7 tests unitarios.
+
+- **Parent aggregation transaccional + withTransaction helper [audit R-06]** (`src/storage/database.ts`, `src/runner/service.ts`, commit `99c0fbe`) — Nuevo `ShadowDatabase.withTransaction(fn)`: BEGIN IMMEDIATE / COMMIT / auto-ROLLBACK en throw. Los 4 deleters existentes (Repo/Project/System/Contact) colapsan de 10 a 5 líneas cada uno. Tres bloques de parent-aggregation en runner (branch done/awaiting_pr/no_changes, empty-plan propagation, failure propagation) ahora atómicos — antes `transitionRun` + `updateRun` eran writes separados y un crash entre medias dejaba parent en estado inconsistente (p.ej. status=awaiting_pr pero finishedAt=null).
+
+- **event_queue dedup con json_extract [audit D-04]** (`src/storage/stores/tracking.ts`, `src/storage/migrations.ts` v54, commit `2eb8ce9`) — Dedup usaba `payload_json LIKE '%<targetId>%'` dentro de ventana 15min — full-scan + falso-positivo cuando un uuid era substring de otro. Reemplazado con `json_extract(payload_json, '$.targetId') = ?`. `createEvent` canonicaliza `targetId` en payload (derivado de runId/suggestionId/observationId). Migration v54 añade expression index en `(kind, json_extract(payload_json, '$.targetId'), created_at)`. Eventos viejos sin `$.targetId` quedan — window 15min los limpia antes de colisión.
+
+- **Code-level CASCADE en deleters [audit D-06]** (`src/storage/database.ts`, `src/storage/database.test.ts` +2, commit `25312df`) — Los 4 deleters hacían solo `DELETE FROM <entity>`; con `PRAGMA foreign_keys=ON` y sin CASCADE en schema, borrar un repo con memorias/observations/etc. tiraba FK constraint. Añadido cascade explícito dentro de `withTransaction`, con política mixta elegida por Andrés: **SET NULL** donde era nullable (memories.repo_id/system_id/contact_id, tasks.project_id — preserva conocimiento); **CASCADE DELETE** donde no era opción o el hijo es ruido (observations/runs — NOT NULL columns; suggestions/enrichment_cache — sin padre no aportan). No se tocó schema (recrear tablas con FTS5+vec0+triggers era caro e innecesario para 1 instalación activa).
+
+- **task_repo_links junction [audit D-03]** (`src/storage/migrations.ts` v55, `src/storage/stores/tasks.ts`, `src/storage/database.test.ts` +3, `CLAUDE.md`, commit `19c62e8`) — `listTasks`/`countTasks` filtraban repos via `LIKE '%<repoId>%'` sobre `tasks.repo_ids_json` — full scan en cada pagination call + falso-positivo con uuid substrings. Migration v55 crea `task_repo_links (task_id, repo_id)` con FK CASCADE en ambos lados + índice en repo_id. Big-bang: backfill desde el json + `DROP COLUMN repo_ids_json`. Reads usan subquery alias `json_group_array(repo_id) AS repo_ids_json` → `mapTask` unchanged. createTask/updateTask escriben al junction dentro de la transaction existente via helper `writeRepoLinks`. D-06 ya no toca el junction al borrar repo — el FK CASCADE lo limpia solo, y el task queda con `repoIds: []` o con los repos restantes.
+
+**Helper reutilizable** añadido al DB: `ShadowDatabase.withTransaction(fn)` — cualquier multi-write futuro puede usarlo en vez de repetir el patrón BEGIN/COMMIT/ROLLBACK.
+
+---
+
 ## Session 2026-04-19 (Audit F-14 — knowledge_summary synthesis)
 
 Feature nueva diferida al final del audit: nueva fase en `consolidate` que produce memorias `kind='knowledge_summary'` como síntesis narrativa del estado actual de conocimiento, complementaria (no redundante) a `meta_pattern` y a los digests. 4 commits + actualización audit, 303 tests verdes.
