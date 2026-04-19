@@ -27,7 +27,14 @@ export async function handleChronicleRoutes(
     const profile = db.ensureProfile();
     const currentTier = profile.bondTier;
     const now = new Date();
-    const elapsedDays = (now.getTime() - new Date(profile.bondResetAt).getTime()) / MS_PER_DAY;
+    // Calendar-day diff for "days together" — strip time and diff at midnight,
+    // with the reset day counted as day 1. Example: reset at 2026-04-13 10:00,
+    // today 2026-04-19 → days together = 7 (not 6, which is what a time-of-day-
+    // sensitive diff would return). See audit UI-26.
+    const resetDate = new Date(profile.bondResetAt);
+    const resetMidnight = new Date(resetDate.getFullYear(), resetDate.getMonth(), resetDate.getDate()).getTime();
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const daysTogether = Math.floor((todayMidnight - resetMidnight) / MS_PER_DAY) + 1;
     const quality =
       (profile.bondAxes.depth +
         profile.bondAxes.momentum +
@@ -70,7 +77,7 @@ export async function handleChronicleRoutes(
           name: nextTierInfo.name,
           requirements: {
             minDays: nextTierInfo.minDays,
-            daysElapsed: Math.floor(elapsedDays),
+            daysElapsed: daysTogether,
             qualityFloor: nextTierInfo.qualityFloor,
             currentQuality: Math.round(quality),
           },
