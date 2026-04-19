@@ -30,17 +30,45 @@ export function computeTimeAxis(now: Date, resetAt: string): number {
 }
 
 /**
+ * Whitelist of memory kinds that count toward the depth axis.
+ *
+ * Original set (4 kinds) was too narrow — every heartbeat/consolidate memory
+ * used a kind like 'convention', 'workflow', 'tech_stack' that was legitimate
+ * durable knowledge but invisible to the axis. A user with 300+ memories
+ * could stay at depth ≈ 2 forever. See audit A-03.
+ *
+ * Kinds are grouped:
+ *   - taught / correction / knowledge_summary / soul_reflection: explicit
+ *     teaching or reflection signals (unchanged).
+ *   - convention / preference / infrastructure / workflow / tech_stack /
+ *     design_decision / architecture: durable knowledge about the user's
+ *     environment, stack, and decision trail.
+ *   - pattern / insight / meta_pattern: emergent observations synthesized by
+ *     analysis jobs.
+ *
+ * Explicitly NOT included: ephemeral/transient kinds like 'thought',
+ * 'activity', or anything generated as passing session context.
+ */
+const DEPTH_ELIGIBLE_KINDS = [
+  'taught', 'correction', 'knowledge_summary', 'soul_reflection',
+  'convention', 'preference', 'infrastructure', 'workflow',
+  'tech_stack', 'design_decision', 'architecture',
+  'pattern', 'insight', 'meta_pattern',
+] as const;
+
+/**
  * Depth axis: saturating count of meaningful memories since reset.
  * Saturates: 60→63, 120→86, 240→98, asymptote 100.
  */
 export function computeDepthAxis(rawDb: DatabaseSync, resetAt: string): number {
+  const placeholders = DEPTH_ELIGIBLE_KINDS.map(() => '?').join(',');
   const row = rawDb
     .prepare(
       `SELECT COUNT(*) AS n FROM memories
        WHERE archived_at IS NULL AND created_at > ?
-         AND kind IN ('taught','correction','knowledge_summary','soul_reflection')`,
+         AND kind IN (${placeholders})`,
     )
-    .get(resetAt) as { n: number };
+    .get(resetAt, ...DEPTH_ELIGIBLE_KINDS) as { n: number };
   return Math.round(Math.min(100, 100 * (1 - Math.exp(-row.n / 60))));
 }
 
