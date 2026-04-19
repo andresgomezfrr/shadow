@@ -54,7 +54,7 @@ export function observationTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_observe',
-      description: 'Trigger an observation cycle. Optionally specify a repoId. Requires trust level >= 2.',
+      description: 'Trigger an on-demand observation cycle, optionally scoped to a single repoId. Use when the user wants Shadow to analyze recent activity right now instead of waiting for the next heartbeat. Requires trust level >= 2.',
       inputSchema: mcpSchema(ObserveSchema),
       handler: async (params) => {
 
@@ -89,7 +89,7 @@ export function observationTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_observation_ack',
-      description: 'Acknowledge an observation by ID, marking it as seen. Requires trust level >= 1.',
+      description: 'Acknowledge an observation by ID — marks it as seen without resolving (stays visible, dimmed). Use when the user has noted the finding but isn\'t acting on it yet. Requires trust level >= 1.',
       inputSchema: mcpSchema(ObservationIdSchema),
       handler: async (params) => {
 
@@ -104,7 +104,7 @@ export function observationTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_observation_resolve',
-      description: 'Resolve an observation by ID with an optional reason. Requires trust level >= 1.',
+      description: 'Resolve an observation by ID with an optional reason — marks it done and protects it from reopening by dedup. Use when the user has addressed the underlying issue or confirms it no longer applies. Requires trust level >= 1.',
       inputSchema: mcpSchema(ObservationResolveSchema),
       handler: async (params) => {
 
@@ -120,7 +120,7 @@ export function observationTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_observation_reopen',
-      description: 'Reopen a done or acknowledged observation, setting it back to open. Requires trust level >= 1.',
+      description: 'Reopen a done or acknowledged observation, setting it back to open so it re-surfaces in the default view. Use when the user realizes a previously-closed issue has returned or was resolved prematurely. Requires trust level >= 1.',
       inputSchema: mcpSchema(ObservationIdSchema),
       handler: async (params) => {
 

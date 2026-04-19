@@ -51,7 +51,7 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_suggest_accept',
-      description: 'Accept a suggestion by ID. Requires trust level >= 1.',
+      description: 'Accept a suggestion by ID with a category: execute (default — runs via the runner), manual (already implemented), planned (add to backlog as a task). Use when the user approves a suggestion and wants it acted on. Requires trust level >= 1.',
       inputSchema: mcpSchema(SuggestAcceptSchema),
       handler: async (params) => {
 
@@ -70,7 +70,7 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_suggest_dismiss',
-      description: 'Dismiss a suggestion by ID with an optional note. Requires trust level >= 1.',
+      description: 'Dismiss a suggestion by ID with an optional note and category (premature, over_engineering, already_handled, not_relevant, low_value, duplicate, wont_do). Use when the user rejects a suggestion; feedback is captured so dedup blocks similar future suggestions. Requires trust level >= 1.',
       inputSchema: mcpSchema(SuggestDismissSchema),
       handler: async (params) => {
 
@@ -89,7 +89,7 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_suggest_snooze',
-      description: 'Snooze a suggestion for a given number of hours. Requires trust level >= 1.',
+      description: 'Snooze a suggestion for a given number of hours (default 72) — hides it until the snooze expires, then it reopens. Use when the user wants to defer a suggestion without rejecting it. Requires trust level >= 1.',
       inputSchema: mcpSchema(SuggestSnoozeSchema),
       handler: async (params) => {
 

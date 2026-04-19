@@ -41,7 +41,7 @@ export function profileTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_profile',
-      description: 'Returns the current user profile.',
+      description: 'Returns the current user profile: displayName, timezone, locale, proactivityLevel, bondTier, bondAxes, focusMode. Use when you need to personalize responses, check active preferences, or confirm current bond state.',
       inputSchema: mcpSchema(ProfileReadSchema),
       handler: async () => {
         return ok(db.ensureProfile('default'));
@@ -110,7 +110,7 @@ export function profileTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_feedback',
-      description: 'List recent user feedback (thumbs up/down, dismiss reasons, archive reasons, corrections).',
+      description: 'List recent user feedback events: thumbs up/down, dismiss reasons, archive reasons, corrections — filterable by target kind (observation/suggestion/memory/run). Use when auditing how Shadow\'s output has been received or debugging why dedup/enforcement is behaving a certain way.',
       inputSchema: mcpSchema(FeedbackSchema),
       handler: async (params) => {
         const { targetKind, limit } = FeedbackSchema.parse(params);
@@ -123,7 +123,7 @@ export function profileTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_soul',
-      description: 'Read Shadow\'s current soul reflection — the synthesized understanding of the developer.',
+      description: 'Read Shadow\'s current soul reflection — the LLM-synthesized long-form understanding of the developer (voice, working style, values). Use when you want to ground your response in the accumulated persona or when the user asks what Shadow thinks of them.',
       inputSchema: mcpSchema(SoulReadSchema),
       handler: async () => {
         const all = db.listMemories({ archived: false });
@@ -138,7 +138,7 @@ export function profileTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_soul_update',
-      description: 'Update Shadow\'s soul reflection. Creates if first time, updates if exists. Requires trust level >= 1.',
+      description: 'Update Shadow\'s soul reflection with a new body (markdown). Creates the reflection if none exists yet, otherwise overwrites. Use from the reflect job or when the user explicitly asks to rewrite Shadow\'s understanding of them. Requires trust level >= 1.',
       inputSchema: mcpSchema(SoulUpdateSchema),
       handler: async (params) => {
 

@@ -71,7 +71,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     // ---- Events ----
     {
       name: 'shadow_events',
-      description: 'Returns pending (undelivered) events.',
+      description: 'Returns pending (undelivered) events from the notification queue — high-priority observations, completed runs, heartbeat findings. Use when surfacing proactive updates at the start of a conversation or when the user asks "what\'s new?".',
       inputSchema: mcpSchema(z.object({})),
       handler: async () => {
         return ok(db.listPendingEvents());
@@ -79,7 +79,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_events_ack',
-      description: 'Acknowledge all pending events. Requires trust level >= 1.',
+      description: 'Mark all pending events as delivered so they don\'t re-surface. Use after presenting events to the user or when clearing the notification queue on request. Requires trust level >= 1.',
       inputSchema: mcpSchema(z.object({})),
       handler: async () => {
 
@@ -91,7 +91,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     // ---- Search ----
     {
       name: 'shadow_search',
-      description: 'Unified semantic search across memories, observations, and suggestions using hybrid search (FTS5 + embeddings).',
+      description: 'Unified semantic + full-text search across memories, observations, and suggestions (FTS5 + embeddings, ranked via RRF). Use when the user asks "what do you know about X" or when you need to find relevant context across all knowledge types with a single call.',
       inputSchema: mcpSchema(SearchSchema),
       handler: async (params) => {
         const { query, types, limit } = SearchSchema.parse(params);
@@ -142,7 +142,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     // ---- Runs ----
     {
       name: 'shadow_run_list',
-      description: 'List task runs. Filter by status, repo, archived. Supports pagination.',
+      description: 'List task runs (executed work units) with filters for status, repo, and archived state. Use when the user wants to see recent executions, audit automation activity, or find a specific run to inspect.',
       inputSchema: mcpSchema(RunListSchema),
       handler: async (params) => {
         const { status, repoId, archived, limit, offset } = RunListSchema.parse(params);
@@ -153,7 +153,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_run_view',
-      description: 'View details of a specific run.',
+      description: 'View full details of a specific run by ID: prompt, status, diff stat, PR URL, verification results, confidence score, snapshot refs. Use when the user asks about a run or before deciding whether to archive/re-execute it.',
       inputSchema: mcpSchema(RunViewSchema),
       handler: async (params) => {
         const { runId } = RunViewSchema.parse(params);
@@ -178,7 +178,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
 
     {
       name: 'shadow_run_archive',
-      description: 'Archive a run so it no longer appears in the default workspace view. Requires trust level >= 1.',
+      description: 'Archive a run by ID so it no longer appears in the default workspace view. Use after the user has reviewed the outcome and wants it out of the active list (merged PR, verified done, abandoned). Requires trust level >= 1.',
       inputSchema: mcpSchema(RunArchiveSchema),
       handler: async (params) => {
         const { runId } = RunArchiveSchema.parse(params);
@@ -192,7 +192,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     // ---- Usage ----
     {
       name: 'shadow_usage',
-      description: 'Returns LLM token usage summary for a given period.',
+      description: 'Returns aggregated LLM token usage (input/output tokens, call counts, by-model breakdown) for a given period: day, week, or month. Use when the user asks about cost, budget, or which models Shadow has been using most.',
       inputSchema: mcpSchema(UsageSchema),
       handler: async (params) => {
         const { period: rawPeriod } = UsageSchema.parse(params);
@@ -264,7 +264,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_digests',
-      description: 'List previous digests. Optionally filter by kind.',
+      description: 'List previously generated digests (daily, weekly, brag) with their content and timestamps. Use when the user wants to revisit a past standup, 1:1 prep, or performance-review doc without regenerating it.',
       inputSchema: mcpSchema(DigestsSchema),
       handler: async (params) => {
         const { kind, limit: rawLimit } = DigestsSchema.parse(params);
@@ -278,7 +278,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     // ---- Enrichment ----
     {
       name: 'shadow_enrichment_config',
-      description: 'View enrichment configuration: available MCP servers, enabled status, interval, and recent cache entries.',
+      description: 'View enrichment job configuration: available MCP servers, enabled/disabled status per server, polling interval, and optionally recent cache entries. Use when debugging enrichment coverage or when the user asks which external sources Shadow is tapping.',
       inputSchema: mcpSchema(EnrichmentConfigSchema),
       handler: async (params) => {
         const { discoverMcpServerNames } = await import('../../observation/mcp-discovery.js');
@@ -320,7 +320,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_enrichment_query',
-      description: 'Query enrichment cache entries. Returns external context gathered from MCP tools.',
+      description: 'Query the enrichment cache for external context gathered from MCP tools (Jira tickets, GitHub PRs, Slack threads, etc). Filter by source, entity name, or unreported-only. Use when the user asks what Shadow has learned about a project from external systems.',
       inputSchema: mcpSchema(EnrichmentQuerySchema),
       handler: async (params) => {
         const { source, entityName, unreportedOnly, limit, offset } = EnrichmentQuerySchema.parse(params);

@@ -48,7 +48,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
   return [
     {
       name: 'shadow_tasks',
-      description: 'List tasks with optional filters (status, repoId, projectId). Returns task containers for ongoing work.',
+      description: 'List tasks (work containers) with optional filters: status (open/active/blocked/done), repoId, projectId. Use when the user asks what they\'re working on, what\'s blocked, or when you need a task ID for execute/close/update.',
       inputSchema: mcpSchema(ListTasksSchema),
       handler: async (params) => {
         const input = ListTasksSchema.parse(params);
@@ -102,7 +102,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_task_close',
-      description: 'Close a task (mark as done).',
+      description: 'Mark a task as done, setting closedAt and transitioning status to done. Use when the user confirms the work is complete. Task remains visible in the workspace; use shadow_task_archive to hide.',
       inputSchema: mcpSchema(TaskIdSchema),
       handler: async (params) => {
         const input = TaskIdSchema.parse(params);
@@ -114,7 +114,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_task_archive',
-      description: 'Archive a task to hide it from the workspace view. Requires trust level >= 1.',
+      description: 'Archive a task by ID to hide it from the default workspace view without deleting it. Use after the work is long-finished and the user wants a cleaner list. Requires trust level >= 1.',
       inputSchema: mcpSchema(TaskIdSchema),
       handler: async (params) => {
         const input = TaskIdSchema.parse(params);
@@ -126,7 +126,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_task_execute',
-      description: 'Create a run from a task — triggers automated execution of the task context. Requires trust level >= 2.',
+      description: 'Create a run from a task — spawns the runner to execute the task\'s context against its linked repos, and transitions the task to active. Use when the user wants Shadow to start working on a queued task autonomously. Requires trust level >= 2.',
       inputSchema: mcpSchema(TaskIdSchema),
       handler: async (params) => {
         const input = TaskIdSchema.parse(params);
@@ -147,7 +147,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_task_remove',
-      description: 'Permanently delete a task.',
+      description: 'Permanently delete a task by ID. Use only when the user explicitly wants the task gone (created in error, duplicate); prefer shadow_task_archive for completed work you want hidden.',
       inputSchema: mcpSchema(TaskIdSchema),
       handler: async (params) => {
         const input = TaskIdSchema.parse(params);

@@ -155,7 +155,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     // ---- Repos ----
     {
       name: 'shadow_repos',
-      description: 'Returns a list of tracked repositories. Optionally filter by name substring.',
+      description: 'Returns the list of tracked repositories with their metadata (name, path, default branch, commands). Use when the user asks which repos Shadow is watching or when you need a repo ID to pass to another tool.',
       inputSchema: mcpSchema(ReposSchema),
       handler: async (params) => {
         const { filter } = ReposSchema.parse(params);
@@ -169,7 +169,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_repo_add',
-      description: 'Register a new repository for Shadow to watch. Requires trust level >= 1.',
+      description: 'Register a new git repository for Shadow to watch, enabling observations, suggestions, and runs against it. Use when the user asks Shadow to track a repo they just cloned or started working on. Requires trust level >= 1.',
       inputSchema: mcpSchema(RepoAddSchema),
       handler: async (params) => {
 
@@ -203,7 +203,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_repo_update',
-      description: 'Update a tracked repository (name, commands, branch, etc). Requires trust level >= 1.',
+      description: 'Update a tracked repository\'s metadata: name, remote URL, default branch, language hint, or test/lint/build commands. Use when the user fixes wrong repo info or teaches Shadow how to run tests/build for that repo. Requires trust level >= 1.',
       inputSchema: mcpSchema(RepoUpdateSchema),
       handler: async (params) => {
 
@@ -224,7 +224,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_repo_remove',
-      description: 'Stop watching a repository. Requires trust level >= 1.',
+      description: 'Stop watching a repository by ID — removes it from tracking but keeps associated memories/observations. Use when the user abandons a repo or wants Shadow to ignore it. Requires trust level >= 1.',
       inputSchema: mcpSchema(RepoRemoveSchema),
       handler: async (params) => {
 
@@ -240,7 +240,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     // ---- Contacts ----
     {
       name: 'shadow_contacts',
-      description: 'Returns contacts. Optionally filter by team.',
+      description: 'Returns tracked team contacts (name, role, team, slack/email/github handles). Use when the user asks who\'s on a team, needs to look up a teammate\'s info, or you need a contact ID for linking to a project.',
       inputSchema: mcpSchema(ContactsSchema),
       handler: async (params) => {
         const { team } = ContactsSchema.parse(params);
@@ -249,7 +249,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_contact_add',
-      description: 'Add a team member to Shadow\'s contacts. Requires trust level >= 1.',
+      description: 'Add a team member to Shadow\'s contacts with role, team, and channels (slack/email/github). Use when the user introduces a new teammate or asks Shadow to remember someone for project attribution. Requires trust level >= 1.',
       inputSchema: mcpSchema(ContactAddSchema),
       handler: async (params) => {
 
@@ -270,7 +270,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_contact_update',
-      description: 'Update an existing contact. Requires trust level >= 1.',
+      description: 'Update an existing contact\'s fields (role change, team move, new handle, notes). Use when the user corrects contact info or a teammate changes role/team. Requires trust level >= 1.',
       inputSchema: mcpSchema(ContactUpdateSchema),
       handler: async (params) => {
 
@@ -287,7 +287,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_contact_remove',
-      description: 'Remove a contact. Requires trust level >= 1.',
+      description: 'Remove a contact from Shadow\'s tracked team by ID. Use when the user explicitly asks to delete someone (team departure, removed from scope). Requires trust level >= 1.',
       inputSchema: mcpSchema(ContactRemoveSchema),
       handler: async (params) => {
 
@@ -303,7 +303,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     // ---- Systems ----
     {
       name: 'shadow_systems',
-      description: 'Returns tracked systems. Optionally filter by kind.',
+      description: 'Returns tracked infrastructure systems (services, databases, queues, platforms) with their URLs, health checks, and debug guides. Use when the user asks what systems Shadow knows about or needs operational context for an outage/deploy question.',
       inputSchema: mcpSchema(SystemsSchema),
       handler: async (params) => {
         const { kind } = SystemsSchema.parse(params);
@@ -312,7 +312,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_system_add',
-      description: 'Register an infrastructure system or service with operational knowledge. Requires trust level >= 1.',
+      description: 'Register an infrastructure system or service with operational knowledge (URL, health check, logs location, deploy method, debug guide). Use when the user introduces a new service Shadow should know about for incident response or project linking. Requires trust level >= 1.',
       inputSchema: mcpSchema(SystemAddSchema),
       handler: async (params) => {
 
@@ -332,7 +332,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_system_remove',
-      description: 'Remove a registered system. Requires trust level >= 1.',
+      description: 'Remove a registered infrastructure system by ID. Use when the user decommissions a service or asks Shadow to stop tracking it. Requires trust level >= 1.',
       inputSchema: mcpSchema(SystemRemoveSchema),
       handler: async (params) => {
 
@@ -348,7 +348,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     // ---- Projects ----
     {
       name: 'shadow_projects',
-      description: 'Returns tracked projects. Optionally filter by status.',
+      description: 'Returns tracked projects (active by default) with their kind, status, and linked repo/system/contact counts. Use when the user asks what they\'re working on or when you need a project ID to scope other queries.',
       inputSchema: mcpSchema(ProjectsSchema),
       handler: async (params) => {
         const { status } = ProjectsSchema.parse(params);
@@ -357,7 +357,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_project_add',
-      description: 'Create a project that groups repos, systems, and contacts. Requires trust level >= 1.',
+      description: 'Create a project that groups repos, systems, and contacts under one umbrella (long-term, sprint, or task). Use when the user starts a new initiative or wants to organize related work for cross-entity queries. Requires trust level >= 1.',
       inputSchema: mcpSchema(ProjectAddSchema),
       handler: async (params) => {
 
@@ -376,7 +376,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_project_remove',
-      description: 'Remove a project. Requires trust level >= 1.',
+      description: 'Remove a project by ID — deletes the grouping but preserves the linked repos, systems, and contacts themselves. Use when the user explicitly ends or cancels a project. Requires trust level >= 1.',
       inputSchema: mcpSchema(ProjectRemoveSchema),
       handler: async (params) => {
 
@@ -390,7 +390,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_project_update',
-      description: 'Update a project (repos, systems, contacts, status, etc). Requires trust level >= 1.',
+      description: 'Update a project\'s metadata or linked entities (name, status, kind, repo/system/contact IDs, dates, notes). Use when the project scope shifts, a sprint closes, or entities get added/removed. Requires trust level >= 1.',
       inputSchema: mcpSchema(ProjectUpdateSchema),
       handler: async (params) => {
 
@@ -502,7 +502,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     // ---- Relations ----
     {
       name: 'shadow_relation_add',
-      description: 'Add a relationship between two entities (e.g., "repo X depends_on system Y"). Requires trust >= 1.',
+      description: 'Add a typed relationship between two entities (e.g., "repo X depends_on system Y", "project P owned_by contact C"). Use when the user describes how entities connect so Shadow can reason across the graph. Requires trust >= 1.',
       inputSchema: mcpSchema(RelationAddSchema),
       handler: async (params) => {
         const p = RelationAddSchema.parse(params);
@@ -518,7 +518,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_relation_list',
-      description: 'List entity relationships. Optionally filter by source/target type and ID.',
+      description: 'List typed relationships in the entity graph, filtered by source/target type, ID, or relation kind. Use when tracing dependencies, ownership, or "what depends on X?" style questions.',
       inputSchema: mcpSchema(RelationListSchema),
       handler: async (params) => {
         const p = RelationListSchema.parse(params);
@@ -533,7 +533,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_relation_remove',
-      description: 'Remove an entity relationship by ID. Requires trust >= 1.',
+      description: 'Remove an entity relationship by its ID. Use when the user corrects a wrongly-inferred relation or severs a dependency that no longer exists. Requires trust >= 1.',
       inputSchema: mcpSchema(RelationRemoveSchema),
       handler: async (params) => {
         const { relationId } = RelationRemoveSchema.parse(params);

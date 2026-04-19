@@ -65,7 +65,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_memory_search',
-      description: 'Searches Shadow memory using full-text search.',
+      description: 'Search Shadow\'s memory store using full-text search (FTS5) with ranking by relevance and access count. Use when the user references something you\'ve previously learned ("remember when...", "what did I tell you about X") or when you need background context for a task.',
       inputSchema: mcpSchema(MemorySearchSchema),
       handler: async (params) => {
         const { query, limit } = MemorySearchSchema.parse(params);
@@ -78,7 +78,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_memory_teach',
-      description: 'Teach Shadow something new by creating a memory entry. Requires trust level >= 1.',
+      description: 'Teach Shadow something new by creating a memory entry (tech stack, design decision, workflow, preference, team knowledge). Use when the user shares a fact that should persist across sessions. Link to an entity via entityType/entityId when the knowledge is repo/project/system-scoped. Requires trust level >= 1.',
       inputSchema: mcpSchema(MemoryTeachSchema),
       handler: async (params) => {
 
@@ -113,7 +113,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_memory_forget',
-      description: 'Archive (forget) a memory by ID with a reason. Requires trust level >= 1.',
+      description: 'Archive a memory by ID with an optional reason — Shadow stops using it in future recall. Use when the user says a memory is wrong, outdated, or irrelevant; the reason is captured as feedback for future dedup. Requires trust level >= 1.',
       inputSchema: mcpSchema(MemoryForgetSchema),
       handler: async (params) => {
 
@@ -133,7 +133,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_memory_update',
-      description: 'Update a memory: change layer, body, tags, kind, or scope. Requires trust level >= 1.',
+      description: 'Update an existing memory in place: change layer (hot/warm/cool/cold/core), body, kind, scope, or tags. Use when the user refines existing knowledge without creating a new entry, or when promoting a memory to core so it never decays. Requires trust level >= 1.',
       inputSchema: mcpSchema(MemoryUpdateSchema),
       handler: async (params) => {
 
@@ -160,7 +160,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_memory_list',
-      description: 'List memories with pagination. Default: limit 20, compact (no body). Use detail=true for full response.',
+      description: 'List memories with pagination, filterable by layer (core/hot/warm/cool/cold) and scope. Default: limit 20, compact (no body); pass detail=true for full bodyMd. Use when browsing what Shadow has learned rather than doing targeted search.',
       inputSchema: mcpSchema(MemoryListSchema),
       handler: async (params) => {
         const { layer, scope, limit, offset, detail } = MemoryListSchema.parse(params);

@@ -164,7 +164,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_status',
-      description: 'Returns a summary of Shadow status including trust level, repos, suggestions, events, and LLM usage.',
+      description: 'Returns a quick summary of Shadow\'s state: bond tier, bond axes, repo count, pending suggestions/events, and today\'s LLM usage. Use when the user asks how Shadow is doing or wants a one-glance health check without the full check_in payload.',
       inputSchema: mcpSchema(StatusSchema),
       handler: async () => {
         const profile = db.getProfile('default');
@@ -195,7 +195,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_available',
-      description: 'Exit focus mode, restore previous proactivity level. Requires trust level >= 1.',
+      description: 'Exit focus mode and restore the previous proactivity level. Use when the user signals they are done concentrating ("I\'m back", "done focusing") and wants normal Shadow responsiveness. Requires trust level >= 1.',
       inputSchema: mcpSchema(AvailableSchema),
       handler: async () => {
 
@@ -210,7 +210,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_alerts',
-      description: 'List active daemon alerts (backend health, version updates, etc).',
+      description: 'List active daemon alerts: backend health issues, version updates, disk pressure, etc. Use when investigating why the daemon is misbehaving or when the user asks what alerts are currently firing.',
       inputSchema: mcpSchema(StatusSchema),
       handler: async () => {
         const alerts = getDaemonState(config).alerts ?? [];
@@ -223,7 +223,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_alert_ack',
-      description: 'Acknowledge an alert — dims it on the status line but keeps it visible. Requires trust level >= 1.',
+      description: 'Acknowledge a daemon alert by ID — dims it on the status line but keeps it visible until auto-cleared. Use when the user has seen the alert and wants it muted without resolving the underlying condition. Requires trust level >= 1.',
       inputSchema: mcpSchema(AlertAckSchema),
       handler: async (params) => {
         const { id } = AlertAckSchema.parse(params);
@@ -241,7 +241,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_alert_resolve',
-      description: 'Manually resolve/dismiss an alert — removes it. Auto-managed alerts may reappear if the condition persists. Requires trust level >= 1.',
+      description: 'Manually resolve/dismiss a daemon alert by ID, removing it from the active list. Use when the user has fixed the underlying issue; auto-managed alerts may reappear if the condition persists. Requires trust level >= 1.',
       inputSchema: mcpSchema(AlertResolveSchema),
       handler: async (params) => {
         const { id } = AlertResolveSchema.parse(params);
