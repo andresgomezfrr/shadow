@@ -23,8 +23,8 @@ export function FeedTaskCard({ task, selected, onSelect }: Props) {
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm">📋</span>
         <Badge className={TASK_FEED_STATUS_COLORS[task.status] ?? 'text-text-dim bg-border'}>{task.status.replace('_', ' ')}</Badge>
-        {task.externalRefs.map((ref, i) => (
-          <Badge key={i} className="text-purple bg-purple/15">{ref.source.toUpperCase()} {ref.key}</Badge>
+        {task.externalRefs.map(ref => (
+          <Badge key={`${ref.source}-${ref.key}`} className="text-purple bg-purple/15">{ref.source.toUpperCase()} {ref.key}</Badge>
         ))}
         <span className="font-medium text-[13px] flex-1 min-w-0 truncate">{task.title}</span>
         {task.sessionId && (
