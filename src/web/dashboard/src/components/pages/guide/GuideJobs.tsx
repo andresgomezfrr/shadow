@@ -275,7 +275,7 @@ revalidate-suggestion (on-demand from Workspace)`}</pre>
 
           <JobCard
             name="pr-sync"
-            color="bg-fuchsia-400/20 text-fuchsia-300"
+            color="bg-stone-400/20 text-stone-300"
             purpose="Polls GitHub for awaiting_pr runs and finalizes their parent on merge or close. Runs gh pr view in parallel batches of 8 with a 30s per-batch timeout; skips when network is unavailable."
             trigger="Every 30min (gated on network + awaiting_pr count > 0)"
             model="None (IO only — gh CLI)"

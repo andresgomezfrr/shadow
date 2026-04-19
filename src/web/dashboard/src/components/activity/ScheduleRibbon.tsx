@@ -37,7 +37,7 @@ const TRIGGER_COLORS: Record<string, string> = {
   'auto-plan': 'bg-lime-500/15 text-lime-300 hover:bg-lime-500/25',
   'auto-execute': 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25',
   cleanup: 'bg-slate-400/15 text-slate-300 hover:bg-slate-400/25',
-  'pr-sync': 'bg-fuchsia-400/15 text-fuchsia-300 hover:bg-fuchsia-400/25',
+  'pr-sync': 'bg-stone-400/15 text-stone-300 hover:bg-stone-400/25',
   'version-check': 'bg-gray-400/15 text-gray-300 hover:bg-gray-400/25',
 };
 
