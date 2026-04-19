@@ -9,8 +9,8 @@ import { ProfileUpdateSchema } from '../../config/schema.js';
 const ProfileReadSchema = z.object({});
 
 const ProfileSetSchema = z.object({
-  key: z.string().describe('Profile field name (e.g., proactivityLevel, timezone, displayName)'),
-  value: z.string().describe('New value for the field'),
+  key: z.enum(['displayName', 'timezone', 'locale', 'proactivityLevel']).describe('Profile field to update. Allowed: displayName, timezone, locale, proactivityLevel (1-10).'),
+  value: z.string().describe('New value for the field (numeric fields accept string form, coerced server-side)'),
 });
 
 const FocusSchema = z.object({
