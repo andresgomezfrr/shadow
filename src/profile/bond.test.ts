@@ -1,13 +1,44 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { unlinkSync } from 'node:fs';
 import {
   computeTimeAxis,
   computeBondTier,
+  applyBondDelta,
   BOND_TIERS,
   BOND_TIER_NAMES,
   ZERO_AXES,
 } from './bond.js';
 import type { BondAxes } from '../storage/models.js';
+import { ConfigSchema } from '../config/schema.js';
+import type { ShadowConfig } from '../config/schema.js';
+import { ShadowDatabase } from '../storage/database.js';
+
+function createTestDb(): { db: ShadowDatabase; cleanup: () => void } {
+  const dbPath = join(tmpdir(), `shadow-bond-test-${randomUUID()}.db`);
+  const parsed = ConfigSchema.parse({});
+  const config: ShadowConfig = {
+    ...parsed,
+    resolvedDataDir: tmpdir(),
+    resolvedDatabasePath: dbPath,
+    resolvedArtifactsDir: join(tmpdir(), 'artifacts'),
+  };
+  const db = new ShadowDatabase(config);
+  return {
+    db,
+    cleanup: () => {
+      db.close();
+      try { unlinkSync(dbPath); } catch {}
+      try { unlinkSync(dbPath + '-wal'); } catch {}
+      try { unlinkSync(dbPath + '-shm'); } catch {}
+    },
+  };
+}
+
+const DAY_MS = 86_400_000;
 
 // ---------------------------------------------------------------------------
 // computeTimeAxis
@@ -122,5 +153,127 @@ describe('BOND_TIERS', () => {
     assert.equal(BOND_TIER_NAMES[1], 'observer');
     assert.equal(BOND_TIER_NAMES[5], 'shadow');
     assert.equal(BOND_TIER_NAMES[8], 'kindred');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyBondDelta — recompute axes from data, persist, evaluate tier (T-05)
+//
+// applyBondDelta is data-driven: eventKind is informational. The function
+// recomputes axes from DB state (memories, runs, feedback, etc.), persists,
+// and re-evaluates tier with monotonicity. Tests cover the persistence +
+// evaluation paths; LLM-driven hooks (chronicle lore, unlocks) fire-and-
+// forget and are out of scope.
+// ---------------------------------------------------------------------------
+
+describe('applyBondDelta', () => {
+  let db: ShadowDatabase;
+  let cleanup: () => void;
+  before(() => { ({ db, cleanup } = createTestDb()); });
+  after(() => cleanup());
+
+  it('empty DB → axes are zero, tier stays at 1, no rise', () => {
+    db.ensureProfile('default');
+    const result = applyBondDelta(db, 'check_in');
+    assert.equal(result.tier, 1);
+    assert.equal(result.rose, false);
+    assert.equal(result.oldTier, 1);
+    assert.equal(result.axes.depth, 0);
+    assert.equal(result.axes.momentum, 0);
+  });
+
+  it('persists recomputed axes back to user_profile', () => {
+    db.ensureProfile('default');
+    // Seed durable memory so depth axis is non-zero
+    db.createMemory({
+      layer: 'core', scope: 'global', kind: 'taught',
+      title: 'Persisted axes test', bodyMd: 'A persisted teach.', sourceType: 'mcp',
+    });
+
+    applyBondDelta(db, 'memory_taught');
+
+    const profile = db.ensureProfile('default');
+    assert.ok(profile.bondAxes.depth > 0, 'depth axis should reflect new memory');
+  });
+
+  it('depth axis grows with durable memory kinds', () => {
+    db.ensureProfile('default');
+    const before = applyBondDelta(db, 'check_in').axes.depth;
+
+    for (let i = 0; i < 5; i++) {
+      db.createMemory({
+        layer: 'core', scope: 'global', kind: 'workflow',
+        title: `wf-${i}`, bodyMd: `body-${i}`, sourceType: 'heartbeat',
+      });
+    }
+
+    const after = applyBondDelta(db, 'memory_taught').axes.depth;
+    assert.ok(after > before, `depth should grow: before=${before} after=${after}`);
+  });
+
+  it('eventKind is informational — same DB state → same axes regardless of kind', () => {
+    db.ensureProfile('default');
+    const r1 = applyBondDelta(db, 'check_in');
+    const r2 = applyBondDelta(db, 'run_success');
+    const r3 = applyBondDelta(db, 'inactivity_day');
+    assert.deepEqual(r1.axes, r2.axes);
+    assert.deepEqual(r2.axes, r3.axes);
+  });
+
+  it('monotonicity: tier never decreases when DB state weakens', () => {
+    // Seed a high-tier profile, then call applyBondDelta with no supporting data
+    db.ensureProfile('default');
+    db.updateProfile('default', { bondTier: 5 });
+
+    const result = applyBondDelta(db, 'inactivity_day');
+
+    assert.equal(result.tier, 5, 'tier should stay at 5 even with low axes');
+    assert.equal(result.rose, false);
+    assert.equal(result.oldTier, 5);
+  });
+
+  it('tier rise: backdate resetAt + seed all axes → tier rises with rose=true', () => {
+    // Fresh DB to isolate from prior tests
+    const { db: db2, cleanup: cleanup2 } = createTestDb();
+    try {
+      db2.ensureProfile('default');
+      const repo = db2.createRepo({ name: 'tier-rise-repo', path: '/tmp/tier-rise-repo' });
+      // Backdate reset to comfortably satisfy tier 2 minDays=3 (and beyond)
+      const tenDaysAgo = new Date(Date.now() - 10 * DAY_MS).toISOString();
+      db2.updateProfile('default', { bondResetAt: tenDaysAgo, bondTier: 1 });
+
+      // Seed depth via durable memories
+      for (let i = 0; i < 30; i++) {
+        db2.createMemory({
+          layer: 'core', scope: 'global', kind: 'workflow',
+          title: `seed-mem-${i}`, bodyMd: `body-${i}`, sourceType: 'heartbeat',
+        });
+      }
+      // Seed momentum via done observations + feedback
+      for (let i = 0; i < 30; i++) {
+        const obs = db2.createObservation({
+          repoId: repo.id, kind: 'improvement', title: `obs-${i}`,
+        });
+        db2.updateObservationStatus(obs.id, 'done');
+      }
+      const sug = db2.createSuggestion({
+        repoId: repo.id, kind: 'refactor', title: 'tier-rise sug', summaryMd: 'sm',
+      });
+      // Seed alignment via accept feedback
+      for (let i = 0; i < 10; i++) {
+        db2.createFeedback({ targetKind: 'suggestion', targetId: sug.id, action: 'accept' });
+      }
+
+      const result = applyBondDelta(db2, 'memory_taught');
+      assert.ok(result.tier >= 2, `expected tier >= 2, got ${result.tier} (axes=${JSON.stringify(result.axes)})`);
+      assert.equal(result.rose, true);
+      assert.equal(result.oldTier, 1);
+
+      // Verify persistence: re-read profile, tier should match
+      const profile = db2.ensureProfile('default');
+      assert.equal(profile.bondTier, result.tier);
+    } finally {
+      cleanup2();
+    }
   });
 });
