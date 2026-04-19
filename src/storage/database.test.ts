@@ -485,6 +485,42 @@ describe('projects + entity cascade', () => {
     assert.ok(afterDelete);
     assert.equal(afterDelete.entities.length, 0);
   });
+
+  it('deleteRepo cascades observations/suggestions/runs and SETs NULL on memories.repo_id', () => {
+    const repo = db.createRepo({ name: 'cascade-target', path: '/tmp/cascade-target' });
+
+    const mem = db.createMemory({
+      layer: 'hot', scope: 'repo', kind: 'workflow',
+      title: 'mem title', bodyMd: 'body', sourceType: 'test',
+      repoId: repo.id,
+    });
+    const obs = db.createObservation({ repoId: repo.id, kind: 'improvement', title: 'obs title' });
+    const sug = db.createSuggestion({ repoId: repo.id, kind: 'plan', title: 'sug title', summaryMd: 'sm' });
+    const run = db.createRun({ repoId: repo.id, kind: 'execution', prompt: 'do it' });
+
+    db.deleteRepo(repo.id);
+
+    assert.equal(db.getRepo(repo.id), null);
+    // memories: SET NULL
+    const memAfter = db.getMemory(mem.id);
+    assert.ok(memAfter, 'memory should survive deleteRepo');
+    assert.equal(memAfter.repoId, null);
+    // observations/suggestions/runs: CASCADE
+    assert.equal(db.getObservation(obs.id), null);
+    assert.equal(db.getSuggestion(sug.id), null);
+    assert.equal(db.getRun(run.id), null);
+  });
+
+  it('deleteProject SETs NULL on tasks.project_id', () => {
+    const project = db.createProject({ name: 'cascade-proj' });
+    const task = db.createTask({ title: 'task-linked', projectId: project.id });
+
+    db.deleteProject(project.id);
+
+    const taskAfter = db.getTask(task.id);
+    assert.ok(taskAfter, 'task should survive deleteProject');
+    assert.equal(taskAfter.projectId, null);
+  });
 });
 
 // ---------------------------------------------------------------------------

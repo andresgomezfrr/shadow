@@ -225,6 +225,17 @@ export class ShadowDatabase {
   updateRepo(id: string, updates: Partial<Pick<RepoRecord, 'name' | 'remoteUrl' | 'defaultBranch' | 'languageHint' | 'testCommand' | 'lintCommand' | 'buildCommand' | 'lastObservedAt' | 'lastFetchedAt' | 'lastRemoteHead' | 'contextMd' | 'contextUpdatedAt'>>): void { return entities.updateRepo(this.database, id, updates); }
   deleteRepo(id: string): void {
     this.withTransaction(() => {
+      // Cascade children (audit D-06):
+      //   - memories.repo_id: SET NULL (knowledge may still apply without the repo)
+      //   - suggestions / observations / runs: CASCADE (noise/orphan without the repo,
+      //     and observations.repo_id + runs.repo_id are NOT NULL so SET NULL is impossible)
+      //   - enrichment_cache rows targeting this repo: CASCADE
+      this.database.prepare('UPDATE memories SET repo_id = NULL WHERE repo_id = ?').run(id);
+      this.database.prepare('DELETE FROM suggestions WHERE repo_id = ?').run(id);
+      this.database.prepare('DELETE FROM observations WHERE repo_id = ?').run(id);
+      this.database.prepare('DELETE FROM runs WHERE repo_id = ?').run(id);
+      this.database.prepare(`DELETE FROM enrichment_cache WHERE entity_type = 'repo' AND entity_id = ?`).run(id);
+
       entities.deleteRepo(this.database, id);
       knowledge.removeEntityReferences(this.database, 'repo', id);
       relations.deleteRelationsFor(this.database, 'repo', id);
@@ -242,6 +253,9 @@ export class ShadowDatabase {
   updateSystem(id: string, updates: Partial<Pick<SystemRecord, 'name' | 'kind' | 'url' | 'description' | 'accessMethod' | 'healthCheck' | 'logsLocation' | 'deployMethod' | 'debugGuide' | 'lastCheckedAt'>>): void { return entities.updateSystem(this.database, id, updates); }
   deleteSystem(id: string): void {
     this.withTransaction(() => {
+      // memories.system_id SET NULL — knowledge preserved even if the system is gone
+      this.database.prepare('UPDATE memories SET system_id = NULL WHERE system_id = ?').run(id);
+      this.database.prepare(`DELETE FROM enrichment_cache WHERE entity_type = 'system' AND entity_id = ?`).run(id);
       entities.deleteSystem(this.database, id);
       knowledge.removeEntityReferences(this.database, 'system', id);
       relations.deleteRelationsFor(this.database, 'system', id);
@@ -257,6 +271,9 @@ export class ShadowDatabase {
   updateProject(id: string, updates: Partial<Pick<ProjectRecord, 'name' | 'kind' | 'description' | 'status' | 'repoIds' | 'systemIds' | 'contactIds' | 'startDate' | 'endDate' | 'notesMd' | 'contextMd' | 'contextUpdatedAt'>>): ProjectRecord { return entities.updateProject(this.database, id, updates); }
   deleteProject(id: string): void {
     this.withTransaction(() => {
+      // tasks.project_id SET NULL — tasks may still be meaningful without the project
+      this.database.prepare('UPDATE tasks SET project_id = NULL WHERE project_id = ?').run(id);
+      this.database.prepare(`DELETE FROM enrichment_cache WHERE entity_type = 'project' AND entity_id = ?`).run(id);
       entities.deleteProject(this.database, id);
       knowledge.removeEntityReferences(this.database, 'project', id);
       relations.deleteRelationsFor(this.database, 'project', id);
@@ -274,6 +291,9 @@ export class ShadowDatabase {
   updateContact(id: string, updates: Partial<Pick<ContactRecord, 'name' | 'role' | 'team' | 'email' | 'slackId' | 'githubHandle' | 'notesMd' | 'preferredChannel' | 'lastMentionedAt'>>): void { return entities.updateContact(this.database, id, updates); }
   deleteContact(id: string): void {
     this.withTransaction(() => {
+      // memories.contact_id SET NULL — memories about interactions may still apply
+      this.database.prepare('UPDATE memories SET contact_id = NULL WHERE contact_id = ?').run(id);
+      this.database.prepare(`DELETE FROM enrichment_cache WHERE entity_type = 'contact' AND entity_id = ?`).run(id);
       entities.deleteContact(this.database, id);
       knowledge.removeEntityReferences(this.database, 'contact', id);
       relations.deleteRelationsFor(this.database, 'contact', id);
