@@ -28,21 +28,21 @@ describe('shadow_repos', () => {
   after(() => cleanup());
 
   it('returns empty list', async () => {
-    const result = await callTool(tools, 'shadow_repos', {}) as unknown[];
-    assert.equal(result.length, 0);
+    const result = await callTool(tools, 'shadow_repos', {}) as { data: unknown[] };
+    assert.equal(result.data.length, 0);
   });
 
   it('returns repos', async () => {
     seedRepo(db, { name: 'alpha' });
     seedRepo(db, { name: 'beta' });
-    const result = await callTool(tools, 'shadow_repos', {}) as any[];
-    assert.equal(result.length, 2);
+    const result = await callTool(tools, 'shadow_repos', {}) as { data: any[] };
+    assert.equal(result.data.length, 2);
   });
 
   it('filters by name', async () => {
-    const result = await callTool(tools, 'shadow_repos', { filter: 'alpha' }) as any[];
-    assert.equal(result.length, 1);
-    assert.equal(result[0].name, 'alpha');
+    const result = await callTool(tools, 'shadow_repos', { filter: 'alpha' }) as { data: any[] };
+    assert.equal(result.data.length, 1);
+    assert.equal(result.data[0].name, 'alpha');
   });
 });
 
@@ -60,21 +60,21 @@ describe('shadow_repo_add', () => {
   after(() => cleanup());
 
   it('rejects nonexistent path', async () => {
-    const result = await callTool(tools, 'shadow_repo_add', { path: '/nonexistent/path/xyz' }) as Record<string, unknown>;
-    assert.equal(result.isError, true);
-    assert.ok((result.message as string).includes('does not exist'));
+    const result = await callTool(tools, 'shadow_repo_add', { path: '/nonexistent/path/xyz' }) as any;
+    assert.equal(result.ok, false);
+    assert.ok((result.error as string).includes('does not exist'));
   });
 
   it('adds repo from real git directory', async () => {
     const result = await callTool(tools, 'shadow_repo_add', { path: GIT_ROOT, name: 'shadow-test' }) as any;
-    assert.ok(result.id);
-    assert.equal(result.name, 'shadow-test');
+    assert.ok(result.data.id);
+    assert.equal(result.data.name, 'shadow-test');
   });
 
   it('rejects duplicate path', async () => {
-    const result = await callTool(tools, 'shadow_repo_add', { path: GIT_ROOT }) as Record<string, unknown>;
-    assert.equal(result.isError, true);
-    assert.ok((result.message as string).includes('already registered'));
+    const result = await callTool(tools, 'shadow_repo_add', { path: GIT_ROOT }) as any;
+    assert.equal(result.ok, false);
+    assert.ok((result.error as string).includes('already registered'));
   });
 });
 
@@ -98,15 +98,15 @@ describe('shadow_repo_update', () => {
 
   it('rejects empty update', async () => {
     const repo = seedRepo(db);
-    const result = await callTool(tools, 'shadow_repo_update', { repoId: repo.id }) as Record<string, unknown>;
-    assert.equal(result.isError, true);
+    const result = await callTool(tools, 'shadow_repo_update', { repoId: repo.id }) as any;
+    assert.equal(result.ok, false);
   });
 
   it('updates fields', async () => {
     const repo = seedRepo(db);
     const result = await callTool(tools, 'shadow_repo_update', { repoId: repo.id, testCommand: 'npm test', languageHint: 'ts' }) as any;
-    assert.equal(result.testCommand, 'npm test');
-    assert.equal(result.languageHint, 'ts');
+    assert.equal(result.data.testCommand, 'npm test');
+    assert.equal(result.data.languageHint, 'ts');
   });
 });
 
@@ -130,7 +130,7 @@ describe('shadow_repo_remove', () => {
 
   it('removes repo', async () => {
     const repo = seedRepo(db);
-    const result = await callTool(tools, 'shadow_repo_remove', { repoId: repo.id }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_repo_remove', { repoId: repo.id }) as any;
     assert.equal(result.ok, true);
     assert.equal(db.getRepo(repo.id), null);
   });
@@ -154,21 +154,21 @@ describe('shadow_contacts', () => {
   after(() => cleanup());
 
   it('returns empty', async () => {
-    const result = await callTool(tools, 'shadow_contacts', {}) as unknown[];
-    assert.equal(result.length, 0);
+    const result = await callTool(tools, 'shadow_contacts', {}) as { data: unknown[] };
+    assert.equal(result.data.length, 0);
   });
 
   it('returns contacts', async () => {
     seedContact(db, { name: 'Alice', team: 'backend' });
     seedContact(db, { name: 'Bob', team: 'frontend' });
-    const result = await callTool(tools, 'shadow_contacts', {}) as any[];
-    assert.equal(result.length, 2);
+    const result = await callTool(tools, 'shadow_contacts', {}) as { data: any[] };
+    assert.equal(result.data.length, 2);
   });
 
   it('filters by team', async () => {
-    const result = await callTool(tools, 'shadow_contacts', { team: 'backend' }) as any[];
-    assert.ok(result.length >= 1);
-    assert.ok(result.every((c: any) => c.team === 'backend'));
+    const result = await callTool(tools, 'shadow_contacts', { team: 'backend' }) as { data: any[] };
+    assert.ok(result.data.length >= 1);
+    assert.ok(result.data.every((c: any) => c.team === 'backend'));
   });
 });
 
@@ -190,15 +190,15 @@ describe('shadow_contact_add', () => {
       name: 'Carol', role: 'SRE', team: 'platform', email: 'carol@test.com',
       githubHandle: 'caroldev', slackId: 'U123',
     }) as any;
-    assert.ok(result.id);
-    assert.equal(result.name, 'Carol');
-    assert.equal(result.team, 'platform');
+    assert.ok(result.data.id);
+    assert.equal(result.data.name, 'Carol');
+    assert.equal(result.data.team, 'platform');
   });
 
   it('rejects duplicate name', async () => {
-    const result = await callTool(tools, 'shadow_contact_add', { name: 'Carol' }) as Record<string, unknown>;
-    assert.equal(result.isError, true);
-    assert.ok((result.message as string).includes('already exists'));
+    const result = await callTool(tools, 'shadow_contact_add', { name: 'Carol' }) as any;
+    assert.equal(result.ok, false);
+    assert.ok((result.error as string).includes('already exists'));
   });
 });
 
@@ -223,8 +223,8 @@ describe('shadow_contact_update', () => {
   it('updates fields', async () => {
     const contact = seedContact(db, { name: 'Dave' });
     const result = await callTool(tools, 'shadow_contact_update', { contactId: contact.id, role: 'Lead', team: 'infra' }) as any;
-    assert.equal(result.role, 'Lead');
-    assert.equal(result.team, 'infra');
+    assert.equal(result.data.role, 'Lead');
+    assert.equal(result.data.team, 'infra');
   });
 });
 
@@ -248,7 +248,7 @@ describe('shadow_contact_remove', () => {
 
   it('removes contact', async () => {
     const contact = seedContact(db);
-    const result = await callTool(tools, 'shadow_contact_remove', { contactId: contact.id }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_contact_remove', { contactId: contact.id }) as any;
     assert.equal(result.ok, true);
     assert.equal(db.getContact(contact.id), null);
   });
@@ -272,16 +272,16 @@ describe('shadow_systems', () => {
   after(() => cleanup());
 
   it('returns empty', async () => {
-    const result = await callTool(tools, 'shadow_systems', {}) as unknown[];
-    assert.equal(result.length, 0);
+    const result = await callTool(tools, 'shadow_systems', {}) as { data: unknown[] };
+    assert.equal(result.data.length, 0);
   });
 
   it('filters by kind', async () => {
     seedSystem(db, { name: 'Redis', kind: 'database' });
     seedSystem(db, { name: 'Auth API', kind: 'service' });
-    const result = await callTool(tools, 'shadow_systems', { kind: 'database' }) as any[];
-    assert.ok(result.length >= 1);
-    assert.ok(result.every((s: any) => s.kind === 'database'));
+    const result = await callTool(tools, 'shadow_systems', { kind: 'database' }) as { data: any[] };
+    assert.ok(result.data.length >= 1);
+    assert.ok(result.data.every((s: any) => s.kind === 'database'));
   });
 });
 
@@ -303,9 +303,9 @@ describe('shadow_system_add', () => {
       name: 'Kafka', kind: 'queue', url: 'kafka://localhost:9092',
       healthCheck: 'kafkacat -b localhost', deployMethod: 'helm upgrade',
     }) as any;
-    assert.ok(result.id);
-    assert.equal(result.name, 'Kafka');
-    assert.equal(result.kind, 'queue');
+    assert.ok(result.data.id);
+    assert.equal(result.data.name, 'Kafka');
+    assert.equal(result.data.kind, 'queue');
   });
 });
 
@@ -329,7 +329,7 @@ describe('shadow_system_remove', () => {
 
   it('removes system', async () => {
     const system = seedSystem(db);
-    const result = await callTool(tools, 'shadow_system_remove', { systemId: system.id }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_system_remove', { systemId: system.id }) as any;
     assert.equal(result.ok, true);
   });
 });
@@ -352,20 +352,20 @@ describe('shadow_projects', () => {
   after(() => cleanup());
 
   it('returns empty', async () => {
-    const result = await callTool(tools, 'shadow_projects', {}) as unknown[];
-    assert.equal(result.length, 0);
+    const result = await callTool(tools, 'shadow_projects', {}) as { data: unknown[] };
+    assert.equal(result.data.length, 0);
   });
 
   it('returns projects', async () => {
     seedProject(db);
     seedProject(db, { status: 'completed' });
-    const result = await callTool(tools, 'shadow_projects', {}) as any[];
-    assert.ok(result.length >= 1);
+    const result = await callTool(tools, 'shadow_projects', {}) as { data: any[] };
+    assert.ok(result.data.length >= 1);
   });
 
   it('filters by status', async () => {
-    const result = await callTool(tools, 'shadow_projects', { status: 'completed' }) as any[];
-    assert.ok(result.every((p: any) => p.status === 'completed'));
+    const result = await callTool(tools, 'shadow_projects', { status: 'completed' }) as { data: any[] };
+    assert.ok(result.data.every((p: any) => p.status === 'completed'));
   });
 });
 
@@ -384,10 +384,10 @@ describe('shadow_project_add', () => {
 
   it('creates project with defaults', async () => {
     const result = await callTool(tools, 'shadow_project_add', { name: 'My Project' }) as any;
-    assert.ok(result.id);
-    assert.equal(result.name, 'My Project');
-    assert.equal(result.kind, 'long-term');
-    assert.equal(result.status, 'active');
+    assert.ok(result.data.id);
+    assert.equal(result.data.name, 'My Project');
+    assert.equal(result.data.kind, 'long-term');
+    assert.equal(result.data.status, 'active');
   });
 
   it('creates project with linked entities', async () => {
@@ -397,8 +397,8 @@ describe('shadow_project_add', () => {
       name: 'Linked Project', kind: 'sprint',
       repoIds: [repo.id], systemIds: [system.id],
     }) as any;
-    assert.deepEqual(result.repoIds, [repo.id]);
-    assert.deepEqual(result.systemIds, [system.id]);
+    assert.deepEqual(result.data.repoIds, [repo.id]);
+    assert.deepEqual(result.data.systemIds, [system.id]);
   });
 });
 
@@ -423,8 +423,8 @@ describe('shadow_project_update', () => {
   it('updates fields', async () => {
     const project = seedProject(db);
     const result = await callTool(tools, 'shadow_project_update', { projectId: project.id, status: 'on-hold', description: 'paused' }) as any;
-    assert.equal(result.status, 'on-hold');
-    assert.equal(result.description, 'paused');
+    assert.equal(result.data.status, 'on-hold');
+    assert.equal(result.data.description, 'paused');
   });
 });
 
@@ -448,7 +448,7 @@ describe('shadow_project_remove', () => {
 
   it('removes project', async () => {
     const project = seedProject(db);
-    const result = await callTool(tools, 'shadow_project_remove', { projectId: project.id }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_project_remove', { projectId: project.id }) as any;
     assert.equal(result.ok, true);
     assert.equal(db.getProject(project.id), null);
   });
@@ -475,9 +475,9 @@ describe('shadow_active_projects', () => {
   after(() => cleanup());
 
   it('returns empty when no projects', async () => {
-    const result = await callTool(tools, 'shadow_active_projects', {}) as unknown[];
-    assert.ok(Array.isArray(result));
-    assert.equal(result.length, 0);
+    const result = await callTool(tools, 'shadow_active_projects', {}) as { data: unknown[] };
+    assert.ok(Array.isArray(result.data));
+    assert.equal(result.data.length, 0);
   });
 });
 
@@ -495,7 +495,7 @@ describe('shadow_project_detail', () => {
   after(() => cleanup());
 
   it('returns not-found', async () => {
-    const result = await callTool(tools, 'shadow_project_detail', { projectId: 'nonexistent' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_project_detail', { projectId: 'nonexistent' }) as any;
     assert.ok(result.error);
   });
 
@@ -504,17 +504,17 @@ describe('shadow_project_detail', () => {
     const system = seedSystem(db);
     const project = seedProject(db, { repoIds: [repo.id], systemIds: [system.id] });
     const result = await callTool(tools, 'shadow_project_detail', { projectId: project.id }) as any;
-    assert.equal(result.name, project.name);
-    assert.equal(result.repos.length, 1);
-    assert.equal(result.systems.length, 1);
-    assert.ok('counts' in result);
-    assert.ok('momentum' in result);
+    assert.equal(result.data.name, project.name);
+    assert.equal(result.data.repos.length, 1);
+    assert.equal(result.data.systems.length, 1);
+    assert.ok('counts' in result.data);
+    assert.ok('momentum' in result.data);
   });
 
   it('returns detail by name', async () => {
     const project = seedProject(db, { name: 'Unique Project Name' });
     const result = await callTool(tools, 'shadow_project_detail', { name: 'Unique Project Name' }) as any;
-    assert.equal(result.id, project.id);
+    assert.equal(result.data.id, project.id);
   });
 });
 
@@ -541,8 +541,8 @@ describe('shadow_relation_add', () => {
     const result = await callTool(tools, 'shadow_relation_add', {
       sourceType: 'repo', sourceId: repo.id, relation: 'uses', targetType: 'system', targetId: system.id,
     }) as any;
-    assert.ok(result.id);
-    assert.equal(result.relation, 'uses');
+    assert.ok(result.data.id);
+    assert.equal(result.data.relation, 'uses');
   });
 });
 
@@ -567,14 +567,14 @@ describe('shadow_relation_list', () => {
   after(() => cleanup());
 
   it('lists all relations', async () => {
-    const result = await callTool(tools, 'shadow_relation_list', {}) as any[];
-    assert.ok(result.length >= 1);
+    const result = await callTool(tools, 'shadow_relation_list', {}) as { data: any[] };
+    assert.ok(result.data.length >= 1);
   });
 
   it('filters by sourceId', async () => {
-    const result = await callTool(tools, 'shadow_relation_list', { sourceId: repoId }) as any[];
-    assert.ok(result.length >= 1);
-    assert.ok(result.every((r: any) => r.sourceId === repoId));
+    const result = await callTool(tools, 'shadow_relation_list', { sourceId: repoId }) as { data: any[] };
+    assert.ok(result.data.length >= 1);
+    assert.ok(result.data.every((r: any) => r.sourceId === repoId));
   });
 });
 
@@ -595,7 +595,7 @@ describe('shadow_relation_remove', () => {
     const repo = seedRepo(db);
     const system = seedSystem(db);
     const rel = db.createRelation({ sourceType: 'repo', sourceId: repo.id, relation: 'uses', targetType: 'system', targetId: system.id, sourceOrigin: 'manual' });
-    const result = await callTool(tools, 'shadow_relation_remove', { relationId: rel.id }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_relation_remove', { relationId: rel.id }) as any;
     assert.equal(result.ok, true);
   });
 });

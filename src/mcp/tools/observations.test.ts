@@ -25,46 +25,46 @@ describe('shadow_observations', () => {
   after(() => cleanup());
 
   it('returns empty for fresh DB', async () => {
-    const result = await callTool(tools, 'shadow_observations', {}) as { items: unknown[]; total: number };
-    assert.equal(result.items.length, 0);
-    assert.equal(result.total, 0);
+    const result = await callTool(tools, 'shadow_observations', {}) as { data: { items: unknown[]; total: number } };
+    assert.equal(result.data.items.length, 0);
+    assert.equal(result.data.total, 0);
   });
 
   it('returns observations after seeding', async () => {
     seedObservation(db, repoId, { title: 'obs-A', kind: 'risk' });
     seedObservation(db, repoId, { title: 'obs-B', kind: 'improvement' });
-    const result = await callTool(tools, 'shadow_observations', {}) as { items: any[]; total: number };
-    assert.equal(result.items.length, 2);
-    assert.equal(result.total, 2);
+    const result = await callTool(tools, 'shadow_observations', {}) as { data: { items: any[]; total: number } };
+    assert.equal(result.data.items.length, 2);
+    assert.equal(result.data.total, 2);
   });
 
   it('filters by status', async () => {
     const obs = seedObservation(db, repoId, { title: 'obs-done' });
     db.updateObservationStatus(obs.id, 'done');
-    const open = await callTool(tools, 'shadow_observations', { status: 'open' }) as { items: any[]; total: number };
-    assert.ok(open.items.every((o: any) => o.status === 'open'));
-    const done = await callTool(tools, 'shadow_observations', { status: 'done' }) as { items: any[]; total: number };
-    assert.ok(done.items.length >= 1);
-    assert.ok(done.items.every((o: any) => o.status === 'done'));
+    const open = await callTool(tools, 'shadow_observations', { status: 'open' }) as { data: { items: any[]; total: number } };
+    assert.ok(open.data.items.every((o: any) => o.status === 'open'));
+    const done = await callTool(tools, 'shadow_observations', { status: 'done' }) as { data: { items: any[]; total: number } };
+    assert.ok(done.data.items.length >= 1);
+    assert.ok(done.data.items.every((o: any) => o.status === 'done'));
   });
 
   it('filters by kind', async () => {
-    const result = await callTool(tools, 'shadow_observations', { kind: 'risk' }) as { items: any[]; total: number };
-    assert.ok(result.items.every((o: any) => o.kind === 'risk'));
+    const result = await callTool(tools, 'shadow_observations', { kind: 'risk' }) as { data: { items: any[]; total: number } };
+    assert.ok(result.data.items.every((o: any) => o.kind === 'risk'));
   });
 
   it('pagination works', async () => {
-    const page1 = await callTool(tools, 'shadow_observations', { limit: 1, offset: 0 }) as { items: any[]; total: number };
-    assert.equal(page1.items.length, 1);
-    assert.ok(page1.total >= 2);
-    const page2 = await callTool(tools, 'shadow_observations', { limit: 1, offset: 1 }) as { items: any[]; total: number };
-    assert.equal(page2.items.length, 1);
-    assert.notEqual(page1.items[0].id, page2.items[0].id);
+    const page1 = await callTool(tools, 'shadow_observations', { limit: 1, offset: 0 }) as { data: { items: any[]; total: number } };
+    assert.equal(page1.data.items.length, 1);
+    assert.ok(page1.data.total >= 2);
+    const page2 = await callTool(tools, 'shadow_observations', { limit: 1, offset: 1 }) as { data: { items: any[]; total: number } };
+    assert.equal(page2.data.items.length, 1);
+    assert.notEqual(page1.data.items[0].id, page2.data.items[0].id);
   });
 
   it('compact mode omits detail', async () => {
-    const result = await callTool(tools, 'shadow_observations', { detail: false }) as { items: any[] };
-    const item = result.items[0];
+    const result = await callTool(tools, 'shadow_observations', { detail: false }) as { data: { items: any[] } };
+    const item = result.data.items[0];
     assert.ok(item.id);
     assert.ok(item.title);
     assert.equal(item.bodyMd, undefined, 'compact should not include bodyMd');
@@ -72,8 +72,8 @@ describe('shadow_observations', () => {
   });
 
   it('detail mode includes full fields', async () => {
-    const result = await callTool(tools, 'shadow_observations', { detail: true }) as { items: any[] };
-    const item = result.items[0];
+    const result = await callTool(tools, 'shadow_observations', { detail: true }) as { data: { items: any[] } };
+    const item = result.data.items[0];
     assert.ok(item.id);
     assert.ok(item.title);
     // detail mode returns the full record, which includes createdAt, updatedAt, etc.
@@ -102,22 +102,22 @@ describe('shadow_observe', () => {
   after(() => cleanup());
 
   it('observes specific repo', async () => {
-    const result = await callTool(tools, 'shadow_observe', { repoId }) as Record<string, unknown>;
-    assert.equal(result.triggered, true);
-    assert.equal(result.repoId, repoId);
+    const result = await callTool(tools, 'shadow_observe', { repoId }) as any;
+    assert.equal(result.data.triggered, true);
+    assert.equal(result.data.repoId, repoId);
     const repo = db.getRepo(repoId)!;
     assert.ok(repo.lastObservedAt);
   });
 
   it('returns error for nonexistent repo', async () => {
-    const result = await callTool(tools, 'shadow_observe', { repoId: 'nonexistent-id' }) as Record<string, unknown>;
-    assert.equal(result.isError, true);
+    const result = await callTool(tools, 'shadow_observe', { repoId: 'nonexistent-id' }) as any;
+    assert.equal(result.ok, false);
   });
 
   it('observes all repos without repoId', async () => {
-    const result = await callTool(tools, 'shadow_observe', {}) as Record<string, unknown>;
-    assert.equal(result.triggered, true);
-    assert.ok((result.repoCount as number) >= 1);
+    const result = await callTool(tools, 'shadow_observe', {}) as any;
+    assert.equal(result.data.triggered, true);
+    assert.ok((result.data.repoCount as number) >= 1);
   });
 });
 
@@ -148,9 +148,9 @@ describe('shadow_observation_ack', () => {
 
   it('acknowledges open observation', async () => {
     const obs = seedObservation(db, repoId);
-    const result = await callTool(tools, 'shadow_observation_ack', { observationId: obs.id }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_observation_ack', { observationId: obs.id }) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.status, 'acknowledged');
+    assert.equal(result.data.status, 'acknowledged');
     const updated = db.getObservation(obs.id)!;
     assert.equal(updated.status, 'acknowledged');
   });
@@ -158,8 +158,8 @@ describe('shadow_observation_ack', () => {
   it('rejects ack on non-open observation', async () => {
     const obs = seedObservation(db, repoId);
     db.updateObservationStatus(obs.id, 'acknowledged');
-    const result = await callTool(tools, 'shadow_observation_ack', { observationId: obs.id }) as Record<string, unknown>;
-    assert.equal(result.isError, true);
+    const result = await callTool(tools, 'shadow_observation_ack', { observationId: obs.id }) as any;
+    assert.equal(result.ok, false);
   });
 });
 
@@ -190,9 +190,9 @@ describe('shadow_observation_resolve', () => {
 
   it('resolves observation and creates feedback', async () => {
     const obs = seedObservation(db, repoId);
-    const result = await callTool(tools, 'shadow_observation_resolve', { observationId: obs.id, reason: 'fixed it' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_observation_resolve', { observationId: obs.id, reason: 'fixed it' }) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.status, 'done');
+    assert.equal(result.data.status, 'done');
     const updated = db.getObservation(obs.id)!;
     assert.equal(updated.status, 'done');
     const feedback = db.listFeedback('observation');
@@ -202,8 +202,8 @@ describe('shadow_observation_resolve', () => {
   it('rejects resolve on already-done observation', async () => {
     const obs = seedObservation(db, repoId);
     db.updateObservationStatus(obs.id, 'done');
-    const result = await callTool(tools, 'shadow_observation_resolve', { observationId: obs.id }) as Record<string, unknown>;
-    assert.equal(result.isError, true);
+    const result = await callTool(tools, 'shadow_observation_resolve', { observationId: obs.id }) as any;
+    assert.equal(result.ok, false);
   });
 });
 
@@ -235,16 +235,16 @@ describe('shadow_observation_reopen', () => {
   it('reopens done observation', async () => {
     const obs = seedObservation(db, repoId);
     db.updateObservationStatus(obs.id, 'done');
-    const result = await callTool(tools, 'shadow_observation_reopen', { observationId: obs.id }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_observation_reopen', { observationId: obs.id }) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.status, 'open');
+    assert.equal(result.data.status, 'open');
     const updated = db.getObservation(obs.id)!;
     assert.equal(updated.status, 'open');
   });
 
   it('rejects reopen on already-open observation', async () => {
     const obs = seedObservation(db, repoId);
-    const result = await callTool(tools, 'shadow_observation_reopen', { observationId: obs.id }) as Record<string, unknown>;
-    assert.equal(result.isError, true);
+    const result = await callTool(tools, 'shadow_observation_reopen', { observationId: obs.id }) as any;
+    assert.equal(result.ok, false);
   });
 });

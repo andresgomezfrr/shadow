@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { mcpSchema, type McpTool, type ToolContext } from './types.js';
+import { mcpSchema, ok, err, type McpTool, type ToolContext } from './types.js';
 
 const SuggestionsSchema = z.object({
   status: z.string().describe('Filter by status: open (default), accepted, dismissed, snoozed').optional(),
@@ -42,15 +42,15 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
         const detail = rawDetail ?? false;
         const items = db.listSuggestions({ status, repoId, projectId, limit, offset });
         const total = db.countSuggestions({ status, repoId, projectId });
-        if (detail) return { items, total };
-        return {
+        if (detail) return ok({ items, total });
+        return ok({
           items: items.map(s => ({
             id: s.id, kind: s.kind, title: s.title, status: s.status,
             impactScore: s.impactScore, confidenceScore: s.confidenceScore,
             repoIds: s.repoIds, entities: s.entities, createdAt: s.createdAt,
           })),
           total,
-        };
+        });
       },
     },
     {
@@ -63,14 +63,14 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
         const category = rawCategory ?? 'execute';
         const suggestion = db.getSuggestion(suggestionId);
         if (!suggestion) {
-          return { isError: true, message: `Suggestion not found: ${suggestionId}` };
+          return err(`Suggestion not found: ${suggestionId}`);
         }
 
         const { acceptSuggestion } = await import('../../suggestion/engine.js');
         const result = acceptSuggestion(db, suggestionId, category);
-        if (!result.ok) return { isError: true, message: 'Cannot accept — suggestion not open' };
+        if (!result.ok) return err('Cannot accept — suggestion not open');
 
-        return { accepted: true, suggestionId, runCreated: result.runCreated };
+        return ok({ accepted: true, suggestionId, runCreated: result.runCreated });
       },
     },
     {
@@ -82,14 +82,14 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
         const { suggestionId, note, category } = SuggestDismissSchema.parse(params);
         const suggestion = db.getSuggestion(suggestionId);
         if (!suggestion) {
-          return { isError: true, message: `Suggestion not found: ${suggestionId}` };
+          return err(`Suggestion not found: ${suggestionId}`);
         }
 
         const { dismissSuggestion } = await import('../../suggestion/engine.js');
         const result = await dismissSuggestion(db, suggestionId, note, category);
-        if (!result.ok) return { isError: true, message: 'Cannot dismiss — suggestion not open' };
+        if (!result.ok) return err('Cannot dismiss — suggestion not open');
 
-        return { dismissed: true, suggestionId };
+        return ok({ dismissed: true, suggestionId });
       },
     },
     {
@@ -102,15 +102,15 @@ export function suggestionTools(ctx: ToolContext): McpTool[] {
         const hours = rawHours ?? 72;
         const suggestion = db.getSuggestion(suggestionId);
         if (!suggestion) {
-          return { isError: true, message: `Suggestion not found: ${suggestionId}` };
+          return err(`Suggestion not found: ${suggestionId}`);
         }
 
         const { snoozeSuggestion } = await import('../../suggestion/engine.js');
         const until = new Date(Date.now() + hours * 3600_000).toISOString();
         const result = snoozeSuggestion(db, suggestionId, until);
-        if (!result.ok) return { isError: true, message: 'Cannot snooze — suggestion not open' };
+        if (!result.ok) return err('Cannot snooze — suggestion not open');
 
-        return { snoozed: true, suggestionId, until };
+        return ok({ snoozed: true, suggestionId, until });
       },
     },
   ];

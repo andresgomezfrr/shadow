@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { mcpSchema, type McpTool, type ToolContext } from './types.js';
+import { mcpSchema, ok, err, type McpTool, type ToolContext } from './types.js';
 import { ProfileUpdateSchema } from '../../config/schema.js';
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ export function profileTools(ctx: ToolContext): McpTool[] {
       description: 'Returns the current user profile.',
       inputSchema: mcpSchema(ProfileReadSchema),
       handler: async () => {
-        return db.ensureProfile('default');
+        return ok(db.ensureProfile('default'));
       },
     },
 
@@ -60,12 +60,12 @@ export function profileTools(ctx: ToolContext): McpTool[] {
         const { key, value: rawValue } = ProfileSetSchema.parse(params);
         const parsed = ProfileUpdateSchema.safeParse({ [key]: rawValue });
         if (!parsed.success) {
-          return { isError: true, message: `Invalid value for ${key}: ${parsed.error.issues.map(i => i.message).join(', ')}` };
+          return err(`Invalid value for ${key}: ${parsed.error.issues.map(i => i.message).join(', ')}`);
         }
         const parsedValue = (parsed.data as Record<string, unknown>)[key];
 
         db.updateProfile('default', { [key]: parsedValue });
-        return { ok: true, set: key, value: parsedValue };
+        return ok({ set: key, value: parsedValue });
       },
     },
 
@@ -88,7 +88,7 @@ export function profileTools(ctx: ToolContext): McpTool[] {
             const unit = match[2].toLowerCase();
             const maxHours = 168; // 1 week
             const hours = unit.startsWith('h') ? amount : amount / 60;
-            if (hours > maxHours) return { isError: true, message: `Duration too long (max ${maxHours}h)` };
+            if (hours > maxHours) return err(`Duration too long (max ${maxHours}h)`);
             const ms = unit.startsWith('h') ? amount * 60 * 60 * 1000 : amount * 60 * 1000;
             focusUntil = new Date(Date.now() + ms).toISOString();
           }
@@ -97,12 +97,11 @@ export function profileTools(ctx: ToolContext): McpTool[] {
         const profile = db.ensureProfile();
         db.updateProfile('default', { focusMode: 'focus', focusUntil });
 
-        return {
-          ok: true,
+        return ok({
           mode: 'focus',
           previousProactivity: profile.proactivityLevel,
           until: focusUntil ?? 'indefinite (use shadow_available to exit)',
-        };
+        });
       },
     },
 
@@ -115,7 +114,7 @@ export function profileTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(FeedbackSchema),
       handler: async (params) => {
         const { targetKind, limit } = FeedbackSchema.parse(params);
-        return db.listFeedback(targetKind, limit ?? 30);
+        return ok(db.listFeedback(targetKind, limit ?? 30));
       },
     },
 
@@ -129,8 +128,8 @@ export function profileTools(ctx: ToolContext): McpTool[] {
       handler: async () => {
         const all = db.listMemories({ archived: false });
         const soul = all.find(m => m.kind === 'soul_reflection');
-        if (!soul) return { exists: false, body: null };
-        return { exists: true, body: soul.bodyMd, updatedAt: soul.updatedAt };
+        if (!soul) return ok({ exists: false, body: null });
+        return ok({ exists: true, body: soul.bodyMd, updatedAt: soul.updatedAt });
       },
     },
 
@@ -148,14 +147,14 @@ export function profileTools(ctx: ToolContext): McpTool[] {
         const existing = all.find(m => m.kind === 'soul_reflection');
         if (existing) {
           db.updateMemory(existing.id, { bodyMd: body });
-          return { ok: true, action: 'updated', memoryId: existing.id };
+          return ok({ action: 'updated', memoryId: existing.id });
         }
         const mem = db.createMemory({
           layer: 'core', scope: 'personal', kind: 'soul_reflection',
           title: 'Shadow soul reflection', bodyMd: body,
           sourceType: 'reflect', confidenceScore: 95, relevanceScore: 1.0,
         });
-        return { ok: true, action: 'created', memoryId: mem.id };
+        return ok({ action: 'created', memoryId: mem.id });
       },
     },
   ];

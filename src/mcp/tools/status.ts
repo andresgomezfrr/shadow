@@ -1,7 +1,7 @@
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
-import { mcpSchema, type McpTool, type ToolContext } from './types.js';
+import { mcpSchema, ok, err, type McpTool, type ToolContext } from './types.js';
 import { applyBondDelta } from '../../profile/bond.js';
 import { getDaemonState } from '../../daemon/runtime.js';
 
@@ -115,7 +115,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
           contextKnowledge = coreMems.map(m => ({ title: m.title, kind: m.kind, snippet: m.bodyMd.slice(0, 150) }));
         }
 
-        return {
+        return ok({
           displayName: profile.displayName,
           locale: profile.locale,
           bondTier: profile.bondTier,
@@ -155,7 +155,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
             severity: a.severity,
             since: a.since,
           })),
-        };
+        });
       },
     },
 
@@ -172,7 +172,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
         const pendingSuggestions = db.countPendingSuggestions();
         const pendingEvents = db.listPendingEvents();
         const usage = db.getUsageSummary('day');
-        return {
+        return ok({
           bondTier: profile?.bondTier ?? 1,
           bondAxes: profile?.bondAxes ?? { time: 0, depth: 0, momentum: 0, alignment: 0, autonomy: 0 },
           bondResetAt: profile?.bondResetAt ?? null,
@@ -186,7 +186,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
             totalOutputTokens: usage.totalOutputTokens,
             totalCalls: usage.totalCalls,
           },
-        };
+        });
       },
     },
 
@@ -201,7 +201,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
 
         db.updateProfile('default', { focusMode: null, focusUntil: null });
         const profile = db.ensureProfile();
-        return { ok: true, mode: 'available', proactivityLevel: profile.proactivityLevel };
+        return ok({ mode: 'available', proactivityLevel: profile.proactivityLevel });
       },
     },
 
@@ -214,7 +214,7 @@ export function statusTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(StatusSchema),
       handler: async () => {
         const alerts = getDaemonState(config).alerts ?? [];
-        return { alerts, count: alerts.length };
+        return ok({ alerts, count: alerts.length });
       },
     },
 
@@ -229,10 +229,10 @@ export function statusTools(ctx: ToolContext): McpTool[] {
         const { id } = AlertAckSchema.parse(params);
         const alerts = getDaemonState(config).alerts ?? [];
         const alert = alerts.find(a => a.id === id);
-        if (!alert) return { ok: false, error: `Alert "${id}" not found` };
+        if (!alert) return err(`Alert "${id}" not found`);
         const actionsPath = resolve(config.resolvedDataDir, 'alert-actions.jsonl');
         appendFileSync(actionsPath, JSON.stringify({ action: 'ack', id }) + '\n', 'utf-8');
-        return { ok: true, id, action: 'acked' };
+        return ok({ id, action: 'acked' });
       },
     },
 
@@ -247,10 +247,10 @@ export function statusTools(ctx: ToolContext): McpTool[] {
         const { id } = AlertResolveSchema.parse(params);
         const alerts = getDaemonState(config).alerts ?? [];
         const alert = alerts.find(a => a.id === id);
-        if (!alert) return { ok: false, error: `Alert "${id}" not found` };
+        if (!alert) return err(`Alert "${id}" not found`);
         const actionsPath = resolve(config.resolvedDataDir, 'alert-actions.jsonl');
         appendFileSync(actionsPath, JSON.stringify({ action: 'resolve', id }) + '\n', 'utf-8');
-        return { ok: true, id, action: 'resolved' };
+        return ok({ id, action: 'resolved' });
       },
     },
   ];

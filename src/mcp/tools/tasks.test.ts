@@ -24,30 +24,30 @@ describe('shadow_tasks', () => {
   after(() => cleanup());
 
   it('returns empty for fresh DB', async () => {
-    const result = await callTool(tools, 'shadow_tasks', {}) as { tasks: unknown[]; total: number };
-    assert.equal(result.tasks.length, 0);
-    assert.equal(result.total, 0);
+    const result = await callTool(tools, 'shadow_tasks', {}) as { data: { tasks: unknown[]; total: number } };
+    assert.equal(result.data.tasks.length, 0);
+    assert.equal(result.data.total, 0);
   });
 
   it('returns tasks after creation', async () => {
     seedTask(db, [repoId]);
     seedTask(db, [repoId]);
-    const result = await callTool(tools, 'shadow_tasks', {}) as { tasks: any[]; total: number };
-    assert.equal(result.tasks.length, 2);
+    const result = await callTool(tools, 'shadow_tasks', {}) as { data: { tasks: any[]; total: number } };
+    assert.equal(result.data.tasks.length, 2);
   });
 
   it('filters by status', async () => {
     db.createTask({ title: 'blocked-task', status: 'blocked', repoIds: [repoId] });
-    const result = await callTool(tools, 'shadow_tasks', { status: 'blocked' }) as { tasks: any[]; total: number };
-    assert.ok(result.tasks.length >= 1);
-    assert.ok(result.tasks.every((t: any) => t.status === 'blocked'));
+    const result = await callTool(tools, 'shadow_tasks', { status: 'blocked' }) as { data: { tasks: any[]; total: number } };
+    assert.ok(result.data.tasks.length >= 1);
+    assert.ok(result.data.tasks.every((t: any) => t.status === 'blocked'));
   });
 
   it('filters by projectId', async () => {
     const project = seedProject(db);
     db.createTask({ title: 'project-task', projectId: project.id, repoIds: [repoId] });
-    const result = await callTool(tools, 'shadow_tasks', { projectId: project.id }) as { tasks: any[] };
-    assert.ok(result.tasks.length >= 1);
+    const result = await callTool(tools, 'shadow_tasks', { projectId: project.id }) as { data: { tasks: any[] } };
+    assert.ok(result.data.tasks.length >= 1);
   });
 });
 
@@ -71,10 +71,10 @@ describe('shadow_task_create', () => {
   after(() => cleanup());
 
   it('creates task with minimal fields', async () => {
-    const result = await callTool(tools, 'shadow_task_create', { title: 'Simple task' }) as { task: any; message: string };
-    assert.ok(result.task.id);
-    assert.equal(result.task.title, 'Simple task');
-    assert.equal(result.task.status, 'open');
+    const result = await callTool(tools, 'shadow_task_create', { title: 'Simple task' }) as { data: { task: any; message: string } };
+    assert.ok(result.data.task.id);
+    assert.equal(result.data.task.title, 'Simple task');
+    assert.equal(result.data.task.status, 'open');
   });
 
   it('creates task with all optional fields', async () => {
@@ -85,20 +85,20 @@ describe('shadow_task_create', () => {
       repoIds: [repoId],
       sessionId: 'session-123',
       sessionRepoPath: '/tmp/test',
-    }) as { task: any };
-    assert.equal(result.task.title, 'Full task');
-    assert.equal(result.task.status, 'active');
-    assert.equal(result.task.contextMd, '## Context\nSome markdown');
-    assert.deepEqual(result.task.repoIds, [repoId]);
+    }) as { data: { task: any } };
+    assert.equal(result.data.task.title, 'Full task');
+    assert.equal(result.data.task.status, 'active');
+    assert.equal(result.data.task.contextMd, '## Context\nSome markdown');
+    assert.deepEqual(result.data.task.repoIds, [repoId]);
   });
 
   it('creates task with external refs', async () => {
     const result = await callTool(tools, 'shadow_task_create', {
       title: 'Jira task',
       externalRefs: [{ source: 'jira', key: 'PROJ-123', url: 'https://jira.example.com/PROJ-123' }],
-    }) as { task: any };
-    assert.ok(result.task.externalRefs.length === 1);
-    assert.equal(result.task.externalRefs[0].source, 'jira');
+    }) as { data: { task: any } };
+    assert.ok(result.data.task.externalRefs.length === 1);
+    assert.equal(result.data.task.externalRefs[0].source, 'jira');
   });
 });
 
@@ -126,29 +126,29 @@ describe('shadow_task_update', () => {
 
   it('updates status', async () => {
     const task = seedTask(db);
-    const result = await callTool(tools, 'shadow_task_update', { id: task.id, status: 'active' }) as { task: any };
-    assert.equal(result.task.status, 'active');
+    const result = await callTool(tools, 'shadow_task_update', { id: task.id, status: 'active' }) as { data: { task: any } };
+    assert.equal(result.data.task.status, 'active');
   });
 
   it('sets closedAt when status becomes done', async () => {
     const task = seedTask(db);
-    const result = await callTool(tools, 'shadow_task_update', { id: task.id, status: 'done' }) as { task: any };
-    assert.equal(result.task.status, 'done');
-    assert.ok(result.task.closedAt);
+    const result = await callTool(tools, 'shadow_task_update', { id: task.id, status: 'done' }) as { data: { task: any } };
+    assert.equal(result.data.task.status, 'done');
+    assert.ok(result.data.task.closedAt);
   });
 
   it('clears closedAt when reopened from done', async () => {
     const task = seedTask(db);
     await callTool(tools, 'shadow_task_update', { id: task.id, status: 'done' });
-    const result = await callTool(tools, 'shadow_task_update', { id: task.id, status: 'open' }) as { task: any };
-    assert.equal(result.task.status, 'open');
-    assert.equal(result.task.closedAt, null);
+    const result = await callTool(tools, 'shadow_task_update', { id: task.id, status: 'open' }) as { data: { task: any } };
+    assert.equal(result.data.task.status, 'open');
+    assert.equal(result.data.task.closedAt, null);
   });
 
   it('updates title', async () => {
     const task = seedTask(db);
-    const result = await callTool(tools, 'shadow_task_update', { id: task.id, title: 'New title' }) as { task: any };
-    assert.equal(result.task.title, 'New title');
+    const result = await callTool(tools, 'shadow_task_update', { id: task.id, title: 'New title' }) as { data: { task: any } };
+    assert.equal(result.data.task.title, 'New title');
   });
 });
 
@@ -176,10 +176,10 @@ describe('shadow_task_close', () => {
 
   it('closes task', async () => {
     const task = seedTask(db);
-    const result = await callTool(tools, 'shadow_task_close', { id: task.id }) as { task: any; message: string };
-    assert.equal(result.task.status, 'done');
-    assert.ok(result.task.closedAt);
-    assert.ok(result.message.includes(task.title));
+    const result = await callTool(tools, 'shadow_task_close', { id: task.id }) as { data: { task: any; message: string } };
+    assert.equal(result.data.task.status, 'done');
+    assert.ok(result.data.task.closedAt);
+    assert.ok(result.data.message.includes(task.title));
   });
 });
 
@@ -207,9 +207,9 @@ describe('shadow_task_archive', () => {
 
   it('archives task', async () => {
     const task = seedTask(db);
-    const result = await callTool(tools, 'shadow_task_archive', { id: task.id }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_task_archive', { id: task.id }) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.archived, true);
+    assert.equal(result.data.archived, true);
     const updated = db.getTask(task.id)!;
     assert.equal(updated.archived, true);
   });
@@ -241,19 +241,19 @@ describe('shadow_task_execute', () => {
 
   it('rejects task with no repos', async () => {
     const task = seedTask(db, []);
-    const result = await callTool(tools, 'shadow_task_execute', { id: task.id }) as Record<string, unknown>;
-    assert.equal(result.isError, true);
-    assert.ok((result.message as string).includes('no repos'));
+    const result = await callTool(tools, 'shadow_task_execute', { id: task.id }) as any;
+    assert.equal(result.ok, false);
+    assert.ok((result.error as string).includes('no repos'));
   });
 
   it('creates run from task and sets task to active', async () => {
     const task = seedTask(db, [repoId]);
-    const result = await callTool(tools, 'shadow_task_execute', { id: task.id }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_task_execute', { id: task.id }) as any;
     assert.equal(result.ok, true);
-    assert.ok(result.runId);
+    assert.ok(result.data.runId);
     const updated = db.getTask(task.id)!;
     assert.equal(updated.status, 'active');
-    const run = db.getRun(result.runId as string)!;
+    const run = db.getRun(result.data.runId as string)!;
     assert.equal(run.taskId, task.id);
   });
 });
@@ -282,8 +282,8 @@ describe('shadow_task_remove', () => {
 
   it('deletes task', async () => {
     const task = seedTask(db);
-    const result = await callTool(tools, 'shadow_task_remove', { id: task.id }) as Record<string, unknown>;
-    assert.ok(result.message);
+    const result = await callTool(tools, 'shadow_task_remove', { id: task.id }) as any;
+    assert.ok(result.data.message);
     assert.equal(db.getTask(task.id), null);
   });
 });

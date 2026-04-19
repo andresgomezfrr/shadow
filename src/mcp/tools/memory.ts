@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { mcpSchema, type McpTool, type ToolContext } from './types.js';
+import { mcpSchema, ok, err, type McpTool, type ToolContext } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -69,7 +69,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(MemorySearchSchema),
       handler: async (params) => {
         const { query, limit } = MemorySearchSchema.parse(params);
-        return db.searchMemories(query, { limit: limit ?? 10 });
+        return ok(db.searchMemories(query, { limit: limit ?? 10 }));
       },
     },
 
@@ -104,7 +104,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
 
         // Bond: teaching recomputes bond axes (depth grows)
         try { applyBondDelta(db, 'memory_taught'); } catch { /* ignore */ }
-        return entityType && entityId ? (db.getMemory(memory.id) ?? memory) : memory;
+        return ok(entityType && entityId ? (db.getMemory(memory.id) ?? memory) : memory);
       },
     },
 
@@ -119,12 +119,12 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
 
         const { memoryId, reason } = MemoryForgetSchema.parse(params);
         const memory = db.getMemory(memoryId);
-        if (!memory) return { isError: true, message: `Memory not found: ${memoryId}` };
+        if (!memory) return err(`Memory not found: ${memoryId}`);
 
         db.updateMemory(memoryId, { archivedAt: new Date().toISOString() });
         db.deleteEmbedding('memory_vectors', memoryId);
         db.createFeedback({ targetKind: 'memory', targetId: memoryId, action: 'archive', note: reason });
-        return { ok: true, archived: memoryId, title: memory.title };
+        return ok({ archived: memoryId, title: memory.title });
       },
     },
 
@@ -139,7 +139,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
 
         const { memoryId, layer, body, kind, scope, tags, reason } = MemoryUpdateSchema.parse(params);
         const memory = db.getMemory(memoryId);
-        if (!memory) return { isError: true, message: `Memory not found: ${memoryId}` };
+        if (!memory) return err(`Memory not found: ${memoryId}`);
 
         const updates: Record<string, unknown> = {};
         if (layer) updates.layer = layer;
@@ -147,11 +147,11 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
         if (kind) updates.kind = kind;
         if (scope) updates.scope = scope;
         if (tags) updates.tags = tags;
-        if (Object.keys(updates).length === 0) return { isError: true, message: 'No updates provided' };
+        if (Object.keys(updates).length === 0) return err('No updates provided');
 
         db.updateMemory(memoryId, updates as Parameters<typeof db.updateMemory>[1]);
         db.createFeedback({ targetKind: 'memory', targetId: memoryId, action: 'modify', note: reason ?? `updated: ${Object.keys(updates).join(', ')}` });
-        return { ok: true, memoryId, updated: Object.keys(updates) };
+        return ok({ memoryId, updated: Object.keys(updates) });
       },
     },
 
@@ -170,15 +170,15 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
 
         const items = db.listMemories({ layer, scope, archived: false, limit: effectiveLimit, offset: effectiveOffset });
         const total = db.countMemories({ layer, archived: false });
-        if (effectiveDetail) return { items, total };
-        return {
+        if (effectiveDetail) return ok({ items, total });
+        return ok({
           items: items.map(m => ({
             id: m.id, layer: m.layer, kind: m.kind, title: m.title,
             scope: m.scope, tags: m.tags, confidenceScore: m.confidenceScore,
             accessCount: m.accessCount, entities: m.entities, createdAt: m.createdAt,
           })),
           total,
-        };
+        });
       },
     },
 
@@ -240,7 +240,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
           }
         } catch (e) { console.error('[chronicle] first_correction hook failed:', e); }
 
-        return { ok: true, correction: { id: memory.id, title: memory.title, kind: memory.kind, layer: memory.layer } };
+        return ok({ correction: { id: memory.id, title: memory.title, kind: memory.kind, layer: memory.layer } });
       },
     },
   ];

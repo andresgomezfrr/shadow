@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { McpTool, ToolContext } from './types.js';
-import { mcpSchema } from './types.js';
+import { mcpSchema, ok, err } from './types.js';
 
 const ListTasksSchema = z.object({
   status: z.enum(['open', 'active', 'blocked', 'done']).optional().describe('Filter by status'),
@@ -58,7 +58,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
           projectId: input.projectId,
           limit: input.limit ?? 20,
         });
-        return { tasks, total: ctx.db.countTasks({ status: input.status }) };
+        return ok({ tasks, total: ctx.db.countTasks({ status: input.status }) });
       },
     },
     {
@@ -78,7 +78,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
           sessionId: input.sessionId,
           sessionRepoPath: input.sessionRepoPath,
         });
-        return { task, message: `Task "${task.title}" created` };
+        return ok({ task, message: `Task "${task.title}" created` });
       },
     },
     {
@@ -88,7 +88,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
         const input = UpdateTaskSchema.parse(params);
         const task = ctx.db.getTask(input.id);
-        if (!task) return { isError: true, message: `Task ${input.id} not found` };
+        if (!task) return err(`Task ${input.id} not found`);
         const updates: Record<string, unknown> = {};
         for (const key of ['title', 'status', 'contextMd', 'externalRefs', 'repoIds', 'projectId', 'sessionId', 'sessionRepoPath', 'prUrls'] as const) {
           const value = input[key];
@@ -97,7 +97,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         if (updates.status === 'done' && !task.closedAt) updates.closedAt = new Date().toISOString();
         if (updates.status && updates.status !== 'done') updates.closedAt = null;
         ctx.db.updateTask(input.id, updates as Parameters<typeof ctx.db.updateTask>[1]);
-        return { task: ctx.db.getTask(input.id), message: 'Task updated' };
+        return ok({ task: ctx.db.getTask(input.id), message: 'Task updated' });
       },
     },
     {
@@ -107,9 +107,9 @@ export function taskTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
         const input = TaskIdSchema.parse(params);
         const task = ctx.db.getTask(input.id);
-        if (!task) return { isError: true, message: `Task ${input.id} not found` };
+        if (!task) return err(`Task ${input.id} not found`);
         ctx.db.updateTask(input.id, { status: 'done', closedAt: new Date().toISOString() });
-        return { task: ctx.db.getTask(input.id), message: `Task "${task.title}" closed` };
+        return ok({ task: ctx.db.getTask(input.id), message: `Task "${task.title}" closed` });
       },
     },
     {
@@ -119,9 +119,9 @@ export function taskTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
         const input = TaskIdSchema.parse(params);
         const task = ctx.db.getTask(input.id);
-        if (!task) return { isError: true, message: `Task ${input.id} not found` };
+        if (!task) return err(`Task ${input.id} not found`);
         ctx.db.updateTask(input.id, { archived: true });
-        return { ok: true, taskId: input.id, archived: true };
+        return ok({ taskId: input.id, archived: true });
       },
     },
     {
@@ -131,8 +131,8 @@ export function taskTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
         const input = TaskIdSchema.parse(params);
         const task = ctx.db.getTask(input.id);
-        if (!task) return { isError: true, message: `Task ${input.id} not found` };
-        if (task.repoIds.length === 0) return { isError: true, message: 'Task has no repos linked — add repoIds first' };
+        if (!task) return err(`Task ${input.id} not found`);
+        if (task.repoIds.length === 0) return err('Task has no repos linked — add repoIds first');
         const run = ctx.db.createRun({
           repoId: task.repoIds[0],
           repoIds: task.repoIds,
@@ -142,7 +142,7 @@ export function taskTools(ctx: ToolContext): McpTool[] {
           prompt: task.contextMd ?? task.title,
         });
         ctx.db.updateTask(input.id, { status: 'active' });
-        return { ok: true, runId: run.id, taskId: input.id };
+        return ok({ runId: run.id, taskId: input.id });
       },
     },
     {
@@ -152,9 +152,9 @@ export function taskTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
         const input = TaskIdSchema.parse(params);
         const task = ctx.db.getTask(input.id);
-        if (!task) return { isError: true, message: `Task ${input.id} not found` };
+        if (!task) return err(`Task ${input.id} not found`);
         ctx.db.deleteTask(input.id);
-        return { message: `Task "${task.title}" deleted` };
+        return ok({ message: `Task "${task.title}" deleted` });
       },
     },
   ];

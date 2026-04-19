@@ -20,10 +20,10 @@ describe('shadow_profile', () => {
   after(() => cleanup());
 
   it('returns default profile', async () => {
-    const result = await callTool(tools, 'shadow_profile') as Record<string, unknown>;
-    assert.ok(result.id);
-    assert.equal(result.bondTier, 1);
-    assert.ok(result.proactivityLevel);
+    const result = await callTool(tools, 'shadow_profile') as any;
+    assert.ok(result.data.id);
+    assert.equal(result.data.bondTier, 1);
+    assert.ok(result.data.proactivityLevel);
   });
 });
 
@@ -45,23 +45,23 @@ describe('shadow_profile_set', () => {
   after(() => cleanup());
 
   it('sets displayName', async () => {
-    const result = await callTool(tools, 'shadow_profile_set', { key: 'displayName', value: 'TestUser' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_profile_set', { key: 'displayName', value: 'TestUser' }) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.set, 'displayName');
-    assert.equal(result.value, 'TestUser');
+    assert.equal(result.data.set, 'displayName');
+    assert.equal(result.data.value, 'TestUser');
     const profile = db.getProfile('default')!;
     assert.equal(profile.displayName, 'TestUser');
   });
 
   it('sets proactivityLevel', async () => {
-    const result = await callTool(tools, 'shadow_profile_set', { key: 'proactivityLevel', value: '7' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_profile_set', { key: 'proactivityLevel', value: '7' }) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.value, 7);
+    assert.equal(result.data.value, 7);
   });
 
   it('rejects invalid proactivityLevel value', async () => {
-    const result = await callTool(tools, 'shadow_profile_set', { key: 'proactivityLevel', value: '99' }) as Record<string, unknown>;
-    assert.equal(result.isError, true);
+    const result = await callTool(tools, 'shadow_profile_set', { key: 'proactivityLevel', value: '99' }) as any;
+    assert.equal(result.ok, false);
   });
 });
 
@@ -83,25 +83,25 @@ describe('shadow_focus', () => {
   after(() => cleanup());
 
   it('sets indefinite focus mode', async () => {
-    const result = await callTool(tools, 'shadow_focus', {}) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_focus', {}) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.mode, 'focus');
-    assert.ok(typeof result.until === 'string');
+    assert.equal(result.data.mode, 'focus');
+    assert.ok(typeof result.data.until === 'string');
     const profile = db.getProfile('default')!;
     assert.equal(profile.focusMode, 'focus');
   });
 
   it('sets focus mode with 2h duration', async () => {
-    const result = await callTool(tools, 'shadow_focus', { duration: '2h' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_focus', { duration: '2h' }) as any;
     assert.equal(result.ok, true);
-    assert.ok(typeof result.until === 'string');
-    assert.ok((result.until as string).includes('T'), 'Expected ISO date string for until');
+    assert.ok(typeof result.data.until === 'string');
+    assert.ok((result.data.until as string).includes('T'), 'Expected ISO date string for until');
   });
 
   it('sets focus mode with 30m duration', async () => {
-    const result = await callTool(tools, 'shadow_focus', { duration: '30m' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_focus', { duration: '30m' }) as any;
     assert.equal(result.ok, true);
-    assert.ok(typeof result.until === 'string');
+    assert.ok(typeof result.data.until === 'string');
   });
 });
 
@@ -123,27 +123,27 @@ describe('shadow_feedback', () => {
   after(() => cleanup());
 
   it('returns empty for fresh DB', async () => {
-    const result = await callTool(tools, 'shadow_feedback', {}) as unknown[];
-    assert.ok(Array.isArray(result));
-    assert.equal(result.length, 0);
+    const result = await callTool(tools, 'shadow_feedback', {}) as { data: unknown[] };
+    assert.ok(Array.isArray(result.data));
+    assert.equal(result.data.length, 0);
   });
 
   it('returns feedback after creation', async () => {
     db.createFeedback({ targetKind: 'observation', targetId: 'obs-1', action: 'resolve', note: 'fixed' });
     db.createFeedback({ targetKind: 'suggestion', targetId: 'sug-1', action: 'dismiss', note: 'not relevant' });
-    const result = await callTool(tools, 'shadow_feedback', {}) as unknown[];
-    assert.equal(result.length, 2);
+    const result = await callTool(tools, 'shadow_feedback', {}) as { data: unknown[] };
+    assert.equal(result.data.length, 2);
   });
 
   it('filters by targetKind', async () => {
-    const result = await callTool(tools, 'shadow_feedback', { targetKind: 'observation' }) as unknown[];
-    assert.ok(result.length >= 1);
-    assert.ok(result.every((f: any) => f.targetKind === 'observation'));
+    const result = await callTool(tools, 'shadow_feedback', { targetKind: 'observation' }) as { data: unknown[] };
+    assert.ok(result.data.length >= 1);
+    assert.ok(result.data.every((f: any) => f.targetKind === 'observation'));
   });
 
   it('respects limit', async () => {
-    const result = await callTool(tools, 'shadow_feedback', { limit: 1 }) as unknown[];
-    assert.equal(result.length, 1);
+    const result = await callTool(tools, 'shadow_feedback', { limit: 1 }) as { data: unknown[] };
+    assert.equal(result.data.length, 1);
   });
 });
 
@@ -163,9 +163,9 @@ describe('shadow_soul', () => {
   after(() => cleanup());
 
   it('returns exists=false when no soul', async () => {
-    const result = await callTool(tools, 'shadow_soul') as Record<string, unknown>;
-    assert.equal(result.exists, false);
-    assert.equal(result.body, null);
+    const result = await callTool(tools, 'shadow_soul') as any;
+    assert.equal(result.data.exists, false);
+    assert.equal(result.data.body, null);
   });
 });
 
@@ -187,21 +187,21 @@ describe('shadow_soul_update', () => {
   after(() => cleanup());
 
   it('creates soul on first call', async () => {
-    const result = await callTool(tools, 'shadow_soul_update', { body: 'My soul reflection content' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_soul_update', { body: 'My soul reflection content' }) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.action, 'created');
-    assert.ok(result.memoryId);
+    assert.equal(result.data.action, 'created');
+    assert.ok(result.data.memoryId);
   });
 
   it('updates soul on second call', async () => {
-    const result = await callTool(tools, 'shadow_soul_update', { body: 'Updated soul content' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_soul_update', { body: 'Updated soul content' }) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.action, 'updated');
+    assert.equal(result.data.action, 'updated');
   });
 
   it('soul_read returns updated content', async () => {
-    const result = await callTool(tools, 'shadow_soul') as Record<string, unknown>;
-    assert.equal(result.exists, true);
-    assert.equal(result.body, 'Updated soul content');
+    const result = await callTool(tools, 'shadow_soul') as any;
+    assert.equal(result.data.exists, true);
+    assert.equal(result.data.body, 'Updated soul content');
   });
 });

@@ -32,40 +32,40 @@ describe('shadow_suggestions', () => {
   after(() => cleanup());
 
   it('returns empty for fresh DB', async () => {
-    const result = await callTool(tools, 'shadow_suggestions', {}) as { items: unknown[]; total: number };
-    assert.equal(result.items.length, 0);
-    assert.equal(result.total, 0);
+    const result = await callTool(tools, 'shadow_suggestions', {}) as { data: { items: unknown[]; total: number } };
+    assert.equal(result.data.items.length, 0);
+    assert.equal(result.data.total, 0);
   });
 
   it('returns suggestions after seeding', async () => {
     seedSuggestion(db);
     seedSuggestion(db, { kind: 'feature' });
-    const result = await callTool(tools, 'shadow_suggestions', {}) as { items: any[]; total: number };
-    assert.equal(result.items.length, 2);
-    assert.equal(result.total, 2);
+    const result = await callTool(tools, 'shadow_suggestions', {}) as { data: { items: any[]; total: number } };
+    assert.equal(result.data.items.length, 2);
+    assert.equal(result.data.total, 2);
   });
 
   it('filters by status', async () => {
     const sug = seedSuggestion(db);
     db.updateSuggestion(sug.id, { status: 'dismissed' });
-    const open = await callTool(tools, 'shadow_suggestions', { status: 'open' }) as { items: any[] };
-    assert.ok(open.items.every((s: any) => s.status === 'open'));
-    const dismissed = await callTool(tools, 'shadow_suggestions', { status: 'dismissed' }) as { items: any[] };
-    assert.ok(dismissed.items.length >= 1);
+    const open = await callTool(tools, 'shadow_suggestions', { status: 'open' }) as { data: { items: any[] } };
+    assert.ok(open.data.items.every((s: any) => s.status === 'open'));
+    const dismissed = await callTool(tools, 'shadow_suggestions', { status: 'dismissed' }) as { data: { items: any[] } };
+    assert.ok(dismissed.data.items.length >= 1);
   });
 
   it('pagination works', async () => {
-    const page1 = await callTool(tools, 'shadow_suggestions', { limit: 1, offset: 0 }) as { items: any[]; total: number };
-    assert.equal(page1.items.length, 1);
-    assert.ok(page1.total >= 2);
-    const page2 = await callTool(tools, 'shadow_suggestions', { limit: 1, offset: 1 }) as { items: any[] };
-    assert.equal(page2.items.length, 1);
-    assert.notEqual(page1.items[0].id, page2.items[0].id);
+    const page1 = await callTool(tools, 'shadow_suggestions', { limit: 1, offset: 0 }) as { data: { items: any[]; total: number } };
+    assert.equal(page1.data.items.length, 1);
+    assert.ok(page1.data.total >= 2);
+    const page2 = await callTool(tools, 'shadow_suggestions', { limit: 1, offset: 1 }) as { data: { items: any[] } };
+    assert.equal(page2.data.items.length, 1);
+    assert.notEqual(page1.data.items[0].id, page2.data.items[0].id);
   });
 
   it('compact mode omits body fields', async () => {
-    const result = await callTool(tools, 'shadow_suggestions', { detail: false }) as { items: any[] };
-    const item = result.items[0];
+    const result = await callTool(tools, 'shadow_suggestions', { detail: false }) as { data: { items: any[] } };
+    const item = result.data.items[0];
     assert.ok(item.id);
     assert.ok(item.title);
     assert.equal(item.summaryMd, undefined);
@@ -73,8 +73,8 @@ describe('shadow_suggestions', () => {
   });
 
   it('detail mode includes full fields', async () => {
-    const result = await callTool(tools, 'shadow_suggestions', { detail: true }) as { items: any[] };
-    const item = result.items[0];
+    const result = await callTool(tools, 'shadow_suggestions', { detail: true }) as { data: { items: any[] } };
+    const item = result.data.items[0];
     assert.ok('summaryMd' in item);
   });
 });
@@ -103,9 +103,9 @@ describe('shadow_suggest_accept', () => {
 
   it('accepts suggestion via engine', async () => {
     const sug = seedSuggestion(db);
-    const result = await callTool(tools, 'shadow_suggest_accept', { suggestionId: sug.id }) as Record<string, unknown>;
-    assert.equal(result.accepted, true);
-    assert.equal(result.suggestionId, sug.id);
+    const result = await callTool(tools, 'shadow_suggest_accept', { suggestionId: sug.id }) as any;
+    assert.equal(result.data.accepted, true);
+    assert.equal(result.data.suggestionId, sug.id);
   });
 });
 
@@ -135,9 +135,9 @@ describe('shadow_suggest_dismiss', () => {
     const sug = seedSuggestion(db);
     const result = await callTool(tools, 'shadow_suggest_dismiss', {
       suggestionId: sug.id, note: 'not relevant', category: 'not_relevant',
-    }) as Record<string, unknown>;
-    assert.equal(result.dismissed, true);
-    assert.equal(result.suggestionId, sug.id);
+    }) as any;
+    assert.equal(result.data.dismissed, true);
+    assert.equal(result.data.suggestionId, sug.id);
   });
 });
 
@@ -166,9 +166,9 @@ describe('shadow_suggest_snooze', () => {
   it('snoozes with default 72h', async () => {
     const sug = seedSuggestion(db);
     const before = Date.now();
-    const result = await callTool(tools, 'shadow_suggest_snooze', { suggestionId: sug.id }) as Record<string, unknown>;
-    assert.equal(result.snoozed, true);
-    const untilDate = new Date(result.until as string).getTime();
+    const result = await callTool(tools, 'shadow_suggest_snooze', { suggestionId: sug.id }) as any;
+    assert.equal(result.data.snoozed, true);
+    const untilDate = new Date(result.data.until as string).getTime();
     const expected72h = before + 72 * 3600_000;
     assert.ok(Math.abs(untilDate - expected72h) < 5000, 'until should be ~72h from now');
   });
@@ -176,9 +176,9 @@ describe('shadow_suggest_snooze', () => {
   it('snoozes with custom hours', async () => {
     const sug = seedSuggestion(db);
     const before = Date.now();
-    const result = await callTool(tools, 'shadow_suggest_snooze', { suggestionId: sug.id, hours: 24 }) as Record<string, unknown>;
-    assert.equal(result.snoozed, true);
-    const untilDate = new Date(result.until as string).getTime();
+    const result = await callTool(tools, 'shadow_suggest_snooze', { suggestionId: sug.id, hours: 24 }) as any;
+    assert.equal(result.data.snoozed, true);
+    const untilDate = new Date(result.data.until as string).getTime();
     const expected24h = before + 24 * 3600_000;
     assert.ok(Math.abs(untilDate - expected24h) < 5000, 'until should be ~24h from now');
   });

@@ -37,24 +37,24 @@ describe('shadow_check_in', () => {
   after(() => cleanup());
 
   it('returns profile, mood, greeting for fresh DB', async () => {
-    const result = await callTool(tools, 'shadow_check_in', {}) as Record<string, unknown>;
-    assert.ok(result.bondTier);
-    assert.equal(result.mood, 'neutral');
-    assert.equal(result.greeting, 'first_session_ever');
-    assert.ok(Array.isArray(result.pendingEvents));
-    assert.equal(typeof result.pendingSuggestions, 'number');
-    assert.ok('todayTokens' in result);
-    assert.ok('todayLlmCalls' in result);
+    const result = await callTool(tools, 'shadow_check_in', {}) as any;
+    assert.ok(result.data.bondTier);
+    assert.equal(result.data.mood, 'neutral');
+    assert.equal(result.data.greeting, 'first_session_ever');
+    assert.ok(Array.isArray(result.data.pendingEvents));
+    assert.equal(typeof result.data.pendingSuggestions, 'number');
+    assert.ok('todayTokens' in result.data);
+    assert.ok('todayLlmCalls' in result.data);
   });
 
   it('returns context when repoPath matches a tracked repo', async () => {
     const repo = seedRepo(db, { name: 'ctx-repo', path: '/tmp/ctx-repo-test' });
     const project = seedProject(db, { repoIds: [repo.id] });
     seedObservation(db, repo.id, { title: 'ctx obs' });
-    const result = await callTool(tools, 'shadow_check_in', { repoPath: '/tmp/ctx-repo-test' }) as Record<string, unknown>;
-    assert.equal(result.contextRepo, repo.id);
-    assert.ok(Array.isArray(result.contextProjects));
-    assert.ok((result.contextProjects as string[]).includes(project.id));
+    const result = await callTool(tools, 'shadow_check_in', { repoPath: '/tmp/ctx-repo-test' }) as any;
+    assert.equal(result.data.contextRepo, repo.id);
+    assert.ok(Array.isArray(result.data.contextProjects));
+    assert.ok((result.data.contextProjects as string[]).includes(project.id));
   });
 
   it('applies bond delta on check_in (recomputes axes without throwing)', async () => {
@@ -73,8 +73,8 @@ describe('shadow_check_in', () => {
 
   it('includes update notification when available', async () => {
     writeDaemonState(config.resolvedDataDir, { alerts: [], updateAvailable: '1.2.3' });
-    const result = await callTool(tools, 'shadow_check_in', {}) as Record<string, unknown>;
-    assert.equal(result.updateAvailable, '1.2.3');
+    const result = await callTool(tools, 'shadow_check_in', {}) as any;
+    assert.equal(result.data.updateAvailable, '1.2.3');
   });
 
   it('includes active alerts', async () => {
@@ -82,8 +82,8 @@ describe('shadow_check_in', () => {
       alerts: [{ id: 'test_alert', message: 'Test alert', severity: 'warning', since: new Date().toISOString() }],
       updateAvailable: null,
     });
-    const result = await callTool(tools, 'shadow_check_in', {}) as Record<string, unknown>;
-    const alerts = result.activeAlerts as any[];
+    const result = await callTool(tools, 'shadow_check_in', {}) as any;
+    const alerts = result.data.activeAlerts as any[];
     assert.ok(alerts.length >= 1);
     assert.equal(alerts[0].id, 'test_alert');
   });
@@ -107,19 +107,19 @@ describe('shadow_status', () => {
   after(() => cleanup());
 
   it('returns correct counts for fresh DB', async () => {
-    const result = await callTool(tools, 'shadow_status', {}) as Record<string, unknown>;
-    assert.equal(result.bondTier, 3);
-    assert.equal(result.repoCount, 0);
-    assert.equal(typeof result.pendingSuggestions, 'number');
-    assert.equal(typeof result.pendingEvents, 'number');
-    assert.ok(result.usageToday);
+    const result = await callTool(tools, 'shadow_status', {}) as any;
+    assert.equal(result.data.bondTier, 3);
+    assert.equal(result.data.repoCount, 0);
+    assert.equal(typeof result.data.pendingSuggestions, 'number');
+    assert.equal(typeof result.data.pendingEvents, 'number');
+    assert.ok(result.data.usageToday);
   });
 
   it('returns updated counts after seeding', async () => {
     seedRepo(db);
     seedRepo(db);
-    const result = await callTool(tools, 'shadow_status', {}) as Record<string, unknown>;
-    assert.equal(result.repoCount, 2);
+    const result = await callTool(tools, 'shadow_status', {}) as any;
+    assert.equal(result.data.repoCount, 2);
   });
 });
 
@@ -142,9 +142,9 @@ describe('shadow_available', () => {
 
   it('clears focus mode', async () => {
     db.updateProfile('default', { focusMode: 'focus', focusUntil: new Date().toISOString() });
-    const result = await callTool(tools, 'shadow_available', {}) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_available', {}) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.mode, 'available');
+    assert.equal(result.data.mode, 'available');
     const profile = db.getProfile('default')!;
     assert.equal(profile.focusMode, null);
     assert.equal(profile.focusUntil, null);
@@ -170,18 +170,18 @@ describe('shadow_alerts', () => {
   after(() => cleanup());
 
   it('returns empty alerts when no daemon state', async () => {
-    const result = await callTool(tools, 'shadow_alerts', {}) as { alerts: unknown[]; count: number };
-    assert.ok(Array.isArray(result.alerts));
-    assert.equal(result.count, 0);
+    const result = await callTool(tools, 'shadow_alerts', {}) as { data: { alerts: unknown[]; count: number } };
+    assert.ok(Array.isArray(result.data.alerts));
+    assert.equal(result.data.count, 0);
   });
 
   it('returns alerts from daemon state', async () => {
     writeDaemonState(config.resolvedDataDir, {
       alerts: [{ id: 'health_check', message: 'Backend unhealthy', severity: 'error', since: '2026-01-01T00:00:00Z' }],
     });
-    const result = await callTool(tools, 'shadow_alerts', {}) as { alerts: any[]; count: number };
-    assert.equal(result.count, 1);
-    assert.equal(result.alerts[0].id, 'health_check');
+    const result = await callTool(tools, 'shadow_alerts', {}) as { data: { alerts: any[]; count: number } };
+    assert.equal(result.data.count, 1);
+    assert.equal(result.data.alerts[0].id, 'health_check');
   });
 });
 
@@ -209,14 +209,14 @@ describe('shadow_alert_ack', () => {
   after(() => cleanup());
 
   it('returns error for nonexistent alert', async () => {
-    const result = await callTool(tools, 'shadow_alert_ack', { id: 'nonexistent' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_alert_ack', { id: 'nonexistent' }) as any;
     assert.equal(result.ok, false);
   });
 
   it('writes ack to alert-actions.jsonl', async () => {
-    const result = await callTool(tools, 'shadow_alert_ack', { id: 'test_ack' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_alert_ack', { id: 'test_ack' }) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.action, 'acked');
+    assert.equal(result.data.action, 'acked');
     const actionsPath = resolve(config.resolvedDataDir, 'alert-actions.jsonl');
     assert.ok(existsSync(actionsPath));
     const content = readFileSync(actionsPath, 'utf-8');
@@ -250,14 +250,14 @@ describe('shadow_alert_resolve', () => {
   after(() => cleanup());
 
   it('returns error for nonexistent alert', async () => {
-    const result = await callTool(tools, 'shadow_alert_resolve', { id: 'nonexistent' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_alert_resolve', { id: 'nonexistent' }) as any;
     assert.equal(result.ok, false);
   });
 
   it('writes resolve to alert-actions.jsonl', async () => {
-    const result = await callTool(tools, 'shadow_alert_resolve', { id: 'test_resolve' }) as Record<string, unknown>;
+    const result = await callTool(tools, 'shadow_alert_resolve', { id: 'test_resolve' }) as any;
     assert.equal(result.ok, true);
-    assert.equal(result.action, 'resolved');
+    assert.equal(result.data.action, 'resolved');
     const actionsPath = resolve(config.resolvedDataDir, 'alert-actions.jsonl');
     const content = readFileSync(actionsPath, 'utf-8');
     const lines = content.trim().split('\n');

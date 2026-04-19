@@ -3,7 +3,7 @@ import { resolve, basename } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
-import { mcpSchema, type McpTool, type ToolContext } from './types.js';
+import { mcpSchema, ok, err, type McpTool, type ToolContext } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -164,7 +164,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           const lower = filter.toLowerCase();
           repos = repos.filter((r) => r.name.toLowerCase().includes(lower));
         }
-        return repos;
+        return ok(repos);
       },
     },
     {
@@ -178,27 +178,27 @@ export function entityTools(ctx: ToolContext): McpTool[] {
 
         // Validate path is a directory
         if (!existsSync(repoPath) || !statSync(repoPath).isDirectory()) {
-          return { isError: true, message: `Path does not exist or is not a directory: ${repoPath}` };
+          return err(`Path does not exist or is not a directory: ${repoPath}`);
         }
 
         // Validate it's a git repository
         try {
           execFileSync('git', ['rev-parse', '--git-dir'], { cwd: repoPath, stdio: 'pipe', timeout: 5_000 });
         } catch {
-          return { isError: true, message: `Not a git repository: ${repoPath}` };
+          return err(`Not a git repository: ${repoPath}`);
         }
 
         const repoName = name ?? (basename(repoPath) || repoPath);
 
         const existing = db.findRepoByPath(repoPath);
-        if (existing) return { isError: true, message: `Repo already registered: ${existing.name} (${existing.id})` };
+        if (existing) return err(`Repo already registered: ${existing.name} (${existing.id})`);
 
-        return db.createRepo({
+        return ok(db.createRepo({
           path: repoPath,
           name: repoName,
           defaultBranch: defaultBranch ?? 'main',
           languageHint: languageHint ?? null,
-        });
+        }));
       },
     },
     {
@@ -209,17 +209,17 @@ export function entityTools(ctx: ToolContext): McpTool[] {
 
         const p = RepoUpdateSchema.parse(params);
         const repo = db.getRepo(p.repoId);
-        if (!repo) return { isError: true, message: `Repo not found: ${p.repoId}` };
+        if (!repo) return err(`Repo not found: ${p.repoId}`);
 
         const updates: Record<string, unknown> = {};
         for (const key of ['name', 'remoteUrl', 'defaultBranch', 'languageHint', 'testCommand', 'lintCommand', 'buildCommand'] as const) {
           if (p[key] !== undefined) updates[key] = p[key];
         }
 
-        if (Object.keys(updates).length === 0) return { isError: true, message: 'No fields to update' };
+        if (Object.keys(updates).length === 0) return err('No fields to update');
 
         db.updateRepo(p.repoId, updates as Parameters<typeof db.updateRepo>[1]);
-        return db.getRepo(p.repoId);
+        return ok(db.getRepo(p.repoId));
       },
     },
     {
@@ -230,10 +230,10 @@ export function entityTools(ctx: ToolContext): McpTool[] {
 
         const { repoId } = RepoRemoveSchema.parse(params);
         const repo = db.getRepo(repoId);
-        if (!repo) return { isError: true, message: `Repo not found: ${repoId}` };
+        if (!repo) return err(`Repo not found: ${repoId}`);
 
         db.deleteRepo(repoId);
-        return { ok: true, removed: repoId, name: repo.name };
+        return ok({ removed: repoId, name: repo.name });
       },
     },
 
@@ -244,7 +244,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(ContactsSchema),
       handler: async (params) => {
         const { team } = ContactsSchema.parse(params);
-        return db.listContacts(team ? { team } : undefined);
+        return ok(db.listContacts(team ? { team } : undefined));
       },
     },
     {
@@ -255,8 +255,8 @@ export function entityTools(ctx: ToolContext): McpTool[] {
 
         const p = ContactAddSchema.parse(params);
         const existing = db.findContactByName(p.name);
-        if (existing) return { isError: true, message: `Contact "${p.name}" already exists (id: ${existing.id}). Use shadow_contact_update to modify.` };
-        return db.createContact({
+        if (existing) return err(`Contact "${p.name}" already exists (id: ${existing.id}). Use shadow_contact_update to modify.`);
+        return ok(db.createContact({
           name: p.name,
           role: p.role ?? null,
           team: p.team ?? null,
@@ -265,7 +265,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           githubHandle: p.githubHandle ?? null,
           notesMd: p.notesMd ?? null,
           preferredChannel: p.preferredChannel ?? null,
-        });
+        }));
       },
     },
     {
@@ -276,13 +276,13 @@ export function entityTools(ctx: ToolContext): McpTool[] {
 
         const { contactId, ...updates } = ContactUpdateSchema.parse(params);
         const contact = db.getContact(contactId);
-        if (!contact) return { isError: true, message: `Contact not found: ${contactId}` };
+        if (!contact) return err(`Contact not found: ${contactId}`);
 
         const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
-        if (Object.keys(cleanUpdates).length === 0) return { isError: true, message: 'No fields to update' };
+        if (Object.keys(cleanUpdates).length === 0) return err('No fields to update');
 
         db.updateContact(contactId, cleanUpdates);
-        return db.getContact(contactId);
+        return ok(db.getContact(contactId));
       },
     },
     {
@@ -293,10 +293,10 @@ export function entityTools(ctx: ToolContext): McpTool[] {
 
         const { contactId } = ContactRemoveSchema.parse(params);
         const contact = db.getContact(contactId);
-        if (!contact) return { isError: true, message: `Contact not found: ${contactId}` };
+        if (!contact) return err(`Contact not found: ${contactId}`);
 
         db.deleteContact(contactId);
-        return { ok: true, removed: contactId, name: contact.name };
+        return ok({ removed: contactId, name: contact.name });
       },
     },
 
@@ -307,7 +307,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(SystemsSchema),
       handler: async (params) => {
         const { kind } = SystemsSchema.parse(params);
-        return db.listSystems(kind ? { kind } : undefined);
+        return ok(db.listSystems(kind ? { kind } : undefined));
       },
     },
     {
@@ -317,7 +317,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
 
         const p = SystemAddSchema.parse(params);
-        return db.createSystem({
+        return ok(db.createSystem({
           name: p.name,
           kind: p.kind,
           url: p.url ?? null,
@@ -327,7 +327,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           logsLocation: p.logsLocation ?? null,
           deployMethod: p.deployMethod ?? null,
           debugGuide: p.debugGuide ?? null,
-        });
+        }));
       },
     },
     {
@@ -338,10 +338,10 @@ export function entityTools(ctx: ToolContext): McpTool[] {
 
         const { systemId } = SystemRemoveSchema.parse(params);
         const system = db.getSystem(systemId);
-        if (!system) return { isError: true, message: `System not found: ${systemId}` };
+        if (!system) return err(`System not found: ${systemId}`);
 
         db.deleteSystem(systemId);
-        return { ok: true, removed: systemId, name: system.name };
+        return ok({ removed: systemId, name: system.name });
       },
     },
 
@@ -352,7 +352,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(ProjectsSchema),
       handler: async (params) => {
         const { status } = ProjectsSchema.parse(params);
-        return db.listProjects(status ? { status } : undefined);
+        return ok(db.listProjects(status ? { status } : undefined));
       },
     },
     {
@@ -362,7 +362,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
 
         const p = ProjectAddSchema.parse(params);
-        return db.createProject({
+        return ok(db.createProject({
           name: p.name,
           kind: p.kind ?? 'long-term',
           description: p.description ?? null,
@@ -371,7 +371,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           contactIds: p.contactIds ?? [],
           startDate: p.startDate ?? null,
           endDate: p.endDate ?? null,
-        });
+        }));
       },
     },
     {
@@ -382,10 +382,10 @@ export function entityTools(ctx: ToolContext): McpTool[] {
 
         const { projectId } = ProjectRemoveSchema.parse(params);
         const project = db.getProject(projectId);
-        if (!project) return { isError: true, message: `Project not found: ${projectId}` };
+        if (!project) return err(`Project not found: ${projectId}`);
 
         db.deleteProject(projectId);
-        return { ok: true, removed: projectId, name: project.name };
+        return ok({ removed: projectId, name: project.name });
       },
     },
     {
@@ -396,14 +396,14 @@ export function entityTools(ctx: ToolContext): McpTool[] {
 
         const p = ProjectUpdateSchema.parse(params);
         const project = db.getProject(p.projectId);
-        if (!project) return { isError: true, message: `Project not found: ${p.projectId}` };
+        if (!project) return err(`Project not found: ${p.projectId}`);
 
         const updates: Record<string, unknown> = {};
         for (const key of ['name', 'description', 'kind', 'status', 'repoIds', 'systemIds', 'contactIds', 'startDate', 'endDate', 'notesMd'] as const) {
           if (p[key] !== undefined) updates[key] = p[key];
         }
 
-        return db.updateProject(p.projectId, updates as Parameters<typeof db.updateProject>[1]);
+        return ok(db.updateProject(p.projectId, updates as Parameters<typeof db.updateProject>[1]));
       },
     },
     {
@@ -442,10 +442,10 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         } catch { /* no file */ }
 
         const active = detectActiveProjects(db, interactions, conversations);
-        return active.map(ap => ({
+        return ok(active.map(ap => ({
           ...ap,
           momentum: computeProjectMomentum(db, ap.projectId, 7),
-        }));
+        })));
       },
     },
     {
@@ -458,7 +458,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         if (!project && p.name) {
           project = db.findProjectByName(p.name);
         }
-        if (!project) return { error: 'Project not found' };
+        if (!project) return err('Project not found');
 
         const repos = project.repoIds.map(id => db.getRepo(id)).filter(Boolean).map(r => ({ id: r!.id, name: r!.name, path: r!.path }));
         const systems = project.systemIds.map(id => db.getSystem(id)).filter(Boolean).map(s => ({ id: s!.id, name: s!.name, kind: s!.kind }));
@@ -482,7 +482,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           momentum = computeProjectMomentum(db, project.id, 7);
         } catch { /* */ }
 
-        return {
+        return ok({
           ...project,
           repos, systems, contacts,
           momentum,
@@ -495,7 +495,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           topSuggestions: suggestions.slice(0, 5).map(s => ({ id: s.id, kind: s.kind, title: s.title, impactScore: s.impactScore })),
           recentMemories: memories.slice(0, 5).map(m => ({ id: m.id, kind: m.kind, layer: m.layer, title: m.title })),
           enrichment,
-        };
+        });
       },
     },
 
@@ -506,14 +506,14 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(RelationAddSchema),
       handler: async (params) => {
         const p = RelationAddSchema.parse(params);
-        return db.createRelation({
+        return ok(db.createRelation({
           sourceType: p.sourceType,
           sourceId: p.sourceId,
           relation: p.relation,
           targetType: p.targetType,
           targetId: p.targetId,
           sourceOrigin: 'manual',
-        });
+        }));
       },
     },
     {
@@ -522,13 +522,13 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(RelationListSchema),
       handler: async (params) => {
         const p = RelationListSchema.parse(params);
-        return db.listRelations({
+        return ok(db.listRelations({
           sourceType: p.sourceType,
           sourceId: p.sourceId,
           targetType: p.targetType,
           targetId: p.targetId,
           relation: p.relation,
-        });
+        }));
       },
     },
     {
@@ -538,7 +538,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
         const { relationId } = RelationRemoveSchema.parse(params);
         db.deleteRelation(relationId);
-        return { ok: true };
+        return ok({});
       },
     },
   ];

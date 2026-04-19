@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { mcpSchema, type McpTool, type ToolContext } from './types.js';
+import { mcpSchema, ok, err, type McpTool, type ToolContext } from './types.js';
 
 const ObservationsSchema = z.object({
   repoId: z.string().describe('Filter by repository ID').optional(),
@@ -45,15 +45,15 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         if (touchable.length > 0) {
           db.touchObservationsLastSeen(touchable.map(o => o.id));
         }
-        if (detail) return { items, total };
-        return {
+        if (detail) return ok({ items, total });
+        return ok({
           items: items.map(o => ({
             id: o.id, kind: o.kind, title: o.title, status: o.status,
             severity: o.severity, votes: o.votes, repoIds: o.repoIds,
             entities: o.entities, createdAt: o.createdAt,
           })),
           total,
-        };
+        });
       },
     },
     {
@@ -67,15 +67,15 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         if (repoId) {
           const repo = db.getRepo(repoId);
           if (!repo) {
-            return { isError: true, message: `Repository not found: ${repoId}` };
+            return err(`Repository not found: ${repoId}`);
           }
           // Mark repo as observed
           db.updateRepo(repoId, { lastObservedAt: new Date().toISOString() });
-          return {
+          return ok({
             triggered: true,
             repoId,
             message: `Observation triggered for repo: ${repo.name}`,
-          };
+          });
         }
 
         // Observe all repos
@@ -84,11 +84,11 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         for (const repo of repos) {
           db.updateRepo(repo.id, { lastObservedAt: now });
         }
-        return {
+        return ok({
           triggered: true,
           repoCount: repos.length,
           message: `Observation triggered for ${repos.length} repositories`,
-        };
+        });
       },
     },
     {
@@ -99,11 +99,11 @@ export function observationTools(ctx: ToolContext): McpTool[] {
 
         const { observationId: id } = ObservationIdSchema.parse(params);
         const obs = db.getObservation(id);
-        if (!obs) return { isError: true, message: `Observation not found: ${id}` };
-        if (obs.status !== 'open') return { isError: true, message: `Observation is ${obs.status}, not open` };
+        if (!obs) return err(`Observation not found: ${id}`);
+        if (obs.status !== 'open') return err(`Observation is ${obs.status}, not open`);
         db.updateObservationStatus(id, 'acknowledged');
         db.touchObservationLastSeen(id);
-        return { ok: true, observationId: id, status: 'acknowledged' };
+        return ok({ observationId: id, status: 'acknowledged' });
       },
     },
     {
@@ -114,12 +114,12 @@ export function observationTools(ctx: ToolContext): McpTool[] {
 
         const { observationId: id, reason } = ObservationResolveSchema.parse(params);
         const obs = db.getObservation(id);
-        if (!obs) return { isError: true, message: `Observation not found: ${id}` };
-        if (obs.status === 'done') return { isError: true, message: 'Already done' };
+        if (!obs) return err(`Observation not found: ${id}`);
+        if (obs.status === 'done') return err('Already done');
         db.updateObservationStatus(id, 'done');
         db.deleteEmbedding('observation_vectors', id);
         db.createFeedback({ targetKind: 'observation', targetId: id, action: 'resolve', note: reason });
-        return { ok: true, observationId: id, status: 'done' };
+        return ok({ observationId: id, status: 'done' });
       },
     },
     {
@@ -130,11 +130,11 @@ export function observationTools(ctx: ToolContext): McpTool[] {
 
         const { observationId: id } = ObservationIdSchema.parse(params);
         const obs = db.getObservation(id);
-        if (!obs) return { isError: true, message: `Observation not found: ${id}` };
-        if (obs.status === 'open') return { isError: true, message: 'Already open' };
+        if (!obs) return err(`Observation not found: ${id}`);
+        if (obs.status === 'open') return err('Already open');
         db.updateObservationStatus(id, 'open');
         db.touchObservationLastSeen(id);
-        return { ok: true, observationId: id, status: 'open' };
+        return ok({ observationId: id, status: 'open' });
       },
     },
   ];

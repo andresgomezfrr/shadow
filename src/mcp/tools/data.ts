@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { mcpSchema, type McpTool, type ToolContext } from './types.js';
+import { mcpSchema, ok, err, type McpTool, type ToolContext } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -74,7 +74,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       description: 'Returns pending (undelivered) events.',
       inputSchema: mcpSchema(z.object({})),
       handler: async () => {
-        return db.listPendingEvents();
+        return ok(db.listPendingEvents());
       },
     },
     {
@@ -84,7 +84,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       handler: async () => {
 
         const count = db.deliverAllEvents();
-        return { ok: true, acknowledged: count };
+        return ok({ acknowledged: count });
       },
     },
 
@@ -137,7 +137,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
           }
         }
 
-        return results.sort((a, b) => b.score - a.score).slice(0, limit * 2);
+        return ok(results.sort((a, b) => b.score - a.score).slice(0, limit * 2));
       },
     },
 
@@ -150,7 +150,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         const { status, repoId, archived, limit, offset } = RunListSchema.parse(params);
         const items = db.listRuns({ status, repoId, archived: archived ?? false, limit: limit ?? 20, offset: offset ?? 0 });
         const total = db.countRuns({ status, archived: archived ?? false });
-        return { items, total };
+        return ok({ items, total });
       },
     },
     {
@@ -160,8 +160,8 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
         const { runId } = RunViewSchema.parse(params);
         const run = db.getRun(runId);
-        if (!run) return { isError: true, message: `Run not found: ${runId}` };
-        return run;
+        if (!run) return err(`Run not found: ${runId}`);
+        return ok(run);
       },
     },
     {
@@ -172,9 +172,9 @@ export function dataTools(ctx: ToolContext): McpTool[] {
 
         const { repoId, prompt, kind } = RunCreateSchema.parse(params);
         const repo = db.getRepo(repoId);
-        if (!repo) return { isError: true, message: `Repo not found: ${repoId}` };
+        if (!repo) return err(`Repo not found: ${repoId}`);
         const run = db.createRun({ repoId, repoIds: [repoId], kind: kind ?? 'task', prompt });
-        return { ok: true, runId: run.id, status: run.status };
+        return ok({ runId: run.id, status: run.status });
       },
     },
 
@@ -185,9 +185,9 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
         const { runId } = RunArchiveSchema.parse(params);
         const run = db.getRun(runId);
-        if (!run) return { isError: true, message: `Run not found: ${runId}` };
+        if (!run) return err(`Run not found: ${runId}`);
         db.updateRun(runId, { archived: true });
-        return { ok: true, runId, archived: true };
+        return ok({ runId, archived: true });
       },
     },
 
@@ -199,7 +199,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
         const { period: rawPeriod } = UsageSchema.parse(params);
         const period = (rawPeriod as 'day' | 'week' | 'month' | undefined) ?? 'day';
-        return db.getUsageSummary(period);
+        return ok(db.getUsageSummary(period));
       },
     },
 
@@ -223,7 +223,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         const usage = db.getUsageSummary('day');
         const events = db.listPendingEvents();
 
-        return {
+        return ok({
           date: todayStart.toISOString().split('T')[0],
           user: profile.displayName ?? 'unknown',
           bondTier: profile.bondTier,
@@ -244,7 +244,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
             totalCalls: usage.totalCalls,
             byModel: usage.byModel,
           },
-        };
+        });
       },
     },
 
@@ -261,7 +261,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         if (kind === 'daily') result = await activityDailyDigest(db, config);
         else if (kind === 'weekly') result = await activityWeeklyDigest(db, config);
         else result = await activityBragDoc(db, config);
-        return { ok: true, kind, contentMd: result.contentMd, tokensUsed: result.tokensUsed };
+        return ok({ kind, contentMd: result.contentMd, tokensUsed: result.tokensUsed });
       },
     },
     {
@@ -270,10 +270,10 @@ export function dataTools(ctx: ToolContext): McpTool[] {
       inputSchema: mcpSchema(DigestsSchema),
       handler: async (params) => {
         const { kind, limit: rawLimit } = DigestsSchema.parse(params);
-        return db.listDigests({
+        return ok(db.listDigests({
           kind,
           limit: rawLimit ?? 10,
-        });
+        }));
       },
     },
 
@@ -319,7 +319,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
           result.unreported = db.countEnrichment({ reported: false });
         }
 
-        return result;
+        return ok(result);
       },
     },
     {
@@ -338,12 +338,12 @@ export function dataTools(ctx: ToolContext): McpTool[] {
             items = items.filter(i => i.entityName?.toLowerCase().includes(lower));
             const total = items.length;
             items = items.slice(offset, offset + limit);
-            return { items: items.map(i => ({ id: i.id, source: i.source, entityType: i.entityType, entityName: i.entityName, summary: i.summary, detail: i.detail, reported: i.reported, createdAt: i.createdAt })), total };
+            return ok({ items: items.map(i => ({ id: i.id, source: i.source, entityType: i.entityType, entityName: i.entityName, summary: i.summary, detail: i.detail, reported: i.reported, createdAt: i.createdAt })), total });
           }
           const total = db.countEnrichment({ source, reported: unreportedOnly ? false : undefined });
-          return { items: items.map(i => ({ id: i.id, source: i.source, entityType: i.entityType, entityName: i.entityName, summary: i.summary, detail: i.detail, reported: i.reported, createdAt: i.createdAt })), total };
+          return ok({ items: items.map(i => ({ id: i.id, source: i.source, entityType: i.entityType, entityName: i.entityName, summary: i.summary, detail: i.detail, reported: i.reported, createdAt: i.createdAt })), total });
         } catch {
-          return { items: [], total: 0 };
+          return ok({ items: [], total: 0 });
         }
       },
     },
@@ -368,7 +368,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
 
         // Resolve project name
         const project = db.getProject(parsed.projectId);
-        if (!project) return { ok: false, error: `Project not found: ${parsed.projectId}` };
+        if (!project) return err(`Project not found: ${parsed.projectId}`);
 
         // Look up TTL from mcp-discover
         const TTL_MS: Record<string, number> = {
@@ -399,7 +399,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         const dedup = await checkEnrichmentDuplicate(db, { title: parsed.summary, summaryMd: parsed.summary });
 
         if (dedup.action === 'skip') {
-          return { ok: true, action: 'skip', reason: 'similar entry exists', existingId: dedup.existingId, similarity: dedup.similarity };
+          return ok({ action: 'skip', reason: 'similar entry exists', existingId: dedup.existingId, similarity: dedup.similarity });
         }
 
         const { createHash } = await import('node:crypto');
@@ -429,7 +429,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
             ttlCategory,
           });
           await generateAndStoreEmbedding(db, 'enrichment', dedup.existingId, { title: parsed.summary, summaryMd: parsed.summary });
-          return { ok: true, action: 'updated', existingId: dedup.existingId, similarity: dedup.similarity, ttl: ttlCategory, contentChanged };
+          return ok({ action: 'updated', existingId: dedup.existingId, similarity: dedup.similarity, ttl: ttlCategory, contentChanged });
         }
 
         // Create new entry
@@ -446,7 +446,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         db.updateEnrichmentStats(record.id, { ttlCategory });
         await generateAndStoreEmbedding(db, 'enrichment', record.id, { title: parsed.summary, summaryMd: parsed.summary });
 
-        return { ok: true, action: 'created', ttl: ttlCategory, expiresAt };
+        return ok({ action: 'created', ttl: ttlCategory, expiresAt });
       },
     },
   ];
