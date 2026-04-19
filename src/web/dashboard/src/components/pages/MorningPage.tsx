@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useApi } from '../../hooks/useApi';
+import { useDialog } from '../../hooks/useDialog';
 import { fetchDailySummary, fetchDigests, acceptSuggestion, dismissSuggestion, snoozeSuggestion } from '../../api/client';
 import { BOND_TIER_NAMES, MOOD_EMOJIS } from '../../api/types';
 import { VoiceOfShadow } from './chronicle/VoiceOfShadow';
@@ -38,6 +39,7 @@ export function MorningPage() {
   const yesterday = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
   const latestDigest = digests?.find((d) => d.periodStart === yesterday) ?? null;
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const { dialog, prompt } = useDialog();
 
   const handleAccept = useCallback(async (id: string) => {
     await acceptSuggestion(id);
@@ -46,11 +48,12 @@ export function MorningPage() {
   }, [refresh]);
 
   const handleDismiss = useCallback(async (id: string) => {
-    const note = window.prompt('Reason for dismissing (optional):');
+    const note = await prompt({ title: 'Dismiss suggestion', message: 'Reason for dismissing (optional):', placeholder: 'Why is this being dismissed?' });
+    if (note === null) return;
     await dismissSuggestion(id, note || undefined);
     setDismissed((s) => new Set(s).add(id));
     refresh();
-  }, [refresh]);
+  }, [prompt, refresh]);
 
   const handleSnooze = useCallback(async (id: string, hours: number) => {
     await snoozeSuggestion(id, hours);
@@ -70,6 +73,7 @@ export function MorningPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
+      {dialog}
       {/* Greeting */}
       <div className="mb-6 flex items-center gap-5">
         <video

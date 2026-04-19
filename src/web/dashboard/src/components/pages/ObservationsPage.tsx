@@ -1,4 +1,5 @@
 import { useApi } from '../../hooks/useApi';
+import { useDialog } from '../../hooks/useDialog';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchObservations, fetchRepos, fetchProjects, acknowledgeObservation, resolveObservation, reopenObservation, lookupEntity } from '../../api/client';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
@@ -71,16 +72,19 @@ export function ObservationsPage() {
     setExpanded((s) => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
 
+  const { dialog, prompt } = useDialog();
   const handleAck = useCallback(async (id: string) => { await acknowledgeObservation(id); refresh(); }, [refresh]);
   const handleResolve = useCallback(async (id: string) => {
-    const note = window.prompt('Reason for resolving (optional):');
+    const note = await prompt({ title: 'Resolve observation', message: 'Reason for resolving (optional):', placeholder: 'Why is this resolved?' });
+    if (note === null) return;  // user cancelled
     await resolveObservation(id, note || undefined);
     refresh();
-  }, [refresh]);
+  }, [prompt, refresh]);
   const handleReopen = useCallback(async (id: string) => { await reopenObservation(id); refresh(); }, [refresh]);
 
   return (
     <div>
+      {dialog}
       <div className="flex items-center gap-3 mb-2 flex-wrap">
         {headerVideoEnded ? (
           <img src="/ghost/observations-header.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />

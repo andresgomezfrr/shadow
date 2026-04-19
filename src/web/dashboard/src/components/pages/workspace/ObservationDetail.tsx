@@ -1,4 +1,5 @@
 import { useApi } from '../../../hooks/useApi';
+import { useDialog } from '../../../hooks/useDialog';
 import { fetchObservationContext, resolveObservation, acknowledgeObservation, reopenObservation } from '../../../api/client';
 import { Badge } from '../../common/Badge';
 import { OBS_KIND_COLORS, OBS_KIND_COLOR_DEFAULT, OBS_SEVERITY_ICON, OBS_SEVERITY_ICON_COLOR } from '../../../utils/observation-colors';
@@ -11,12 +12,14 @@ export function ObservationDetail({ observationId, onRefresh }: { observationId:
   const { drillToItem } = useWorkspace();
 
   const doRefresh = useCallback(() => { refresh(); onRefresh?.(); }, [refresh, onRefresh]);
+  const { dialog, prompt } = useDialog();
 
   const handleResolve = useCallback(async () => {
-    const note = window.prompt('Reason for resolving (optional):');
+    const note = await prompt({ title: 'Resolve observation', message: 'Reason for resolving (optional):', placeholder: 'Why is this resolved?' });
+    if (note === null) return;
     await resolveObservation(observationId, note || undefined);
     doRefresh();
-  }, [observationId, doRefresh]);
+  }, [observationId, prompt, doRefresh]);
 
   const handleAck = useCallback(async () => { await acknowledgeObservation(observationId); doRefresh(); }, [observationId, doRefresh]);
   const handleReopen = useCallback(async () => { await reopenObservation(observationId); doRefresh(); }, [observationId, doRefresh]);
@@ -29,6 +32,7 @@ export function ObservationDetail({ observationId, onRefresh }: { observationId:
 
   return (
     <div className="space-y-3">
+      {dialog}
       {/* Header */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className={`text-sm ${iconColor}`}>{icon}</span>

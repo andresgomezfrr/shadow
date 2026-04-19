@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useApi } from '../../../hooks/useApi';
+import { useDialog } from '../../../hooks/useDialog';
 import {
   fetchWorkspaceFeed, executeRun, createRunSession, discardRun, retryRun, archiveRun,
   acceptSuggestion, dismissSuggestion, snoozeSuggestion,
@@ -21,6 +22,7 @@ const PAGE_SIZE = 20;
 export function WorkspaceFeed() {
   const { state, setFilter, setSelectedItem, setOffset } = useWorkspace();
   const [sessionInfo, setSessionInfo] = useState<{ command: string } | null>(null);
+  const { dialog, prompt } = useDialog();
 
   const { data, refresh } = useApi(
     () => fetchWorkspaceFeed({
@@ -50,28 +52,31 @@ export function WorkspaceFeed() {
     refresh();
   }, [refresh]);
   const handleDiscard = useCallback(async (id: string) => {
-    const note = window.prompt('Reason for discarding (optional):');
+    const note = await prompt({ title: 'Discard run', message: 'Reason for discarding (optional):', placeholder: 'Why is this being discarded?' });
+    if (note === null) return;
     await discardRun(id, note || undefined);
     refresh();
-  }, [refresh]);
+  }, [prompt, refresh]);
   const handleRetry = useCallback(async (id: string) => { await retryRun(id); refresh(); }, [refresh]);
   const handleArchive = useCallback(async (id: string) => { await archiveRun(id); refresh(); }, [refresh]);
 
   // --- Suggestion actions ---
   const handleAccept = useCallback(async (id: string, category?: string) => { await acceptSuggestion(id, category); refresh(); }, [refresh]);
   const handleDismiss = useCallback(async (id: string) => {
-    const note = window.prompt('Reason for dismissing (optional):');
+    const note = await prompt({ title: 'Dismiss suggestion', message: 'Reason for dismissing (optional):', placeholder: 'Why is this being dismissed?' });
+    if (note === null) return;
     await dismissSuggestion(id, note || undefined);
     refresh();
-  }, [refresh]);
+  }, [prompt, refresh]);
   const handleSnooze = useCallback(async (id: string) => { await snoozeSuggestion(id, 24); refresh(); }, [refresh]);
 
   // --- Observation actions ---
   const handleResolve = useCallback(async (id: string) => {
-    const note = window.prompt('Reason for resolving (optional):');
+    const note = await prompt({ title: 'Resolve observation', message: 'Reason for resolving (optional):', placeholder: 'Why is this resolved?' });
+    if (note === null) return;
     await resolveObservation(id, note || undefined);
     refresh();
-  }, [refresh]);
+  }, [prompt, refresh]);
   const handleAck = useCallback(async (id: string) => { await acknowledgeObservation(id); refresh(); }, [refresh]);
 
   // Map sub-filter values to their parent for highlight
@@ -118,6 +123,7 @@ export function WorkspaceFeed() {
 
   return (
     <div className="flex flex-col gap-2">
+      {dialog}
       <FilterTabs
         options={filterOptions}
         active={activeParent}

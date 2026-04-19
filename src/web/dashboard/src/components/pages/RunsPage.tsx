@@ -1,5 +1,6 @@
 import { timeAgo } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
+import { useDialog } from '../../hooks/useDialog';
 import { useHighlight } from '../../hooks/useHighlight';
 import { useFilterParams } from '../../hooks/useFilterParams';
 import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, closeRun, archiveRun, retryRun, rollbackRun, createDraftPr, lookupEntity } from '../../api/client';
@@ -122,6 +123,7 @@ export function RunsPage() {
     setDetailsOpen((s) => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
 
+  const { dialog, prompt } = useDialog();
   const handleExecute = useCallback(async (id: string) => { await executeRun(id); refresh(); }, [refresh]);
   const handleSession = useCallback(async (id: string) => {
     setSessionLoading(id);
@@ -130,11 +132,12 @@ export function RunsPage() {
     refresh();
   }, [refresh]);
   const handleDiscard = useCallback(async (id: string) => {
-    const note = window.prompt('Reason for discarding (optional):');
+    const note = await prompt({ title: 'Discard run', message: 'Reason for discarding (optional):', placeholder: 'Why is this being discarded?' });
+    if (note === null) { setConfirmDiscard(null); return; }
     await discardRun(id, note || undefined);
     setConfirmDiscard(null);
     refresh();
-  }, [refresh]);
+  }, [prompt, refresh]);
   const handleClose = useCallback(async (id: string, note?: string) => { await closeRun(id, note); refresh(); }, [refresh]);
   const handleArchive = useCallback(async (id: string) => { await archiveRun(id); refresh(); }, [refresh]);
   const handleRetry = useCallback(async (id: string) => { await retryRun(id); refresh(); }, [refresh]);
@@ -155,6 +158,7 @@ export function RunsPage() {
 
   return (
     <div>
+      {dialog}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <h1 className="text-xl font-semibold">Runs</h1>
         <FilterTabs options={STATUS_FILTERS} active={params.status} onChange={(v) => setParam('status', v)} />
