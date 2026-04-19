@@ -1012,6 +1012,14 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_llm_usage_daily_date ON llm_usage_daily(date);
     `,
   },
+  {
+    version: 54,
+    name: 'event_queue_dedup_index',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_event_queue_dedup
+        ON event_queue (kind, json_extract(payload_json, '$.targetId'), created_at);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {
