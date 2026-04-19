@@ -317,15 +317,20 @@ else
   # Fresh install: clone
   mkdir -p "$SHADOW_HOME"
 
-  # Determine clone URL: try SSH first
-  CLONE_URL=""
-  SSH_OUTPUT=$(ssh -T -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new git@github.com 2>&1 || true)
-  if echo "$SSH_OUTPUT" | grep -qi "successfully authenticated"; then
-    CLONE_URL="$REPO_SSH"
-    info "Using SSH: $REPO_SSH"
+  # Determine clone URL: HTTPS by default (works for public-repo installers
+  # with no SSH key). Opt into SSH-first via SHADOW_PREFER_SSH=1 — handy if you
+  # already have a key registered and want push access out of the box.
+  CLONE_URL="$REPO_HTTPS"
+  if [ "${SHADOW_PREFER_SSH:-}" = "1" ]; then
+    SSH_OUTPUT=$(ssh -T -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new git@github.com 2>&1 || true)
+    if echo "$SSH_OUTPUT" | grep -qi "successfully authenticated"; then
+      CLONE_URL="$REPO_SSH"
+      info "Using SSH (SHADOW_PREFER_SSH=1): $REPO_SSH"
+    else
+      info "SSH probe failed, falling back to HTTPS: $REPO_HTTPS"
+    fi
   else
-    CLONE_URL="$REPO_HTTPS"
-    info "SSH auth failed, using HTTPS: $REPO_HTTPS"
+    info "Using HTTPS: $REPO_HTTPS (set SHADOW_PREFER_SSH=1 to clone via SSH)"
   fi
 
   git clone --depth 1 "$CLONE_URL" "$SHADOW_APP" 2>/dev/null
