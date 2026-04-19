@@ -4,6 +4,24 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-19 (BACKLOG housekeeping — audit blocks 1–3 follow-through)
+
+Nine backlog entries that were either closed by audit blocks 1–3 or predate the audit (closed by earlier commits) are now removed from `BACKLOG.md`. The canonical record of the fix lives in the commit or audit session listed:
+
+- **RunQueue tracks a phantom adapter** *(2026-04-16)* → audit R-01, commit `fd6dcaf`
+- **Task and memory multi-step writes lack transaction boundaries** *(2026-04-16)* → audit D-01, commit `7b710a0`
+- **All 7 task MCP tools skip Zod parsing** *(2026-04-16)* → audit M-01, commit `5c21378` (MCP) + W-01 `228c175` (web)
+- **Observation events get re-created infinitely** *(2026-04-14)* → audit A-01, commit `6163c52`
+- **Suggestions score-sort fetches entire table on every request** *(2026-04-16)* → audit W-05, commit `2c365d4` (momentum cache; limit capping had landed earlier via the score-sort rework noted in the bloque 1 backlog validation)
+- **P3: Tables without cleanup mechanism** → audit D-02, commit `4452d8d` + follow-up `39875bf`
+- **Parallel execution of runs (plan + execute)** → already shipped via `config.maxConcurrentRuns` in `src/runner/queue.ts` and exposed in Settings; no longer in scope as an open item
+- **Runner awaiting_pr path is dead for autonomous execution** *(2026-04-16)* → pre-audit commit `08e89a4` (`fix(runner): reopen parent to awaiting_pr when PR is created manually`) plus auto-plan/auto-execute lifecycle rework
+- **Detect PRs created outside Shadow** → subsumed by the awaiting_pr path rework and the `pr-sync` job
+
+This is strictly bookkeeping — no new code. BACKLOG.md's `Last updated` header is now `2026-04-19`.
+
+---
+
 ## Session 2026-04-19 (Audit block 2 — observability, performance, autonomy)
 
 Block 2 of the 2026-04-18 full-source audit. Seven fixes across notification throttling, MCP error mapping, two performance hotspots in the dashboard path, pr-sync concurrency, runner hallucination guard, and the daily retention job. Typecheck + 237 tests green after every commit. Seven commits (one per fix) plus shared infrastructure packaged with A-01 where partial staging by line was not available non-interactively.
