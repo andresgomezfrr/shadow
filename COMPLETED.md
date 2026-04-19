@@ -4,6 +4,25 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-20 (Audit block 5G — UI bugs visibles)
+
+Bloque 5G cierra 5 UI bugs/refactors: 2 🟠 alta (memory/connectivity), 3 🟡 media (UX). UI-10 ya estaba done desde bloque 4C — solo marcado en audit. 5 commits + docs, 335 tests verdes. Bloque pequeño (~3h).
+
+- **mounted guard en useApi visibilitychange [audit UI-05]** (`src/web/dashboard/src/hooks/useApi.ts`, commit `e9bf0b1`) — onVisibility callback llamaba `load()` y `startPolling()` sin chequear el flag `mounted`. Si visibilitychange disparaba después de que el componente desmontara (navegación rápida, parent re-render), `load()` corría setState sobre componente muerto + dejaba timer huérfano. Fix de una línea: bail out si !mounted.
+
+- **reset reconnectAttempt en useEventStream cleanup [audit UI-04]** (`src/web/dashboard/src/hooks/useEventStream.ts`, commit `df584cb`) — `reconnectAttempt` era singleton module-level; solo se reseteaba en source.onopen o cuando llegaba a MAX (10). Si todos los subscribers se desuscribían mid-reconnect (counter en 5/10), el próximo subscriber heredaba el counter elevado y un par de errores nuevos lo subían a MAX → stream se quedaba mute sin entregar eventos. Cleanup en useEventStream y useSSEConnected ahora resetea `reconnectAttempt = 0` cuando refCount llega a 0 — cada nueva subscripción empieza con budget limpio.
+
+- **useSSERefresh fallback default 30s [audit UI-08]** (`src/web/dashboard/src/hooks/useSSERefresh.ts`, commit `e072d26`) — Default de polling fallback era 120s con la suposición de que SSE cargaría la freshness; pero cuando SSE drop silencioso, UI quedaba 2 minutos stale. Bajado a 30s (POLL_NORMAL). Sin lógica condicional SSE-aware (simplification). Hook actualmente sin callsites — fix preventivo del default para futuros consumers.
+
+- **MorningPage refresh on digest job:complete [audit UI-09]** (`src/web/dashboard/src/components/pages/MorningPage.tsx`, commit `6f8feba`) — MorningPage polleaba 60s sin push refresh; tras trigger de digest, el contenido nuevo no aparecía hasta el próximo tick. Suscripción SSE a `job:complete`: si `data.type` empieza con `digest-`, refresh ambos queries (dailySummary + digests). Push update sin perder fallback polling. DigestsPage tiene su propio loop, no necesita cambio.
+
+- **Polling constants centralizadas [audit UI-07]** (`src/web/dashboard/src/constants/polling.ts` new + 15 files modificados, commit `d5739d1`) — 29 literal polling values dispersos en `useApi()` y `setInterval()` callsites reemplazados por 5 tiers nombrados: `POLL_REALTIME=10s` (notifications), `POLL_FAST=15s` (live status/jobs/activity), `POLL_NORMAL=30s` (default lists), `POLL_SLOW=60s` (entity lookups), `POLL_VERY_SLOW=120s` (settings). Behavior-preserving rename pass por valor exacto. Setters/timeouts/duration math no tocados.
+
+**Already done, marked in audit (no commit)**:
+- UI-10 FeedTaskCard key estable (bloque 4C, commit `4f67c1f`)
+
+---
+
 ## Session 2026-04-19 (Audit block 5E — tests coverage + observability bug)
 
 Bloque 5E cierra 1 bug 🔴 crítico (T-03 mal-categorizado en sección de tests del audit) + 4 gaps de tests/cobertura. T-02 (migration downgrade tests) deferido a BACKLOG con rationale. 5 commits + docs + BACKLOG entry, 335 tests verdes (+18 desde 317).
