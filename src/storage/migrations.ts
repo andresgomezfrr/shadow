@@ -1020,6 +1020,27 @@ export const migrations: Migration[] = [
         ON event_queue (kind, json_extract(payload_json, '$.targetId'), created_at);
     `,
   },
+  {
+    version: 55,
+    name: 'task_repo_links_junction',
+    sql: `
+      CREATE TABLE IF NOT EXISTS task_repo_links (
+        task_id TEXT NOT NULL,
+        repo_id TEXT NOT NULL,
+        PRIMARY KEY (task_id, repo_id),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+        FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_repo_links_repo ON task_repo_links(repo_id);
+
+      INSERT OR IGNORE INTO task_repo_links (task_id, repo_id)
+      SELECT t.id, je.value
+      FROM tasks t, json_each(t.repo_ids_json) je
+      WHERE t.repo_ids_json IS NOT NULL AND t.repo_ids_json != '' AND t.repo_ids_json != '[]';
+
+      ALTER TABLE tasks DROP COLUMN repo_ids_json;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

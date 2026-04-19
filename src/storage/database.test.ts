@@ -521,6 +521,46 @@ describe('projects + entity cascade', () => {
     assert.ok(taskAfter, 'task should survive deleteProject');
     assert.equal(taskAfter.projectId, null);
   });
+
+  it('task_repo_links: listTasks filters by repo without false-positive on uuid substrings', () => {
+    const repoA = db.createRepo({ name: 'junction-a', path: '/tmp/junction-a' });
+    const repoB = db.createRepo({ name: 'junction-b', path: '/tmp/junction-b' });
+    const taskA = db.createTask({ title: 'task-a', repoIds: [repoA.id] });
+    const taskB = db.createTask({ title: 'task-b', repoIds: [repoB.id] });
+    const taskBoth = db.createTask({ title: 'task-both', repoIds: [repoA.id, repoB.id] });
+
+    const onlyA = db.listTasks({ repoId: repoA.id }).map(t => t.id).sort();
+    assert.deepEqual(onlyA, [taskA.id, taskBoth.id].sort());
+
+    const onlyB = db.listTasks({ repoId: repoB.id }).map(t => t.id).sort();
+    assert.deepEqual(onlyB, [taskB.id, taskBoth.id].sort());
+
+    // Prefix attack: filtering by repoA.id should never match repoB's task
+    assert.equal(onlyA.includes(taskB.id), false);
+  });
+
+  it('task_repo_links: deleteRepo cascades junction, task survives with empty repoIds', () => {
+    const repo = db.createRepo({ name: 'junction-del', path: '/tmp/junction-del' });
+    const other = db.createRepo({ name: 'junction-keep', path: '/tmp/junction-keep' });
+    const task = db.createTask({ title: 'survives', repoIds: [repo.id, other.id] });
+
+    db.deleteRepo(repo.id);
+
+    const taskAfter = db.getTask(task.id);
+    assert.ok(taskAfter, 'task should survive deleteRepo');
+    assert.deepEqual(taskAfter.repoIds, [other.id]);
+  });
+
+  it('task_repo_links: updateTask replaces repoIds', () => {
+    const repoA = db.createRepo({ name: 'upd-a', path: '/tmp/upd-a' });
+    const repoB = db.createRepo({ name: 'upd-b', path: '/tmp/upd-b' });
+    const task = db.createTask({ title: 't', repoIds: [repoA.id] });
+
+    db.updateTask(task.id, { repoIds: [repoB.id] });
+
+    const after = db.getTask(task.id)!;
+    assert.deepEqual(after.repoIds, [repoB.id]);
+  });
 });
 
 // ---------------------------------------------------------------------------

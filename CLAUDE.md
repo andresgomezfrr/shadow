@@ -85,7 +85,7 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 | `jobs` | Job execution log | type, phase, status, llm_calls, tokens_used, duration_ms |
 | `interactions` | User interactions | sentiment, topics, trust_delta |
 | `event_queue` | Notifications | kind, priority (1-10), delivered |
-| `tasks` | Work containers | title, status, suggestion_id, project_id, repo_ids_json, external_refs_json, session_id, archived |
+| `tasks` | Work containers | title, status, suggestion_id, project_id, external_refs_json, session_id, archived (repoIds via `task_repo_links` junction) |
 | `runs` | Task execution | status, task_id, outcome, snapshot_ref, result_ref, diff_stat, verification_json, verified |
 | `audit_events` | Append-only trail | actor, action, target_kind, target_id |
 | `llm_usage` | Token tracking | source, model, input_tokens, output_tokens |
