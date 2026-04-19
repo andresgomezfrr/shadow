@@ -258,7 +258,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
   let running = true;
   let draining = false;
   let db: ShadowDatabase | null = null;
-  let webServer: { close: () => void } | null = null;
+  let webServer: { close: () => Promise<void> } | null = null;
   let sleepReject: (() => void) | null = null;
 
   const shutdown = () => {
@@ -920,9 +920,16 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     if (repoWatcherRef) repoWatcherRef.stopAll();
     if (eventBusRef) eventBusRef.shutdown();
 
-    // Step 8: Cleanup
+    // Step 8: Cleanup. Order matters — stop accepting HTTP requests BEFORE closing
+    // the DB, otherwise a late request reaches the handler after the SQLite connection
+    // has been torn down and crashes with "database is not open".
     if (webServer) {
-      try { webServer.close(); } catch { /* best-effort */ }
+      try {
+        await Promise.race([
+          webServer.close(),
+          new Promise<void>((r) => setTimeout(r, 5_000)),  // hard cap — don't hang shutdown
+        ]);
+      } catch { /* best-effort */ }
     }
     if (db) {
       try { db.close(); } catch { /* best-effort */ }
