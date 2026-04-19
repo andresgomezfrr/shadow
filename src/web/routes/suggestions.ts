@@ -3,6 +3,32 @@ import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 import { json, clampLimit, clampOffset, parseBody, parseOptionalBody, BulkSuggestionSchema, OptionalCategorySchema, DismissCategorySchema, SnoozeSchema } from '../helpers.js';
 
+/**
+ * Project momentum is recomputed for every project on every suggestions request
+ * (score-sort path + context endpoint). Dashboard polls every 30s, so with N
+ * projects we were doing N * ~30s = burn. Cache with 5 min TTL — momentum is
+ * a 7-day rolling signal, doesn't move much in 5 minutes.
+ */
+const MOMENTUM_CACHE_TTL_MS = 5 * 60 * 1000;
+const momentumCache = new Map<string, { value: number; expiresAt: number }>();
+
+async function getProjectMomentumMap(db: ShadowDatabase, projectIds: string[]): Promise<Map<string, number>> {
+  const { computeProjectMomentum } = await import('../../analysis/project-detection.js');
+  const now = Date.now();
+  const map = new Map<string, number>();
+  for (const id of projectIds) {
+    const cached = momentumCache.get(id);
+    if (cached && cached.expiresAt > now) {
+      map.set(id, cached.value);
+      continue;
+    }
+    const value = computeProjectMomentum(db, id, 7);
+    momentumCache.set(id, { value, expiresAt: now + MOMENTUM_CACHE_TTL_MS });
+    map.set(id, value);
+  }
+  return map;
+}
+
 export async function handleSuggestionRoutes(
   req: IncomingMessage, res: ServerResponse,
   pathname: string, params: URLSearchParams,
@@ -22,12 +48,11 @@ export async function handleSuggestionRoutes(
       // score sort needs post-query ranking (momentum context), others use SQL ORDER BY
       const useScoreSort = sortBy === 'score' || (status === 'open' && !sortBy);
       let items = db.listSuggestions({ status, kind, repoId, projectId, sortBy: useScoreSort ? undefined : sortBy, limit: useScoreSort ? undefined : limit, offset: useScoreSort ? undefined : offset });
-      // Compute rank scores
+      // Compute rank scores (momentum values cached 5min)
       const { computeRankScore } = await import('../../suggestion/ranking.js');
-      const { computeProjectMomentum } = await import('../../analysis/project-detection.js');
       const profile = db.ensureProfile();
       const projects = db.listProjects();
-      const projectMomentum = new Map(projects.map(p => [p.id, computeProjectMomentum(db, p.id, 7)]));
+      const projectMomentum = await getProjectMomentumMap(db, projects.map(p => p.id));
       const scoreMap = new Map(items.map(s => [s.id, Math.round(computeRankScore(s, profile, { projectMomentum }) * 10) / 10]));
       if (useScoreSort) {
         items.sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0));
@@ -48,12 +73,11 @@ export async function handleSuggestionRoutes(
       const sourceObservation = suggestion.sourceObservationId ? db.getObservation(suggestion.sourceObservationId) : null;
       const linkedRuns = db.listRuns({ archived: undefined }).filter(r => r.suggestionId === suggestion.id && !r.parentRunId);
 
-      // Compute rank score
+      // Compute rank score (momentum values cached 5min)
       const { computeRankScore } = await import('../../suggestion/ranking.js');
-      const { computeProjectMomentum } = await import('../../analysis/project-detection.js');
       const profile = db.ensureProfile();
       const projects = db.listProjects();
-      const projectMomentum = new Map(projects.map(p => [p.id, computeProjectMomentum(db, p.id, 7)]));
+      const projectMomentum = await getProjectMomentumMap(db, projects.map(p => p.id));
       const rankScore = Math.round(computeRankScore(suggestion, profile, { projectMomentum }) * 10) / 10;
 
       // Warning if source observation already resolved
