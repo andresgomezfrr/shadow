@@ -254,6 +254,25 @@ export function findProjectsForRepo(db: DatabaseSync, repoId: string): ProjectRe
     .map(mapProject);
 }
 
+/**
+ * Returns Map<repoId, ProjectRecord[]> across all non-archived projects in a single query.
+ * Use this instead of calling findProjectsForRepo in a loop (avoids N+1 in feed endpoints).
+ */
+export function buildRepoProjectsMap(db: DatabaseSync): Map<string, ProjectRecord[]> {
+  const rows = db
+    .prepare(`SELECT p.*, j.value as _repo_id FROM projects p, json_each(p.repo_ids_json) j WHERE p.status != 'archived'`)
+    .all() as Array<Record<string, unknown>>;
+  const map = new Map<string, ProjectRecord[]>();
+  for (const row of rows) {
+    const repoId = String(row._repo_id);
+    const project = mapProject(row);
+    const existing = map.get(repoId);
+    if (existing) existing.push(project);
+    else map.set(repoId, [project]);
+  }
+  return map;
+}
+
 // --- Contacts ---
 
 export function createContact(db: DatabaseSync, input: { name: string; role?: string | null; team?: string | null; email?: string | null; slackId?: string | null; githubHandle?: string | null; notesMd?: string | null; preferredChannel?: string | null }): ContactRecord {

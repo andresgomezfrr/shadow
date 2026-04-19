@@ -87,8 +87,10 @@ export async function handleWorkspaceRoutes(
     const includeAckedObs = type === 'acknowledged';
     const includeObsDone = type === 'obs-done';
 
-    // Runs: active + to review + done (until explicitly dismissed), not archived, top-level only
+    // Runs: active + to review + done (until explicitly dismissed), not archived, top-level only.
+    // If filtering by projectId, precompute the repo→projects map once to avoid N+1 over runs.
     const activeParentIds = new Set<string>();
+    const repoProjectsMap = projectId ? db.buildRepoProjectsMap() : null;
     if (includeRuns) {
       const statusesToFetch = runStatusFilter ? [...runStatusFilter] : ['running', 'queued', 'planned', 'awaiting_pr', 'failed', 'done', 'dismissed'];
       for (const status of statusesToFetch) {
@@ -100,8 +102,8 @@ export async function handleWorkspaceRoutes(
             }
             continue; // skip children
           }
-          if (projectId) {
-            const projects = db.findProjectsForRepo(r.repoId);
+          if (projectId && repoProjectsMap) {
+            const projects = repoProjectsMap.get(r.repoId) ?? [];
             if (!projects.some(p => p.id === projectId)) continue;
           }
           items.push({ source: 'run', id: r.id, priority: 0, data: r });
