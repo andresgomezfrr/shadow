@@ -15,15 +15,18 @@ export async function handleKnowledgeRoutes(
       const q = params.get('q');
       const layer = params.get('layer') ?? undefined;
       const memoryType = params.get('memoryType') ?? undefined;
+      const kind = params.get('kind') ?? undefined;
       const limit = clampLimit(params.get('limit'), 50);
       const offset = clampOffset(params.get('offset'));
       if (q) {
         const results = db.searchMemories(q, { layer, limit: limit ?? 50 });
-        const items = results.map((r) => ({ ...r.memory, rank: r.rank, snippet: r.snippet }));
+        const items = kind
+          ? results.filter((r) => r.memory.kind === kind).map((r) => ({ ...r.memory, rank: r.rank, snippet: r.snippet }))
+          : results.map((r) => ({ ...r.memory, rank: r.rank, snippet: r.snippet }));
         return json(res, { items, total: items.length }), true;
       }
-      const items = db.listMemories({ layer, memoryType, archived: false, limit, offset });
-      const total = db.countMemories({ layer, memoryType, archived: false });
+      const items = db.listMemories({ layer, memoryType, kind, archived: false, limit, offset });
+      const total = db.countMemories({ layer, memoryType, kind, archived: false });
       return json(res, { items, total }), true;
     }
 

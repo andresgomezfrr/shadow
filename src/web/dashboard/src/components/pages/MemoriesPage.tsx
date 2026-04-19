@@ -21,10 +21,17 @@ const LAYERS = [
   { label: 'Cold', value: 'cold' },
 ];
 
+const KIND_OPTIONS = [
+  'taught', 'correction', 'knowledge_summary', 'soul_reflection',
+  'convention', 'preference', 'infrastructure', 'workflow',
+  'tech_stack', 'design_decision', 'architecture',
+  'pattern', 'insight', 'meta_pattern',
+];
+
 const PAGE_SIZE = 30;
 
 export function MemoriesPage() {
-  const { params, setParam } = useFilterParams({ layer: '', q: '', offset: '0' });
+  const { params, setParam } = useFilterParams({ layer: '', kind: '', q: '', offset: '0' });
   const [inputQ, setInputQ] = useState(params.q);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [total, setTotal] = useState(0);
@@ -61,6 +68,7 @@ export function MemoriesPage() {
       const data = await fetchMemories({
         q: params.q || undefined,
         layer: params.layer || undefined,
+        kind: params.kind || undefined,
         limit: PAGE_SIZE,
         offset: Number(params.offset) || 0,
       });
@@ -68,7 +76,7 @@ export function MemoriesPage() {
       setTotal(data?.total ?? 0);
       setLoading(false);
     })();
-  }, [params.layer, params.q, params.offset]);
+  }, [params.layer, params.kind, params.q, params.offset]);
 
   // If highlight target isn't in the current list, fetch it and prepend
   useEffect(() => {
@@ -97,6 +105,16 @@ export function MemoriesPage() {
         <img src="/ghost/memories.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
         <h1 className="text-xl font-semibold">Memories</h1>
         <FilterTabs options={LAYERS} active={params.layer} onChange={(v) => setParam('layer', v)} />
+        <select
+          value={params.kind}
+          onChange={(e) => setParam('kind', e.target.value)}
+          className="text-xs bg-bg border border-border rounded px-2 py-1 text-text outline-none focus:border-accent"
+        >
+          <option value="">All kinds</option>
+          {KIND_OPTIONS.map((k) => (
+            <option key={k} value={k}>{k}</option>
+          ))}
+        </select>
       </div>
       <div className="mb-4">
         <SearchInput value={inputQ} onChange={setInputQ} placeholder="Search memories..." />
