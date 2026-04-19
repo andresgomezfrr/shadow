@@ -49,7 +49,7 @@ export function computeTimeAxis(now: Date, resetAt: string): number {
  * Explicitly NOT included: ephemeral/transient kinds like 'thought',
  * 'activity', or anything generated as passing session context.
  */
-const DEPTH_ELIGIBLE_KINDS = [
+export const DEPTH_ELIGIBLE_KINDS = [
   'taught', 'correction', 'knowledge_summary', 'soul_reflection',
   'convention', 'preference', 'infrastructure', 'workflow',
   'tech_stack', 'design_decision', 'architecture',

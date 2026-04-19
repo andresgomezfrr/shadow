@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import type { ObjectivePack } from '../backend/types.js';
+import type { MemoryRecord } from '../storage/models.js';
 
 import { maintainMemoryLayers } from '../memory/layers.js';
 import { checkMemoryDuplicate } from '../memory/dedup.js';
 import { generateAndStoreEmbedding } from '../memory/lifecycle.js';
 import { selectAdapter } from '../backend/index.js';
 import { safeParseJson } from '../backend/json-repair.js';
+import { DEPTH_ELIGIBLE_KINDS } from '../profile/bond.js';
 
 import type { HeartbeatContext } from './state-machine.js';
 import { getModel } from './shared.js';
@@ -21,9 +23,35 @@ const ConsolidateSchema = z.object({
   metaPatterns: z.array(MetaPatternSchema).default([]),
 });
 
+const KnowledgeSummaryLLMSchema = z.object({
+  summary: z.string().min(100),
+  themes: z.array(z.string().min(2)).min(2),
+  highlights: z.array(z.object({
+    title: z.string().min(1),
+    why: z.string().min(1),
+  })).min(3).max(7),
+  entities: z.array(z.object({
+    type: z.enum(['repo', 'project', 'system', 'contact']),
+    id: z.string(),
+  })).optional(),
+});
+
+type KnowledgeSummaryAction = 'created' | 'merged' | 'skipped';
+
+export type KnowledgeSummaryResult = {
+  action: KnowledgeSummaryAction;
+  memoryId?: string;
+  reason?: string;
+  themes?: string[];
+  llmCalls?: number;
+  tokensUsed?: number;
+};
+
+const KNOWLEDGE_SUMMARY_MIN_NEW = 10;
+
 export async function activityConsolidate(
   ctx: HeartbeatContext,
-): Promise<{ memoriesPromoted: number; memoriesDemoted: number; memoriesExpired: number; llmCalls: number; tokensUsed: number }> {
+): Promise<{ memoriesPromoted: number; memoriesDemoted: number; memoriesExpired: number; llmCalls: number; tokensUsed: number; knowledgeSummary: KnowledgeSummaryResult }> {
   // Step 1: Run the programmatic memory layer maintenance
   const layerResult = maintainMemoryLayers(ctx.db);
 
@@ -138,11 +166,237 @@ export async function activityConsolidate(
     }
   }
 
+  // Step 3: Synthesize knowledge_summary (narrative present-state memory)
+  const knowledgeSummary: KnowledgeSummaryResult = await synthesizeKnowledgeSummary(ctx).catch((e) => {
+    console.error('[shadow:consolidate] knowledgeSummary synthesis failed:', e instanceof Error ? e.message : e);
+    return { action: 'skipped', reason: 'error during synthesis' };
+  });
+  llmCalls += knowledgeSummary.llmCalls ?? 0;
+  tokensUsed += knowledgeSummary.tokensUsed ?? 0;
+
   return {
     memoriesPromoted: layerResult.promoted,
     memoriesDemoted: layerResult.demoted,
     memoriesExpired: layerResult.expired,
     llmCalls,
     tokensUsed,
+    knowledgeSummary,
   };
+}
+
+// ---------------------------------------------------------------------------
+// knowledge_summary synthesis (audit F-14 phase 1)
+//
+// A narrative summary of what Shadow currently understands about the user's
+// world — semantically distinct from meta_patterns (those describe emergent
+// patterns) and digests (those describe events). Gated by a minimum of 10
+// new durable memories since the last summary; skipped otherwise.
+// ---------------------------------------------------------------------------
+
+async function synthesizeKnowledgeSummary(ctx: HeartbeatContext): Promise<KnowledgeSummaryResult> {
+  const [previousSummary] = ctx.db.listMemories({
+    kind: 'knowledge_summary',
+    archived: false,
+    limit: 1,
+  });
+
+  const sinceIso = previousSummary?.createdAt ?? ctx.profile.bondResetAt ?? '1970-01-01T00:00:00Z';
+  const depthPlaceholders = DEPTH_ELIGIBLE_KINDS.map(() => '?').join(',');
+  const newCountRow = ctx.db.rawDb
+    .prepare(
+      `SELECT COUNT(*) AS n FROM memories
+       WHERE archived_at IS NULL
+         AND created_at > ?
+         AND kind IN (${depthPlaceholders})`,
+    )
+    .get(sinceIso, ...DEPTH_ELIGIBLE_KINDS) as { n: number };
+
+  if (newCountRow.n < KNOWLEDGE_SUMMARY_MIN_NEW) {
+    return {
+      action: 'skipped',
+      reason: `only ${newCountRow.n} durable memories new since last (need ${KNOWLEDGE_SUMMARY_MIN_NEW})`,
+    };
+  }
+
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 86_400_000).toISOString();
+  const recentDurable: MemoryRecord[] = [];
+  for (const kind of DEPTH_ELIGIBLE_KINDS) {
+    const rows = ctx.db.listMemories({
+      kind,
+      archived: false,
+      createdSince: fourteenDaysAgo,
+      limit: 50,
+    });
+    recentDurable.push(...rows);
+  }
+  recentDurable.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const recent50 = recentDurable.slice(0, 50);
+
+  const topAccessedRows = ctx.db.rawDb
+    .prepare(
+      `SELECT id FROM memories
+       WHERE archived_at IS NULL
+         AND kind IN (${depthPlaceholders})
+       ORDER BY access_count DESC, last_accessed_at DESC
+       LIMIT 20`,
+    )
+    .all(...DEPTH_ELIGIBLE_KINDS) as { id: string }[];
+
+  const seenIds = new Set(recent50.map((m) => m.id));
+  const topAccessed: MemoryRecord[] = [];
+  for (const row of topAccessedRows) {
+    if (seenIds.has(row.id)) continue;
+    const mem = ctx.db.getMemory(row.id);
+    if (mem) {
+      topAccessed.push(mem);
+      seenIds.add(mem.id);
+    }
+  }
+
+  const inputMemories = [...recent50, ...topAccessed];
+  const memoryLines = inputMemories
+    .map((m) => `- [${m.kind}] ${m.title}: ${m.bodyMd.slice(0, 180)}`)
+    .join('\n');
+
+  const previousBlock = previousSummary
+    ? `\n## Previous summary (for continuity)\n${previousSummary.bodyMd.slice(0, 800)}\n`
+    : '';
+
+  const prompt = [
+    "You are Shadow, consolidating your knowledge of this user's world.",
+    '',
+    'You have access to memories spanning recent interactions, stable patterns,',
+    'durable knowledge about their repos, workflows, tech stack, decisions,',
+    'and architectural choices.',
+    '',
+    'Your task: produce a NARRATIVE SUMMARY of what you currently understand',
+    "about the user's environment at this moment in time.",
+    '',
+    'CRITICAL boundaries:',
+    '- DO NOT list events that happened (daily/weekly digests exist for that)',
+    "- DO NOT repeat meta-patterns already synthesized (memory kind='meta_pattern')",
+    '- DO focus on the present knowledge state: how you understand their systems,',
+    "  what decisions they've made, what their current focus is, what stable",
+    "  preferences you've observed",
+    '- Write as if describing a colleague to a new team member — not a dry listing',
+    '',
+    '## Memories input',
+    memoryLines,
+    previousBlock,
+    'Respond ONLY with JSON:',
+    '{',
+    '  "summary": "<narrative paragraph, 150-400 words>",',
+    '  "themes": ["<short theme>", ...],',
+    '  "highlights": [',
+    '    {"title": "<one-line headline>", "why": "<why this matters>"},',
+    '    ...',
+    '  ],',
+    '  "entities": [{"type": "repo|project|system|contact", "id": "<uuid>"}, ...]',
+    '}',
+  ].join('\n');
+
+  const pack: ObjectivePack = {
+    repos: [],
+    title: 'Knowledge Summary Synthesis',
+    goal: "Synthesize a narrative summary of the user's present knowledge state",
+    prompt,
+    relevantMemories: inputMemories,
+    model: getModel(ctx, 'consolidate'),
+  };
+
+  const adapter = selectAdapter(ctx.config);
+  const result = await adapter.execute(pack);
+  const llmCalls = 1;
+  const tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
+
+  ctx.db.recordLlmUsage({
+    source: 'heartbeat_consolidate_summary',
+    sourceId: null,
+    model: getModel(ctx, 'consolidate'),
+    inputTokens: result.inputTokens ?? 0,
+    outputTokens: result.outputTokens ?? 0,
+  });
+
+  if (result.status !== 'success' || !result.output) {
+    return { action: 'skipped', reason: 'llm call failed', llmCalls, tokensUsed };
+  }
+
+  const parsed = safeParseJson(result.output, KnowledgeSummaryLLMSchema, 'knowledge-summary');
+  if (!parsed.success) {
+    return { action: 'skipped', reason: 'llm output parse failed', llmCalls, tokensUsed };
+  }
+
+  const { summary, themes, highlights, entities } = parsed.data;
+
+  // Validate entities against DB — filter hallucinated uuids
+  const validEntities = filterValidEntities(ctx, entities ?? []);
+
+  // Build body (narrative + themes + highlights)
+  const highlightLines = highlights.map((h) => `- **${h.title}** — ${h.why}`).join('\n');
+  const title = `Knowledge summary — ${new Date().toISOString().slice(0, 10)} (${themes.slice(0, 3).join(' · ')})`;
+  const bodyMd = [
+    summary.trim(),
+    '',
+    '## Themes',
+    themes.map((t) => `- ${t}`).join('\n'),
+    '',
+    '## Highlights',
+    highlightLines,
+  ].join('\n');
+
+  const decision = await checkMemoryDuplicate(ctx.db, { kind: 'knowledge_summary', title, bodyMd });
+  if (decision.action === 'skip') {
+    return { action: 'skipped', reason: 'duplicate of existing summary', llmCalls, tokensUsed };
+  }
+
+  if (decision.action === 'update') {
+    ctx.db.mergeMemoryBody(decision.existingId, bodyMd, themes);
+    const merged = ctx.db.getMemory(decision.existingId);
+    if (merged) {
+      await generateAndStoreEmbedding(ctx.db, 'memory', merged.id, {
+        kind: merged.kind, title: merged.title, bodyMd: merged.bodyMd,
+      });
+    }
+    return { action: 'merged', memoryId: decision.existingId, themes, llmCalls, tokensUsed };
+  }
+
+  const mem = ctx.db.createMemory({
+    layer: 'core',
+    scope: 'global',
+    kind: 'knowledge_summary',
+    title,
+    bodyMd,
+    tags: themes,
+    sourceType: 'consolidate',
+    confidenceScore: 85,
+    relevanceScore: 0.9,
+  });
+  if (validEntities.length > 0) {
+    ctx.db.updateMemory(mem.id, { entities: validEntities });
+  }
+  await generateAndStoreEmbedding(ctx.db, 'memory', mem.id, {
+    kind: 'knowledge_summary', title: mem.title, bodyMd: mem.bodyMd,
+  });
+
+  return { action: 'created', memoryId: mem.id, themes, llmCalls, tokensUsed };
+}
+
+function filterValidEntities(
+  ctx: HeartbeatContext,
+  entities: Array<{ type: 'repo' | 'project' | 'system' | 'contact'; id: string }>,
+): Array<{ type: string; id: string }> {
+  if (entities.length === 0) return [];
+  const tableByType: Record<string, string> = {
+    repo: 'repos', project: 'projects', system: 'systems', contact: 'contacts',
+  };
+  const valid: Array<{ type: string; id: string }> = [];
+  for (const e of entities) {
+    const table = tableByType[e.type];
+    if (!table) continue;
+    try {
+      const row = ctx.db.rawDb.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(e.id);
+      if (row) valid.push({ type: e.type, id: e.id });
+    } catch { /* ignore */ }
+  }
+  return valid;
 }
