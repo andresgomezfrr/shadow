@@ -2,13 +2,12 @@ import type { ShadowConfig } from '../config/schema.js';
 import type { ShadowDatabase } from '../storage/database.js';
 import type { RunRecord } from '../storage/models.js';
 import type { EventBus } from '../web/event-bus.js';
-import { ClaudeCliAdapter } from '../backend/claude-cli.js';
+import { killAllActiveChildren } from '../backend/claude-cli.js';
 import { RunnerService } from './service.js';
 
 type ActiveRun = {
   runId: string;
   repoId: string;
-  adapter: ClaudeCliAdapter;
   promise: Promise<void>;
 };
 
@@ -28,11 +27,12 @@ export class RunQueue {
    * Returns true if any runs are active (started or still running).
    */
   async tick(): Promise<boolean> {
-    // Cleanup completed runs from active map
-    for (const [runId, entry] of this.active) {
+    // Cleanup completed runs from active map. The underlying claude child
+    // processes are tracked globally in backend/claude-cli.ts#adapterInstances
+    // and are killed via killAllActiveChildren on daemon shutdown.
+    for (const [runId] of this.active) {
       const run = this.db.getRun(runId);
       if (!run || TERMINAL_STATUSES.has(run.status)) {
-        entry.adapter.dispose();
         this.active.delete(runId);
       }
     }
@@ -78,17 +78,15 @@ export class RunQueue {
   }
 
   private startRun(run: RunRecord): void {
-    const adapter = new ClaudeCliAdapter(this.config);
     const runner = new RunnerService(this.config, this.db, this.eventBus);
 
     const promise = runner.processRun(run.id).then(() => {}).catch((err) => {
       console.error(`[run-queue] Run ${run.id.slice(0, 8)} error:`, err instanceof Error ? err.message : err);
     }).finally(() => {
-      adapter.dispose();
       this.active.delete(run.id);
     });
 
-    this.active.set(run.id, { runId: run.id, repoId: run.repoId, adapter, promise });
+    this.active.set(run.id, { runId: run.id, repoId: run.repoId, promise });
   }
 
   async drainAll(timeoutMs = 60_000): Promise<void> {
@@ -101,10 +99,14 @@ export class RunQueue {
     ]);
   }
 
+  /**
+   * Force-kill all in-flight claude children across the runner.
+   * Delegates to the global registry in backend/claude-cli.ts because
+   * RunnerService creates its own adapter via selectAdapter — the queue
+   * never held a reference to the real spawning adapter.
+   */
   killAll(): void {
-    for (const entry of this.active.values()) {
-      entry.adapter.kill();
-    }
+    killAllActiveChildren();
     this.active.clear();
   }
 
