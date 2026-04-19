@@ -29,10 +29,24 @@ export class AgentSdkAdapter implements BackendAdapter {
       };
       const model = modelMap[pack.model ?? 'sonnet'] ?? pack.model ?? 'claude-sonnet-4-6';
 
+      // Filter allowedTools to exclude any pattern in disallowedTools.
+      // Note: this only denies MCP/custom tools enumerated in allowedTools.
+      // Claude built-ins (e.g. AskUserQuestion) are NOT in allowedTools and cannot
+      // be hard-denied here — the CLI backend uses --disallowedTools for that.
+      let tools = pack.allowedTools ?? [];
+      if (pack.disallowedTools?.length) {
+        const builtinDenies = pack.disallowedTools.filter((d) => !d.includes('__') && !d.endsWith('*'));
+        if (builtinDenies.length > 0) {
+          console.error(
+            `[agent-sdk] Built-in tools cannot be denied via allowedTools filter (backend=api): ${builtinDenies.join(', ')}`,
+          );
+        }
+        tools = tools.filter((t) => !pack.disallowedTools!.some((d) => matchToolPattern(t, d)));
+      }
+
       const agent = new sdk.Agent({
         model,
-        tools: pack.allowedTools ?? [],
-        // TODO: pack.disallowedTools is not yet wired to the SDK adapter — only the CLI backend honors deny lists.
+        tools,
       });
 
       const result = await agent.run(pack.prompt, {
@@ -83,4 +97,10 @@ export class AgentSdkAdapter implements BackendAdapter {
       },
     };
   }
+}
+
+/** Matches an MCP tool name against a deny pattern. Supports exact match + trailing wildcard. */
+function matchToolPattern(tool: string, pattern: string): boolean {
+  if (pattern.endsWith('*')) return tool.startsWith(pattern.slice(0, -1));
+  return tool === pattern;
 }
