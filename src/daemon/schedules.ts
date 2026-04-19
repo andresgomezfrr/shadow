@@ -13,6 +13,10 @@ export const DIGEST_SCHEDULES: Record<string, ClockSchedule> = {
   'digest-brag':   { hour: 8,  minute: 0,  dayOfWeek: 1, label: 'Mon 08:00' },
 };
 
+/** Cleanup job runs once a day at a low-traffic hour. Retention applied to
+ *  interactions, event_queue (delivered only), llm_usage (raw), and jobs. */
+export const CLEANUP_SCHEDULE: ClockSchedule = { hour: 3, minute: 30, label: 'daily 03:30' };
+
 /** Extract date/time parts in a given timezone using Intl (DST-safe). */
 function tzParts(date: Date, tz: string): { year: number; month: number; day: number; hour: number; minute: number; weekday: number } {
   const fmt = new Intl.DateTimeFormat('en-US', {

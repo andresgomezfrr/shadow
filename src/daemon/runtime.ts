@@ -9,7 +9,7 @@ import type { ShadowConfig } from '../config/schema.js';
 import { killAllActiveChildren } from '../backend/claude-cli.js';
 import { createDatabase, ShadowDatabase } from '../storage/database.js';
 import { startThoughtLoop, stopThoughtLoop } from './thought.js';
-import { DIGEST_SCHEDULES, isScheduleReady } from './schedules.js';
+import { DIGEST_SCHEDULES, CLEANUP_SCHEDULE, isScheduleReady } from './schedules.js';
 import { EventBus } from '../web/event-bus.js';
 import { RepoWatcher } from '../observation/repo-watcher.js';
 import { RunQueue } from '../runner/queue.js';
@@ -686,6 +686,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       // Brag: normal scheduling only (quarterly, no backfill)
       if (canSchedule && !_db.hasQueuedOrRunning('digest-brag') && isScheduleReady(DIGEST_SCHEDULES['digest-brag'], userTz, _db.getLastJob('digest-brag')?.startedAt)) {
         _db.enqueueJob('digest-brag', { priority: 5 });
+      }
+
+      // Cleanup: daily retention purge for high-churn tables + llm_usage rollup
+      if (canSchedule && !_db.hasQueuedOrRunning('cleanup') && isScheduleReady(CLEANUP_SCHEDULE, userTz, _db.getLastJob('cleanup')?.startedAt)) {
+        _db.enqueueJob('cleanup', { priority: 2 });
       }
 
       // Suggest-deep: periodic deep scan — find the repo with highest need

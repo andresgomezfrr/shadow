@@ -35,7 +35,7 @@ const PERIOD_OPTIONS = [
   { label: 'Today', value: 'today' },
   { label: '7d', value: '7d' },
   { label: '30d', value: '30d' },
-  { label: 'All', value: 'all' },
+  { label: '90d', value: 'all' },
 ];
 
 const PAGE_SIZE = 30;

@@ -263,6 +263,56 @@ export function getLlmUsage(db: DatabaseSync, id: string): LlmUsageRecord | null
   return row ? mapLlmUsage(row) : null;
 }
 
+/**
+ * Rollup raw llm_usage rows older than N days into llm_usage_daily (date/source/model
+ * primary key). Idempotent via ON CONFLICT DO UPDATE — running twice won't double-count
+ * because this is gated by the subsequent deleteOldLlmUsage in the cleanup handler.
+ * Returns number of rollup rows inserted/updated.
+ */
+export function rollupLlmUsageDaily(db: DatabaseSync, olderThanDays: number): number {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000).toISOString();
+  const result = db
+    .prepare(
+      `INSERT INTO llm_usage_daily (date, source, model, input_tokens_sum, output_tokens_sum, calls)
+       SELECT substr(created_at, 1, 10) as date, source, model,
+              SUM(input_tokens), SUM(output_tokens), COUNT(*)
+       FROM llm_usage
+       WHERE created_at < ?
+       GROUP BY date, source, model
+       ON CONFLICT(date, source, model) DO UPDATE SET
+         input_tokens_sum = llm_usage_daily.input_tokens_sum + excluded.input_tokens_sum,
+         output_tokens_sum = llm_usage_daily.output_tokens_sum + excluded.output_tokens_sum,
+         calls = llm_usage_daily.calls + excluded.calls`,
+    )
+    .run(cutoff);
+  return Number(result.changes);
+}
+
+export function deleteOldLlmUsage(db: DatabaseSync, olderThanDays: number): number {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000).toISOString();
+  const result = db.prepare('DELETE FROM llm_usage WHERE created_at < ?').run(cutoff);
+  return Number(result.changes);
+}
+
+export function deleteOldInteractions(db: DatabaseSync, olderThanDays: number): number {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000).toISOString();
+  const result = db.prepare('DELETE FROM interactions WHERE created_at < ?').run(cutoff);
+  return Number(result.changes);
+}
+
+/** Only purge delivered events. Pending (delivered=0) never purged — they signal bugs if stuck. */
+export function deleteOldDeliveredEvents(db: DatabaseSync, olderThanDays: number): number {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000).toISOString();
+  const result = db.prepare('DELETE FROM event_queue WHERE delivered = 1 AND created_at < ?').run(cutoff);
+  return Number(result.changes);
+}
+
+export function deleteOldJobs(db: DatabaseSync, olderThanDays: number): number {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000).toISOString();
+  const result = db.prepare('DELETE FROM jobs WHERE created_at < ?').run(cutoff);
+  return Number(result.changes);
+}
+
 export function getUsageSummary(db: DatabaseSync, period: 'day' | 'week' | 'month' = 'day'): { totalInputTokens: number; totalOutputTokens: number; totalCalls: number; byModel: Record<string, { input: number; output: number; calls: number }> } {
   const daysBack = period === 'day' ? 1 : period === 'week' ? 7 : 30;
   const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();

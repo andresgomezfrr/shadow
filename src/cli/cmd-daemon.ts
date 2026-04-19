@@ -304,6 +304,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
     'digest-weekly':        { priority: 5,  description: 'generate weekly digest' },
     'digest-brag':          { priority: 5,  description: 'generate brag doc' },
     'revalidate-suggestion': { priority: 3, description: 'revalidate open suggestions' },
+    cleanup:                { priority: 2,  description: 'purge interactions/event_queue/llm_usage/jobs older than 90d; rollup llm_usage_daily' },
   };
 
   program
