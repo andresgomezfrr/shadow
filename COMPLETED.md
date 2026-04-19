@@ -4,6 +4,24 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-19 (Audit block 5E — tests coverage + observability bug)
+
+Bloque 5E cierra 1 bug 🔴 crítico (T-03 mal-categorizado en sección de tests del audit) + 4 gaps de tests/cobertura. T-02 (migration downgrade tests) deferido a BACKLOG con rationale. 5 commits + docs + BACKLOG entry, 335 tests verdes (+18 desde 317).
+
+- **llm_usage tracking en handlers faltantes [audit T-03]** (`src/daemon/handlers/suggest.ts`, `src/daemon/handlers/profiling.ts`, commit `84d74de`) — Bug crítico de observability. Casi todos los LLM call sites ya persistían vía `db.recordLlmUsage` (analysis/extract.ts, consolidate.ts, suggest.ts, reflect.ts, digests.ts, chronicle.ts, enrichment.ts, autonomy.ts, thought.ts, runner/service.ts), pero 5 callsites en daemon/handlers/ no — los más caros: deep scan (`suggest_deep`), cross-project (`suggest_project`), revalidate (`revalidate_suggestion`), revalidate retry (`revalidate_suggestion_retry`), project profile (`project_profile`). Token counts iban al per-job result pero nunca se agregaban a `llm_usage` table → Usage page subcontaba significativamente. Fix: una línea de `recordLlmUsage` por callsite, source label distinto.
+
+- **EVENT_DEDUP_WINDOW clock injection [audit T-06]** (`src/storage/stores/tracking.ts`, `src/storage/stores/tracking.test.ts` new, commit `5466b00`) — `createEvent` dedup window 15min usaba `Date.now()` directo; tests del boundary eran race-prone. Añadido `opts.now` seam — producción omite, tests inyectan deterministicamente. 4 tests boundary: 1ms inside (deduped), exactly at expiration (created), cross-kind no dedup, no targetId no dedup. `EVENT_DEDUP_WINDOW_MS` exportado para que tests no re-encoden el valor.
+
+- **Chronicle tests [audit T-04]** (`src/analysis/chronicle.test.ts` new, commit `c9bbb6a`) — `chronicle.ts` tenía 0 tests. 8 tests cubren paths determinísticos: idempotencia de `triggerChronicleMilestone` (short-circuit cuando milestone existe), UNIQUE(milestone_key) constraint, `getChronicleEntryByMilestone` null cuando no existe, `bond_daily_cache` TTL fresh/expired/upsert, `getVoiceOfShadow` cache hit sin LLM, `getNextStepHint` tier 8 short-circuit. LLM-call paths skipped (requieren MockAdapter, fuera de scope).
+
+- **applyBondDelta tests [audit T-05]** (`src/profile/bond.test.ts` extendido, commit `9044726`) — `applyBondDelta` es data-driven (eventKind informativo, axes recomputed cada call) pero no tenía coverage. 6 tests: empty DB → axes zero/tier 1, axes persisten back to user_profile, depth crece con memorias durables, eventKind informational (mismo state → mismas axes), monotonicidad (tier no baja con state débil), tier rise (backdated reset + seed completo de depth/momentum/alignment → tier ≥ 2 con rose=true y persistido).
+
+- **Bond tests con relative dates [audit T-11]** (`src/profile/bond.test.ts`, commit `23ccdbb`) — Tests existentes usaban fechas hardcoded ('2026-01-01' anchor + offsets). El cómputo es wall-clock-independent (`now` se pasa explícito), así que no era flaky de verdad — pero un lector en 2030 tendría que calcular "¿2026-04-02 son 91 días después de 2026-01-01?" en su cabeza. Helper `daysFromReset(n)` anchored on Date.now() hace los offsets visibles directamente.
+
+- **T-02 movido a BACKLOG** (`BACKLOG.md`, commit en docs final) — Migration downgrade tests requiere primero definir `down` SQL para 30+ migrations + tests UP/DOWN. ~6h sin pain demostrado: Shadow es local-first single-instance, migrations no rollback en práctica. Deferido con context completo en BACKLOG.
+
+---
+
 ## Session 2026-04-19 (Audit block 5C+5D — MCP polish + analysis bugs)
 
 Bloque combinado 5C+5D cierra 6 items: 4 de MCP polish (envelope shape, enum keys, defaults, descriptions) + 2 de analysis/LLM bugs (suggest validate dedup, deep-scan budget). Durante el context-load aparecieron 4 items de 5D ya cerrados (A-01, A-02, A-03, P-05) — marcados como "already done" en audit sin commit nuevo. 6 fixes + docs, 317 tests verdes en cada commit.

@@ -6,6 +6,14 @@ Last updated 2026-04-19. Completed items in [COMPLETED.md](COMPLETED.md).
 
 ## Medium priority
 
+### Migration downgrade tests *(audit T-02, deferred 2026-04-19)* · [area:storage]
+
+**Context**: 30+ schema migrations (v40-v55) live in `src/storage/migrations.ts` with no `down` definitions and no rollback tests. A botched migration would have no scripted recovery path. Audit ranked T-02 as 🟠 alta but the work is ~6h with no demonstrated pain — Shadow is local-first single-instance and migrations have never rolled back in practice. Deferred from bloque 5E.
+
+**Fix**: (1) Define `down` SQL for each migration that performs irreversible operations (DROP COLUMN, ADD COLUMN with NOT NULL, CREATE TABLE). (2) Add `migrations.test.ts` that runs UP → seed data → DOWN → verifies no data loss for each pair. (3) Wire into `npm test` so every PR validates rollback safety.
+
+---
+
 ### Repos page UX refactor: search bar + design improvements *(2026-04-15)* · [area:dashboard]
 
 **Context**: `ReposPage.tsx` is a flat list of expandable cards with no filtering. With 14 repos, finding a specific one requires scrolling. The expanded card mixes profile overview, suggestion guidance, commands, and action buttons in a dense inline block — no dedicated detail route (unlike Projects which has `/projects/:id`). Two improvements: (1) add a search bar that filters repos by name, language, phase, or stack, (2) improve the visual design of both the list view (card layout, key info at a glance) and the detail view (better section hierarchy, possibly a dedicated `/repos/:id` route or a side panel instead of inline expand).
