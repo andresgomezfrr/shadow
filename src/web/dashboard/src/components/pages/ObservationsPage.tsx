@@ -8,6 +8,7 @@ import { CorrectionPanel } from '../common/CorrectionPanel';
 import { Pagination } from '../common/Pagination';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
+import { PlayOnceVideo } from '../common/PlayOnceVideo';
 import { FilterTabs } from '../common/FilterTabs';
 import { OBS_KIND_COLORS, OBS_KIND_COLOR_DEFAULT, OBS_KIND_OPTIONS, OBS_SEVERITY_BORDER, OBS_SEVERITY_ICON, OBS_SEVERITY_ICON_COLOR } from '../../utils/observation-colors';
 import { useState, useCallback, useEffect, useMemo } from 'react';
@@ -48,7 +49,6 @@ export function ObservationsPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [prefetched, setPrefetched] = useState<Observation | null>(null);
-  const [headerVideoEnded, setHeaderVideoEnded] = useState(false);
   const { pulseId, scrollRef, highlightId } = useHighlight(expanded, setExpanded);
 
   // Prefetch highlighted observation if it's not in the current list
@@ -87,19 +87,11 @@ export function ObservationsPage() {
     <div>
       {dialog}
       <div className="flex items-center gap-3 mb-2 flex-wrap">
-        {headerVideoEnded ? (
-          <img src="/ghost/observations-header.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
-        ) : (
-          <video
-            autoPlay
-            muted
-            playsInline
-            poster="/ghost/observations-header.png"
-            onEnded={() => setHeaderVideoEnded(true)}
-            className="w-[80px] h-[80px] rounded-full object-cover"
-            src="/ghost/observations-header.mp4"
-          />
-        )}
+        <PlayOnceVideo
+          src="/ghost/observations-header.mp4"
+          poster="/ghost/observations-header.png"
+          className="w-[80px] h-[80px] rounded-full object-cover"
+        />
         <h1 className="text-xl font-semibold">Observations</h1>
         <FilterTabs options={STATUS_OPTIONS} active={params.status} onChange={(v) => setParam('status', v)} />
       </div>

@@ -11,6 +11,7 @@ import { Pagination } from '../common/Pagination';
 import { LiveStatusBar } from '../activity/LiveStatusBar';
 import { ScheduleRibbon } from '../activity/ScheduleRibbon';
 import { ActivityEntryCard } from '../activity/ActivityEntry';
+import { PlayOnceVideo } from '../common/PlayOnceVideo';
 import { POLL_FAST, POLL_NORMAL } from '../../constants/polling';
 
 const TYPE_FILTERS = [
@@ -63,7 +64,6 @@ function buildFetchParams(params: Record<string, string>) {
 }
 
 export function ActivityPage() {
-  const [videoEnded, setVideoEnded] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const highlightId = searchParams.get('highlight');
   const [pulseId, setPulseId] = useState<string | null>(null);
@@ -116,17 +116,11 @@ export function ActivityPage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-3">
-{videoEnded
-          ? <img src="/ghost/activity.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
-          : <video
-              autoPlay
-              muted
-              playsInline
-              onEnded={() => setVideoEnded(true)}
-              className="w-[80px] h-[80px] rounded-full object-cover"
-              src="/ghost/activity.mp4"
-            />
-        }
+        <PlayOnceVideo
+          src="/ghost/activity.mp4"
+          poster="/ghost/activity.png"
+          className="w-[80px] h-[80px] rounded-full object-cover"
+        />
         <h1 className="text-xl font-semibold">Activity</h1>
       </div>
 

@@ -11,6 +11,7 @@ import { Pagination } from '../common/Pagination';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
 import { EmptyState } from '../common/EmptyState';
+import { PlayOnceVideo } from '../common/PlayOnceVideo';
 import { ScoreBar } from '../common/ScoreBar';
 import { SUG_KIND_COLORS, SUG_KIND_COLOR_DEFAULT, SUG_KIND_OPTIONS, SUG_STATUS_BORDER } from '../../utils/suggestion-colors';
 import type { Repo } from '../../api/types';
@@ -65,7 +66,6 @@ export function SuggestionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const highlightId = searchParams.get('highlight');
   const [pulseId, setPulseId] = useState<string | null>(null);
-  const [headerVideoEnded, setHeaderVideoEnded] = useState(false);
   const scrolledRef = useRef(false);
 
   const PAGE_SIZE = 20;
@@ -240,19 +240,11 @@ export function SuggestionsPage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-2 flex-wrap">
-        {headerVideoEnded ? (
-          <img src="/ghost/suggestions-header.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
-        ) : (
-          <video
-            autoPlay
-            muted
-            playsInline
-            poster="/ghost/suggestions-header.png"
-            onEnded={() => setHeaderVideoEnded(true)}
-            className="w-[80px] h-[80px] rounded-full object-cover"
-            src="/ghost/suggestions-header.mp4"
-          />
-        )}
+        <PlayOnceVideo
+          src="/ghost/suggestions-header.mp4"
+          poster="/ghost/suggestions-header.png"
+          className="w-[80px] h-[80px] rounded-full object-cover"
+        />
         <h1 className="text-xl font-semibold">Suggestions</h1>
         <FilterTabs options={STATUSES} active={params.status} onChange={(v) => { setParam('status', v); setSelected(new Set()); }} />
         {params.status === 'open' && data && data.length > 0 && (
