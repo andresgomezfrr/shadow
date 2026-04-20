@@ -12,7 +12,7 @@
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
-    "build": "npm run clean && tsc -p tsconfig.json && npm run dashboard:build",
+    "build": "npm run clean && tsc -p tsconfig.json && chmod +x dist/cli.js && npm run dashboard:build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --experimental-test-module-mocks --test $(find dist -type f -name '*.test.js' | sort)",
     "test:dev": "node --experimental-test-module-mocks --import=tsx --test $(find src -type f -name '*.test.ts' -not -path '*/node_modules/*' | sort)",
