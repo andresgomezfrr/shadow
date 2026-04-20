@@ -15,31 +15,31 @@ type NavEntry = NavItem | NavDivider;
 
 const NAV: NavEntry[] = [
   // Home
-  { to: '/morning', icon: '☀️', label: 'Morning' },
-  { to: '/chronicle', icon: '🌒', label: 'Chronicle' },
+  { to: '/morning', icon: '/icons/morning.webp', label: 'Morning' },
+  { to: '/chronicle', icon: '/icons/chronicle.webp', label: 'Chronicle' },
 
   // Action
   { divider: true, groupLabel: 'ACTION' },
-  { to: '/workspace', icon: '📥', label: 'Workspace', countKey: 'runsToReview' },
-  { to: '/observations', icon: '👁', label: 'Observations', countKey: 'activeObservations' },
-  { to: '/suggestions', icon: '💡', label: 'Suggestions', countKey: 'pendingSuggestions' },
-  { to: '/tasks', icon: '✅', label: 'Tasks', countKey: 'activeTasks' },
-  { to: '/runs', icon: '🚀', label: 'Runs' },
+  { to: '/workspace', icon: '/icons/workspace.webp', label: 'Workspace', countKey: 'runsToReview' },
+  { to: '/observations', icon: '/icons/observations.webp', label: 'Observations', countKey: 'activeObservations' },
+  { to: '/suggestions', icon: '/icons/suggestions.webp', label: 'Suggestions', countKey: 'pendingSuggestions' },
+  { to: '/tasks', icon: '/icons/tasks.webp', label: 'Tasks', countKey: 'activeTasks' },
+  { to: '/runs', icon: '/icons/runs.webp', label: 'Runs' },
 
   // System
   { divider: true, groupLabel: 'SYSTEM' },
-  { to: '/activity', icon: '⚡', label: 'Activity' },
-  { to: '/digests', icon: '📝', label: 'Digests' },
-  { to: '/projects', icon: '📋', label: 'Projects' },
-  { to: '/memories', icon: '🧠', label: 'Memories' },
+  { to: '/activity', icon: '/icons/activity.webp', label: 'Activity' },
+  { to: '/digests', icon: '/icons/digests.webp', label: 'Digests' },
+  { to: '/projects', icon: '/icons/projects.webp', label: 'Projects' },
+  { to: '/memories', icon: '/icons/memories.webp', label: 'Memories' },
 
   // Configure
   { divider: true, groupLabel: 'CONFIG' },
-  { to: '/repos', icon: '📦', label: 'Repos' },
-  { to: '/systems', icon: '🔧', label: 'Systems' },
-  { to: '/team', icon: '👥', label: 'Team' },
-  { to: '/profile', icon: '⚙', label: 'Settings' },
-  { to: '/guide', icon: '📖', label: 'Guide' },
+  { to: '/repos', icon: '/icons/repos.webp', label: 'Repos' },
+  { to: '/systems', icon: '/icons/systems.webp', label: 'Systems' },
+  { to: '/team', icon: '/icons/team.webp', label: 'Team' },
+  { to: '/profile', icon: '/icons/settings.webp', label: 'Settings' },
+  { to: '/guide', icon: '/icons/guide.webp', label: 'Guide' },
 ];
 
 export function Sidebar({ counts }: { counts?: Counts | null }) {
@@ -147,7 +147,9 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
                 {isActive && (
                   <span className="absolute left-0 top-1/4 h-1/2 w-[3px] bg-accent rounded-r" />
                 )}
-                <span>{item.icon}</span>
+                {item.icon.startsWith('/')
+                  ? <img src={item.icon} alt="" className="w-11 h-11 object-cover rounded-full" />
+                  : <span>{item.icon}</span>}
                 {count > 0 && (
                   <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-accent text-bg text-[9px] font-bold leading-none px-1">
                     {count > 99 ? '99+' : count}
