@@ -664,7 +664,10 @@ export function syncEntityLinks(db: DatabaseSync, sourceTable: string, sourceId:
 
 /** Atomically update entities_json + entity_links junction table. */
 export function updateEntityLinks(db: DatabaseSync, sourceTable: string, sourceId: string, entities: EntityLink[]): void {
-  db.exec('BEGIN');
+  // BEGIN IMMEDIATE to match the rest of the store writes — audit D-13.
+  // Prevents upgrade-deadlock under concurrent writers (would never bite on a
+  // single daemon, but keeps the semantics uniform with withTransaction()).
+  db.exec('BEGIN IMMEDIATE');
   try {
     db.prepare(`UPDATE ${sourceTable} SET entities_json = ? WHERE id = ?`).run(JSON.stringify(entities), sourceId);
     syncEntityLinks(db, sourceTable, sourceId, entities);
