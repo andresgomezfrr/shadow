@@ -4,6 +4,24 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-20 (Audit block 5N — DB hygiene)
+
+Bloque 5N cierra 5 items DB hygiene: BEGIN unified, updateProfile no-silent, jsonParse observability, FTS tags tokenized, repo path reuse. 5 commits + docs, 335 tests verdes. D-10 (v49 legacy columns DROP) deferred — requiere audit previo de uses, marcado "backlog long" en audit.
+
+- **BEGIN IMMEDIATE unified [audit D-13]** (`src/storage/stores/knowledge.ts`, commit `ca6b26b`) — `updateEntityLinks` usaba `BEGIN` deferred; el resto del store usa `BEGIN IMMEDIATE`. Uniforme.
+
+- **updateProfile warn on unknown keys [audit D-09]** (`src/storage/stores/profile.ts`, commit `a150042`) — Column whitelist cacheado desde `PRAGMA table_info(user_profile)`. Keys cuyo snake-form no existe → log con hint del Json suffix + skip. Elimina el silent-fail class documentado en auto-memory (`feedback_updateprofile_json_suffix`).
+
+- **jsonParse observability [audit D-12]** (`src/storage/mappers.ts`, commit `1661a98`) — `jsonParse` swallow silent de catch eliminado. Loguea error + value preview cuando cae a fallback. Optional `ctx` param ("memories.tags_json") para attribute bad row. Zero breaking change en los 34 callsites existentes.
+
+- **FTS5 tags tokenized via json_each [audit D-11]** (`src/storage/migrations.ts` v57, commit `5a59bf2`) — Triggers antiguos indexaban `tags_json` literal (`["docs","sql"]`) como string → "docs" match por substring accident, tags con punctuation rotos. Migration v57 re-crea triggers con `json_each` para tokenizar. Re-index forzado skipped (limitación external-content FTS5); datos existentes self-corregidos on next UPDATE.
+
+- **createRepo path reuse check [audit D-14]** (`src/storage/stores/entities.ts`, commit `b923f60`) — raw INSERT tiraba SQLITE_CONSTRAINT opaco cuando path existía (repo movido + re-registrado). `findRepoByPath` pre-check + throw descriptivo nombrando repo existente + sugerencia next step (update/remove). Simpler que soft-delete migration.
+
+**Deferred**: D-10 v49 legacy column DROP — requiere audit exhaustivo de uses de trust_level/trust_score/bond_level/required_trust_level/trust_delta antes de DROP. "backlog long" en audit.
+
+---
+
 ## Session 2026-04-20 (Audit block 5M — analysis residual)
 
 Bloque 5M cierra 3 items de analysis pipeline: notify con project-awareness, correction bounds check, profile schema refine. 3 commits + docs. Plus marks: A-13 ya cubierto por A-02; P-08 deferred como security theater en single-user (consistente con A-06/R-08/R-09).
