@@ -59,7 +59,13 @@ export async function activityNotify(
       if (Number.isFinite(lastMs) && nowMs - lastMs < THROTTLE_MS) continue;
     }
 
-    // Always notify on critical/high observations regardless of proactivity level
+    // Always notify on critical/high observations regardless of proactivity level.
+    // Payload includes both repoId and projectIds (extracted from entities) so
+    // consumers can route the notification even when the LLM put a wrong
+    // repo_id but linked the right project entity (audit A-08).
+    const projectIds = (obs.entities ?? [])
+      .filter((e) => e.type === 'project')
+      .map((e) => e.id);
     const nowIso = new Date(nowMs).toISOString();
     ctx.db.createEvent({
       kind: 'observation_notable',
@@ -70,6 +76,7 @@ export async function activityNotify(
         kind: obs.kind,
         severity: obs.severity,
         repoId: obs.repoId,
+        projectIds,
       },
     });
     ctx.db.setObservationNotifiedAt(obs.id, nowIso);
