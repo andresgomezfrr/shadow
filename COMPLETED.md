@@ -4,6 +4,24 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-20 (Audit block 5F — runner robustness + MCP close tools)
+
+Bloque 5F cierra 6 items del runner/MCP: R-07 (cierra observation abierta con vote), M-05+M-06 (completa MCP surface con task/run close + outcome), R-12 (worktree cleanup robusto), R-10 (verification stderr), R-11 (autoEvalAt docstring). 6 commits + docs, 335 tests verdes.
+
+- **pr-sync finaliza standalone runs [audit R-07]** (`src/daemon/handlers/pr-sync.ts`, commit `e287c18`) — pr-sync asumía que todo run en `awaiting_pr` tenía execution children con prUrl. Standalone runs con `prUrl` manual (p.ej. `/draft-pr` en un done, o `shadow_run_close` con prUrl) quedaban stuck en awaiting_pr siempre. `fetchPr` ahora detecta `!parentRunId && prUrl` como self-terminal e inspecciona el run mismo. MERGED→done/merged (como parent), CLOSED→done/closed_manual (outcome-based, diferenciado del parent-path que queda como `dismissed` por back-compat). Cierra observation abierta con vote de sesión previa.
+
+- **closedNote en shadow_task_close [audit M-05]** (`src/storage/migrations.ts` v56, `src/storage/{models,mappers}.ts`, `src/storage/stores/tasks.ts`, `src/mcp/tools/tasks.ts`, commit `6196bdd`) — Tasks tenían `closedAt` pero sin `closedNote`. Migration v56 añade `tasks.closed_note TEXT`. TaskRecord + mapper + updateTask picklist + tool schema propagate. El campo es opcional, omitir calls dejan el behavior idéntico.
+
+- **shadow_run_close tool nuevo [audit M-06]** (`src/mcp/tools/data.ts`, commit `56064b4`) — Runs en `planned` o `failed` que el user ejecutaba fuera de Shadow no tenían forma MCP de transicionar a terminal. Nuevo tool `shadow_run_close({runId, outcome, closedNote?, prUrl?})`. Reglas: done/dismissed → error (already terminal); running/queued → error (stop job first); con prUrl → awaiting_pr (pr-sync finaliza, pairs con R-07); sin prUrl → done con outcome. DB columns ya soportaban.
+
+- **Worktree cleanup retry + risk observation [audit R-12]** (`src/runner/service.ts:cleanupWorktree`, commit `209a494`) — `git worktree remove --force` con 10s timeout fallaba transientemente (FS lock, AV, git concurrente) y dejaba worktree stuck consumiendo disco. Ahora retry una vez con backoff ~1s, si segunda falla crea observation `risk` con path + error en el repo owner (surface via dashboard).
+
+- **Verification stderr capture [audit R-10]** (`src/runner/service.ts:runVerification`, commit `58f55d7`) — `execSync` devolvía solo stdout; warnings/deprecations en stderr se perdían en success. Migrado a `spawnSync` que captura ambos streams independiente del exit status. Output combinado con label `--- stderr ---` para distinguibilidad. Failure path preserve el behavior de mostrar error message como fallback.
+
+- **autoEvalAt semantic docstring [audit R-11]** (`src/storage/models.ts`, `src/daemon/handlers/autonomy.ts`, commit `dfbc005`) — Field era interpretado como "evaluado y aprobado" pero se setea en CADA path (approved/needs_review/error) — es un "seen-by-autonomy" marker outcome-agnostic. Añadido docstring en RunRecord explicando la semántica + nombres locales claros en autonomy.ts. Sin migration; el campo funciona correctamente, solo era ambiguo para lectores.
+
+---
+
 ## Session 2026-04-20 (Audit block 5G — UI bugs visibles)
 
 Bloque 5G cierra 5 UI bugs/refactors: 2 🟠 alta (memory/connectivity), 3 🟡 media (UX). UI-10 ya estaba done desde bloque 4C — solo marcado en audit. 5 commits + docs, 335 tests verdes. Bloque pequeño (~3h).
