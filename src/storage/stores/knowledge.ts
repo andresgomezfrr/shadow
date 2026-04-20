@@ -295,7 +295,7 @@ export function getObservation(db: DatabaseSync, id: string): ObservationRecord 
   return row ? mapObservation(row) : null;
 }
 
-export function listObservations(db: DatabaseSync, filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string; limit?: number; offset?: number }): ObservationRecord[] {
+export function listObservations(db: DatabaseSync, filters?: { repoId?: string; repoIds?: string[]; sourceKind?: string; processed?: boolean; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string; limit?: number; offset?: number }): ObservationRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
   let join = '';
@@ -303,6 +303,12 @@ export function listObservations(db: DatabaseSync, filters?: { repoId?: string; 
   if (filters?.repoId) {
     clauses.push('o.repo_id = ?');
     values.push(filters.repoId);
+  } else if (filters?.repoIds && filters.repoIds.length > 0) {
+    // Batch form for task-detail-style queries — avoids N+1 when callers
+    // otherwise loop listObservations per repo (audit W-11).
+    const placeholders = filters.repoIds.map(() => '?').join(',');
+    clauses.push(`o.repo_id IN (${placeholders})`);
+    for (const rid of filters.repoIds) values.push(rid);
   }
   if (filters?.sourceKind) {
     clauses.push('o.source_kind = ?');
@@ -529,7 +535,7 @@ const SORT_COLUMNS: Record<string, string> = {
   risk: 'risk_score DESC, created_at DESC',
 };
 
-export function listSuggestions(db: DatabaseSync, filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] {
+export function listSuggestions(db: DatabaseSync, filters?: { status?: string; kind?: string; repoId?: string; repoIds?: string[]; projectId?: string; entityType?: string; entityId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
   let join = '';
@@ -545,6 +551,11 @@ export function listSuggestions(db: DatabaseSync, filters?: { status?: string; k
   if (filters?.repoId) {
     clauses.push('s.repo_id = ?');
     values.push(filters.repoId);
+  } else if (filters?.repoIds && filters.repoIds.length > 0) {
+    // Batch form for task-detail queries (audit W-11).
+    const placeholders = filters.repoIds.map(() => '?').join(',');
+    clauses.push(`s.repo_id IN (${placeholders})`);
+    for (const rid of filters.repoIds) values.push(rid);
   }
   const eType = filters?.entityType ?? (filters?.projectId ? 'project' : undefined);
   const eId = filters?.entityId ?? filters?.projectId;

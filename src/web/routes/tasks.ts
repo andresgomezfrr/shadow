@@ -58,22 +58,24 @@ export async function handleTaskRoutes(
     const task = db.getTask(detailMatch[1]);
     if (!task) return json(res, { error: 'Not found' }, 404), true;
 
-    // Related items: observations, suggestions, runs for the task's repos, created after the task
+    // Related items: observations, suggestions, runs for the task's repos,
+    // created after the task. Batch via `repoIds: [...]` filter (WHERE
+    // repo_id IN (...)) instead of looping per-repo — audit W-11.
     const repoIds = task.repoIds;
     const observations = repoIds.length > 0
-      ? repoIds.flatMap(rid => db.listObservations({ repoId: rid, limit: 20 }))
+      ? db.listObservations({ repoIds, limit: 20 * repoIds.length })
         .filter(o => o.createdAt >= task.createdAt)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, 10)
       : [];
     const suggestions = repoIds.length > 0
-      ? repoIds.flatMap(rid => db.listSuggestions({ repoId: rid, limit: 20 }))
+      ? db.listSuggestions({ repoIds, limit: 20 * repoIds.length })
         .filter(s => s.createdAt >= task.createdAt)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, 10)
       : [];
     const runs = repoIds.length > 0
-      ? repoIds.flatMap(rid => db.listRuns({ repoId: rid, limit: 10 }))
+      ? db.listRuns({ repoIds, limit: 10 * repoIds.length })
         .filter(r => r.createdAt >= task.createdAt)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, 10)

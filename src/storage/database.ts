@@ -321,7 +321,7 @@ export class ShadowDatabase {
 
   createObservation(input: CreateObservationInput): ObservationRecord { return knowledge.createObservation(this.database, input); }
   getObservation(id: string): ObservationRecord | null { return knowledge.getObservation(this.database, id); }
-  listObservations(filters?: { repoId?: string; sourceKind?: string; processed?: boolean; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string; limit?: number; offset?: number }): ObservationRecord[] { return knowledge.listObservations(this.database, filters); }
+  listObservations(filters?: { repoId?: string; repoIds?: string[]; sourceKind?: string; processed?: boolean; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string; limit?: number; offset?: number }): ObservationRecord[] { return knowledge.listObservations(this.database, filters); }
   countObservations(filters?: { repoId?: string; status?: string; severity?: string; kind?: string; projectId?: string; entityType?: string; entityId?: string; createdSince?: string }): number { return knowledge.countObservations(this.database, filters); }
   countObservationsSince(since: string): number { return knowledge.countObservationsSince(this.database, since); }
   markObservationProcessed(id: string, suggestionId?: string): void { return knowledge.markObservationProcessed(this.database, id, suggestionId); }
@@ -339,7 +339,7 @@ export class ShadowDatabase {
 
   createSuggestion(input: CreateSuggestionInput): SuggestionRecord { return knowledge.createSuggestion(this.database, input); }
   getSuggestion(id: string): SuggestionRecord | null { return knowledge.getSuggestion(this.database, id); }
-  listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] { return knowledge.listSuggestions(this.database, filters); }
+  listSuggestions(filters?: { status?: string; kind?: string; repoId?: string; repoIds?: string[]; projectId?: string; entityType?: string; entityId?: string; sortBy?: string; limit?: number; offset?: number }): SuggestionRecord[] { return knowledge.listSuggestions(this.database, filters); }
   countSuggestions(filters?: { status?: string; kind?: string; repoId?: string; projectId?: string; entityType?: string; entityId?: string; createdSince?: string }): number { return knowledge.countSuggestions(this.database, filters); }
   updateSuggestion(id: string, updates: Partial<Pick<SuggestionRecord, 'status' | 'feedbackNote' | 'shownAt' | 'resolvedAt' | 'expiresAt' | 'title' | 'summaryMd' | 'reasoningMd' | 'impactScore' | 'confidenceScore' | 'riskScore' | 'revalidationCount' | 'lastRevalidatedAt' | 'revalidationVerdict' | 'revalidationNote'>>): void { return knowledge.updateSuggestion(this.database, id, updates); }
   countPendingSuggestions(): number { return knowledge.countPendingSuggestions(this.database); }
@@ -373,7 +373,7 @@ export class ShadowDatabase {
 
   createRun(input: CreateRunInput): RunRecord { return execution.createRun(this.database, input); }
   getRun(id: string): RunRecord | null { return execution.getRun(this.database, id); }
-  listRuns(filters?: { status?: string; repoId?: string; parentRunId?: string; suggestionId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] { return execution.listRuns(this.database, filters); }
+  listRuns(filters?: { status?: string; repoId?: string; repoIds?: string[]; parentRunId?: string; suggestionId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] { return execution.listRuns(this.database, filters); }
   countRuns(filters?: { status?: string; archived?: boolean }): number { return execution.countRuns(this.database, filters); }
   updateRun(id: string, updates: Partial<Pick<RunRecord, 'status' | 'resultSummaryMd' | 'errorSummary' | 'artifactDir' | 'sessionId' | 'worktreePath' | 'confidence' | 'prUrl' | 'snapshotRef' | 'resultRef' | 'diffStat' | 'verified' | 'closedNote' | 'autoEvalAt' | 'archived' | 'activity' | 'outcome' | 'taskId' | 'startedAt' | 'finishedAt'>> & { doubts?: string[]; verification?: RunRecord['verification'] }): void { return execution.updateRun(this.database, id, updates); }
   transitionRun(id: string, to: import('./models.js').RunRecord['status']): void { return execution.transitionRun(this.database, id, to); }

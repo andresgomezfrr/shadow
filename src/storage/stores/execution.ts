@@ -39,7 +39,7 @@ export function getRun(db: DatabaseSync, id: string): RunRecord | null {
   return row ? mapRun(row) : null;
 }
 
-export function listRuns(db: DatabaseSync, filters?: { status?: string; repoId?: string; parentRunId?: string; suggestionId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] {
+export function listRuns(db: DatabaseSync, filters?: { status?: string; repoId?: string; repoIds?: string[]; parentRunId?: string; suggestionId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
 
@@ -50,6 +50,11 @@ export function listRuns(db: DatabaseSync, filters?: { status?: string; repoId?:
   if (filters?.repoId) {
     clauses.push('repo_id = ?');
     values.push(filters.repoId);
+  } else if (filters?.repoIds && filters.repoIds.length > 0) {
+    // Batch form for task-detail queries (audit W-11).
+    const placeholders = filters.repoIds.map(() => '?').join(',');
+    clauses.push(`repo_id IN (${placeholders})`);
+    for (const rid of filters.repoIds) values.push(rid);
   }
   if (filters?.parentRunId) {
     clauses.push('parent_run_id = ?');
