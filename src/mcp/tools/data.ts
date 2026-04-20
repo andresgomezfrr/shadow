@@ -34,6 +34,13 @@ const RunArchiveSchema = z.object({
   runId: z.string().describe('Run ID to archive'),
 });
 
+const RunCloseSchema = z.object({
+  runId: z.string().describe('Run ID to close (must be in planned/failed/awaiting_pr status)'),
+  outcome: z.enum(['executed_manual', 'closed_manual', 'no_changes']).describe('Why/how the run finished: executed_manual (user ran the work outside Shadow), closed_manual (abandoned/rejected), no_changes (nothing to do)'),
+  closedNote: z.string().describe('Optional note preserved on the run describing the outcome').optional(),
+  prUrl: z.string().describe('Optional PR URL if the work resulted in a pull request (runs with prUrl get tracked by pr-sync)').optional(),
+});
+
 const UsageSchema = z.object({
   period: z.string().describe('Time period: day, week, month (default: day)').optional(),
 });
@@ -186,6 +193,32 @@ export function dataTools(ctx: ToolContext): McpTool[] {
         if (!run) return err(`Run not found: ${runId}`);
         db.updateRun(runId, { archived: true });
         return ok({ runId, archived: true });
+      },
+    },
+    {
+      name: 'shadow_run_close',
+      description: 'Manually finalize a planned or failed run with an outcome, optional note, and optional PR URL. Use when the user finished the work outside Shadow (outcome=executed_manual), decided not to pursue it (closed_manual), or when Claude determined there was nothing to do (no_changes). A prUrl keeps the run visible to pr-sync for tracking. Requires trust level >= 1.',
+      inputSchema: mcpSchema(RunCloseSchema),
+      handler: async (params) => {
+        const { runId, outcome, closedNote, prUrl } = RunCloseSchema.parse(params);
+        const run = db.getRun(runId);
+        if (!run) return err(`Run not found: ${runId}`);
+        if (run.status === 'done' || run.status === 'dismissed') {
+          return err(`Run ${runId.slice(0, 8)} is already terminal (${run.status}) — cannot close again`);
+        }
+        if (run.status === 'running' || run.status === 'queued') {
+          return err(`Run ${runId.slice(0, 8)} is ${run.status} — stop the job first or use shadow_run_archive`);
+        }
+        // If a prUrl is passed, route through awaiting_pr so pr-sync will finalize it.
+        // Otherwise go straight to done with the provided outcome.
+        if (prUrl) {
+          db.updateRun(runId, { prUrl, closedNote: closedNote ?? null });
+          db.transitionRun(runId, 'awaiting_pr');
+          return ok({ runId, status: 'awaiting_pr', outcome: null, prUrl, message: 'Run queued for pr-sync finalization' });
+        }
+        db.updateRun(runId, { outcome, closedNote: closedNote ?? null, finishedAt: new Date().toISOString() });
+        db.transitionRun(runId, 'done');
+        return ok({ runId, status: 'done', outcome, closedNote: closedNote ?? null });
       },
     },
 
