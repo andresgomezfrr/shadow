@@ -17,7 +17,7 @@ export function TeamPage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
-        <img src="/ghost/team.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+        <img src="/ghost/team.webp" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
         <h1 className="text-xl font-semibold">Team</h1>
       </div>
 

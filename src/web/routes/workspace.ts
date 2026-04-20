@@ -66,6 +66,7 @@ export async function handleWorkspaceRoutes(
   if (req.method === 'GET' && pathname === '/api/workspace/feed') {
     const type = params.get('type') ?? 'all';
     const projectId = params.get('projectId') ?? undefined;
+    const repoId = params.get('repoId') ?? undefined;
     const limit = clampLimit(params.get('limit'), 20);
     const offset = clampOffset(params.get('offset'));
 
@@ -106,6 +107,7 @@ export async function handleWorkspaceRoutes(
             const projects = repoProjectsMap.get(r.repoId) ?? [];
             if (!projects.some(p => p.id === projectId)) continue;
           }
+          if (repoId && r.repoId !== repoId) continue;
           items.push({ source: 'run', id: r.id, priority: 0, data: r });
         }
       }
@@ -113,61 +115,61 @@ export async function handleWorkspaceRoutes(
 
     // Tasks by status
     if (includeActiveTasks) {
-      for (const t of db.listTasks({ projectId, limit: 50 })) {
+      for (const t of db.listTasks({ projectId, repoId, limit: 50 })) {
         if (t.status !== 'done') items.push({ source: 'task', id: t.id, priority: 0, data: t });
       }
     }
     if (includeTaskOpen) {
-      for (const t of db.listTasks({ status: 'open', projectId, limit: 50 })) {
+      for (const t of db.listTasks({ status: 'open', projectId, repoId, limit: 50 })) {
         items.push({ source: 'task', id: t.id, priority: 0, data: t });
       }
     }
     if (includeTaskActive) {
-      for (const t of db.listTasks({ status: 'active', projectId, limit: 50 })) {
+      for (const t of db.listTasks({ status: 'active', projectId, repoId, limit: 50 })) {
         items.push({ source: 'task', id: t.id, priority: 0, data: t });
       }
     }
     if (includeTaskBlocked) {
-      for (const t of db.listTasks({ status: 'blocked', projectId, limit: 50 })) {
+      for (const t of db.listTasks({ status: 'blocked', projectId, repoId, limit: 50 })) {
         items.push({ source: 'task', id: t.id, priority: 0, data: t });
       }
     }
     if (includeTaskDone) {
-      for (const t of db.listTasks({ status: 'done', projectId, limit: 50 })) {
+      for (const t of db.listTasks({ status: 'done', projectId, repoId, limit: 50 })) {
         items.push({ source: 'task', id: t.id, priority: 0, data: t });
       }
     }
 
     // Suggestions by status
     if (includeOpen) {
-      for (const s of db.listSuggestions({ status: 'open', projectId, limit: 50 })) {
+      for (const s of db.listSuggestions({ status: 'open', projectId, repoId, limit: 50 })) {
         items.push({ source: 'suggestion', id: s.id, priority: 0, data: s });
       }
     }
     if (includeSnoozed) {
-      for (const s of db.listSuggestions({ status: 'snoozed', projectId, limit: 50 })) {
+      for (const s of db.listSuggestions({ status: 'snoozed', projectId, repoId, limit: 50 })) {
         items.push({ source: 'suggestion', id: s.id, priority: 0, data: s });
       }
     }
     if (includeSugAccepted) {
-      for (const s of db.listSuggestions({ status: 'accepted', projectId, limit: 50 })) {
+      for (const s of db.listSuggestions({ status: 'accepted', projectId, repoId, limit: 50 })) {
         items.push({ source: 'suggestion', id: s.id, priority: 0, data: s });
       }
     }
 
     // Observations by status
     if (includeActiveObs) {
-      for (const o of db.listObservations({ status: 'open', projectId, limit: 50 })) {
+      for (const o of db.listObservations({ status: 'open', projectId, repoId, limit: 50 })) {
         items.push({ source: 'observation', id: o.id, priority: 0, data: o });
       }
     }
     if (includeAckedObs) {
-      for (const o of db.listObservations({ status: 'acknowledged', projectId, limit: 50 })) {
+      for (const o of db.listObservations({ status: 'acknowledged', projectId, repoId, limit: 50 })) {
         items.push({ source: 'observation', id: o.id, priority: 0, data: o });
       }
     }
     if (includeObsDone) {
-      for (const o of db.listObservations({ status: 'done', projectId, limit: 50 })) {
+      for (const o of db.listObservations({ status: 'done', projectId, repoId, limit: 50 })) {
         items.push({ source: 'observation', id: o.id, priority: 0, data: o });
       }
     }
@@ -179,21 +181,22 @@ export async function handleWorkspaceRoutes(
     // Counts — always computed for all statuses so tabs show accurate numbers
     const allRuns = (['running', 'queued', 'planned', 'awaiting_pr', 'failed', 'done', 'dismissed'] as const)
       .flatMap(s => db.listRuns({ status: s, archived: false, limit: 50 }))
-      .filter(r => !r.parentRunId);
+      .filter(r => !r.parentRunId)
+      .filter(r => !repoId || r.repoId === repoId);
     const countRuns = allRuns.length;
     const countRunsActive = allRuns.filter(r => ['queued', 'running', 'planned', 'awaiting_pr'].includes(r.status)).length;
     const countRunsDone = allRuns.filter(r => r.status === 'done').length;
     const countRunsFailed = allRuns.filter(r => r.status === 'failed').length;
-    const countTasksOpen = db.countTasks({ status: 'open', projectId });
-    const countTasksActive = db.countTasks({ status: 'active', projectId });
-    const countTasksBlocked = db.countTasks({ status: 'blocked', projectId });
-    const countTasksDone = db.countTasks({ status: 'done', projectId });
-    const countOpen = db.countSuggestions({ status: 'open', projectId });
-    const countSnoozed = db.countSuggestions({ status: 'snoozed', projectId });
-    const countSugAccepted = db.countSuggestions({ status: 'accepted', projectId });
-    const countObsOpen = db.countObservations({ status: 'open', projectId });
-    const countAcked = db.countObservations({ status: 'acknowledged', projectId });
-    const countObsDone = db.countObservations({ status: 'done', projectId });
+    const countTasksOpen = db.countTasks({ status: 'open', projectId, repoId });
+    const countTasksActive = db.countTasks({ status: 'active', projectId, repoId });
+    const countTasksBlocked = db.countTasks({ status: 'blocked', projectId, repoId });
+    const countTasksDone = db.countTasks({ status: 'done', projectId, repoId });
+    const countOpen = db.countSuggestions({ status: 'open', projectId, repoId });
+    const countSnoozed = db.countSuggestions({ status: 'snoozed', projectId, repoId });
+    const countSugAccepted = db.countSuggestions({ status: 'accepted', projectId, repoId });
+    const countObsOpen = db.countObservations({ status: 'open', projectId, repoId });
+    const countAcked = db.countObservations({ status: 'acknowledged', projectId, repoId });
+    const countObsDone = db.countObservations({ status: 'done', projectId, repoId });
 
     const counts = {
       runs: countRuns,

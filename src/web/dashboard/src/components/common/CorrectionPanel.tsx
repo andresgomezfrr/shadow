@@ -78,7 +78,7 @@ export function CorrectionPanel({ open, onClose, defaultScope, defaultEntityType
         {success ? (
           <div className="text-center py-4">
             <div className="flex justify-center mb-2">
-              <img src="/ghost/correction-success.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+              <img src="/ghost/correction-success.webp" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
             </div>
             <div className="text-sm text-text">Correction saved</div>
             <div className="text-xs text-text-muted mt-1">Will be enforced on next consolidate</div>
@@ -87,7 +87,7 @@ export function CorrectionPanel({ open, onClose, defaultScope, defaultEntityType
           <>
             <div className="text-sm font-semibold mb-2">Correct Shadow</div>
             <div className="flex justify-center mb-3">
-              <img src="/ghost/correct.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+              <img src="/ghost/correct.webp" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
             </div>
 
             {/* Scope selector */}

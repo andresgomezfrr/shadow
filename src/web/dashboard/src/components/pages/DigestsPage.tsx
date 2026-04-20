@@ -233,7 +233,7 @@ export function DigestsPage() {
     <div>
       {/* Header row: title + kind tabs + generate button */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <img src="/ghost/digests.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+        <img src="/ghost/digests.webp" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
         <h1 className="text-xl font-semibold">Digests</h1>
         <FilterTabs options={KIND_FILTERS} active={kind} onChange={(v) => handleKindChange(v as DigestKind)} />
         <div className="ml-auto">

@@ -55,7 +55,7 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
   const [offlineBlobUrl, setOfflineBlobUrl] = useState<string | null>(null);
   useEffect(() => {
     let url: string | null = null;
-    fetch('/ghost/offline.png')
+    fetch('/ghost/offline.webp')
       .then(r => r.blob())
       .then(blob => { url = URL.createObjectURL(blob); setOfflineBlobUrl(url); })
       .catch(() => {});
@@ -66,7 +66,7 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
   useEffect(() => { setGhostImgError(false); }, [isOffline, ghost.imagePath]);
 
   // Offline overrides
-  const ghostImage = isOffline ? (offlineBlobUrl ?? '/ghost/offline.png') : ghost.imagePath;
+  const ghostImage = isOffline ? (offlineBlobUrl ?? '/ghost/offline.webp') : ghost.imagePath;
   const ghostMood = isOffline ? 'offline' : ghost.mood;
   const ghostLabel = isOffline ? 'offline' : ghost.label;
 

@@ -311,8 +311,8 @@ export const createCorrection = (params: { title?: string; body: string; scope: 
 
 // --- Workspace ---
 
-export const fetchWorkspaceFeed = (params?: { type?: string; projectId?: string; limit?: number; offset?: number }) =>
-  api<FeedResponse>(`/api/workspace/feed${qs({ type: params?.type, projectId: params?.projectId, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
+export const fetchWorkspaceFeed = (params?: { type?: string; projectId?: string; repoId?: string; limit?: number; offset?: number }) =>
+  api<FeedResponse>(`/api/workspace/feed${qs({ type: params?.type, projectId: params?.projectId, repoId: params?.repoId, limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined })}`);
 
 export const fetchRunContext = (id: string) =>
   api<RunContext>(`/api/runs/${id}/context`);

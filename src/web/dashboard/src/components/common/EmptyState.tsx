@@ -14,7 +14,7 @@ export function EmptyState({ icon, title, description }: EmptyStateProps) {
       ) : (
         <PlayOnceVideo
           src="/ghost/empty.mp4"
-          poster="/ghost/empty.png"
+          poster="/ghost/empty.webp"
           className="w-[100px] h-[100px] rounded-full object-cover mb-4"
         />
       )}

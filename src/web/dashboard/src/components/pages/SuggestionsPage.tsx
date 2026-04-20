@@ -242,7 +242,7 @@ export function SuggestionsPage() {
       <div className="flex items-center gap-3 mb-2 flex-wrap">
         <PlayOnceVideo
           src="/ghost/suggestions-header.mp4"
-          poster="/ghost/suggestions-header.png"
+          poster="/ghost/suggestions-header.webp"
           className="w-[80px] h-[80px] rounded-full object-cover"
         />
         <h1 className="text-xl font-semibold">Suggestions</h1>

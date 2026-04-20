@@ -93,17 +93,29 @@ export function TaskDetail({ taskId, onRefresh }: { taskId: string; onRefresh?: 
         </div>
       )}
 
-      {/* PRs */}
+      {/* PRs — state derived from matching runs (pr-sync writes outcome/status) */}
       {task.prUrls.length > 0 && (
         <div className="bg-bg rounded-lg p-2 text-xs space-y-1">
           <span className="text-text-muted">Pull Requests:</span>
-          {task.prUrls.map((url, i) => (
-            <div key={i}>
-              <a href={url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                {url.replace(/^https:\/\/github\.com\//, '')}
-              </a>
-            </div>
-          ))}
+          {task.prUrls.map((url, i) => {
+            const run = runs.find(r => r.prUrl === url);
+            const state = run?.outcome === 'merged' ? 'MERGED'
+              : run?.outcome === 'closed_manual' ? 'CLOSED'
+              : run?.status === 'awaiting_pr' ? 'OPEN'
+              : null;
+            const stateClass = state === 'MERGED' ? 'text-purple bg-purple/15'
+              : state === 'CLOSED' ? 'text-red bg-red/15'
+              : state === 'OPEN' ? 'text-green bg-green/15'
+              : 'text-text-dim bg-border';
+            return (
+              <div key={i} className="flex items-center gap-2">
+                {state && <Badge className={stateClass}>{state}</Badge>}
+                <a href={url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline truncate">
+                  {url.replace(/^https:\/\/github\.com\//, '')}
+                </a>
+              </div>
+            );
+          })}
         </div>
       )}
 

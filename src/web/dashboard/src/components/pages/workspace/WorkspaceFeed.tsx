@@ -28,10 +28,11 @@ export function WorkspaceFeed() {
     () => fetchWorkspaceFeed({
       type: state.activeFilter === 'all' ? undefined : state.activeFilter,
       projectId: state.selectedProjectId ?? undefined,
+      repoId: state.selectedRepoId ?? undefined,
       limit: PAGE_SIZE,
       offset: state.offset,
     }),
-    [state.activeFilter, state.selectedProjectId, state.offset],
+    [state.activeFilter, state.selectedProjectId, state.selectedRepoId, state.offset],
     15_000,
   );
 

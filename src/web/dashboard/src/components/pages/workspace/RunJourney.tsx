@@ -65,6 +65,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
   const { data: ctx, refresh } = useApi(() => fetchRunContext(runId), [runId, pollMs], pollMs);
   const [sessionInfo, setSessionInfo] = useState<{ command: string } | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const [expandedAttempt, setExpandedAttempt] = useState<string | null>(null);
   const { drillToItem, expandedPlan, setExpandedPlan } = useWorkspace();
   const { dialog, prompt } = useDialog();
 
@@ -251,38 +252,73 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
         )}
       </Step>
 
-      {/* Execution attempts */}
+      {/* Execution attempts — expandable per attempt (UI-16) */}
       {childRuns.length > 0 && (
         <Step status={execStatus} label={`Execution${childRuns.length > 1 ? ` (${childRuns.length} attempts)` : ''}`}>
-          {childRuns.map((child, i) => (
-            <div key={child.id} className={`text-xs ${child.archived ? 'text-text-muted line-through' : 'text-text-dim'} ${i > 0 ? 'mt-1' : ''}`}>
-              {child.status === 'failed' ? '✕' : child.status === 'running' ? '⟳' : '✓'}
-              {' '}Attempt {i + 1} — {child.status}
-              {child.status === 'running' && child.activity && (
-                <span className="text-blue ml-1">({child.activity})</span>
-              )}
-              {child.startedAt && child.finishedAt && ` (${Math.round((new Date(child.finishedAt).getTime() - new Date(child.startedAt).getTime()) / 1000)}s)`}
-            </div>
-          ))}
-          {execStatus === 'failed' && activeChild && (
-            <>
-              {activeChild.errorSummary && (
-                <div className="mt-2 bg-red/5 border border-red/20 rounded p-2 text-xs text-red whitespace-pre-wrap max-h-24 overflow-y-auto">
-                  {activeChild.errorSummary === 'orphaned — daemon restarted'
-                    ? 'Orphaned by daemon restart — no auto-retry. Click Retry to run again.'
-                    : activeChild.errorSummary}
-                </div>
-              )}
-              <div className="flex items-center gap-2 mt-2">
-                <button
-                  onClick={() => handleRetry(activeChild.id)}
-                  disabled={loading === 'retry'}
-                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange/15 text-orange border-none cursor-pointer hover:bg-orange/25 disabled:opacity-50"
+          {childRuns.map((child, i) => {
+            const isActive = !child.archived && child.id === activeChild?.id;
+            const isExpanded = expandedAttempt === child.id;
+            const canExpand = !!child.errorSummary || !!child.resultSummaryMd;
+            return (
+              <div key={child.id} className={`${i > 0 ? 'mt-1' : ''}`}>
+                <div
+                  onClick={canExpand ? () => setExpandedAttempt(isExpanded ? null : child.id) : undefined}
+                  className={`text-xs flex items-center gap-1.5 rounded px-1.5 py-1 ${
+                    child.archived
+                      ? 'text-text-muted bg-transparent'
+                      : isActive
+                        ? 'text-text bg-accent/5 border-l-2 border-accent/40 pl-2'
+                        : 'text-text-dim'
+                  } ${canExpand ? 'cursor-pointer hover:bg-card/60' : ''}`}
                 >
-                  {loading === 'retry' ? '...' : 'Retry'}
-                </button>
+                  {canExpand && <span className="text-[9px] shrink-0">{isExpanded ? '▾' : '▸'}</span>}
+                  <span className="shrink-0">
+                    {child.status === 'failed' ? '✕' : child.status === 'running' ? '⟳' : child.status === 'queued' ? '◌' : '✓'}
+                  </span>
+                  <span className="shrink-0">Attempt {i + 1}</span>
+                  <span className="text-text-muted">· {child.status}</span>
+                  {child.status === 'running' && child.activity && (
+                    <span className="text-blue">({child.activity})</span>
+                  )}
+                  {child.startedAt && child.finishedAt && (
+                    <span className="text-text-muted">· {Math.round((new Date(child.finishedAt).getTime() - new Date(child.startedAt).getTime()) / 1000)}s</span>
+                  )}
+                  {child.archived && <Badge className="text-text-muted bg-border/60 ml-1">archived</Badge>}
+                  {isActive && <Badge className="text-accent bg-accent/15 ml-1">active</Badge>}
+                  <button
+                    onClick={e => { e.stopPropagation(); drillToItem(child.id, 'run'); }}
+                    className="ml-auto text-accent hover:underline bg-transparent border-none cursor-pointer text-xs shrink-0"
+                  >View →</button>
+                </div>
+                {isExpanded && (
+                  <div className="mt-1 ml-4 space-y-1">
+                    {child.errorSummary && (
+                      <div className="bg-red/5 border border-red/20 rounded p-2 text-xs text-red whitespace-pre-wrap max-h-32 overflow-y-auto">
+                        {child.errorSummary === 'orphaned — daemon restarted'
+                          ? 'Orphaned by daemon restart — no auto-retry. Click Retry to run again.'
+                          : child.errorSummary}
+                      </div>
+                    )}
+                    {child.resultSummaryMd && !child.errorSummary && (
+                      <div className="bg-bg rounded p-2 text-xs text-text-dim whitespace-pre-wrap max-h-32 overflow-y-auto">
+                        {child.resultSummaryMd}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </>
+            );
+          })}
+          {execStatus === 'failed' && activeChild && (
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                onClick={() => handleRetry(activeChild.id)}
+                disabled={loading === 'retry'}
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange/15 text-orange border-none cursor-pointer hover:bg-orange/25 disabled:opacity-50"
+              >
+                {loading === 'retry' ? '...' : 'Retry'}
+              </button>
+            </div>
           )}
         </Step>
       )}

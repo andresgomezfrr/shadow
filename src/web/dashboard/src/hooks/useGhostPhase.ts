@@ -10,25 +10,25 @@ export const isVideo = (p: string) => p.endsWith('.mp4');
 const randomFrom = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
 const PHASE_MAP: Record<string, PhaseInfo> = {
-  idle:              { images: ['/ghost/idle.mp4', '/ghost/idle-1.png', '/ghost/idle-2.mp4', '/ghost/idle-3.png', '/ghost/idle-4.png', '/ghost/idle-5.png', '/ghost/idle-6.png', '/ghost/idle-7.mp4', '/ghost/idle-9.mp4'], label: 'idle' },
-  focus:             { images: ['/ghost/focus.png'],           label: 'focus mode' },
+  idle:              { images: ['/ghost/idle.mp4', '/ghost/idle-1.webp', '/ghost/idle-2.mp4', '/ghost/idle-3.webp', '/ghost/idle-4.webp', '/ghost/idle-5.webp', '/ghost/idle-6.webp', '/ghost/idle-7.mp4', '/ghost/idle-9.mp4'], label: 'idle' },
+  focus:             { images: ['/ghost/focus.webp'],           label: 'focus mode' },
   watching:          { images: ['/ghost/watching.mp4', '/ghost/watching-1.mp4'], label: 'watching' },
   learning:          { images: ['/ghost/watching.mp4', '/ghost/learning.mp4'], label: 'learning' },
-  heartbeat:         { images: ['/ghost/analyzing.mp4', '/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png'], label: 'analyzing...' },
-  suggest:           { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.mp4'], label: 'suggesting...' },
-  'suggest-deep':    { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.mp4'], label: 'deep suggesting...' },
-  'suggest-project': { images: ['/ghost/suggesting-1.png', '/ghost/suggesting-2.png', '/ghost/suggesting-3.mp4'], label: 'project suggestions...' },
-  consolidate:       { images: ['/ghost/consolidating-1.png', '/ghost/consolidating-2.mp4'], label: 'consolidating...' },
+  heartbeat:         { images: ['/ghost/analyzing.mp4', '/ghost/analyzing-1.webp', '/ghost/analyzing-2.webp', '/ghost/analyzing-3.webp', '/ghost/analyzing-4.webp'], label: 'analyzing...' },
+  suggest:           { images: ['/ghost/suggesting-1.webp', '/ghost/suggesting-2.webp', '/ghost/suggesting-3.mp4'], label: 'suggesting...' },
+  'suggest-deep':    { images: ['/ghost/suggesting-1.webp', '/ghost/suggesting-2.webp', '/ghost/suggesting-3.mp4'], label: 'deep suggesting...' },
+  'suggest-project': { images: ['/ghost/suggesting-1.webp', '/ghost/suggesting-2.webp', '/ghost/suggesting-3.mp4'], label: 'project suggestions...' },
+  consolidate:       { images: ['/ghost/consolidating-1.webp', '/ghost/consolidating-2.mp4'], label: 'consolidating...' },
   reflect:           { images: ['/ghost/reflecting.mp4'],      label: 'reflecting...' },
-  'context-enrich':  { images: ['/ghost/enriching.png'],       label: 'enriching...' },
-  'remote-sync':     { images: ['/ghost/syncing.png'],         label: 'syncing...' },
-  'repo-profile':    { images: ['/ghost/analyzing.mp4', '/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png'], label: 'profiling...' },
-  'project-profile': { images: ['/ghost/analyzing.mp4', '/ghost/analyzing-1.png', '/ghost/analyzing-2.png', '/ghost/analyzing-3.png', '/ghost/analyzing-4.png'], label: 'profiling...' },
+  'context-enrich':  { images: ['/ghost/enriching.webp'],       label: 'enriching...' },
+  'remote-sync':     { images: ['/ghost/syncing.webp'],         label: 'syncing...' },
+  'repo-profile':    { images: ['/ghost/analyzing.mp4', '/ghost/analyzing-1.webp', '/ghost/analyzing-2.webp', '/ghost/analyzing-3.webp', '/ghost/analyzing-4.webp'], label: 'profiling...' },
+  'project-profile': { images: ['/ghost/analyzing.mp4', '/ghost/analyzing-1.webp', '/ghost/analyzing-2.webp', '/ghost/analyzing-3.webp', '/ghost/analyzing-4.webp'], label: 'profiling...' },
   'digest-daily':    { images: ['/ghost/reflecting.mp4'],      label: 'writing digest...' },
   'digest-weekly':   { images: ['/ghost/reflecting.mp4'],      label: 'writing digest...' },
   'digest-brag':     { images: ['/ghost/reflecting.mp4'],      label: 'writing digest...' },
-  'auto-plan':       { images: ['/ghost/autonomy-placeholder.png'], label: 'planning...' },
-  'auto-execute':    { images: ['/ghost/autonomy-placeholder.png'], label: 'executing...' },
+  'auto-plan':       { images: ['/ghost/autonomy-placeholder.webp'], label: 'planning...' },
+  'auto-execute':    { images: ['/ghost/autonomy-placeholder.webp'], label: 'executing...' },
 };
 
 // Higher index = higher priority for display
@@ -82,7 +82,7 @@ export function useGhostPhase(): GhostPhase {
   useEffect(() => {
     const seen = new Set<string>();
     const allSources = Object.values(PHASE_MAP).flatMap(p => p.images);
-    allSources.push('/ghost/offline.png');
+    allSources.push('/ghost/offline.webp');
     for (const src of allSources) {
       if (!seen.has(src) && !isVideo(src)) {
         seen.add(src);

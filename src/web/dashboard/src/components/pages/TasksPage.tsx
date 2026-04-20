@@ -1,6 +1,6 @@
 import { useApi } from '../../hooks/useApi';
 import { useDialog } from '../../hooks/useDialog';
-import { fetchTasks, createTask, updateTask, deleteTask, fetchRepos, fetchProjects } from '../../api/client';
+import { fetchTasks, createTask, updateTask, deleteTask, fetchRepos, fetchProjects, fetchTaskContext } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { FilterTabs } from '../common/FilterTabs';
 import { EmptyState } from '../common/EmptyState';
@@ -220,6 +220,8 @@ function TaskCard({ task: t, expanded, onToggle, onStatusChange, onDelete, repoN
             </div>
           )}
 
+          <RelatedSuggestions taskId={t.id} />
+
           <div className="flex items-center gap-2 border-t border-border pt-3">
             {ALL_STATUSES.filter(s => s !== t.status).map(s => (
               <button
@@ -237,6 +239,28 @@ function TaskCard({ task: t, expanded, onToggle, onStatusChange, onDelete, repoN
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function RelatedSuggestions({ taskId }: { taskId: string }) {
+  const { data: ctx } = useApi(() => fetchTaskContext(taskId), [taskId], 60_000);
+  const suggestions = ctx?.suggestions ?? [];
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="text-xs space-y-1">
+      <span className="text-text-muted">Related suggestions ({suggestions.length}):</span>
+      {suggestions.map(s => (
+        <div key={s.id} className="flex items-center gap-2">
+          <span>💡</span>
+          <Badge className="text-text-dim bg-border">{s.status}</Badge>
+          <span className="truncate flex-1">{s.title}</span>
+          <a
+            href={`/suggestions?highlight=${s.id}`}
+            className="text-accent hover:underline shrink-0 text-xs"
+          >View</a>
+        </div>
+      ))}
     </div>
   );
 }

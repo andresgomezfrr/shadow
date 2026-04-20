@@ -53,7 +53,7 @@ export function Topbar({ status }: { status?: StatusResponse | null }) {
             title={pendingCount > 0 ? `${pendingCount} notifications` : 'No notifications'}
           >
             <img
-              src={pendingCount > 0 ? '/ghost/notifications-active.png' : '/ghost/notifications-empty.png'}
+              src={pendingCount > 0 ? '/ghost/notifications-active.webp' : '/ghost/notifications-empty.webp'}
               alt=""
               className={`w-9 h-9 rounded-full object-cover transition-opacity ${pendingCount > 0 ? 'opacity-100' : 'opacity-50 hover:opacity-80'}`}
             />

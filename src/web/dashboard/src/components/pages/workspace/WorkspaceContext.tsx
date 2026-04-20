@@ -12,6 +12,7 @@ export type ActiveFilter = 'all' | 'run' | 'run-active' | 'run-done' | 'run-fail
 
 type WorkspaceState = {
   selectedProjectId: string | null;
+  selectedRepoId: string | null;
   activeFilter: ActiveFilter;
   selectedItemId: string | null;
   selectedItemType: string | null;
@@ -21,6 +22,7 @@ type WorkspaceState = {
 type WorkspaceContextType = {
   state: WorkspaceState;
   setProject: (id: string | null) => void;
+  setRepo: (id: string | null) => void;
   setFilter: (f: ActiveFilter) => void;
   setSelectedItem: (id: string | null, type?: string) => void;
   drillToItem: (id: string, type: string) => void;
@@ -37,6 +39,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const state: WorkspaceState = {
     selectedProjectId: params.get('project') || null,
+    selectedRepoId: params.get('repo') || null,
     activeFilter: (params.get('filter') as ActiveFilter) || 'all',
     selectedItemId: params.get('item') || null,
     selectedItemType: params.get('itemType') || null,
@@ -56,6 +59,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const setProject = useCallback((id: string | null) => {
     update({ project: id, offset: null });
+  }, [update]);
+
+  const setRepo = useCallback((id: string | null) => {
+    update({ repo: id, offset: null });
   }, [update]);
 
   const setFilter = useCallback((f: ActiveFilter) => {
@@ -80,7 +87,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
 
   return (
-    <WorkspaceCtx.Provider value={{ state, setProject, setFilter, setSelectedItem, drillToItem, setOffset, isDrillDown, expandedPlan, setExpandedPlan }}>
+    <WorkspaceCtx.Provider value={{ state, setProject, setRepo, setFilter, setSelectedItem, drillToItem, setOffset, isDrillDown, expandedPlan, setExpandedPlan }}>
       {children}
     </WorkspaceCtx.Provider>
   );

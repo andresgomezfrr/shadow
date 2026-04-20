@@ -27,7 +27,7 @@ export function GuidePage() {
       <div className="flex items-center gap-3 mb-6 flex-wrap">
         <PlayOnceVideo
           src="/ghost/guide.mp4"
-          poster="/ghost/guide.png"
+          poster="/ghost/guide.webp"
           className="w-[80px] h-[80px] rounded-full object-cover"
         />
         <h1 className="text-xl font-semibold">Shadow Guide</h1>

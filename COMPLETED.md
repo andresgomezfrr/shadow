@@ -4,6 +4,24 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-19 (Audit block 5O — 6 UI features en tirón)
+
+Bloque 5O cierra 6 items UI del backlog en sesión única: closing-note UX, multi-PR render con state derivado, repo filter en workspace, attempts drill-down, related suggestions en TasksPage, y la conversión PNG→WebP de `/ghost/`. Typecheck + build verdes.
+
+- **UI-18 closing note [audit UI-18]** (`TasksPage.tsx`, `workspace/TaskDetail.tsx`) — Prompt multiline opcional al transicionar a `done` en ambas páginas. `closedNote` persistido, se limpia al reabrir. Display en TaskDetail por encima del timeline. Reusa `useDialog().prompt` con null=cancel.
+
+- **UI-17 related suggestions en TasksPage [audit UI-17]** (`TasksPage.tsx`) — `TaskCard` expanded lazy-fetchea `fetchTaskContext(id)` y renderiza sección "Related suggestions" con View links a `/suggestions?highlight=<id>`. TaskDetail del workspace ya lo tenía.
+
+- **UI-14 multi-PR con state en TaskDetail [audit UI-14]** (`workspace/TaskDetail.tsx`) — Array `prUrls` renderizado como filas con Badge de state (MERGED/CLOSED/OPEN) derivado de `runs[].outcome` y `runs[].status` matched by prUrl. Sin llamadas extra a gh — usa data ya persistida por pr-sync job.
+
+- **UI-15 workspace repo filter [audit UI-15]** (`workspace.ts`, `WorkspaceContext.tsx`, `WorkspaceHeader.tsx`) — `repo` URL param + `selectedRepoId` en state. Backend: listRuns filtra por `r.repoId`, listTasks/listSuggestions/listObservations ya aceptaban `repoId` (store-level). Counts también repo-aware. Dropdown "All repos" en WorkspaceHeader solo visible con >1 repo.
+
+- **UI-16 attempts UX en RunJourney [audit UI-16]** (`workspace/RunJourney.tsx`) — Cada attempt row expandible: errorSummary o resultSummaryMd inline; View → drill-down al child run propio; badge "active" (bg acento + border-left) vs "archived" (texto muted). Estado `expandedAttempt` local al component.
+
+- **UI-20 /ghost/ PNG → WebP [audit UI-20]** (`public/ghost/`, 21 archivos tsx/ts) — 49 PNGs convertidos con `cwebp -q 85 -resize 800 0`. Carpeta 285MB → 47MB (incluye MP4s intactos). Originales movidos a `internal/ghost-assets/` (gitignored). Chronicle subdir no tocado.
+
+---
+
 ## Session 2026-04-20 (Audit block 5N — DB hygiene)
 
 Bloque 5N cierra 5 items DB hygiene: BEGIN unified, updateProfile no-silent, jsonParse observability, FTS tags tokenized, repo path reuse. 5 commits + docs, 335 tests verdes. D-10 (v49 legacy columns DROP) deferred — requiere audit previo de uses, marcado "backlog long" en audit.

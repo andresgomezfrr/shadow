@@ -10,7 +10,7 @@ export function SystemsPage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
-        <img src="/ghost/systems.png" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
+        <img src="/ghost/systems.webp" alt="" className="w-[80px] h-[80px] rounded-full object-cover" />
         <h1 className="text-xl font-semibold">Systems</h1>
       </div>
 

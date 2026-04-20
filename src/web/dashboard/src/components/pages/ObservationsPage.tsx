@@ -89,7 +89,7 @@ export function ObservationsPage() {
       <div className="flex items-center gap-3 mb-2 flex-wrap">
         <PlayOnceVideo
           src="/ghost/observations-header.mp4"
-          poster="/ghost/observations-header.png"
+          poster="/ghost/observations-header.webp"
           className="w-[80px] h-[80px] rounded-full object-cover"
         />
         <h1 className="text-xl font-semibold">Observations</h1>

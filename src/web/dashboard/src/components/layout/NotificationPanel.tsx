@@ -135,7 +135,7 @@ export function NotificationPanel({ onClose, onRead }: { onClose: () => void; on
         <div className="flex-1 overflow-y-auto">
           {groups.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-text-muted text-sm gap-3">
-              <img src="/ghost/notifications-empty.png" alt="" className="w-32 h-32 rounded-full object-cover opacity-70" />
+              <img src="/ghost/notifications-empty.webp" alt="" className="w-32 h-32 rounded-full object-cover opacity-70" />
               <span>All caught up</span>
             </div>
           ) : (
