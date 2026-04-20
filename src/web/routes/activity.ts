@@ -248,16 +248,38 @@ export async function handleActivityRoutes(
     const events = db.listPendingEvents();
     const runsToReview = db.listRuns({ status: 'planned', limit: 5 });
     const recentJobs = db.listJobs({ limit: 5 });
-    // Active projects with observation/suggestion counts
-    const activeProjects = db.listProjects({ status: 'active' }).map(p => {
-      const obsCount = db.countObservations({ status: 'open', projectId: p.id });
-      const sugCount = db.countSuggestions({ status: 'open', projectId: p.id });
-      const topObs = obsCount > 0 ? db.listObservations({ status: 'open', projectId: p.id, limit: 1 }) : [];
+    // Active projects with observation/suggestion counts — fetch open obs/sug
+    // once and group in JS instead of 3 queries per project (audit W-10).
+    const activeProjectRecords = db.listProjects({ status: 'active' });
+    const allOpenObs = db.listObservations({ status: 'open', limit: 500 });
+    const allOpenSug = db.listSuggestions({ status: 'open', limit: 500 });
+    const obsByProject = new Map<string, typeof allOpenObs>();
+    const sugByProject = new Map<string, typeof allOpenSug>();
+    for (const o of allOpenObs) {
+      for (const e of o.entities ?? []) {
+        if (e.type !== 'project') continue;
+        const list = obsByProject.get(e.id) ?? [];
+        list.push(o);
+        obsByProject.set(e.id, list);
+      }
+    }
+    for (const s of allOpenSug) {
+      for (const e of s.entities ?? []) {
+        if (e.type !== 'project') continue;
+        const list = sugByProject.get(e.id) ?? [];
+        list.push(s);
+        sugByProject.set(e.id, list);
+      }
+    }
+    const activeProjects = activeProjectRecords.map(p => {
+      const obsList = obsByProject.get(p.id) ?? [];
+      const sugList = sugByProject.get(p.id) ?? [];
+      const topObs = obsList.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
       return {
         id: p.id, name: p.name, kind: p.kind,
         repoCount: p.repoIds.length, systemCount: p.systemIds.length,
-        observationCount: obsCount, suggestionCount: sugCount,
-        topObservation: topObs[0]?.title ?? null,
+        observationCount: obsList.length, suggestionCount: sugList.length,
+        topObservation: topObs?.title ?? null,
       };
     });
 
