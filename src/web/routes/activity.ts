@@ -3,6 +3,12 @@ import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 import { json, clampLimit, clampOffset } from '../helpers.js';
 
+// Shared vocabulary — any new run/job status lives in one place so the
+// enum validation below and the dashboard filters stay in sync (audit W-12).
+const VALID_STATUSES = ['queued', 'running', 'planned', 'awaiting_pr', 'done', 'dismissed', 'failed', 'completed'] as const;
+const VALID_PERIODS = ['today', '7d', '30d'] as const;
+const VALID_SOURCES = ['job', 'run'] as const;
+
 export async function handleActivityRoutes(
   req: IncomingMessage, res: ServerResponse,
   pathname: string, params: URLSearchParams,
@@ -20,6 +26,19 @@ export async function handleActivityRoutes(
     const periodFilter = params.get('period') ?? undefined;
     const limit = clampLimit(params.get('limit'), 30);
     const offset = clampOffset(params.get('offset'));
+
+    // Validate enums (audit W-12). `type` is open-ended (many job types exist
+    // and a `run:*` prefix) so we don't lock that down — status/period/source
+    // have fixed vocabularies where a typo silently returned empty results.
+    if (statusFilter !== undefined && !(VALID_STATUSES as readonly string[]).includes(statusFilter)) {
+      return json(res, { error: `Invalid status "${statusFilter}". Expected: ${VALID_STATUSES.join(', ')}` }, 400), true;
+    }
+    if (periodFilter !== undefined && !(VALID_PERIODS as readonly string[]).includes(periodFilter)) {
+      return json(res, { error: `Invalid period "${periodFilter}". Expected: ${VALID_PERIODS.join(', ')}` }, 400), true;
+    }
+    if (sourceFilter !== undefined && !(VALID_SOURCES as readonly string[]).includes(sourceFilter)) {
+      return json(res, { error: `Invalid source "${sourceFilter}". Expected: ${VALID_SOURCES.join(', ')}` }, 400), true;
+    }
 
     // Compute period start date
     let periodDate: string | null = null;
