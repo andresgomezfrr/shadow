@@ -4,6 +4,22 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-20 (Audit block 5M — analysis residual)
+
+Bloque 5M cierra 3 items de analysis pipeline: notify con project-awareness, correction bounds check, profile schema refine. 3 commits + docs. Plus marks: A-13 ya cubierto por A-02; P-08 deferred como security theater en single-user (consistente con A-06/R-08/R-09).
+
+- **notify project-aware [audit A-08]** (`src/analysis/notify.ts`, commit `d094d13`) — `observation_notable` payload incluye `projectIds` extraídos de `obs.entities` (type='project'). Consumer puede routear incluso cuando el LLM puso wrong repo_id pero linkeó project correctamente. Prompt-stricter NO aplicado per convención "structural > prompt".
+
+- **correction bounds check [audit P-09]** (`src/memory/retrieval.ts`, commit `f0fd0b4`) — Dos silent-drops corregidos: (a) index out-of-range en `decisions[]` ahora loguea + skip en vez de tragar silencioso; (b) action='edit' sin editedBody ya no fall-through entre branches, loguea + skip para que next consolidate retry.
+
+- **profile schema refine [audit P-10]** (`src/daemon/handlers/profiling.ts`, `src/observation/repo-profile.ts`, commit `6b587a6`) — Parse permisivo dejaba que profiles truncated/off-template entraran a `projects.context_md`/`repos.context_md` como si fueran válidos. project-profile: Zod `.refine()` requiere **Summary** + **Architecture**; raw fallback removido. repo-profile: requiere **Summary** + **Type**; raw fallback ahora necesita ambos markers. Parse fail = log + skip, deja next run reintentar.
+
+**Marcados en audit sin commit**:
+- A-13 revalidate narrative — ya cubierto por A-02 (retry + fail-close desde 4B)
+- P-08 escape datos — deferred (security theater en local-first, mismo principio que A-06/R-08/R-09)
+
+---
+
 ## Session 2026-04-20 (Audit block 5L — UI polish cola)
 
 Bloque 5L cierra 3 items UI residuales: qs() unify, copyable session IDs, MCP server reorder. 3 commits + docs, 335 tests verdes.
