@@ -1,4 +1,5 @@
 import type { JobContext, JobHandlerResult } from '../job-handlers.js';
+import { purgeStaleRotatingFiles } from '../../analysis/shared.js';
 
 const RETENTION_DAYS = 90;
 
@@ -29,10 +30,16 @@ export async function handleCleanup(ctx: JobContext): Promise<JobHandlerResult> 
   };
 
   const totalDeleted = deleted.llm_usage + deleted.interactions + deleted.event_queue + deleted.jobs;
+
+  // 3. Sweep orphaned .rotating files — crashed heartbeats leave these behind
+  //    and if idle for >24h they're almost certainly stale (audit A-07).
+  const rotatingPurged = purgeStaleRotatingFiles(ctx.config.resolvedDataDir);
+
   console.error(
     `[cleanup] retention=${RETENTION_DAYS}d  rolled up ${rolledUp} llm_usage_daily rows, `
     + `deleted ${totalDeleted} total (llm_usage=${deleted.llm_usage}, `
-    + `interactions=${deleted.interactions}, event_queue=${deleted.event_queue}, jobs=${deleted.jobs})`,
+    + `interactions=${deleted.interactions}, event_queue=${deleted.event_queue}, jobs=${deleted.jobs})`
+    + `, purged ${rotatingPurged} stale rotating files`,
   );
 
   return {
@@ -44,6 +51,7 @@ export async function handleCleanup(ctx: JobContext): Promise<JobHandlerResult> 
       rolledUp,
       deleted,
       totalDeleted,
+      rotatingPurged,
     },
   };
 }

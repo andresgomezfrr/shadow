@@ -1,4 +1,4 @@
-import { readFileSync, renameSync, appendFileSync, unlinkSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, renameSync, appendFileSync, unlinkSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { ShadowConfig } from '../config/load-config.js';
@@ -112,7 +112,50 @@ export function rotateForConsume(basePath: string): string | null {
 /** Delete a .rotating file after consumption. Safe to call with null. */
 export function cleanupRotating(rotatingPath: string | null): void {
   if (!rotatingPath) return;
-  try { unlinkSync(rotatingPath); } catch { /* already gone */ }
+  try {
+    unlinkSync(rotatingPath);
+  } catch (e) {
+    // ENOENT is fine — file already gone from a prior cleanup attempt.
+    // Anything else (EACCES, EBUSY, EIO) is worth logging so stuck files
+    // don't accumulate silently — the cleanup job sweep below will catch
+    // leftovers older than 24h (audit A-07).
+    const errno = (e as NodeJS.ErrnoException).code;
+    if (errno !== 'ENOENT') {
+      console.error(`[shared] failed to unlink ${rotatingPath}: ${errno ?? 'unknown'}`);
+    }
+  }
+}
+
+/**
+ * Sweep a data directory for orphaned `.rotating` files older than maxAgeMs
+ * (default 24h). A crashed heartbeat can leave these behind; the next run
+ * reclaims them by appending new data, but if the user disables heartbeats
+ * or the data files go idle, they would sit forever. Called from the daily
+ * cleanup job. Returns the count of files successfully deleted.
+ */
+export function purgeStaleRotatingFiles(dataDir: string, maxAgeMs = 24 * 60 * 60 * 1000): number {
+  let purged = 0;
+  try {
+    const entries = readdirSync(dataDir);
+    const cutoff = Date.now() - maxAgeMs;
+    for (const name of entries) {
+      if (!name.endsWith('.rotating')) continue;
+      const full = resolve(dataDir, name);
+      try {
+        const stat = statSync(full);
+        if (stat.mtimeMs < cutoff) {
+          unlinkSync(full);
+          purged++;
+          console.error(`[shared] purged stale rotating file: ${name} (age ${Math.round((Date.now() - stat.mtimeMs) / 3_600_000)}h)`);
+        }
+      } catch (e) {
+        console.error(`[shared] failed to stat/unlink ${name}:`, e instanceof Error ? e.message : e);
+      }
+    }
+  } catch (e) {
+    console.error('[shared] failed to read dataDir for rotating sweep:', e instanceof Error ? e.message : e);
+  }
+  return purged;
 }
 
 // --- Interaction loading ---
