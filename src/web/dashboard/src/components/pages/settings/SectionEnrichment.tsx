@@ -35,6 +35,28 @@ export function SectionEnrichment({ profile, saved, onSavePreference, visible }:
   const [newExclusion, setNewExclusion] = useState('');
   const enabled = getPref(profile, 'enrichmentEnabled', false);
   const intervalMin = getPref(profile, 'enrichmentIntervalMin', 120);
+  const serverOrder = (getPref(profile, 'enrichmentServerOrder', []) as string[]) ?? [];
+
+  // Apply persisted order (audit UI-22). Servers not listed go after the
+  // ordered ones in their original discovery order.
+  const sortedServers = [...servers].sort((a, b) => {
+    const ai = serverOrder.indexOf(a.name);
+    const bi = serverOrder.indexOf(b.name);
+    if (ai === -1 && bi === -1) return 0;
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  const moveServer = (name: string, direction: -1 | 1) => {
+    // Start from the rendered order so users reorder what they see.
+    const current = sortedServers.map(s => s.name);
+    const idx = current.indexOf(name);
+    const next = idx + direction;
+    if (idx < 0 || next < 0 || next >= current.length) return;
+    [current[idx], current[next]] = [current[next], current[idx]];
+    onSavePreference('enrichmentServerOrder', current);
+  };
 
   useEffect(() => {
     fetchEnrichmentServers().then(data => {
@@ -119,7 +141,7 @@ export function SectionEnrichment({ profile, saved, onSavePreference, visible }:
             </button>
           </div>
           <div className="space-y-2">
-            {servers.map(s => (
+            {sortedServers.map((s, i) => (
               <div
                 key={s.name}
                 className={`flex items-center justify-between px-4 py-3 border rounded-lg transition-colors ${
@@ -128,6 +150,21 @@ export function SectionEnrichment({ profile, saved, onSavePreference, visible }:
                     : 'bg-bg/50 border-border/50 opacity-60'
                 }`}
               >
+                {/* Reorder arrows (audit UI-22) */}
+                <div className="flex flex-col mr-2 -my-1">
+                  <button
+                    onClick={() => moveServer(s.name, -1)}
+                    disabled={i === 0}
+                    title="Move up"
+                    className="text-[10px] leading-none px-1 py-0.5 text-text-muted hover:text-accent disabled:opacity-20 disabled:hover:text-text-muted bg-transparent border-none cursor-pointer disabled:cursor-default"
+                  >▲</button>
+                  <button
+                    onClick={() => moveServer(s.name, 1)}
+                    disabled={i === sortedServers.length - 1}
+                    title="Move down"
+                    className="text-[10px] leading-none px-1 py-0.5 text-text-muted hover:text-accent disabled:opacity-20 disabled:hover:text-text-muted bg-transparent border-none cursor-pointer disabled:cursor-default"
+                  >▼</button>
+                </div>
                 <div className="flex-1 min-w-0 mr-3">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-text">{s.name}</span>
