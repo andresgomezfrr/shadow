@@ -4,6 +4,18 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-20 (Audit block 5I — runner reliability)
+
+Bloque 5I cierra 3 items 🟡 media del runner: race condition en pr-sync, discriminated error codes en ghost jobs, detección temprana de adapter crashes via pidfile. 3 commits + docs, 335 tests verdes.
+
+- **pr-sync defer if child active [audit R-13]** (`src/daemon/handlers/pr-sync.ts`, commit `0682c78`) — Race: pr-sync corriendo cada 30min podía marcar parent `done/merged` mientras un child execution seguía en-flight. Cuando child terminaba y llamaba `aggregateParentStatus`, parent ya era terminal y el update no propagaba — child's verification/diff/prUrl quedaban invisibles en el parent. `fetchPr` ahora chequea children y devuelve skip si alguno está `running`|`queued`; next tick lo recoge cuando el child termina.
+
+- **JobErrorCode discriminated para ghost jobs [audit R-14]** (`src/daemon/{job-handlers,job-queue,runtime}.ts`, `src/daemon/handlers/{suggest,profiling}.ts`, commit `4bbadc9`) — Ghost jobs se reportaban como "LLM jobs failing" sin distinguir causa. Operators tenían que grep daemon.stderr.log. Nuevo `JobErrorCode` union: timeout/interrupted/auth_fail/rate_limit/permission_denied/exit_non_zero/unknown. `classifyError()` detecta por status+exit+output patterns. JobQueue propaga el code en job.result.errorCode, shared.lastGhostCode, y mensaje del alert backend_unhealthy. Severity bumpea a critical si auth_fail (user-actionable), warning para otros.
+
+- **Pidfile-based stale run detector [audit R-15]** (`src/runner/pidfile.ts` new, `src/backend/claude-cli.ts`, `src/daemon/runtime.ts`, commit `e835022`) — Cuando adapter crashed sin cleanup, DB decía 'running' pero no había proceso. Stale detector esperaba `runnerTimeoutMs` completo (30min) antes de marcar failed. Nuevo módulo `runner/pidfile.ts`: adapter escribe `dataDir/run-pids/<runId>.pid` en onSpawn, borra en success/error. `isPidAlive(pid)` usa `process.kill(pid, 0)` (EPERM counts as alive para evitar false-positive en recycled pids). Stale detector con dos paths: (a) pidfile probe con 60s grace window → ESRCH = definitive stale; (b) timeout fallback mantenido para runs sin pidfile. Detección de adapter crashes baja de 30min a ~60s.
+
+---
+
 ## Session 2026-04-20 (Audit block 5H — analysis reliability + token budget)
 
 Bloque 5H cierra 4 items de analysis reliability: timeout dedicado, cleanup de .rotating huérfanos, daily token budget con gate configurable, convención Zod documentada. 4 commits + docs, 335 tests verdes. Plus marcados como `deferred (not applicable in local-first)`: A-06 prompt injection entity names, R-08 siblings atomic claim, R-09 confidence goal injection — security theater en single-user single-daemon.
