@@ -13,7 +13,7 @@ type PrViewJson = {
 type ProcessedEntry = { runId: string; action: 'merged' | 'closed' | 'error' | 'open'; prUrl?: string; error?: string };
 
 type FetchResult =
-  | { kind: 'ok'; pr: PrViewJson; runId: string; child: RunRecord; parent: RunRecord }
+  | { kind: 'ok'; pr: PrViewJson; runId: string; prUrl: string; subject: RunRecord; standalone: boolean }
   | { kind: 'skip'; runId: string; reason: string }
   | { kind: 'error'; runId: string; error: string };
 
@@ -40,7 +40,7 @@ export async function handlePrSync(ctx: JobContext, shared: DaemonSharedState): 
 
   for (let i = 0; i < awaitingRuns.length; i += BATCH_SIZE) {
     const chunk = awaitingRuns.slice(i, i + BATCH_SIZE);
-    const results = await Promise.all(chunk.map((parent) => fetchPr(ctx, parent)));
+    const results = await Promise.all(chunk.map((run) => fetchPr(ctx, run)));
 
     for (const result of results) {
       if (result.kind === 'skip') continue;
@@ -51,25 +51,33 @@ export async function handlePrSync(ctx: JobContext, shared: DaemonSharedState): 
         continue;
       }
 
-      const { pr, parent, child } = result;
+      const { pr, subject, prUrl, standalone } = result;
       if (pr.state === 'MERGED') {
-        ctx.db.transitionRun(parent.id, 'done');
-        ctx.db.updateRun(parent.id, { outcome: 'merged' });
+        ctx.db.transitionRun(subject.id, 'done');
+        ctx.db.updateRun(subject.id, { outcome: 'merged' });
         ctx.db.createEvent({
           kind: 'pr_merged',
           priority: 5,
-          payload: { message: `PR merged: ${child.prUrl}`, runId: parent.id, prUrl: child.prUrl },
+          payload: { message: `PR merged: ${prUrl}`, runId: subject.id, prUrl },
         });
         merged++;
-        processed.push({ runId: parent.id, action: 'merged', prUrl: child.prUrl ?? undefined });
+        processed.push({ runId: subject.id, action: 'merged', prUrl });
       } else if (pr.state === 'CLOSED') {
-        ctx.db.transitionRun(parent.id, 'dismissed');
-        ctx.db.updateRun(parent.id, { closedNote: 'PR closed without merge' });
+        // Standalone runs finalize as done/closed_manual to match the
+        // outcome-based terminal vocabulary the user sees elsewhere (audit R-07).
+        // Parent runs keep the historical `dismissed` status for back-compat.
+        if (standalone) {
+          ctx.db.transitionRun(subject.id, 'done');
+          ctx.db.updateRun(subject.id, { outcome: 'closed_manual', closedNote: 'PR closed without merge' });
+        } else {
+          ctx.db.transitionRun(subject.id, 'dismissed');
+          ctx.db.updateRun(subject.id, { closedNote: 'PR closed without merge' });
+        }
         closed++;
-        processed.push({ runId: parent.id, action: 'closed', prUrl: child.prUrl ?? undefined });
+        processed.push({ runId: subject.id, action: 'closed', prUrl });
       } else {
         stillOpen++;
-        processed.push({ runId: parent.id, action: 'open', prUrl: child.prUrl ?? undefined });
+        processed.push({ runId: subject.id, action: 'open', prUrl });
       }
     }
   }
@@ -90,23 +98,41 @@ export async function handlePrSync(ctx: JobContext, shared: DaemonSharedState): 
   };
 }
 
-async function fetchPr(ctx: JobContext, parent: RunRecord): Promise<FetchResult> {
-  const children = ctx.db.listRuns({ parentRunId: parent.id });
-  const child = children.find((c) => c.prUrl && c.status === 'done');
-  if (!child?.prUrl) return { kind: 'skip', runId: parent.id, reason: 'no child with prUrl' };
+async function fetchPr(ctx: JobContext, run: RunRecord): Promise<FetchResult> {
+  // Two modes:
+  //   1. Parent run with execution children — we inspect the child's PR (legacy path).
+  //   2. Standalone run (no parent) carrying its own prUrl — inspect it directly
+  //      (audit R-07: without this, standalone runs with a manual PR link sit in
+  //      awaiting_pr forever since pr-sync was child-only).
+  let prUrl: string | null = null;
+  let repoId: string | null = null;
+  let standalone = false;
 
-  const repo = ctx.db.getRepo(child.repoId);
-  if (!repo) return { kind: 'error', runId: parent.id, error: 'repo not found' };
+  if (!run.parentRunId && run.prUrl) {
+    // Standalone self-terminal: the run itself owns the PR
+    prUrl = run.prUrl;
+    repoId = run.repoId;
+    standalone = true;
+  } else {
+    const children = ctx.db.listRuns({ parentRunId: run.id });
+    const child = children.find((c) => c.prUrl && c.status === 'done');
+    if (!child?.prUrl) return { kind: 'skip', runId: run.id, reason: 'no child with prUrl and no standalone prUrl' };
+    prUrl = child.prUrl;
+    repoId = child.repoId;
+  }
+
+  const repo = ctx.db.getRepo(repoId);
+  if (!repo) return { kind: 'error', runId: run.id, error: 'repo not found' };
 
   try {
     const { stdout } = await execFile(
-      'gh', ['pr', 'view', child.prUrl, '--json', 'state,mergedAt'],
+      'gh', ['pr', 'view', prUrl, '--json', 'state,mergedAt'],
       { cwd: repo.path, timeout: GH_TIMEOUT_MS, encoding: 'utf-8' },
     );
     const pr = JSON.parse(stdout.trim()) as PrViewJson;
-    return { kind: 'ok', pr, runId: parent.id, child, parent };
+    return { kind: 'ok', pr, runId: run.id, prUrl, subject: run, standalone };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { kind: 'error', runId: parent.id, error: msg };
+    return { kind: 'error', runId: run.id, error: msg };
   }
 }
