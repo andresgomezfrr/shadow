@@ -36,6 +36,17 @@ export async function handleKnowledgeRoutes(
       const before = params.get('before') ?? undefined;
       const after = params.get('after') ?? undefined;
       const periodStart = params.get('periodStart') ?? undefined;
+      // Validate ISO8601 on any date-like param (audit W-14) — otherwise a
+      // malformed value like before=yesterday silently passes through to
+      // listDigests which treats it as a string compare and returns weird
+      // results. Fail fast with a clear 400 instead.
+      for (const [name, value] of [['before', before], ['after', after], ['periodStart', periodStart]] as const) {
+        if (value === undefined) continue;
+        const parsed = Date.parse(value);
+        if (Number.isNaN(parsed)) {
+          return json(res, { error: `Invalid ISO8601 date for ${name}: ${value}` }, 400), true;
+        }
+      }
       const digests = db.listDigests({ kind, limit, before, after, periodStart });
       return json(res, digests), true;
     }
