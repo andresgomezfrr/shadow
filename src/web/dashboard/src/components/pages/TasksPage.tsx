@@ -1,4 +1,5 @@
 import { useApi } from '../../hooks/useApi';
+import { useDialog } from '../../hooks/useDialog';
 import { fetchTasks, createTask, updateTask, deleteTask, fetchRepos, fetchProjects } from '../../api/client';
 import { Badge } from '../common/Badge';
 import { FilterTabs } from '../common/FilterTabs';
@@ -20,6 +21,7 @@ export function TasksPage() {
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newRef, setNewRef] = useState('');
+  const { dialog, prompt } = useDialog();
 
   const apiStatus = status === 'all' ? undefined : status;
   const { data, refresh } = useApi(() => fetchTasks({ status: apiStatus, limit: PAGE_SIZE, offset }), [status, offset], 15_000);
@@ -47,9 +49,26 @@ export function TasksPage() {
   }, [newTitle, newRef, refresh]);
 
   const handleStatusChange = useCallback(async (id: string, newStatus: string) => {
-    await updateTask(id, { status: newStatus, ...(newStatus === 'done' ? { closedAt: new Date().toISOString() } : { closedAt: null }) });
+    // Transitioning to 'done' prompts for an optional closedNote (audit UI-18;
+    // backend column added by M-05). null → skipped (user cancelled). Empty
+    // string → user confirmed but left it blank. Anything else → stored.
+    const updates: Record<string, unknown> = {
+      status: newStatus,
+      ...(newStatus === 'done' ? { closedAt: new Date().toISOString() } : { closedAt: null, closedNote: null }),
+    };
+    if (newStatus === 'done') {
+      const note = await prompt({
+        title: 'Close task',
+        message: 'Optional note on outcome (what shipped, what was skipped, context for future):',
+        placeholder: 'Shipped PR #42, verified locally. Skipped the stretch refactor.',
+        multiline: true,
+      });
+      if (note === null) return; // cancelled — leave status unchanged
+      if (note.trim()) updates.closedNote = note.trim();
+    }
+    await updateTask(id, updates);
     refresh();
-  }, [refresh]);
+  }, [refresh, prompt]);
 
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm('Delete this task?')) return;
@@ -67,6 +86,7 @@ export function TasksPage() {
 
   return (
     <div>
+      {dialog}
       <div className="flex items-center gap-3 mb-4">
         <span className="text-3xl">📋</span>
         <h1 className="text-xl font-semibold flex-1">Tasks</h1>

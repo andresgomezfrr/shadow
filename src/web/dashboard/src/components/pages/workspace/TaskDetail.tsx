@@ -1,5 +1,6 @@
 import { useApi } from '../../../hooks/useApi';
-import { fetchTaskContext, updateTask, closeTask, archiveTask } from '../../../api/client';
+import { fetchTaskContext, updateTask, archiveTask } from '../../../api/client';
+import { useDialog } from '../../../hooks/useDialog';
 import { Badge } from '../../common/Badge';
 import { Markdown } from '../../common/Markdown';
 import { timeAgo } from '../../../utils/format';
@@ -13,17 +14,32 @@ export function TaskDetail({ taskId, onRefresh }: { taskId: string; onRefresh?: 
   const { data: ctx, refresh } = useApi(() => fetchTaskContext(taskId), [taskId], 30_000);
   const { drillToItem } = useWorkspace();
   const [contextOpen, setContextOpen] = useState(false);
+  const { dialog, prompt } = useDialog();
 
   const doRefresh = useCallback(() => { refresh(); onRefresh?.(); }, [refresh, onRefresh]);
 
   const handleStatusChange = useCallback(async (status: string) => {
     if (status === 'done') {
-      await closeTask(taskId);
+      // Prompt for optional closing note — backend already supports closedNote
+      // via M-05; this surfaces it in the UI (audit UI-18). Cancel leaves
+      // status unchanged; empty string confirms without a note.
+      const note = await prompt({
+        title: 'Close task',
+        message: 'Optional note on outcome (what shipped, what was skipped, context for future):',
+        placeholder: 'Shipped PR #42, verified locally.',
+        multiline: true,
+      });
+      if (note === null) return;
+      await updateTask(taskId, {
+        status: 'done',
+        closedAt: new Date().toISOString(),
+        ...(note.trim() ? { closedNote: note.trim() } : {}),
+      });
     } else {
-      await updateTask(taskId, { status });
+      await updateTask(taskId, { status, closedAt: null, closedNote: null });
     }
     doRefresh();
-  }, [taskId, doRefresh]);
+  }, [taskId, doRefresh, prompt]);
 
   const handleArchive = useCallback(async () => {
     await archiveTask(taskId);
@@ -41,6 +57,7 @@ export function TaskDetail({ taskId, onRefresh }: { taskId: string; onRefresh?: 
 
   return (
     <div className="space-y-3">
+      {dialog}
       {/* Header */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-lg">📋</span>
@@ -87,6 +104,14 @@ export function TaskDetail({ taskId, onRefresh }: { taskId: string; onRefresh?: 
               </a>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Closing note (audit UI-18) */}
+      {task.closedNote && (
+        <div className="bg-bg rounded-lg p-2 text-xs space-y-1">
+          <span className="text-text-muted">Closing note:</span>
+          <div className="text-text-dim whitespace-pre-wrap">{task.closedNote}</div>
         </div>
       )}
 
