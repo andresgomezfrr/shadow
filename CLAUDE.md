@@ -40,7 +40,7 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 | CLI | Commander.js 14 |
 | Validation | Zod 4 |
 | LLM Backend | Claude CLI (`--print --output-format json`) or Agent SDK |
-| MCP | JSON-RPC over stdio (67 tools) |
+| MCP | JSON-RPC over stdio (69 tools) |
 | Dashboard | React 19, Vite, Tailwind CSS 4, React Router 7 |
 | Daemon | launchd (macOS), KeepAlive=true |
 
@@ -69,7 +69,7 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 
 ## Database Schema
 
-20 tables + virtual tables (SQLite, WAL mode, busy_timeout=5000ms):
+26 tables + virtual tables (SQLite, WAL mode, busy_timeout=5000ms):
 
 | Table | Purpose | Key columns |
 |-------|---------|-------------|
