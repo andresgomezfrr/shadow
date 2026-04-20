@@ -59,11 +59,22 @@ export function toSqlValue(value: unknown): SQLValue {
   return (value ?? null) as SQLValue;
 }
 
-export function jsonParse<T>(v: unknown, fallback: T): T {
+/**
+ * Safe JSON parse for mapper fields. Returns fallback on null/invalid, but
+ * now logs when it catches — previously silent (audit D-12). Callers can
+ * pass `ctx` (e.g. `"memories.tags_json"`) to attribute the bad row; if
+ * omitted we still log the error + value preview so corrupt columns are
+ * at least visible in daemon.stderr.log instead of invisibly returning
+ * empty arrays forever.
+ */
+export function jsonParse<T>(v: unknown, fallback: T, ctx?: string): T {
   if (v == null) return fallback;
   try {
     return JSON.parse(String(v)) as T;
-  } catch {
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const preview = String(v).slice(0, 80).replace(/\s+/g, ' ');
+    console.error(`[mappers] jsonParse fallback${ctx ? ` at ${ctx}` : ''}: ${msg} — value='${preview}'`);
     return fallback;
   }
 }
