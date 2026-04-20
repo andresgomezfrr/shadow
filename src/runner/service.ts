@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { execSync, execFileSync } from 'node:child_process';
+import { execSync, execFileSync, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -641,14 +641,24 @@ export class RunnerService {
     ] as const) {
       if (!cmd) continue;
       const start = Date.now();
-      try {
-        execSync(cmd, { cwd, encoding: 'utf-8', timeout: 120_000, stdio: 'pipe' });
-        results[key] = { passed: true, output: '', durationMs: Date.now() - start };
-      } catch (err: unknown) {
-        const output = (err instanceof Error ? (err as { stderr?: string }).stderr ?? err.message : String(err)).slice(0, 2000);
-        results[key] = { passed: false, output, durationMs: Date.now() - start };
-        allPassed = false;
-      }
+      // spawnSync captures stdout AND stderr regardless of exit status so we
+      // preserve warnings/deprecations that arrive on stderr even when the
+      // command succeeds — execSync dropped those silently (audit R-10).
+      const result = spawnSync('sh', ['-c', cmd], { cwd, encoding: 'utf-8', timeout: 120_000 });
+      const stdoutStr = (result.stdout ?? '').toString();
+      const stderrStr = (result.stderr ?? '').toString();
+      const combined = [
+        stdoutStr,
+        stderrStr ? `--- stderr ---\n${stderrStr}` : '',
+      ].filter(Boolean).join('\n').slice(0, 2000);
+      const passed = result.status === 0 && !result.error;
+      const fallbackError = result.error ? result.error.message : '';
+      results[key] = {
+        passed,
+        output: combined || fallbackError,
+        durationMs: Date.now() - start,
+      };
+      if (!passed) allPassed = false;
     }
 
     return { results, allPassed };
