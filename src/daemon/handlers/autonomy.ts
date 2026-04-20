@@ -270,7 +270,10 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
     const zerDoubts = !run.doubts || run.doubts.length === 0;
 
     if (!confidenceHigh || !zerDoubts) {
-      // Mark as reviewed so it doesn't appear again
+      // Mark as seen-by-autonomy so this run isn't re-evaluated next tick.
+      // autoEvalAt is outcome-agnostic: it only records "auto-execute has
+      // looked at this" — the *why* lives in the audit entry + the run's
+      // outcome/doubts. See audit R-11.
       ctx.db.updateRun(run.id, { autoEvalAt: now });
       needsReview++;
       const reason = !confidenceHigh

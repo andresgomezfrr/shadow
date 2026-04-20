@@ -295,6 +295,13 @@ export type RunRecord = {
   verified: 'verified' | 'needs_review' | 'unverified' | null;
   activity: string | null;
   closedNote: string | null;
+  /**
+   * Timestamp when the auto-execute cycle last processed this run — marks
+   * it as "seen by autonomy", outcome-agnostic. Any of auto_executed /
+   * needs_review / error sets this field so the same run is not re-evaluated
+   * on the next auto-execute tick. NOT a proxy for "evaluated & approved";
+   * the actual outcome lives in `outcome` + `status`. See audit R-11.
+   */
   autoEvalAt: string | null;
   archived: boolean;
   startedAt: string | null;
