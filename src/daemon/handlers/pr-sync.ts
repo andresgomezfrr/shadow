@@ -115,6 +115,14 @@ async function fetchPr(ctx: JobContext, run: RunRecord): Promise<FetchResult> {
     standalone = true;
   } else {
     const children = ctx.db.listRuns({ parentRunId: run.id });
+    // Skip the parent entirely if ANY child is still running or queued —
+    // otherwise pr-sync could mark the parent done/merged while the child
+    // execution is mid-flight; when the child finally finishes, its
+    // aggregateParentStatus call arrives at an already-terminal parent and
+    // the update doesn't propagate (audit R-13). Next tick picks it up.
+    const hasActiveChild = children.some((c) => c.status === 'running' || c.status === 'queued');
+    if (hasActiveChild) return { kind: 'skip', runId: run.id, reason: 'child run still active, deferring' };
+
     const child = children.find((c) => c.prUrl && c.status === 'done');
     if (!child?.prUrl) return { kind: 'skip', runId: run.id, reason: 'no child with prUrl and no standalone prUrl' };
     prUrl = child.prUrl;
