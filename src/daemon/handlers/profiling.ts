@@ -208,11 +208,22 @@ Be concise. Each field 1-3 lines max. Respond with JSON: { "contextMd": "..." }`
   if (result.status === 'success' && result.output) {
     const { safeParseJson } = await import('../../backend/json-repair.js');
     const { z } = await import('zod');
-    const parsed = safeParseJson(result.output, z.object({ contextMd: z.string() }), 'project-profile');
-    const contextMd = parsed.success ? parsed.data.contextMd : (result.output.includes('**Summary**') ? result.output.trim() : '');
-
-    if (contextMd) {
-      ctx.db.updateProject(projectId, { contextMd, contextUpdatedAt: new Date().toISOString() });
+    // Require the two load-bearing sections — otherwise the LLM occasionally
+    // returns a truncated or off-template blob and the profile looked "saved"
+    // while downstream code (suggest-project, UI) could not parse sections
+    // from it (audit P-10). Raw-markdown fallback removed; if parse fails we
+    // log + skip the update so next run retries cleanly.
+    const schema = z.object({
+      contextMd: z.string()
+        .refine((s) => s.includes('**Summary**') && s.includes('**Architecture**'), {
+          message: 'contextMd must include **Summary** and **Architecture** sections',
+        }),
+    });
+    const parsed = safeParseJson(result.output, schema, 'project-profile');
+    if (parsed.success) {
+      ctx.db.updateProject(projectId, { contextMd: parsed.data.contextMd, contextUpdatedAt: new Date().toISOString() });
+    } else {
+      console.error(`[project-profile] skipped update for ${project.name} — ${parsed.error}`);
     }
   }
 

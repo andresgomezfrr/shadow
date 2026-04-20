@@ -125,8 +125,14 @@ function gatherRepoSignals(repo: RepoRecord): RepoSignals {
 // LLM analysis
 // ---------------------------------------------------------------------------
 
+// Require the two load-bearing sections. The raw-markdown fallback below
+// accepts fewer signals; this schema path rejects off-template LLM output
+// so we don't silently save a truncated profile (audit P-10).
 const RepoContextResponseSchema = z.object({
-  contextMd: z.string(),
+  contextMd: z.string()
+    .refine((s) => s.includes('**Summary**') && s.includes('**Type**'), {
+      message: 'contextMd must include **Summary** and **Type** sections',
+    }),
 });
 
 function formatSignals(repo: RepoRecord, signals: RepoSignals): string {
@@ -219,11 +225,15 @@ Be concise. Each field 1-2 lines max. Respond with JSON: { "contextMd": "..." }`
     if (parsed.success) {
       return { contextMd: parsed.data.contextMd, llmCalls: 1, tokensUsed: tokens };
     }
-    // Fallback: if the LLM returned raw markdown instead of JSON
-    if (result.output.includes('**Type**:') || result.output.includes('## ')) {
+    // Raw-markdown fallback: only if the output looks like the expected
+    // template (has both **Type** and **Summary** markers). Previously the
+    // check was weaker (**Type** OR `## `), which let off-template blobs
+    // through (audit P-10).
+    const hasTemplate = result.output.includes('**Type**') && result.output.includes('**Summary**');
+    if (hasTemplate) {
       return { contextMd: result.output.trim(), llmCalls: 1, tokensUsed: tokens };
     }
-    console.error(`[shadow:repo-profile] Parse failed for ${repo.name}: ${parsed.error}`);
+    console.error(`[shadow:repo-profile] Parse failed for ${repo.name} and raw output missing **Type**/**Summary**: ${parsed.error}`);
   } else {
     console.error(`[shadow:repo-profile] LLM call failed for ${repo.name}: status=${result.status}`);
   }
