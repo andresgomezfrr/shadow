@@ -359,14 +359,12 @@ export const cleanupWorktree = (id: string) =>
 
 // --- Tasks ---
 
-export const fetchTasks = (params?: { status?: string; limit?: number; offset?: number }) => {
-  const q = new URLSearchParams();
-  if (params?.status) q.set('status', params.status);
-  if (params?.limit) q.set('limit', String(params.limit));
-  if (params?.offset) q.set('offset', String(params.offset));
-  const qs = q.toString();
-  return api<{ items: Task[]; total: number }>(`/api/tasks${qs ? `?${qs}` : ''}`);
-};
+export const fetchTasks = (params?: { status?: string; limit?: number; offset?: number }) =>
+  api<{ items: Task[]; total: number }>(`/api/tasks${qs({
+    status: params?.status,
+    limit: params?.limit != null ? String(params.limit) : undefined,
+    offset: params?.offset != null ? String(params.offset) : undefined,
+  })}`);
 
 export const fetchTaskContext = (id: string) => api<TaskContext>(`/api/tasks/${id}`);
 
