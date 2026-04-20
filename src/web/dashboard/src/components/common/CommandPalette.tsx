@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { searchAll, type SearchGroup, type SearchGroupType } from '../../api/client';
 import { useRecents, type RecentItem } from '../../hooks/useRecents';
 
+const SEARCH_DEBOUNCE_MS = 300;
+
 type TypeStyle = { icon: string; badge: string; dot: string };
 
 const TYPE_STYLES: Record<SearchGroupType, TypeStyle> = {
@@ -75,10 +77,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     }
   }, [open]);
 
-  // Debounce query (300ms)
+  // Debounce query
   useEffect(() => {
     if (!open) return;
-    const id = setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    const id = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(id);
   }, [query, open]);
 
