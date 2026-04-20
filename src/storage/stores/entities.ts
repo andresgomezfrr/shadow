@@ -21,6 +21,15 @@ import {
 // --- Repos ---
 
 export function createRepo(db: DatabaseSync, input: { name: string; path: string; remoteUrl?: string | null; defaultBranch?: string; languageHint?: string | null; testCommand?: string | null; lintCommand?: string | null; buildCommand?: string | null }): RepoRecord {
+  // Audit D-14: repos.path has a UNIQUE constraint. Raw INSERT blew up with
+  // an opaque SQLITE_CONSTRAINT and a stack trace when a caller re-added a
+  // path (e.g. moved repo + re-registered before prior row was deleted).
+  // Check first so we can return a clean, actionable error instead.
+  const existing = findRepoByPath(db, input.path);
+  if (existing) {
+    throw new Error(`Repo with path "${input.path}" already registered as "${existing.name}" (${existing.id}). Use shadow_repo_update or shadow_repo_remove first.`);
+  }
+
   const id = randomUUID();
   const now = new Date().toISOString();
   db
