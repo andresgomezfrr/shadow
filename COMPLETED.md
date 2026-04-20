@@ -4,6 +4,20 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-20 (Audit block 5K — CLI + UI quick wins)
+
+Bloque 5K cierra 4 items mixtos: C-03 build clean, UI-12 debounce const, UI-23 statusline dashboard link, C-05 docs drift detector. 4 commits + docs, 335 tests verdes.
+
+- **tsc clean dist [audit C-03]** (`package.json`, commit `99820bb`) — `npm run build` ahora prefija `clean`. Renames/deletes ya no dejan orphan `.js` en dist. Dev loop (tsx) y typecheck (noEmit) no afectados.
+
+- **SEARCH_DEBOUNCE_MS constante [audit UI-12]** (`CommandPalette.tsx`, commit `aef8b62`) — Magic `300` extraído a constante. Tuning en un solo lugar.
+
+- **Dashboard link en statusline [audit UI-23]** (`scripts/statusline.sh`, commit `11238d1`) — Modern terminals (iTerm2, Alacritty, Ghostty, Wezterm) renderizan URLs como clickable. URL del dashboard aparece en fallback de línea 2 cuando no hay thought/notif y daemon está running. Dim color. `SHADOW_DASHBOARD_PORT` env override.
+
+- **shadow docs check [audit C-05]** (`src/cli/cmd-docs.ts` new, `src/cli.ts`, `CLAUDE.md`, commit `75fbac0`) — Nuevo comando detector de drift entre CLAUDE.md y código. Hard checks (exit non-zero): MCP tools count, DB tables count. Soft check: dashboard routes (CLAUDE.md documenta top-level, App.tsx tiene sub-rutas). CLAUDE.md sincronizado como baseline: 67→69 tools, 20→26 tables. `--json` para machine-readable output. Scope narrow (counts only) — audit planteaba checks más ricos pero counts captan la mayoría del drift real.
+
+---
+
 ## Session 2026-04-20 (Audit block 5J — web perf + validation)
 
 Bloque 5J cierra 7 items 🟡/🔵 de web routes: 2 N+1 (daily-summary, task detail), 2 resource cleanups (draft-pr temp file, session SIGKILL hang), 3 validation gaps (activity enums, lookup types, digest dates). 7 commits + docs, 335 tests verdes.
