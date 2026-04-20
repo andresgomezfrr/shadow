@@ -121,10 +121,25 @@ export class ClaudeCliAdapter implements BackendAdapter {
       const { stdout, stderr, exitCode } = await spawnAsync(
         this.config.claudeBin, args, {
           cwd, timeout: timeoutMs, env, stdin: pack.prompt,
-          onSpawn: (child) => { this.instanceChild = child; },
+          onSpawn: (child) => {
+            this.instanceChild = child;
+            // Write pidfile so the stale-run detector can probe liveness
+            // via process.kill(pid, 0) instead of waiting out the full
+            // runnerTimeoutMs when the adapter crashes (audit R-15).
+            if (pack.runId && child.pid) {
+              void import('../runner/pidfile.js').then(({ writeRunPid }) => {
+                writeRunPid(this.config.resolvedDataDir, pack.runId!, child.pid!);
+              });
+            }
+          },
         },
       );
       this.instanceChild = null;
+      if (pack.runId) {
+        void import('../runner/pidfile.js').then(({ clearRunPid }) => {
+          clearRunPid(this.config.resolvedDataDir, pack.runId!);
+        });
+      }
 
       const finishedAt = new Date().toISOString();
 
@@ -174,6 +189,11 @@ export class ClaudeCliAdapter implements BackendAdapter {
         sessionId,
       };
     } catch (error) {
+      if (pack.runId) {
+        void import('../runner/pidfile.js').then(({ clearRunPid }) => {
+          clearRunPid(this.config.resolvedDataDir, pack.runId!);
+        });
+      }
       return {
         status: 'failure',
         exitCode: null,

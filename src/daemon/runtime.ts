@@ -13,6 +13,7 @@ import { DIGEST_SCHEDULES, CLEANUP_SCHEDULE, isScheduleReady } from './schedules
 import { EventBus } from '../web/event-bus.js';
 import { RepoWatcher } from '../observation/repo-watcher.js';
 import { RunQueue } from '../runner/queue.js';
+import { readRunPid, isPidAlive, clearRunPid } from '../runner/pidfile.js';
 import { JobQueue } from './job-queue.js';
 import { buildHandlerRegistry } from './job-handlers.js';
 import type { DaemonSharedState } from './job-handlers.js';
@@ -735,21 +736,41 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       }
 
       // --- Stale run detector ---
-      // Kills runs that exceed runnerTimeoutMs AND are no longer tracked by RunQueue.active.
-      // A run present in the queue has a live adapter — it is not stale even if slow.
-      // Orphaned runs (DB says 'running' but no adapter) are caught once they cross the timeout.
+      // Kills runs that DB marks 'running' but whose adapter is gone. Two paths
+      // to detect gone (audit R-15):
+      //   (a) pidfile probe: adapter writes a pidfile on spawn. If the pid
+      //       has exited (process.kill(pid, 0) → ESRCH), we know immediately
+      //       the adapter crashed without cleanup. Grace window: startedAt + 60s.
+      //   (b) timeout fallback: no pidfile OR pid still pending a write. After
+      //       runnerTimeoutMs the run is treated as stale regardless.
+      // A run present in RunQueue.active is live by definition — skipped.
       const staleRunCandidates = _db.listRuns({ status: 'running' });
+      const staleGraceMs = 60_000; // 60s after startedAt before pidfile probe trusts ENOENT
       for (const sr of staleRunCandidates) {
         if (runQueue.isActive(sr.id)) continue; // live in the queue — not stale
         const elapsed = sr.startedAt ? Date.now() - new Date(sr.startedAt).getTime() : 0;
-        if (elapsed > config.runnerTimeoutMs) {
+
+        const pid = readRunPid(config.resolvedDataDir, sr.id);
+        const afterGrace = elapsed > staleGraceMs;
+        let reason: string | null = null;
+
+        if (pid != null && afterGrace && !isPidAlive(pid)) {
+          // Adapter wrote a pid and the process is gone — definitive stale
+          reason = `adapter pid ${pid} exited without cleanup`;
+        } else if (elapsed > config.runnerTimeoutMs) {
+          // Fallback: no pidfile or still alive but timed out
           const timeoutMin = Math.round(config.runnerTimeoutMs / 60000);
-          console.error(`[daemon] Marked stale run ${sr.id.slice(0, 8)} as failed (${Math.round(elapsed / 60000)}m, orphaned from queue)`);
+          reason = `exceeded ${timeoutMin}min timeout (orphaned from queue)`;
+        }
+
+        if (reason) {
+          console.error(`[daemon] Marked stale run ${sr.id.slice(0, 8)} as failed (${Math.round(elapsed / 60000)}m): ${reason}`);
           _db.transitionRun(sr.id, 'failed');
           _db.updateRun(sr.id, {
-            errorSummary: `Stale: exceeded ${timeoutMin}min timeout (orphaned from queue)`,
+            errorSummary: `Stale: ${reason}`,
             finishedAt: new Date().toISOString(),
           });
+          clearRunPid(config.resolvedDataDir, sr.id);
         }
       }
 
