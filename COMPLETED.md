@@ -4,6 +4,18 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-20 (Audit block 5L — UI polish cola)
+
+Bloque 5L cierra 3 items UI residuales: qs() unify, copyable session IDs, MCP server reorder. 3 commits + docs, 335 tests verdes.
+
+- **qs() unify en fetchTasks [audit UI-11]** (`src/web/dashboard/src/api/client.ts`, commit `d74b2eb`) — `fetchTasks` usaba URLSearchParams local mientras el resto del file pasaba por helper `qs()`. Unificado. Zero behavioral change.
+
+- **Copyable+expandable session id pill [audit UI-13]** (`src/web/dashboard/src/components/pages/workspace/RunJourney.tsx`, commit `f06123c`) — Session IDs truncadas sin forma de obtener UUID completo. Nuevo `SessionIdPill` inline: click copia al clipboard con ✓ flash + toggle expand para ver UUID completo. Fallback si clipboard denied = expand para select-all manual. Útil para `claude --resume <id>` y grep de forensic transcripts en `~/.claude/projects/<cwd>/<id>.jsonl`.
+
+- **MCP server reorder arrows [audit UI-22]** (`src/web/dashboard/src/components/pages/settings/SectionEnrichment.tsx`, commit `f21a161`) — Up/down arrow buttons per server card. Simplificado vs drag-drop original (audit proponía full) — arrows aportan el mismo outcome en 30min vs 2h de drag-drop lib. Orden persistido en `preferences.enrichmentServerOrder`. Servers no listados van al final en discovery order. Scope UI-only (daemon sigue su orden).
+
+---
+
 ## Session 2026-04-20 (Audit block 5K — CLI + UI quick wins)
 
 Bloque 5K cierra 4 items mixtos: C-03 build clean, UI-12 debounce const, UI-23 statusline dashboard link, C-05 docs drift detector. 4 commits + docs, 335 tests verdes.
