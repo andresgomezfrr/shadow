@@ -45,6 +45,11 @@ export const ConfigSchema = z.object({
   claudeBin: z.string().min(1).default('claude'),
   claudeExtraPath: z.string().min(1).optional(),
   runnerTimeoutMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
+  // Analysis-layer LLM calls (heartbeat extract/summarize/observe, consolidate,
+  // reflect) use this timeout instead of inheriting runnerTimeoutMs. Heartbeat
+  // phases process long conversation transcripts and need more breathing room
+  // than a runner execution (audit A-05).
+  analysisTimeoutMs: z.coerce.number().int().positive().default(15 * 60 * 1000),
   heartbeatIntervalMs: z.coerce.number().int().positive().default(30 * 60 * 1000),
   daemonPollIntervalMs: z.coerce.number().int().positive().default(30_000),
   proactivityLevel: z.coerce.number().int().min(1).max(10).default(5),

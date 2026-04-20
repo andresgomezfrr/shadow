@@ -46,6 +46,7 @@ export function loadConfig(): ShadowConfig {
     claudeBin: process.env.SHADOW_CLAUDE_BIN,
     claudeExtraPath: process.env.SHADOW_CLAUDE_EXTRA_PATH,
     runnerTimeoutMs: process.env.SHADOW_RUNNER_TIMEOUT_MS,
+    analysisTimeoutMs: process.env.SHADOW_ANALYSIS_TIMEOUT_MS,
     heartbeatIntervalMs: process.env.SHADOW_HEARTBEAT_INTERVAL_MS,
     daemonPollIntervalMs: process.env.SHADOW_DAEMON_POLL_INTERVAL_MS,
     proactivityLevel: process.env.SHADOW_PROACTIVITY_LEVEL,

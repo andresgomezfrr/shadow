@@ -88,6 +88,7 @@ export async function activityConsolidate(
       prompt,
       relevantMemories: hotMemories.slice(0, 20),
       model: getModel(ctx, 'consolidate'),
+      timeoutMs: ctx.config.analysisTimeoutMs,
     };
 
     try {
@@ -317,6 +318,7 @@ async function synthesizeKnowledgeSummary(ctx: HeartbeatContext): Promise<Knowle
     prompt,
     relevantMemories: inputMemories,
     model: getModel(ctx, 'consolidate'),
+    timeoutMs: ctx.config.analysisTimeoutMs,
   };
 
   const adapter = selectAdapter(ctx.config);
