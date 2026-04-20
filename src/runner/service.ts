@@ -577,13 +577,49 @@ export class RunnerService {
   }
 
   /** Remove a worktree directory (branch is kept for PR drafts). */
+  /**
+   * Remove a worktree, retrying once on failure (e.g. transient FS lock).
+   * If the second attempt also fails, record a risk observation with the
+   * orphaned path so it surfaces in the dashboard — see audit R-12.
+   */
   private cleanupWorktree(worktreePath: string | null, repoCwd: string | null): void {
     if (!worktreePath) return;
+    const cwd = repoCwd ?? undefined;
+    const tryRemove = (): string | null => {
+      try {
+        execFileSync('git', ['worktree', 'remove', worktreePath, '--force'], { cwd, stdio: 'pipe', timeout: 10_000 });
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    };
+
+    const firstErr = tryRemove();
+    if (!firstErr) return;
+
+    console.error('[runner] worktree remove failed once, retrying:', firstErr);
+    // Small backoff before retry (ephemeral FS lock usually clears in <1s)
+    try { execFileSync('sleep', ['1'], { stdio: 'pipe' }); } catch { /* best-effort */ }
+
+    const secondErr = tryRemove();
+    if (!secondErr) return;
+
+    console.error('[runner] worktree remove failed twice, recording risk observation:', secondErr);
+    // Surface the stuck worktree as an observation so the user can reclaim disk manually
     try {
-      const cwd = repoCwd ?? undefined;
-      execFileSync('git', ['worktree', 'remove', worktreePath, '--force'], { cwd, stdio: 'pipe', timeout: 10_000 });
-    } catch (err) {
-      console.error('[runner] Failed to remove worktree:', err instanceof Error ? err.message : err);
+      const repos = this.db.listRepos();
+      const ownerRepo = repos.find((r) => worktreePath.startsWith(r.path));
+      if (ownerRepo) {
+        this.db.createObservation({
+          repoId: ownerRepo.id,
+          kind: 'risk',
+          severity: 'warning',
+          title: `Stuck worktree: ${worktreePath}`,
+          detail: { worktreePath, error: secondErr.slice(0, 200), source: 'runner_cleanup' },
+        });
+      }
+    } catch (e) {
+      console.error('[runner] failed to record stuck-worktree observation:', e instanceof Error ? e.message : e);
     }
   }
 
