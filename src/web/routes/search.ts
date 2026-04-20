@@ -1,7 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { z } from 'zod';
 import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 import { json, clampLimit } from '../helpers.js';
+
+const LOOKUP_TYPES = ['memory', 'observation', 'suggestion', 'run', 'task', 'project', 'system', 'repo', 'contact'] as const;
+const LookupTypeSchema = z.enum(LOOKUP_TYPES);
 
 type SearchItem = {
   id: string;
@@ -32,19 +36,29 @@ export async function handleSearchRoutes(
 
   // --- Individual lookup by id for deep-link prefetch ---
   if (pathname === '/api/lookup') {
-    const type = params.get('type');
+    const typeRaw = params.get('type');
     const id = params.get('id');
-    if (!type || !id) {
+    if (!typeRaw || !id) {
       return json(res, { error: 'type and id required' }, 400), true;
     }
+    const parsed = LookupTypeSchema.safeParse(typeRaw);
+    if (!parsed.success) {
+      return json(res, { error: `unknown type: ${typeRaw}. Expected: ${LOOKUP_TYPES.join(', ')}` }, 400), true;
+    }
+    const type = parsed.data;
     let record: unknown = null;
     try {
-      if (type === 'memory') record = db.getMemory(id);
-      else if (type === 'observation') record = db.getObservation(id);
-      else if (type === 'suggestion') record = db.getSuggestion(id);
-      else if (type === 'run') record = db.getRun(id);
-      else if (type === 'task') record = db.getTask(id);
-      else return json(res, { error: `unknown type: ${type}` }, 400), true;
+      switch (type) {
+        case 'memory': record = db.getMemory(id); break;
+        case 'observation': record = db.getObservation(id); break;
+        case 'suggestion': record = db.getSuggestion(id); break;
+        case 'run': record = db.getRun(id); break;
+        case 'task': record = db.getTask(id); break;
+        case 'project': record = db.getProject(id); break;
+        case 'system': record = db.getSystem(id); break;
+        case 'repo': record = db.getRepo(id); break;
+        case 'contact': record = db.getContact(id); break;
+      }
     } catch (e) {
       console.error('[lookup]', e instanceof Error ? e.message : e);
       return json(res, { error: 'lookup failed' }, 500), true;
