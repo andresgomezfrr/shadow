@@ -3,6 +3,7 @@ import type { BondAxes } from '../storage/models.js';
 import { selectAdapter } from '../backend/index.js';
 import { loadConfig } from '../config/load-config.js';
 import { BOND_TIERS, BOND_TIER_NAMES } from '../profile/bond.js';
+import { budgetSkipIfExceeded } from './budget.js';
 
 // ---------------------------------------------------------------------------
 // Chronicle activity module
@@ -212,6 +213,10 @@ export async function triggerChronicleLore(
   const existing = db.getChronicleEntryByTier(newTier);
   if (existing) return { ok: true, entryId: existing.id };
 
+  // Fire-and-forget from bond tier rise — gate on daily budget so a buggy
+  // rapid-tier-rise scenario can't mint a dozen Opus calls (audit A-10).
+  if (budgetSkipIfExceeded(db, 'chronicle-lore')) return { ok: false };
+
   const profile = db.ensureProfile();
   const soul = loadSoul(db);
   const elapsedDays =
@@ -246,6 +251,9 @@ export async function triggerChronicleMilestone(
 ): Promise<{ ok: boolean; entryId?: string }> {
   const existing = db.getChronicleEntryByMilestone(milestoneKey);
   if (existing) return { ok: true, entryId: existing.id };
+
+  // Fire-and-forget from various triggers — gate on daily budget (audit A-10).
+  if (budgetSkipIfExceeded(db, 'chronicle-milestone')) return { ok: false };
 
   const soul = loadSoul(db);
   const prompt = buildMilestonePrompt(soul, developerNameOf(db), milestoneKey, context.title, context.data);

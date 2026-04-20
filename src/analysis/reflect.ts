@@ -1,4 +1,5 @@
 import { selectAdapter } from '../backend/index.js';
+import { budgetSkipIfExceeded } from './budget.js';
 
 import type { HeartbeatContext } from './state-machine.js';
 
@@ -6,6 +7,11 @@ export async function activityReflect(
   ctx: HeartbeatContext,
   opts?: { onPhase?: (phase: string) => void },
 ): Promise<{ llmCalls: number; tokensUsed: number; skipped: boolean; soulUpdated?: boolean; reason?: string }> {
+  const budgetSkip = budgetSkipIfExceeded(ctx.db, 'reflect');
+  if (budgetSkip) {
+    return { llmCalls: 0, tokensUsed: 0, skipped: true, reason: budgetSkip.reason };
+  }
+
   const lastReflect = ctx.db.getLastJob('reflect');
   const sinceIso = lastReflect?.finishedAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 

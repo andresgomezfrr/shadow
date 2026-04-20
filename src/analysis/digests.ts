@@ -4,6 +4,7 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { ShadowConfig } from '../config/load-config.js';
 import { selectAdapter } from '../backend/index.js';
 import { getEnrichmentSummary } from './enrichment.js';
+import { budgetSkipIfExceeded } from './budget.js';
 
 // --- Helpers ---
 
@@ -53,7 +54,10 @@ export async function activityDailyDigest(
   db: ShadowDatabase,
   config: ShadowConfig,
   targetDate?: string,
-): Promise<{ contentMd: string; tokensUsed: number }> {
+): Promise<{ contentMd: string; tokensUsed: number; skipped?: boolean; reason?: string }> {
+  const budgetSkip = budgetSkipIfExceeded(db, 'digest-daily');
+  if (budgetSkip) return { contentMd: '', tokensUsed: 0, skipped: true, reason: budgetSkip.reason };
+
   const today = targetDate ?? todayStr();
   const yesterday = targetDate
     ? (() => { const d = new Date(targetDate); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })()
@@ -131,7 +135,10 @@ export async function activityWeeklyDigest(
   db: ShadowDatabase,
   config: ShadowConfig,
   targetWeekStart?: string,
-): Promise<{ contentMd: string; tokensUsed: number }> {
+): Promise<{ contentMd: string; tokensUsed: number; skipped?: boolean; reason?: string }> {
+  const budgetSkip = budgetSkipIfExceeded(db, 'digest-weekly');
+  if (budgetSkip) return { contentMd: '', tokensUsed: 0, skipped: true, reason: budgetSkip.reason };
+
   const weekAgo = targetWeekStart ?? daysAgoStr(7);
   const today = targetWeekStart
     ? (() => { const d = new Date(targetWeekStart); d.setDate(d.getDate() + 6); return d.toISOString().slice(0, 10); })()
@@ -208,7 +215,10 @@ export async function activityWeeklyDigest(
 export async function activityBragDoc(
   db: ShadowDatabase,
   config: ShadowConfig,
-): Promise<{ contentMd: string; tokensUsed: number }> {
+): Promise<{ contentMd: string; tokensUsed: number; skipped?: boolean; reason?: string }> {
+  const budgetSkip = budgetSkipIfExceeded(db, 'digest-brag');
+  if (budgetSkip) return { contentMd: '', tokensUsed: 0, skipped: true, reason: budgetSkip.reason };
+
   const today = todayStr();
   const year = new Date().getFullYear();
   const quarter = getCurrentQuarter();

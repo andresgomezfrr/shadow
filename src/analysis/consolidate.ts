@@ -8,6 +8,7 @@ import { generateAndStoreEmbedding } from '../memory/lifecycle.js';
 import { selectAdapter } from '../backend/index.js';
 import { safeParseJson } from '../backend/json-repair.js';
 import { DEPTH_ELIGIBLE_KINDS } from '../profile/bond.js';
+import { budgetSkipIfExceeded } from './budget.js';
 
 import type { HeartbeatContext } from './state-machine.js';
 import { getModel } from './shared.js';
@@ -61,10 +62,13 @@ export async function activityConsolidate(
   let llmCalls = 0;
   let tokensUsed = 0;
 
-  // Step 2: Optionally synthesize meta-patterns via LLM if enough hot memories exist
+  // Step 2: Optionally synthesize meta-patterns via LLM if enough hot memories exist.
+  // Skipped entirely if the daily token budget is exhausted (audit A-10) — layer
+  // maintenance above still runs since it's purely DB work.
   const hotMemories = ctx.db.listMemories({ layer: 'hot', archived: false });
+  const budgetSkip = budgetSkipIfExceeded(ctx.db, 'consolidate-meta-patterns');
 
-  if (hotMemories.length >= 10) {
+  if (!budgetSkip && hotMemories.length >= 10) {
     const memorySummaries = hotMemories.slice(0, 20).map((mem) =>
       `- [${mem.kind}] ${mem.title}: ${mem.bodyMd.slice(0, 150)}`,
     ).join('\n');
@@ -210,6 +214,11 @@ export async function activityConsolidate(
 // ---------------------------------------------------------------------------
 
 async function synthesizeKnowledgeSummary(ctx: HeartbeatContext): Promise<KnowledgeSummaryResult> {
+  const budgetSkip = budgetSkipIfExceeded(ctx.db, 'consolidate-knowledge-summary');
+  if (budgetSkip) {
+    return { action: 'skipped', reason: budgetSkip.reason };
+  }
+
   const [previousSummary] = ctx.db.listMemories({
     kind: 'knowledge_summary',
     archived: false,

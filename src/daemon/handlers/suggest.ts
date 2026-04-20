@@ -1,5 +1,6 @@
 import type { JobContext, JobHandlerResult, DaemonSharedState } from '../job-handlers.js';
 import { errorHint, recentItems } from '../job-handlers.js';
+import { budgetSkipIfExceeded } from '../../analysis/budget.js';
 
 export async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> {
   const { activitySuggest, activityNotify } = await import('../../analysis/activities.js');
@@ -43,6 +44,11 @@ export async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> 
 
 export async function handleSuggestDeep(ctx: JobContext, shared: DaemonSharedState): Promise<JobHandlerResult> {
   ctx.setPhase('scan');
+
+  const budgetSkip = budgetSkipIfExceeded(ctx.db, 'suggest-deep');
+  if (budgetSkip) {
+    return { llmCalls: 0, tokensUsed: 0, phases: ['scan'], result: { skipped: true, reason: budgetSkip.reason } };
+  }
 
   const job = ctx.db.getJob(ctx.jobId);
   const repoId = (job?.result as Record<string, unknown>)?.repoId as string;
@@ -244,6 +250,11 @@ Generate 1-5 suggestions. Quality over quantity.`;
 
 export async function handleSuggestProject(ctx: JobContext): Promise<JobHandlerResult> {
   ctx.setPhase('analyze');
+
+  const budgetSkip = budgetSkipIfExceeded(ctx.db, 'suggest-project');
+  if (budgetSkip) {
+    return { llmCalls: 0, tokensUsed: 0, phases: ['analyze'], result: { skipped: true, reason: budgetSkip.reason } };
+  }
 
   const job = ctx.db.getJob(ctx.jobId);
   const projectId = (job?.result as Record<string, unknown>)?.projectId as string;

@@ -111,7 +111,7 @@ export function ProfilePage() {
         <SectionIdentity profile={profile} saved={saved} onSave={saveField} visible={isSectionVisible('identity')} />
 
         {/* Behavior */}
-        <SectionBehavior profile={profile} saved={saved} onSave={saveField} onDebouncedSave={debouncedSave} visible={isSectionVisible('behavior')} />
+        <SectionBehavior profile={profile} saved={saved} onSave={saveField} onDebouncedSave={debouncedSave} onSavePreference={savePreference} visible={isSectionVisible('behavior')} />
 
         <SectionLLMModels profile={profile} saved={saved} onSavePreference={savePreference} visible={isSectionVisible('models')} />
 

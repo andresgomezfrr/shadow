@@ -132,6 +132,16 @@ export const ProfileUpdateSchema = z.object({
   preferences: z.record(z.string(), z.unknown()).optional(),
 }).strip();
 
+/**
+ * Daily token ceiling across all LLM calls. Lives inside profile.preferences
+ * under this key. When exceeded, deferrable jobs (consolidate, reflect,
+ * digests, chronicle lore, suggest-deep, enrichment) skip with a logged
+ * reason. Critical jobs (heartbeat, runner execution, user-initiated MCP)
+ * are never gated. 0 disables the cap. See audit A-10.
+ */
+export const DAILY_TOKEN_BUDGET_PREF_KEY = 'dailyTokenBudget';
+export const DAILY_TOKEN_BUDGET_DEFAULT = 1_000_000;
+
 export type ShadowConfig = z.infer<typeof ConfigSchema> & {
   resolvedDataDir: string;
   resolvedDatabasePath: string;

@@ -7,8 +7,11 @@ type Props = {
   saved: string | null;
   onSave: (field: string, value: unknown) => Promise<void>;
   onDebouncedSave: (field: string, value: unknown) => void;
+  onSavePreference: (key: string, value: unknown) => Promise<void>;
   visible: boolean;
 };
+
+const DAILY_BUDGET_DEFAULT = 1_000_000;
 
 const SELECT_CLASS = 'bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm outline-none focus:border-accent transition-colors cursor-pointer';
 
@@ -33,12 +36,26 @@ export function tierLabel(level: number): string {
   return 'High';
 }
 
-export function SectionBehavior({ profile, saved, onSave, visible }: Props) {
+export function SectionBehavior({ profile, saved, onSave, onSavePreference, visible }: Props) {
   const [localProactivity, setLocalProactivity] = useState(profile.proactivityLevel);
+  const prefsBudget = (profile.preferences as Record<string, unknown> | undefined)?.dailyTokenBudget;
+  const initialBudget = typeof prefsBudget === 'number' ? prefsBudget : DAILY_BUDGET_DEFAULT;
+  const [budgetInput, setBudgetInput] = useState(String(initialBudget));
 
   useEffect(() => {
     setLocalProactivity(profile.proactivityLevel);
   }, [profile.proactivityLevel]);
+
+  useEffect(() => {
+    const pb = (profile.preferences as Record<string, unknown> | undefined)?.dailyTokenBudget;
+    setBudgetInput(String(typeof pb === 'number' ? pb : DAILY_BUDGET_DEFAULT));
+  }, [profile.preferences]);
+
+  const commitBudget = () => {
+    const n = Math.max(0, Math.floor(Number(budgetInput) || 0));
+    setBudgetInput(String(n));
+    onSavePreference('dailyTokenBudget', n);
+  };
 
   return (
     <section
@@ -70,6 +87,32 @@ export function SectionBehavior({ profile, saved, onSave, visible }: Props) {
                 <div className="text-[10px] mt-0.5 opacity-70">{tier.description}</div>
               </button>
             ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-sm font-medium">Daily token budget</label>
+            <SaveIndicator show={saved === 'dailyTokenBudget'} />
+          </div>
+          <p className="text-xs text-text-muted mb-2">
+            Soft cap on Shadow&apos;s LLM spend per 24h. When exceeded, deferrable jobs
+            (consolidate, reflect, digests, chronicle lore, deep scans) skip with a logged
+            reason. Heartbeat, runner executions, and your direct MCP calls always run.
+            Set to 0 to disable the cap.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              step={50_000}
+              value={budgetInput}
+              onChange={(e) => setBudgetInput(e.target.value)}
+              onBlur={commitBudget}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              className="w-40 bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm outline-none focus:border-accent transition-colors"
+            />
+            <span className="text-xs text-text-muted">tokens / 24h</span>
           </div>
         </div>
       </div>
