@@ -1048,6 +1048,45 @@ export const migrations: Migration[] = [
       ALTER TABLE tasks ADD COLUMN closed_note TEXT;
     `,
   },
+  {
+    version: 57,
+    name: 'memories_fts_tags_tokenized',
+    sql: `
+      -- audit D-11: old triggers fed tags_json as-is into memories_fts
+      -- ("[\\"docs\\",\\"sql\\"]"), so "docs" matched by substring accident
+      -- and tags with punctuation broke. Replace with json_each tokens
+      -- (space-separated) so tag search matches exact tokens.
+      --
+      -- External-content FTS5 doesn't support DELETE directly, so we skip
+      -- a forced re-index here — existing rows will correct themselves on
+      -- their next UPDATE. If search quality regresses, a manual re-index
+      -- script can be added (rebuild requires contentless FTS, out of scope).
+      DROP TRIGGER IF EXISTS memories_ai;
+      DROP TRIGGER IF EXISTS memories_ad;
+      DROP TRIGGER IF EXISTS memories_au;
+
+      CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(rowid, title, body_md, tags_text)
+        VALUES (NEW.rowid, NEW.title, NEW.body_md,
+          COALESCE((SELECT group_concat(value, ' ') FROM json_each(NEW.tags_json)), ''));
+      END;
+
+      CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, title, body_md, tags_text)
+        VALUES ('delete', OLD.rowid, OLD.title, OLD.body_md,
+          COALESCE((SELECT group_concat(value, ' ') FROM json_each(OLD.tags_json)), ''));
+      END;
+
+      CREATE TRIGGER memories_au AFTER UPDATE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, title, body_md, tags_text)
+        VALUES ('delete', OLD.rowid, OLD.title, OLD.body_md,
+          COALESCE((SELECT group_concat(value, ' ') FROM json_each(OLD.tags_json)), ''));
+        INSERT INTO memories_fts(rowid, title, body_md, tags_text)
+        VALUES (NEW.rowid, NEW.title, NEW.body_md,
+          COALESCE((SELECT group_concat(value, ' ') FROM json_each(NEW.tags_json)), ''));
+      END;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {
