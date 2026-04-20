@@ -4,6 +4,26 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-20 (Audit block 5J — web perf + validation)
+
+Bloque 5J cierra 7 items 🟡/🔵 de web routes: 2 N+1 (daily-summary, task detail), 2 resource cleanups (draft-pr temp file, session SIGKILL hang), 3 validation gaps (activity enums, lookup types, digest dates). 7 commits + docs, 335 tests verdes.
+
+- **Digest date validation [audit W-14]** (`src/web/routes/knowledge.ts`, commit `327561b`) — before/after/periodStart pasaban sin validar. Malformed values silenciosamente se comparaban como strings en `WHERE period_start > ?`. Añadido Date.parse() guard; 400 con param name si invalid.
+
+- **Lookup 9 types coverage [audit W-13]** (`src/web/routes/search.ts`, commit `cb9999e`) — `/api/lookup` solo manejaba 5 types (memory/observation/suggestion/run/task). Zod enum `LookupTypeSchema` con 9 types (añade project/system/repo/contact) + switch exhaustivo. Errores listan los allowed values.
+
+- **Activity enum validation [audit W-12]** (`src/web/routes/activity.ts`, commit `da42528`) — status/period/source silenciosamente devolvían listas vacías con valores inválidos. Tres vocabularios cerrados validados (VALID_STATUSES, VALID_PERIODS, VALID_SOURCES); 400 con lista esperada. `type` queda open-ended (muchos job types + `run:*` prefix).
+
+- **Draft-pr temp file cleanup [audit W-08]** (`src/web/routes/runs.ts`, commit `314a6c7`) — `writeTemp` estaba fuera del try. Si la escritura fallaba o algo entre write y `gh` throwaba, el file quedaba en disk. Movido dentro del try; finally con unlink ENOENT-tolerant limpia ambos paths.
+
+- **Session SIGKILL hang guard [audit W-09]** (`src/web/routes/runs.ts`, commit `2cea092`) — Escalation SIGTERM→SIGKILL después de 5s, pero Promise solo resolvía en close/error. Si child ignoraba SIGKILL, Promise colgaba indefinidamente. Añadido `settle()` idempotente + hard fallback a 1s post-SIGKILL con log del pid para cleanup manual.
+
+- **Task detail N+1 [audit W-11]** (`src/storage/stores/{knowledge,execution}.ts`, `src/storage/database.ts`, `src/web/routes/tasks.ts`, commit `e5a5bcd`) — `/api/tasks/:id` hacía flatMap loop llamando `list*({ repoId })` per-repo. `listObservations/Suggestions/Runs` ahora aceptan `repoIds: string[]` que compila a `WHERE repo_id IN (...)`. Task detail handler usa batch form; limit escala con repoIds.length.
+
+- **Daily-summary N+1 [audit W-10]** (`src/web/routes/activity.ts`, commit `35571c2`) — 3 queries per active project (countObs/countSug/topObs). Fetch all open obs+sug once (limit 500), groupBy en JS por project entity id usando Map. 3N queries → 2 total, independiente del número de proyectos activos.
+
+---
+
 ## Session 2026-04-20 (Audit block 5I — runner reliability)
 
 Bloque 5I cierra 3 items 🟡 media del runner: race condition en pr-sync, discriminated error codes en ghost jobs, detección temprana de adapter crashes via pidfile. 3 commits + docs, 335 tests verdes.
