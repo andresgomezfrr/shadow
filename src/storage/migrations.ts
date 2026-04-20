@@ -1041,6 +1041,13 @@ export const migrations: Migration[] = [
       ALTER TABLE tasks DROP COLUMN repo_ids_json;
     `,
   },
+  {
+    version: 56,
+    name: 'tasks_closed_note',
+    sql: `
+      ALTER TABLE tasks ADD COLUMN closed_note TEXT;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

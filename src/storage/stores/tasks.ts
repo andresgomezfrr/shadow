@@ -123,11 +123,11 @@ export function countTasks(db: DatabaseSync, filters?: { status?: string; repoId
   return (db.prepare(`SELECT COUNT(DISTINCT t.id) as total ${from} ${where}`).get(...values) as { total: number }).total;
 }
 
-export function updateTask(db: DatabaseSync, id: string, updates: Partial<Pick<TaskRecord, 'title' | 'status' | 'contextMd' | 'externalRefs' | 'repoIds' | 'projectId' | 'entities' | 'suggestionId' | 'sessionId' | 'sessionRepoPath' | 'prUrls' | 'archived' | 'closedAt'>>): void {
+export function updateTask(db: DatabaseSync, id: string, updates: Partial<Pick<TaskRecord, 'title' | 'status' | 'contextMd' | 'externalRefs' | 'repoIds' | 'projectId' | 'entities' | 'suggestionId' | 'sessionId' | 'sessionRepoPath' | 'prUrls' | 'archived' | 'closedAt' | 'closedNote'>>): void {
   const columnMap: Record<string, string> = {
     title: 'title', status: 'status', contextMd: 'context_md', externalRefs: 'external_refs_json',
     projectId: 'project_id', entities: 'entities_json', suggestionId: 'suggestion_id',
-    sessionId: 'session_id', sessionRepoPath: 'session_repo_path', prUrls: 'pr_urls_json', archived: 'archived', closedAt: 'closed_at',
+    sessionId: 'session_id', sessionRepoPath: 'session_repo_path', prUrls: 'pr_urls_json', archived: 'archived', closedAt: 'closed_at', closedNote: 'closed_note',
   };
   const sets: string[] = ['updated_at = ?'];
   const values: SQLValue[] = [new Date().toISOString()];

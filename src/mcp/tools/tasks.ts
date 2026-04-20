@@ -44,6 +44,11 @@ const TaskIdSchema = z.object({
   id: z.string().describe('Task ID'),
 });
 
+const CloseTaskSchema = z.object({
+  id: z.string().describe('Task ID'),
+  closedNote: z.string().describe('Optional note describing how/why the task was closed (preserved on the task)').optional(),
+});
+
 export function taskTools(ctx: ToolContext): McpTool[] {
   return [
     {
@@ -102,13 +107,17 @@ export function taskTools(ctx: ToolContext): McpTool[] {
     },
     {
       name: 'shadow_task_close',
-      description: 'Mark a task as done, setting closedAt and transitioning status to done. Use when the user confirms the work is complete. Task remains visible in the workspace; use shadow_task_archive to hide.',
-      inputSchema: mcpSchema(TaskIdSchema),
+      description: 'Mark a task as done, setting closedAt (and optional closedNote) and transitioning status to done. Use when the user confirms the work is complete; the closedNote is preserved on the task as a record of outcome. Task remains visible in the workspace; use shadow_task_archive to hide.',
+      inputSchema: mcpSchema(CloseTaskSchema),
       handler: async (params) => {
-        const input = TaskIdSchema.parse(params);
+        const input = CloseTaskSchema.parse(params);
         const task = ctx.db.getTask(input.id);
         if (!task) return err(`Task ${input.id} not found`);
-        ctx.db.updateTask(input.id, { status: 'done', closedAt: new Date().toISOString() });
+        ctx.db.updateTask(input.id, {
+          status: 'done',
+          closedAt: new Date().toISOString(),
+          ...(input.closedNote !== undefined ? { closedNote: input.closedNote } : {}),
+        });
         return ok({ task: ctx.db.getTask(input.id), message: `Task "${task.title}" closed` });
       },
     },

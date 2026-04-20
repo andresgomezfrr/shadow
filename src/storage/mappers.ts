@@ -536,5 +536,6 @@ export function mapTask(row: unknown): TaskRecord {
     createdAt: str(d.created_at),
     updatedAt: str(d.updated_at),
     closedAt: strOrNull(d.closed_at),
+    closedNote: strOrNull(d.closed_note),
   };
 }

@@ -548,6 +548,7 @@ export type TaskRecord = {
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
+  closedNote: string | null;
 };
 
 // --- Memory search result ---
