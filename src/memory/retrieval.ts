@@ -270,14 +270,28 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
           const parsed = safeParseJson(result.output, schema, 'correction-enforce');
           if (parsed.success) {
             for (const decision of parsed.data.decisions) {
+              // Bounds check (audit P-09): LLM occasionally emits negative
+              // indices or overshoots the candidate array. Silent !candidate
+              // check swallowed those; now we log so drift is visible.
+              if (decision.index < 0 || decision.index >= candidates.length) {
+                console.error(`[corrections] out-of-range index ${decision.index} (candidates=${candidates.length}) for correction "${correction.title}" — skipping`);
+                continue;
+              }
               const candidate = candidates[decision.index];
-              if (!candidate) continue;
 
               if (decision.action === 'archive') {
                 db.updateMemory(candidate.id, { archivedAt: new Date().toISOString() });
                 db.createFeedback({ targetKind: 'memory', targetId: candidate.id, action: 'corrected', note: `Archived: ${decision.reason} (correction: ${correction.title})` });
                 archived++;
-              } else if (decision.action === 'edit' && decision.editedBody) {
+              } else if (decision.action === 'edit') {
+                // 'edit' requires a non-empty editedBody — previously this
+                // branch silently skipped when the LLM marked 'edit' without
+                // providing the rewrite, leaving the contradiction in place
+                // without signal. Log + skip so the next consolidate retries.
+                if (!decision.editedBody || decision.editedBody.trim().length === 0) {
+                  console.error(`[corrections] 'edit' decision missing editedBody for candidate ${candidate.id.slice(0, 8)} (correction: "${correction.title}") — skipping`);
+                  continue;
+                }
                 db.updateMemory(candidate.id, { bodyMd: decision.editedBody });
                 const updatedMem = db.getMemory(candidate.id);
                 if (updatedMem) {
