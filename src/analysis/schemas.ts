@@ -1,5 +1,32 @@
 import { z } from 'zod';
 
+/**
+ * Zod conventions for LLM-returned schemas (audit A-12):
+ *
+ *   - `.optional()` — LLM may OMIT the key entirely. Use for fields the model
+ *     might decide aren't relevant to this response (e.g. profileUpdates
+ *     when there's no mood signal).
+ *
+ *   - `.nullable().default(null)` — LLM may emit an explicit `null` value
+ *     (or omit). Use for per-item fields that are semantically optional
+ *     per-row (e.g. a suggestion's reasoningMd, repoId — "no reason yet",
+ *     "not scoped to a repo"). The `.default(null)` also lets us use the
+ *     field directly without null-coalescing after parse.
+ *
+ *   - `.default(X)` — LLM may omit, we coerce to X. Use for required
+ *     fields where a sensible fallback exists (confidence=70, kind='pattern').
+ *     Prefer defaults over `.optional()` when possible so callers don't
+ *     have to handle undefined.
+ *
+ *   - `.nullable().optional()` — both absent and explicit null are valid,
+ *     with no coerced default. Rare; only when downstream needs to
+ *     distinguish "LLM didn't say" from "LLM said null".
+ *
+ * Rule of thumb: prefer `.default()` where sensible, `.nullable().default(null)`
+ * for rowlevel optional, `.optional()` for whole-object optional. Avoid
+ * `.optional()` on scalar LLM fields — it forces every caller to `?? default`.
+ */
+
 export const ExtractResponseSchema = z.object({
   insights: z.array(z.object({
     kind: z.string().default('pattern'),
