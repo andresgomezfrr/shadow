@@ -1,5 +1,5 @@
 import type { JobContext, JobHandlerResult, DaemonSharedState } from '../job-handlers.js';
-import { errorHint } from '../job-handlers.js';
+import { errorHint, classifyError } from '../job-handlers.js';
 
 export async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedState): Promise<JobHandlerResult> {
   ctx.setPhase('remote-sync');
@@ -220,5 +220,6 @@ Be concise. Each field 1-3 lines max. Respond with JSON: { "contextMd": "..." }`
     llmCalls: 1, tokensUsed: tokens, phases: ['profile'],
     result: { projectId, projectName: project.name, repoCount: repos.length },
     lastError: errorHint(result),
+    lastErrorCode: classifyError(result) ?? undefined,
   };
 }

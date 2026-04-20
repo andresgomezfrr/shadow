@@ -1,5 +1,5 @@
 import type { JobContext, JobHandlerResult, DaemonSharedState } from '../job-handlers.js';
-import { errorHint, recentItems } from '../job-handlers.js';
+import { errorHint, classifyError, recentItems } from '../job-handlers.js';
 import { budgetSkipIfExceeded } from '../../analysis/budget.js';
 
 export async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> {
@@ -245,6 +245,7 @@ Generate 1-5 suggestions. Quality over quantity.`;
     phases: suggestionsCreated > 0 ? ['scan', 'validate', 'notify'] : ['scan'],
     result: { repoName: repo.name, suggestionsCreated, suggestionItems, repoId },
     lastError: errorHint(result),
+    lastErrorCode: classifyError(result) ?? undefined,
   };
 }
 
@@ -432,6 +433,7 @@ Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-re
     phases: suggestionsCreated > 0 ? ['analyze', 'validate', 'notify'] : ['analyze'],
     result: { projectId: project.id, projectName: project.name, suggestionsCreated, suggestionItems },
     lastError: errorHint(result),
+    lastErrorCode: classifyError(result) ?? undefined,
   };
 }
 
@@ -508,7 +510,7 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
   ctx.db.recordLlmUsage({ source: 'revalidate_suggestion', sourceId: suggestionId, model: ctx.config.models.revalidate, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
   if (result.status !== 'success' || !result.output) {
-    return { llmCalls: 1, tokensUsed: tokens, phases: ['prepare', 'evaluate'], result: { error: 'LLM call failed', suggestionId }, lastError: errorHint(result) };
+    return { llmCalls: 1, tokensUsed: tokens, phases: ['prepare', 'evaluate'], result: { error: 'LLM call failed', suggestionId }, lastError: errorHint(result), lastErrorCode: classifyError(result) ?? undefined };
   }
 
   ctx.setPhase('apply');
@@ -622,5 +624,6 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
       newCount: suggestion.revalidationCount + 1,
     },
     lastError: errorHint(result),
+    lastErrorCode: classifyError(result) ?? undefined,
   };
 }

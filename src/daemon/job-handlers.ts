@@ -16,6 +16,8 @@ export type JobHandlerResult = {
   phases: string[];
   result: Record<string, unknown>;
   lastError?: string;
+  /** Discriminated error classification for ghost / failure paths (audit R-14). */
+  lastErrorCode?: JobErrorCode;
 };
 
 export type JobContext = {
@@ -39,6 +41,8 @@ export type DaemonSharedState = {
   consecutiveIdleTicks: number;
   consecutiveGhostJobs: number;
   lastGhostHint: string | null;
+  /** Discriminated error code of the most recent ghost job (audit R-14). */
+  lastGhostCode: JobErrorCode | null;
   // Sleep/wake state propagated by the scheduler each tick. Reactive handlers
   // consult these before calling enqueueJob so they don't spawn LLM children
   // while the Mac is in darkwake or offline.
@@ -56,10 +60,47 @@ export type JobHandlerEntry = {
 
 // --- Helpers (exported for handler sub-modules) ---
 
+/**
+ * Discriminated codes for ghost-job / handler-error telemetry (audit R-14).
+ * Used in job result payload + event bus + shared.lastGhostCode so alerts
+ * can route differently (auth_fail pages, rate_limit backs off, timeout
+ * relaxes threshold, etc.).
+ */
+export type JobErrorCode =
+  | 'timeout'
+  | 'interrupted'
+  | 'auth_fail'
+  | 'rate_limit'
+  | 'permission_denied'
+  | 'exit_non_zero'
+  | 'unknown';
+
+/** Classify a BackendExecutionResult into an error code from its status + output patterns. */
+export function classifyError(result: { status: string; exitCode: number | null; output?: string }): JobErrorCode | null {
+  if (result.status === 'success') return null;
+  if (result.status === 'timeout') return 'timeout';
+  if (result.status === 'interrupted') return 'interrupted';
+
+  const out = (result.output ?? '').toLowerCase();
+  if (/\b(unauthori[sz]ed|authentication|invalid[- ]api[- ]?key|api[- ]?key[- ]?(invalid|missing))\b|\b401\b/.test(out)) {
+    return 'auth_fail';
+  }
+  if (/\b(rate[- ]?limit|too many requests|throttled)\b|\b429\b/.test(out)) {
+    return 'rate_limit';
+  }
+  if (/\b(permission denied|forbidden|not authorized)\b|\b403\b/.test(out)) {
+    return 'permission_denied';
+  }
+  if (result.exitCode != null && result.exitCode !== 0) return 'exit_non_zero';
+  return 'unknown';
+}
+
 /** Build a short error hint from a BackendExecutionResult for ghost job diagnostics */
-export function errorHint(result: { status: string; exitCode: number | null }): string | undefined {
+export function errorHint(result: { status: string; exitCode: number | null; output?: string }): string | undefined {
   if (result.status === 'success') return undefined;
-  return `${result.status}${result.exitCode != null ? ` (exit ${result.exitCode})` : ''}`;
+  const code = classifyError(result);
+  const base = `${result.status}${result.exitCode != null ? ` (exit ${result.exitCode})` : ''}`;
+  return code ? `${base}[${code}]` : base;
 }
 
 /** Query items created during this job's execution for result enrichment */

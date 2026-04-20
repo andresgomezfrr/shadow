@@ -326,6 +326,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       consecutiveIdleTicks: 0,
       consecutiveGhostJobs: 0,
       lastGhostHint: null,
+      lastGhostCode: null,
       networkAvailable: true,
       systemAwake: true,
     };
@@ -835,14 +836,19 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       const existingBackendAlert = state.alerts.findIndex(a => a.id === 'backend_unhealthy');
       if (daemonShared.consecutiveGhostJobs >= GHOST_JOB_THRESHOLD && existingBackendAlert === -1) {
         const hint = daemonShared.lastGhostHint;
+        const code = daemonShared.lastGhostCode;
+        // Severity bumps based on error code (audit R-14). auth_fail is the
+        // user-actionable one — they need to know immediately.
+        const severity: 'critical' | 'warning' = code === 'auth_fail' ? 'critical' : 'warning';
+        const reason = code ? `[${code}]${hint ? ` ${hint}` : ''}` : hint ?? 'unknown cause';
         state.alerts.push({
           id: 'backend_unhealthy',
-          message: hint ? `LLM jobs failing — ${hint}` : 'LLM jobs failing — unknown cause',
-          severity: 'critical',
+          message: `LLM jobs failing — ${reason}`,
+          severity,
           since: new Date().toISOString(),
           acked: false,
         });
-        console.error(`[daemon] Alert raised: backend_unhealthy (${daemonShared.consecutiveGhostJobs} consecutive ghost jobs)`);
+        console.error(`[daemon] Alert raised: backend_unhealthy code=${code ?? 'unknown'} (${daemonShared.consecutiveGhostJobs} consecutive ghost jobs)`);
       } else if (daemonShared.consecutiveGhostJobs === 0 && existingBackendAlert !== -1) {
         state.alerts.splice(existingBackendAlert, 1);
         console.error('[daemon] Alert cleared: backend_unhealthy — LLM jobs recovering');

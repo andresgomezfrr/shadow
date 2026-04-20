@@ -162,8 +162,9 @@ export class JobQueue {
         // Detect ghost jobs: LLM calls were attempted but returned no tokens (auth/backend issue)
         const isGhostJob = entry.category === 'llm' && result.llmCalls > 0 && result.tokensUsed === 0;
         const finalStatus = isGhostJob ? 'failed' : 'completed';
+        const errorCode = result.lastErrorCode ?? (isGhostJob ? 'unknown' : undefined);
         const finalResult = isGhostJob
-          ? { ...result.result, error: 'LLM calls returned no tokens — possible auth/backend issue', ghost: true }
+          ? { ...result.result, error: 'LLM calls returned no tokens — possible auth/backend issue', ghost: true, errorCode }
           : result.result;
 
         this.db.updateJob(job.id, {
@@ -188,10 +189,12 @@ export class JobQueue {
         if (isGhostJob) {
           this.shared.consecutiveGhostJobs++;
           this.shared.lastGhostHint = result.lastError ?? null;
-          console.error(`[job-queue] Ghost job detected: ${job.type}/${job.id.slice(0, 8)} — ${result.llmCalls} LLM calls, 0 tokens (consecutive: ${this.shared.consecutiveGhostJobs})`);
+          this.shared.lastGhostCode = errorCode ?? 'unknown';
+          console.error(`[job-queue] Ghost job detected: ${job.type}/${job.id.slice(0, 8)} — code=${this.shared.lastGhostCode} llmCalls=${result.llmCalls} tokens=0 (consecutive: ${this.shared.consecutiveGhostJobs})`);
         } else if (entry.category === 'llm' && result.tokensUsed > 0) {
           this.shared.consecutiveGhostJobs = 0;
           this.shared.lastGhostHint = null;
+          this.shared.lastGhostCode = null;
         }
       } catch (err) {
         if (cancelled) return;
