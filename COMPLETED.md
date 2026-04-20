@@ -4,6 +4,27 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-20 (Audit block 5H — analysis reliability + token budget)
+
+Bloque 5H cierra 4 items de analysis reliability: timeout dedicado, cleanup de .rotating huérfanos, daily token budget con gate configurable, convención Zod documentada. 4 commits + docs, 335 tests verdes. Plus marcados como `deferred (not applicable in local-first)`: A-06 prompt injection entity names, R-08 siblings atomic claim, R-09 confidence goal injection — security theater en single-user single-daemon.
+
+- **Analysis timeout dedicated [audit A-05]** (`src/config/schema.ts`, `src/config/load-config.ts`, `src/analysis/{extract,consolidate,reflect}.ts`, commit `6e0d801`) — Heartbeat/consolidate/reflect heredaban 5min del runner. Heartbeat extract con conversaciones largas puede requerir 7-10min. Añadido `analysisTimeoutMs` config (default 15min, env `SHADOW_ANALYSIS_TIMEOUT_MS`) + passed via `timeoutMs` del ObjectivePack. Runner mantiene su runnerTimeoutMs.
+
+- **Orphaned .rotating cleanup [audit A-07]** (`src/analysis/shared.ts`, `src/daemon/handlers/cleanup.ts`, commit `62451c8`) — `cleanupRotating` tragaba errores silenciosamente. Ahora loguea non-ENOENT (stuck files dejan de ser invisibles). Nuevo `purgeStaleRotatingFiles(dataDir, 24h)` barre el data dir en el daily cleanup job; result includes `rotatingPurged`. Complementa el reclaim-on-heartbeat: handles el caso "user desactiva heartbeat + archivo queda idle".
+
+- **Daily token budget cap [audit A-10]** (`src/analysis/budget.ts` new, `src/config/schema.ts`, 6 handlers + UI, commit `08aab7c`) — Zero protection against runaway cost. Budget vive en `profile.preferences.dailyTokenBudget` (default 1M, 0 disabled). Helper `budgetSkipIfExceeded()` suma `llm_usage` últimas 24h y retorna skip payload cuando exceeded. Deferrable jobs consultan: consolidate (meta-patterns + knowledge_summary), reflect, all 3 digests, chronicle lore+milestone (fire-and-forget from bond), suggest-deep, suggest-project. Critical (heartbeat/runner/MCP) nunca consultan — user intent siempre corre. UI: numeric input en SectionBehavior con step 50k. Sin migration (preferences JSON blob existente).
+
+- **Zod nullable/optional convention [audit A-12]** (`src/analysis/schemas.ts`, commit `b0d19f5`) — Docstring formal en schemas.ts: `.optional()` omit, `.nullable().default(null)` row-level optional con parse-friendly default, `.default(X)` coerce, `.nullable().optional()` distingue omit vs null explícito. Schemas existentes auditados: SuggestResponseSchema ya correcto (reasoningMd/repoId nullable+default), ObserveResponseSchema todo default, revalidate inline schema per-field optional (intencional). No behavioral changes; docstring + audit trail para futuras reviews.
+
+**Deferred (not applicable in local-first single-user)**:
+- A-06 prompt injection entity names — entity names del user
+- R-08 concurrent siblings atomic claim — single daemon
+- R-09 confidence goal injection — goal del user
+
+Reopen automático si Shadow pasa a multi-user o multi-daemon.
+
+---
+
 ## Session 2026-04-20 (Audit block 5F — runner robustness + MCP close tools)
 
 Bloque 5F cierra 6 items del runner/MCP: R-07 (cierra observation abierta con vote), M-05+M-06 (completa MCP surface con task/run close + outcome), R-12 (worktree cleanup robusto), R-10 (verification stderr), R-11 (autoEvalAt docstring). 6 commits + docs, 335 tests verdes.
