@@ -9,6 +9,33 @@ import { useState, useCallback, useEffect } from 'react';
 import { useWorkspace } from './WorkspaceContext';
 import type { Run } from '../../../api/types';
 
+// --- Copyable session id pill (audit UI-13) ---
+// Click copies the full id to clipboard + flashes ✓. Click again toggles expand
+// so the full uuid is visible for grep into ~/.claude/projects/<cwd>/<id>.jsonl
+// or manual paste into `claude --resume <id>`.
+function SessionIdPill({ sessionId }: { sessionId: string }) {
+  const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const handleClick = async () => {
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch { /* clipboard blocked — expand still useful */ }
+    setExpanded((v) => !v);
+  };
+  return (
+    <code
+      onClick={handleClick}
+      title={copied ? 'Copied!' : 'Click to copy + expand'}
+      className="bg-bg rounded px-1.5 py-0.5 text-[11px] cursor-pointer hover:bg-border/60 transition-colors inline-flex items-center gap-1"
+    >
+      {expanded ? sessionId : `${sessionId.slice(0, 12)}...`}
+      {copied && <span className="text-green ml-1">✓</span>}
+    </code>
+  );
+}
+
 // --- Timeline step visual ---
 function Step({ status, label, children }: { status: 'done' | 'active' | 'pending' | 'failed'; label: string; children?: React.ReactNode }) {
   const dot: Record<string, string> = {
@@ -332,7 +359,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
             <code className="bg-bg rounded px-1.5 py-0.5 select-all text-[11px]">{sessionInfo.command}</code>
           ) : run.sessionId ? (
             <span className="text-text-dim">
-              <code className="bg-bg rounded px-1.5 py-0.5 select-all text-[11px]">{run.sessionId.slice(0, 12)}...</code>
+              <SessionIdPill sessionId={run.sessionId} />
               <button onClick={handleSession} className="text-accent hover:underline bg-transparent border-none cursor-pointer ml-2 text-xs">Resume</button>
             </span>
           ) : (
