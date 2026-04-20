@@ -285,12 +285,18 @@ if [ -n "$TOP_NOTIF_KIND" ]; then
   esac
 fi
 
-# Line 2: thought (priority) > top notification (persistent)
+# Line 2: thought (priority) > top notification (persistent) > dashboard link (fallback)
+# The dashboard URL is dim + always last-resort so modern terminals (iTerm2,
+# Alacritty, Ghostty) render it as a clickable link. Shown only when neither
+# a live thought nor a top notification is displacing it — audit UI-23.
+DASHBOARD_URL="http://localhost:${SHADOW_DASHBOARD_PORT:-3700}"
 OUTPUT="$LINE"
 if [ -n "$SHOW_THOUGHT" ]; then
   OUTPUT="$OUTPUT\n${CD}💭 ${SHOW_THOUGHT}${C0}"
 elif [ -n "$TOP_NOTIF_MSG" ]; then
   OUTPUT="$OUTPUT\n📬 ${TOP_NOTIF_ICON} ${TOP_NOTIF_MSG}"
+elif [ "$DAEMON_RUNNING" = "true" ]; then
+  OUTPUT="$OUTPUT\n${CD}🔗 ${DASHBOARD_URL}${C0}"
 fi
 
 # Line 3+: alerts (persistent, one per line)
