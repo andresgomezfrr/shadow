@@ -250,20 +250,39 @@ export async function handleRunRoutes(
         const claudeBin = config.claudeBin ?? 'claude';
         if (config.claudeExtraPath) env.PATH = `${config.claudeExtraPath}:${env.PATH ?? ''}`;
 
-        const result = await new Promise<{ stdout: string; error?: boolean; message?: string }>((resolve) => {
+        const result = await new Promise<{ stdout: string; error?: boolean; message?: string; timedOut?: boolean }>((resolve) => {
           const child = spawnChild(claudeBin, [
             '--print', '--output-format', 'json',
             '--session-id', sessionId,
             prompt,
           ], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
           const chunks: Buffer[] = [];
+          let settled = false;
+          const settle = (payload: { stdout: string; error?: boolean; message?: string; timedOut?: boolean }) => {
+            if (settled) return;
+            settled = true;
+            resolve(payload);
+          };
           child.stdout.on('data', (d: Buffer) => chunks.push(d));
           const timer = setTimeout(() => {
             child.kill('SIGTERM');
-            setTimeout(() => child.kill('SIGKILL'), 5_000); // SIGKILL fallback
+            const killTimer = setTimeout(() => {
+              child.kill('SIGKILL');
+              // Hard fallback: if the child ignores SIGKILL or the close event
+              // never fires (should not happen on Linux/macOS, but guarding
+              // against a wedged Promise), settle after 1s grace so the HTTP
+              // client isn't left hanging and the session is at least logged
+              // for manual cleanup (audit W-09).
+              setTimeout(() => {
+                console.error(`[runs] session spawn did not exit after SIGKILL — pid ${child.pid} may linger (session=${sessionId.slice(0, 8)})`);
+                settle({ stdout: Buffer.concat(chunks).toString('utf8'), error: true, message: 'session spawn unresponsive to SIGKILL', timedOut: true });
+              }, 1_000);
+            }, 5_000);
+            // Ensure killTimer is cleared if close arrives mid-escalation
+            child.once('close', () => clearTimeout(killTimer));
           }, 120_000);
-          child.on('close', () => { clearTimeout(timer); resolve({ stdout: Buffer.concat(chunks).toString('utf8'), error: false }); });
-          child.on('error', (err) => { clearTimeout(timer); resolve({ stdout: '', error: true, message: err.message }); });
+          child.on('close', () => { clearTimeout(timer); settle({ stdout: Buffer.concat(chunks).toString('utf8'), error: false }); });
+          child.on('error', (err) => { clearTimeout(timer); settle({ stdout: '', error: true, message: err.message }); });
         });
 
         if (result.error) {
