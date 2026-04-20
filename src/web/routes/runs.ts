@@ -486,9 +486,12 @@ export async function handleRunRoutes(
         const { writeFileSync: writeTemp, unlinkSync } = await import('node:fs');
         const { join: joinPath } = await import('node:path');
         const bodyFile = joinPath(repo.path, '.shadow-pr-body.md');
-        writeTemp(bodyFile, body, 'utf-8');
+        // Keep writeTemp INSIDE the try — audit W-08. Previously this was
+        // above try/finally, so a write failure (disk full, permission) bled
+        // the file onto disk if creation half-succeeded.
         let prOutput: string;
         try {
+          writeTemp(bodyFile, body, 'utf-8');
           prOutput = execFileSync(
             'gh', ['pr', 'create', '--draft', '--title', title, '--body-file', bodyFile, '--head', branchName, '--base', repo.defaultBranch],
             { cwd: repo.path, stdio: 'pipe', timeout: 30_000, encoding: 'utf-8' },
