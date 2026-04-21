@@ -169,6 +169,8 @@ Kinds: `improvement`, `risk`, `opportunity`, `pattern`, `infrastructure`. Source
 shadow init                     # Bootstrap (DB, hooks, launchd)
 
 # Daily use (primary interface is Claude CLI, not these)
+shadow                          # Bare: spawn interactive Claude with soul in --append-system-prompt
+shadow -- <claude args>         # Passthrough: e.g. shadow -- --resume <id>, shadow -- -p "quick ask"
 shadow ask "question"           # One-shot question with personality
 shadow summary                  # Daily activity summary
 shadow web                      # Open dashboard in browser

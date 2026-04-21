@@ -4,6 +4,39 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-21 (Audit block 5Y — persona SYSTEM + `shadow` bare wrapper)
+
+Bloque 5Y cierra P-12 con scope extendido: no solo mueve el soul del user prompt al system prompt en los spawns del daemon (runner), sino que además añade un wrapper `shadow` bare para sesiones interactivas del user, usando el mismo mecanismo (`--append-system-prompt`). Todos los paths Shadow-initiated (daemon + user interactive) ahora llevan soul en system context. `claude` bare sigue funcionando inalterado via SessionStart hook.
+
+**Fase 1 — backend plumbing**:
+- `backend/types.ts`: nuevo campo `ObjectivePack.appendSystemPrompt?: string`
+- `backend/claude-cli.ts`: mapea a `--append-system-prompt <text>` flag (después del `--system-prompt`, stack-eado)
+- `backend/agent-sdk.ts`: mapea a `systemPromptSuffix` del Agent SDK (best-effort — CLI backend es el production path, SDK es opt-in)
+
+**Fase 2 — runner**:
+- `runner/service.ts`: `personalityPrompt` sale del array `briefing` user-prompt, entra como `pack.appendSystemPrompt`. Briefing queda focalizado en task-specific content (suggestion title, reasoning, repos, instructions, completion marker). Soul deja de duplicarse en cada user prompt.
+
+**Fase 3 — bare `shadow` wrapper**:
+- `src/cli.ts`: root `.action()` con `.argument('[claudeArgs...]')` + `.allowUnknownOption()` + `.allowExcessArguments()`. Lee `process.argv`, extrae tokens después de `--`, carga soul de DB, spawnea `claude --append-system-prompt <soul> ...claudeArgs` con `stdio:'inherit'` y env `SHADOW_INTERACTIVE=1`. Exit code forwardeado.
+- `scripts/session-start.sh`: guard early-return si `SHADOW_INTERACTIVE=1` o `SHADOW_JOB=1` — evita doble injection del soul cuando el path ya lo lleva en system prompt.
+- Help description de Shadow explica que bare `shadow` spawnea Claude + convención `shadow -- <args>` para passthrough.
+- Hook deploy inmediato a `~/.shadow/session-start.sh` (se re-deploy-a también via `shadow init`).
+
+**UX final**:
+- `shadow` → Claude interactive con soul en system
+- `shadow -- --resume <id>` → passthrough a Claude
+- `shadow -- -p "quick"` → one-shot Claude con soul
+- `shadow -- --help` → help de Claude
+- `shadow --help` → help de Shadow (con nota del bare)
+- `shadow daemon|status|job|...` → subcommands sin cambio
+- `claude` bare → SessionStart hook inyecta soul como siempre (unchanged)
+
+**Verificación**: Tests 354/354 verdes. Smoke manual: `shadow -- -p "..."` ejecuta correcto, Claude responde como Shadow (soul activo). `shadow -- --help` muestra help de Claude. Subcommands intactos.
+
+**Scope reset del claim caching**: verificación vía docs Claude Code confirmó que `--append-system-prompt` funciona en interactive + print modes, stack-ea con CLAUDE.md auto-discovery. Prompt caching Anthropic en el flag no está confirmado automático en CLI (requiere `cache_control` annotations vía API/SDK). Beneficio real: **semántica correcta** + **transcript limpio** + **runner deja de duplicar soul en cada user prompt** (ahorro de ~500-700 tokens/run × 20 runs/día = ~10-15k tokens/día demostrable, sin depender de caching server-side).
+
+---
+
 ## Session 2026-04-21 (Audit block 5X — testing gaps)
 
 Bloque 5X cierra 6 items de testing. **3 eran audit-stale** (T-01 runner 73 tests ya existen, T-07 task lifecycle 21 tests, T-12 timeout no aplica). **3 real work**: T-08 (5 tests nuevos), T-09 (2 stress tests añadidos), T-10 (8 tests nuevos). +15 tests → 354/354 verdes.
