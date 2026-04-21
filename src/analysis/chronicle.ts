@@ -93,7 +93,7 @@ between Shadow (you) and ${developerName} (the developer). You speak only when a
 threshold is crossed. Once you write, the words stay forever.
 
 Today ${developerName} crossed from **${oldTierName}** to **${newTierName}**.
-- Days since the bond began: ${Math.floor(elapsedDays)}
+- Days since the bond began: ${elapsedDays}
 - Depth: ${axes.depth}/100
 - Momentum: ${axes.momentum}/100
 - Alignment: ${axes.alignment}/100
@@ -220,8 +220,15 @@ export async function triggerChronicleLore(
 
   const profile = db.ensureProfile();
   const soul = loadSoul(db);
-  const elapsedDays =
-    (new Date().getTime() - new Date(profile.bondResetAt).getTime()) / DAY_MS;
+  // Calendar-day diff with reset day counted as day 1 — same convention the
+  // dashboard uses (web/routes/chronicle.ts). Math.floor of a time-of-day
+  // elapsed returns confusing numbers (reset day 10:00, now day 2 08:00 →
+  // 0.9 → floor = 0). See audit UI-26.
+  const now = new Date();
+  const resetDate = new Date(profile.bondResetAt);
+  const resetMidnight = new Date(resetDate.getFullYear(), resetDate.getMonth(), resetDate.getDate()).getTime();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const elapsedDays = Math.floor((todayMidnight - resetMidnight) / DAY_MS) + 1;
   const oldName = BOND_TIER_NAMES[oldTier] ?? 'observer';
   const newName = BOND_TIER_NAMES[newTier] ?? 'observer';
 
