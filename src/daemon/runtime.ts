@@ -78,12 +78,29 @@ async function isNetworkAvailable(): Promise<boolean> {
   }
 }
 
-// Detects whether macOS is in full wake (display on / user active) vs darkwake.
-// macOS keeps TCPKeepAlive active during darkwake, so DNS alone cannot distinguish
-// the two — we need UserIsActive from pmset assertions.
-// Fail-open: any error, timeout, or parse failure returns true so non-macOS hosts
-// and unexpected environments keep working.
+// Detects whether the system is in full wake (display on / user active) vs
+// suspended/sleeping.
+//
+// macOS: TCPKeepAlive stays active during darkwake, so DNS alone cannot
+// distinguish full wake from darkwake — we check `pmset -g assertions` for
+// UserIsActive (see feedback memory `reference_macos_darkwake`).
+//
+// Linux: querying `systemd-inhibit --list` returns active suspend/idle
+// inhibitors and the logind state. If `systemd-inhibit` isn't available,
+// we fall back to checking `loginctl show-session` for the current session.
+// If neither works, fail-open (return true) with a warning so the daemon
+// keeps scheduling. See audit C-02.
+//
+// Fail-open in all error paths so non-macOS/non-systemd hosts keep working.
 async function isSystemAwake(): Promise<boolean> {
+  const platform = process.platform;
+  if (platform === 'darwin') return isSystemAwakeMacOS();
+  if (platform === 'linux') return isSystemAwakeLinux();
+  // Windows + others: fail-open (no suspend detection implemented).
+  return true;
+}
+
+async function isSystemAwakeMacOS(): Promise<boolean> {
   try {
     const { execFile } = await import('node:child_process');
     return await new Promise<boolean>((resolvePromise) => {
@@ -92,6 +109,34 @@ async function isSystemAwake(): Promise<boolean> {
         const match = stdout.match(/^\s*UserIsActive\s+(\d)/m);
         resolvePromise(match ? match[1] === '1' : true);
       });
+      child.on('error', () => resolvePromise(true));
+    });
+  } catch {
+    return true;
+  }
+}
+
+async function isSystemAwakeLinux(): Promise<boolean> {
+  // Strategy: check `loginctl show-session $XDG_SESSION_ID -p State -p Active`
+  // where State = 'active' indicates full wake. Falls back to true on any
+  // error (logind unavailable, non-systemd distro, container without DBus).
+  try {
+    const { execFile } = await import('node:child_process');
+    const sessionId = process.env.XDG_SESSION_ID ?? 'self';
+    return await new Promise<boolean>((resolvePromise) => {
+      const child = execFile(
+        'loginctl', ['show-session', sessionId, '-p', 'State', '-p', 'Active'],
+        { timeout: 2000 },
+        (err, stdout) => {
+          if (err) return resolvePromise(true);
+          // Parse `State=active\nActive=yes` style output
+          const state = /^State=(\w+)/m.exec(stdout)?.[1];
+          const active = /^Active=(\w+)/m.exec(stdout)?.[1];
+          if (state === 'active' || active === 'yes') return resolvePromise(true);
+          // State = 'idle' / 'closing' / empty → treat as not fully awake
+          resolvePromise(false);
+        },
+      );
       child.on('error', () => resolvePromise(true));
     });
   } catch {
