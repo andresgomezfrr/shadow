@@ -4,6 +4,28 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-21 (Audit block 5P — prompts hardening)
+
+Bloque 5P cierra 5 items de robustez LLM en analysis/runner/digests — structural containment sobre validation frágil o inexistente. 335 tests verdes. P-11 (summarize→Sonnet) overruled por user (deja Opus). P-12 (persona SYSTEM vs USER) diferido a bloque propio (refactor amplio en adapters).
+
+- **P-05 mark done [audit P-05]** — audit stale: `safeParseJson` ya aplicado en `consolidate.ts:113` (meta_patterns) y `:350` (knowledge_summary). Cero código nuevo, solo audit mark.
+
+- **P-02 reflect regex tolerante [audit P-02]** (`src/analysis/reflect.ts`) — `expectedSections.includes()` case-sensitive → array de `sectionChecks` con regex tolerantes (`/##\s+Shadow'?s?\s+voice/i`, `Tensions\s*(?:&|y)\s*gaps`, etc.). Log al revert ahora incluye len-diff signed + preview de los primeros 200 chars del soul rechazado — diagnose de drift sin tener que logar el soul entero.
+
+- **P-04 runner plan marker [audit P-04]** (`src/runner/service.ts`) — Briefing exige cerrar el plan con `<!-- PLAN COMPLETE -->` como commitment explícito. Post-capture verifica los últimos 200 chars del plan; si missing, log warn "may be incomplete" pero procede (no fail loud). Complementa el `isEmptyPlanInDisguise` existente que atrapa empty/trivial — el marker captura el caso "substancial pero cortado mid-plan".
+
+- **P-01 brag doc validación + XML delimit [audit P-01]** (`src/analysis/digests.ts`) — Interpolación triple-backtick (`\`\`\`markdown\n${existing}\n\`\`\``) → XML `<existing-brag-doc>` tags (cierra injection path cuando brag previo contenía triple-backticks). Post-call: empty output o missing `## ${quarter}` section → return `{skipped: true, reason}`, keep existing sin overwrite. Preview logged al skip.
+
+- **P-03 cleanup refactor list-based JSON [audit P-03]** (`src/analysis/extract.ts`, `src/analysis/schemas.ts`) — Cleanup de observaciones ya no delega a MCP tools (`shadow_observations` + `shadow_observation_resolve`) sin validación; ahora pasa la lista de 30 obs inline con id/severity/kind/votes/createdAt, `allowedTools: []`, LLM devuelve JSON `{resolutions: [...]}`, código aplica determinísticamente dentro de `db.withTransaction()` con los 3 ops del MCP tool (`updateObservationStatus` + `deleteEmbedding` + `createFeedback`). Hallucinated ids detectados (validados contra preCleanupObs) + skipped. Schema `ObserveCleanupResponseSchema` añadido a `schemas.ts`. Log tracea applied/total + cada resolve con reason preview.
+
+**No tocados**:
+- **P-11 summarize model** — user overruled ("P11 deja opus"). Cost preference respetada.
+- **P-12 persona USER → SYSTEM** — diferido a bloque propio. Refactor amplio (touch en adapter.ts + todos los call sites de analysis/runner/digests/suggest). Sin tests de regresión en LLM calls, queda para sesión dedicada.
+- **P-13 lenguaje inglés en prompts** — nota: diferido (locale support complejo, no urge).
+- **P-14 few-shot examples** — nota: diferido (sin evidence de quality drift).
+
+---
+
 ## Session 2026-04-19 (Audit block 5O — 6 UI features en tirón)
 
 Bloque 5O cierra 6 items UI del backlog en sesión única: closing-note UX, multi-PR render con state derivado, repo filter en workspace, attempts drill-down, related suggestions en TasksPage, y la conversión PNG→WebP de `/ghost/`. Typecheck + build verdes.
