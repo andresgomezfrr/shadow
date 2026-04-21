@@ -12,6 +12,7 @@ import { selectAdapter } from '../backend/index.js';
 import { ConfidenceEvaluationSchema, type ConfidenceEvaluation } from './schemas.js';
 import { aggregateParentStatus } from './state-machine.js';
 import { isEmptyPlanInDisguise } from './plan-validation.js';
+import { log } from '../log.js';
 
 const DEFAULT_RUNNER_PERSONALITY = 'You are Shadow, a proactive coding companion. Show initiative and personality.';
 
@@ -107,7 +108,7 @@ export class RunnerService {
           repos[0] = { ...repos[0], path: worktreePath };
           this.db.updateRun(run.id, { worktreePath });
         } catch (wtErr) {
-          console.error('[runner] Failed to create worktree, running in main repo:', wtErr instanceof Error ? wtErr.message : wtErr);
+          log.error('[runner] Failed to create worktree, running in main repo:', wtErr instanceof Error ? wtErr.message : wtErr);
           worktreePath = null;
         }
       }
@@ -236,17 +237,17 @@ export class RunnerService {
           if (capture.content) {
             effectivePlan = capture.content;
             writeFileSync(join(artifactDir, 'plan.md'), capture.content, 'utf-8');
-            console.error(`[runner] Captured plan from session: ${capture.filePath} (${capture.content.length} chars)`);
+            log.error(`[runner] Captured plan from session: ${capture.filePath} (${capture.content.length} chars)`);
             // Audit P-04: verify LLM emitted the completion marker. Missing marker
             // is a soft-fail signal — the plan might be a half-written doc that
             // looks structured but stops mid-thought. Log only (user decision:
             // warn, don't fail loud) so downstream confidence eval still runs.
             if (!/<!--\s*PLAN COMPLETE\s*-->/i.test(capture.content.trimEnd().slice(-200))) {
-              console.error('[runner] Plan missing "<!-- PLAN COMPLETE -->" marker — proceeding but may be incomplete');
+              log.error('[runner] Plan missing "<!-- PLAN COMPLETE -->" marker — proceeding but may be incomplete');
             }
           }
         } catch (err) {
-          console.error('[runner] Plan capture failed (non-fatal):', err instanceof Error ? err.message : err);
+          log.error('[runner] Plan capture failed (non-fatal):', err instanceof Error ? err.message : err);
         }
       }
 
@@ -282,7 +283,7 @@ export class RunnerService {
         try {
           const { applyBondDelta } = await import('../profile/bond.js');
           applyBondDelta(this.db, 'run_failed');
-        } catch (e) { console.error('[runner] bond delta failed:', e); }
+        } catch (e) { log.error('[runner] bond delta failed:', e); }
 
         this.db.createEvent({
           kind: 'run_failed',
@@ -313,7 +314,7 @@ export class RunnerService {
             confidence: evaluation.confidence,
             doubts: evaluation.doubts,
           });
-          console.error(`[runner] Plan confidence=${evaluation.confidence}, doubts=${evaluation.doubts.length}`);
+          log.error(`[runner] Plan confidence=${evaluation.confidence}, doubts=${evaluation.doubts.length}`);
         } catch {
           // Non-fatal — plan is still valid without confidence score
         }
@@ -377,7 +378,7 @@ export class RunnerService {
               },
               timeout: 15_000,
             });
-            console.error(`[runner] Auto-committed dirty worktree for ${run.id.slice(0, 8)}`);
+            log.error(`[runner] Auto-committed dirty worktree for ${run.id.slice(0, 8)}`);
           }
 
           const resultRef = execSync('git rev-parse HEAD', {
@@ -391,7 +392,7 @@ export class RunnerService {
           }
           this.db.updateRun(run.id, { resultRef, diffStat });
         } catch (e) {
-          console.error(`[runner] Checkpoint capture failed for ${run.id.slice(0, 8)}:`, e instanceof Error ? e.message : e);
+          log.error(`[runner] Checkpoint capture failed for ${run.id.slice(0, 8)}:`, e instanceof Error ? e.message : e);
         }
       }
 
@@ -431,7 +432,7 @@ export class RunnerService {
               repoId: run.repoId,
             },
           });
-          console.error(`[runner] summary-diff mismatch flagged for run ${run.id.slice(0, 8)}`);
+          log.error(`[runner] summary-diff mismatch flagged for run ${run.id.slice(0, 8)}`);
         }
       }
 
@@ -489,7 +490,7 @@ export class RunnerService {
       try {
         const { applyBondDelta } = await import('../profile/bond.js');
         applyBondDelta(this.db, isSuccess ? 'run_success' : 'run_failed');
-      } catch (e) { console.error('[runner] bond delta failed:', e); }
+      } catch (e) { log.error('[runner] bond delta failed:', e); }
 
       // Chronicle milestone: first_auto_execute (first successful auto-spawned child run)
       if (isSuccess && run.parentRunId) {
@@ -506,9 +507,9 @@ export class RunnerService {
             triggerChronicleMilestone(this.db, 'first_auto_execute', {
               title: 'First autonomous execution',
               data: { runId: run.id, repoId: run.repoId, prompt: run.prompt.slice(0, 200) },
-            }).catch((e) => console.error('[chronicle] first_auto_execute hook failed:', e));
+            }).catch((e) => log.error('[chronicle] first_auto_execute hook failed:', e));
           }
-        } catch (e) { console.error('[chronicle] first_auto_execute hook failed:', e); }
+        } catch (e) { log.error('[chronicle] first_auto_execute hook failed:', e); }
       }
 
       this.db.createInteraction({
@@ -573,7 +574,7 @@ export class RunnerService {
       try {
         const { applyBondDelta } = await import('../profile/bond.js');
         applyBondDelta(this.db, 'run_failed');
-      } catch (e) { console.error('[runner] bond delta failed:', e); }
+      } catch (e) { log.error('[runner] bond delta failed:', e); }
 
       this.db.createAuditEvent({
         interface: 'runner',
@@ -610,14 +611,14 @@ export class RunnerService {
     const firstErr = tryRemove();
     if (!firstErr) return;
 
-    console.error('[runner] worktree remove failed once, retrying:', firstErr);
+    log.error('[runner] worktree remove failed once, retrying:', firstErr);
     // Small backoff before retry (ephemeral FS lock usually clears in <1s)
     try { execFileSync('sleep', ['1'], { stdio: 'pipe' }); } catch { /* best-effort */ }
 
     const secondErr = tryRemove();
     if (!secondErr) return;
 
-    console.error('[runner] worktree remove failed twice, recording risk observation:', secondErr);
+    log.error('[runner] worktree remove failed twice, recording risk observation:', secondErr);
     // Surface the stuck worktree as an observation so the user can reclaim disk manually
     try {
       const repos = this.db.listRepos();
@@ -632,7 +633,7 @@ export class RunnerService {
         });
       }
     } catch (e) {
-      console.error('[runner] failed to record stuck-worktree observation:', e instanceof Error ? e.message : e);
+      log.error('[runner] failed to record stuck-worktree observation:', e instanceof Error ? e.message : e);
     }
   }
 
@@ -774,7 +775,7 @@ export class RunnerService {
       const evalResult = await adapter.execute(evalPack);
 
       if (evalResult.status !== 'success') {
-        console.error('[runner] Confidence evaluation failed:', evalResult.output.slice(0, 200));
+        log.error('[runner] Confidence evaluation failed:', evalResult.output.slice(0, 200));
         return FALLBACK;
       }
 
@@ -793,19 +794,19 @@ export class RunnerService {
       const raw = evalResult.output.trim();
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        console.error('[runner] Confidence evaluation returned non-JSON:', raw.slice(0, 200));
+        log.error('[runner] Confidence evaluation returned non-JSON:', raw.slice(0, 200));
         return FALLBACK;
       }
 
       const parsed = ConfidenceEvaluationSchema.safeParse(JSON.parse(jsonMatch[0]));
       if (!parsed.success) {
-        console.error('[runner] Confidence evaluation schema validation failed:', parsed.error.message);
+        log.error('[runner] Confidence evaluation schema validation failed:', parsed.error.message);
         return FALLBACK;
       }
 
       return parsed.data;
     } catch (err) {
-      console.error('[runner] Confidence evaluation error:', err instanceof Error ? err.message : err);
+      log.error('[runner] Confidence evaluation error:', err instanceof Error ? err.message : err);
       return FALLBACK;
     }
   }

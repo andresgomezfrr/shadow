@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { printOutput } from './output.js';
+import { log } from '../log.js';
 
 /**
  * `shadow docs check` — drift detector between CLAUDE.md counts and code reality.
@@ -114,15 +115,15 @@ export function registerDocsCommands(program: Command): void {
         process.exit(drift.length === 0 ? 0 : 1);
       }
 
-      console.log(drift.length === 0 ? '✓ docs check: CLAUDE.md matches code' : '✗ docs check: drift detected');
+      log.info(drift.length === 0 ? '✓ docs check: CLAUDE.md matches code' : '✗ docs check: drift detected');
       for (const c of checks) {
         const mark = c.ok ? '✓' : '✗';
         const doc = c.documented ?? '(not documented)';
-        console.log(`  ${mark} ${c.label.padEnd(20)} documented=${doc}  actual=${c.actual}`);
+        log.info(`  ${mark} ${c.label.padEnd(20)} documented=${doc}  actual=${c.actual}`);
       }
       if (drift.length > 0) {
-        console.log('');
-        console.log('Update CLAUDE.md to match the actual counts, or investigate why the code diverged.');
+        log.info('');
+        log.info('Update CLAUDE.md to match the actual counts, or investigate why the code diverged.');
       }
       process.exit(drift.length === 0 ? 0 : 1);
     });

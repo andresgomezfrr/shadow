@@ -1,5 +1,6 @@
 import type { ShadowDatabase } from '../storage/database.js';
 import { embed, embeddingText } from './embeddings.js';
+import { log } from '../log.js';
 
 type VecTable = 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors';
 type EntityType = 'memory' | 'observation' | 'suggestion' | 'enrichment';
@@ -21,7 +22,7 @@ export async function generateAndStoreEmbedding(
     const table: VecTable = `${type}_vectors` as VecTable;
     db.storeEmbedding(table, id, vec);
   } catch (e) {
-    console.error(`[shadow:embed] Failed for ${type}/${id}:`, e instanceof Error ? e.message : e);
+    log.error(`[shadow:embed] Failed for ${type}/${id}:`, e instanceof Error ? e.message : e);
   }
 }
 

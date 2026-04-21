@@ -4,6 +4,7 @@ import { selectAdapter } from '../backend/index.js';
 import { loadConfig } from '../config/load-config.js';
 import { BOND_TIERS, BOND_TIER_NAMES } from '../profile/bond.js';
 import { budgetSkipIfExceeded } from './budget.js';
+import { log } from '../log.js';
 
 // ---------------------------------------------------------------------------
 // Chronicle activity module
@@ -51,7 +52,7 @@ async function callChronicleLLM(
       effort: 'medium',
     });
     if (result.status !== 'success' || !result.output) {
-      console.error(`[chronicle] ${sourceKind} LLM returned non-success: ${result.status}`);
+      log.error(`[chronicle] ${sourceKind} LLM returned non-success: ${result.status}`);
       return null;
     }
     const body = result.output.trim().replace(/^["']|["']$/g, '').slice(0, BODY_MAX_LENGTH);
@@ -66,7 +67,7 @@ async function callChronicleLLM(
     } catch { /* non-fatal */ }
     return body;
   } catch (e) {
-    console.error(`[chronicle] ${sourceKind} LLM call failed:`, e);
+    log.error(`[chronicle] ${sourceKind} LLM call failed:`, e);
     return null;
   }
 }

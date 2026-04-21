@@ -1,4 +1,5 @@
 import type { ShadowDatabase } from '../storage/database.js';
+import { log } from '../log.js';
 
 /**
  * Evaluate which unlockables become available at a newly-reached tier
@@ -14,7 +15,7 @@ export function evaluateUnlocks(db: ShadowDatabase, newTier: number): void {
     try {
       db.markUnlockableUnlocked(u.id);
     } catch (e) {
-      console.error(`[unlocks] failed to mark ${u.id}:`, e);
+      log.error(`[unlocks] failed to mark ${u.id}:`, e);
       continue;
     }
     try {
@@ -29,7 +30,7 @@ export function evaluateUnlocks(db: ShadowDatabase, newTier: number): void {
         },
       });
     } catch (e) {
-      console.error(`[unlocks] event emit failed for ${u.id}:`, e);
+      log.error(`[unlocks] event emit failed for ${u.id}:`, e);
     }
   }
 }

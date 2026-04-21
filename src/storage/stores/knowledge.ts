@@ -18,6 +18,7 @@ import {
   toSqlValue,
 } from '../mappers.js';
 import { sanitizeFtsQuery } from '../../memory/search.js';
+import { log } from '../../log.js';
 
 // --- Memories ---
 
@@ -618,7 +619,7 @@ export function storeEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'obse
   try {
     db.prepare(`INSERT OR REPLACE INTO ${table}(id, embedding) VALUES (?, ?)`).run(id, embedding);
   } catch (e) {
-    console.error(`[shadow:db] Failed to store embedding in ${table}:`, e instanceof Error ? e.message : e);
+    log.error(`[shadow:db] Failed to store embedding in ${table}:`, e instanceof Error ? e.message : e);
   }
 }
 
@@ -626,7 +627,7 @@ export function deleteEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'obs
   try {
     db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
   } catch (e) {
-    console.error(`[shadow:db] Failed to delete embedding from ${table}:`, e instanceof Error ? e.message : e);
+    log.error(`[shadow:db] Failed to delete embedding from ${table}:`, e instanceof Error ? e.message : e);
   }
 }
 

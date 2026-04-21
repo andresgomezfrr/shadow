@@ -4,6 +4,7 @@ import type { JobRecord } from '../storage/models.js';
 import type { EventBus } from '../web/event-bus.js';
 import type { JobHandlerEntry, JobContext, DaemonSharedState, JobHandlerResult } from './job-handlers.js';
 import { runInJobScope, killJobAdapters } from '../backend/claude-cli.js';
+import { log } from '../log.js';
 
 const JOB_TIMEOUT_MS = 15 * 60 * 1000; // 15min — extra headroom for 4-phase heartbeat (summarize + extract + cleanup + observe)
 
@@ -100,7 +101,7 @@ export class JobQueue {
       excludeTypes.push(claimed.type);
 
       if (triggerSource === 'manual') {
-        console.error(`[job-queue] Claimed manual job '${claimed.type}' (bypassing canSchedule=false)`);
+        log.error(`[job-queue] Claimed manual job '${claimed.type}' (bypassing canSchedule=false)`);
       }
     }
   }
@@ -130,7 +131,7 @@ export class JobQueue {
       try {
         this.db.updateJob(job.id, { activity: phase });
       } catch (e) {
-        console.error(`[job-queue] phase update failed for job ${job.id.slice(0, 8)} (${job.type}):`, e instanceof Error ? e.message : e);
+        log.error(`[job-queue] phase update failed for job ${job.id.slice(0, 8)} (${job.type}):`, e instanceof Error ? e.message : e);
       }
       this.eventBus.emit({ type: 'job:phase', data: { jobId: job.id, jobType: job.type, phase } });
       // Backward compat: also emit heartbeat:phase for heartbeat jobs
@@ -190,7 +191,7 @@ export class JobQueue {
           this.shared.consecutiveGhostJobs++;
           this.shared.lastGhostHint = result.lastError ?? null;
           this.shared.lastGhostCode = errorCode ?? 'unknown';
-          console.error(`[job-queue] Ghost job detected: ${job.type}/${job.id.slice(0, 8)} — code=${this.shared.lastGhostCode} llmCalls=${result.llmCalls} tokens=0 (consecutive: ${this.shared.consecutiveGhostJobs})`);
+          log.error(`[job-queue] Ghost job detected: ${job.type}/${job.id.slice(0, 8)} — code=${this.shared.lastGhostCode} llmCalls=${result.llmCalls} tokens=0 (consecutive: ${this.shared.consecutiveGhostJobs})`);
         } else if (entry.category === 'llm' && result.tokensUsed > 0) {
           this.shared.consecutiveGhostJobs = 0;
           this.shared.lastGhostHint = null;
@@ -210,7 +211,7 @@ export class JobQueue {
           type: 'job:complete',
           data: { jobId: job.id, type: job.type, status: 'failed', durationMs: Date.now() - startMs, error: errorMsg },
         });
-        console.error(`[job-queue] Job ${job.type}/${job.id.slice(0, 8)} failed:`, errorMsg);
+        log.error(`[job-queue] Job ${job.type}/${job.id.slice(0, 8)} failed:`, errorMsg);
         this.db.createEvent({ kind: 'job_failed', priority: 7, payload: { message: `${job.type} failed: ${errorMsg.slice(0, 100)}`, jobId: job.id, jobType: job.type, detail: errorMsg.slice(0, 200) } });
 
         // Auto-retry for reactive/backfill/first-scan jobs (max 2 retries)
@@ -223,7 +224,7 @@ export class JobQueue {
             triggerSource: job.triggerSource,
             params,
           });
-          console.error(`[job-queue] Auto-retry ${job.type}/${job.id.slice(0, 8)} (attempt ${retryCount + 2}/${MAX_RETRIES + 1})`);
+          log.error(`[job-queue] Auto-retry ${job.type}/${job.id.slice(0, 8)} (attempt ${retryCount + 2}/${MAX_RETRIES + 1})`);
         }
       } finally {
         setPhase(null);
@@ -249,7 +250,7 @@ export class JobQueue {
           type: 'job:complete',
           data: { jobId: job.id, type: job.type, status: 'failed', durationMs: jobTimeoutMs, error: 'timeout' },
         });
-        console.error(`[job-queue] Job ${job.type}/${job.id.slice(0, 8)} timed out — killed adapters`);
+        log.error(`[job-queue] Job ${job.type}/${job.id.slice(0, 8)} timed out — killed adapters`);
         this.db.createEvent({ kind: 'job_failed', priority: 7, payload: { message: `${job.type} timed out`, jobId: job.id, jobType: job.type, detail: 'Job exceeded timeout limit' } });
         this.active.delete(job.id);
       }
@@ -262,14 +263,14 @@ export class JobQueue {
 
   async drainAll(timeoutMs = 60_000): Promise<void> {
     if (this.active.size === 0) return;
-    console.error(`[job-queue] Draining ${this.active.size} active jobs (max ${Math.round(timeoutMs / 1000)}s)...`);
+    log.error(`[job-queue] Draining ${this.active.size} active jobs (max ${Math.round(timeoutMs / 1000)}s)...`);
     const promises = [...this.active.values()].map(a => a.promise);
     const result = await Promise.race([
       Promise.allSettled(promises).then(() => 'done' as const),
       new Promise<'timeout'>(r => setTimeout(r, timeoutMs)),
     ]);
     if (result === 'timeout' && this.active.size > 0) {
-      console.error(`[job-queue] Drain timeout — killing ${this.active.size} remaining jobs`);
+      log.error(`[job-queue] Drain timeout — killing ${this.active.size} remaining jobs`);
       this.killAll();
     }
   }

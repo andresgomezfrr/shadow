@@ -6,6 +6,7 @@ import type { ShadowDatabase } from '../storage/database.js';
 import { selectAdapter } from '../backend/index.js';
 import { safeParseJson } from '../backend/json-repair.js';
 import { discoverMcpServerNames } from '../observation/mcp-discovery.js';
+import { log } from '../log.js';
 
 // --- Types ---
 
@@ -50,7 +51,7 @@ export async function activityMcpDiscover(
   const servers = discoverMcpServerNames();
 
   if (servers.length === 0) {
-    console.error('[shadow:mcp-discover] No MCP servers found — skipping');
+    log.error('[shadow:mcp-discover] No MCP servers found — skipping');
     return { serversDescribed: 0, serversTotal: 0, serverNames: [], llmCalls: 0, tokensUsed: 0 };
   }
 
@@ -59,7 +60,7 @@ export async function activityMcpDiscover(
   const describedNames = new Set(existing.map(e => e.entityName));
   const needsUpdate = servers.some(s => !describedNames.has(s));
   if (!needsUpdate) {
-    console.error(`[shadow:mcp-discover] All ${servers.length} servers already described — skipping`);
+    log.error(`[shadow:mcp-discover] All ${servers.length} servers already described — skipping`);
     return { serversDescribed: 0, serversTotal: servers.length, serverNames: servers, llmCalls: 0, tokensUsed: 0 };
   }
 
@@ -145,13 +146,13 @@ export async function activityMcpDiscover(
           });
           serversDescribed++;
         }
-        console.error(`[shadow:mcp-discover] Described ${serversDescribed} servers`);
+        log.error(`[shadow:mcp-discover] Described ${serversDescribed} servers`);
       } else {
-        console.error(`[shadow:mcp-discover] Failed to parse response: ${!parseResult.success ? parseResult.error : 'unknown'}`);
+        log.error(`[shadow:mcp-discover] Failed to parse response: ${!parseResult.success ? parseResult.error : 'unknown'}`);
       }
     }
   } catch (e) {
-    console.error('[shadow:mcp-discover] LLM call failed:', e instanceof Error ? e.message : e);
+    log.error('[shadow:mcp-discover] LLM call failed:', e instanceof Error ? e.message : e);
   }
 
   // Expire stale entries

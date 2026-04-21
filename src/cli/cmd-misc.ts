@@ -3,6 +3,7 @@ import type { ShadowConfig } from '../config/load-config.js';
 import type { WithDb } from './types.js';
 import { printOutput } from './output.js';
 import { createDatabase } from '../storage/index.js';
+import { log } from '../log.js';
 
 export function registerMiscCommands(program: Command, config: ShadowConfig, withDb: WithDb): void {
   // --- events ---
@@ -125,8 +126,8 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         args.push('-p', `Quiero enseñarte sobre: ${options.topic}`);
       }
 
-      console.log('Starting teaching session... Shadow is ready to learn.');
-      console.log('Ctrl+C to end.\n');
+      log.info('Starting teaching session... Shadow is ready to learn.');
+      log.info('Ctrl+C to end.\n');
 
       const result = spawnSync(config.claudeBin, args, {
         stdio: 'inherit',
@@ -137,7 +138,7 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
       });
 
       if (result.status !== 0 && result.error) {
-        console.error('Teaching session failed:', result.error.message);
+        log.error('Teaching session failed:', result.error.message);
       }
     });
 
@@ -166,7 +167,7 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         // SessionStart hook is redundant and makes the model burn turns on shadow_check_in.
         if (process.env.SHADOW_JOB === '1') {
           // Emit a benign comment (not empty) to avoid "hook error" warnings in the CLI.
-          console.log('# shadow runner context — soul injected by runner briefing');
+          log.info('# shadow runner context — soul injected by runner briefing');
           return;
         }
 
@@ -275,7 +276,7 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         );
 
         // Print to stdout (SessionStart hook captures this)
-        console.log(lines.join('\n'));
+        log.info(lines.join('\n'));
       }),
     );
 
@@ -351,9 +352,9 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         });
 
         if (result.stdout) {
-          console.log(result.stdout);
+          log.info(result.stdout);
         } else if (result.stderr) {
-          console.error(result.stderr);
+          log.error(result.stderr);
         }
       } finally {
         db.close();

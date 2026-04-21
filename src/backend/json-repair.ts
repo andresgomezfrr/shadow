@@ -1,4 +1,5 @@
 import type { ZodType } from 'zod';
+import { log } from '../log.js';
 
 // --- Extract JSON from LLM output ---
 
@@ -205,7 +206,7 @@ export function safeParseJson<T>(output: string, schema: ZodType<T>, label: stri
   const zodResult = schema.safeParse(parsed);
   if (zodResult.success) {
     if (repaired) {
-      console.error(`[shadow:${label}] Repaired truncated JSON successfully`);
+      log.error(`[shadow:${label}] Repaired truncated JSON successfully`);
     }
     return { success: true, data: zodResult.data, repaired };
   }
@@ -215,7 +216,7 @@ export function safeParseJson<T>(output: string, schema: ZodType<T>, label: stri
     const trimmed = dropLastArrayItems(parsed as Record<string, unknown>);
     const retryResult = schema.safeParse(trimmed);
     if (retryResult.success) {
-      console.error(`[shadow:${label}] Repaired truncated JSON (dropped last truncated items)`);
+      log.error(`[shadow:${label}] Repaired truncated JSON (dropped last truncated items)`);
       return { success: true, data: retryResult.data, repaired: true };
     }
   }

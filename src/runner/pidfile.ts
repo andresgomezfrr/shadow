@@ -1,5 +1,6 @@
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { log } from '../log.js';
 
 /**
  * Per-run pidfiles (audit R-15) — adapter writes on spawn, clears on exit.
@@ -24,7 +25,7 @@ export function writeRunPid(dataDir: string, runId: string, pid: number): void {
     mkdirSync(runPidDir(dataDir), { recursive: true });
     writeFileSync(runPidPath(dataDir, runId), String(pid), 'utf-8');
   } catch (e) {
-    console.error(`[pidfile] failed to write pid for run ${runId.slice(0, 8)}:`, e instanceof Error ? e.message : e);
+    log.error(`[pidfile] failed to write pid for run ${runId.slice(0, 8)}:`, e instanceof Error ? e.message : e);
   }
 }
 
@@ -34,7 +35,7 @@ export function clearRunPid(dataDir: string, runId: string): void {
   } catch (e) {
     const errno = (e as NodeJS.ErrnoException).code;
     if (errno !== 'ENOENT') {
-      console.error(`[pidfile] failed to clear pid for run ${runId.slice(0, 8)}: ${errno ?? 'unknown'}`);
+      log.error(`[pidfile] failed to clear pid for run ${runId.slice(0, 8)}: ${errno ?? 'unknown'}`);
     }
   }
 }

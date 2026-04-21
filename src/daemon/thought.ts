@@ -6,6 +6,7 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { UserProfileRecord } from '../storage/models.js';
 import type { DaemonState } from './runtime.js';
 import { selectAdapter } from '../backend/index.js';
+import { log } from '../log.js';
 
 // --- Types ---
 
@@ -207,7 +208,7 @@ function gatherBriefContext(ctx: ThoughtContext): string {
       parts.push(`recent observations: ${obs.map(o => o.title).join(', ')}`);
     }
   } catch (e) {
-    console.error('[thought] listObservations failed:', e instanceof Error ? e.message : e);
+    log.error('[thought] listObservations failed:', e instanceof Error ? e.message : e);
   }
 
   return parts.join('; ') || 'idle, no recent activity';

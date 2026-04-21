@@ -4,6 +4,7 @@ import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 import { json, clampLimit, clampOffset, parseOptionalBody, OptionalNoteSchema } from '../helpers.js';
 import { loadConfig } from '../../config/load-config.js';
+import { log } from '../../log.js';
 
 export async function handleRunRoutes(
   req: IncomingMessage, res: ServerResponse,
@@ -274,7 +275,7 @@ export async function handleRunRoutes(
               // client isn't left hanging and the session is at least logged
               // for manual cleanup (audit W-09).
               setTimeout(() => {
-                console.error(`[runs] session spawn did not exit after SIGKILL — pid ${child.pid} may linger (session=${sessionId.slice(0, 8)})`);
+                log.error(`[runs] session spawn did not exit after SIGKILL — pid ${child.pid} may linger (session=${sessionId.slice(0, 8)})`);
                 settle({ stdout: Buffer.concat(chunks).toString('utf8'), error: true, message: 'session spawn unresponsive to SIGKILL', timedOut: true });
               }, 1_000);
             }, 5_000);
@@ -292,7 +293,7 @@ export async function handleRunRoutes(
         try {
           const out = JSON.parse(result.stdout || '{}') as { session_id?: string };
           if (out.session_id) finalSessionId = out.session_id;
-        } catch (e) { console.error('[runs] Failed to parse session output:', e instanceof Error ? e.message : e); }
+        } catch (e) { log.error('[runs] Failed to parse session output:', e instanceof Error ? e.message : e); }
         db.updateRun(runId, { sessionId: finalSessionId });
         return json(res, { sessionId: finalSessionId, command: `cd ${cwd} && claude --resume ${finalSessionId}` }), true;
       }
@@ -403,7 +404,7 @@ export async function handleRunRoutes(
           // Diff from branch vs main (already committed)
           diff = execFileSync('git', ['diff', `${repo.defaultBranch}...${branchName}`], { cwd: repo.path, stdio: 'pipe', timeout: 10_000, encoding: 'utf-8' }).toString().trim();
         }
-      } catch (e) { console.error('[runs] Failed to get diff for PR:', e instanceof Error ? e.message : e); }
+      } catch (e) { log.error('[runs] Failed to get diff for PR:', e instanceof Error ? e.message : e); }
 
       if (!diff) {
         return json(res, { error: 'No changes to create a PR from' }, 400), true;
@@ -485,7 +486,7 @@ export async function handleRunRoutes(
           });
         }
       } catch (e) {
-        console.error('[runs] LLM PR generation failed, using fallback:', e instanceof Error ? e.message : e);
+        log.error('[runs] LLM PR generation failed, using fallback:', e instanceof Error ? e.message : e);
         title = (suggestion?.title ?? contextRun.prompt).slice(0, 70);
         body = suggestion?.summaryMd ?? contextRun.prompt;
         commitMessage = title;
@@ -533,7 +534,7 @@ export async function handleRunRoutes(
               db.transitionRun(parent.id, 'awaiting_pr');
               db.updateRun(parent.id, { outcome: null });
             } catch (e) {
-              console.error('[draft-pr] Failed to reopen parent to awaiting_pr:', e instanceof Error ? e.message : e);
+              log.error('[draft-pr] Failed to reopen parent to awaiting_pr:', e instanceof Error ? e.message : e);
             }
           }
         }

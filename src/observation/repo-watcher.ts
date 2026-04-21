@@ -5,6 +5,7 @@ import { relative } from 'node:path';
 
 import type { ShadowConfig } from '../config/schema.js';
 import type { ShadowDatabase } from '../storage/database.js';
+import { log } from '../log.js';
 
 // Paths that generate too much noise — filter before debounce
 const IGNORE_SEGMENTS = new Set([
@@ -75,7 +76,7 @@ export class RepoWatcher extends EventEmitter {
 
       watcher.on('error', (err) => {
         if ((err as NodeJS.ErrnoException).code === 'EMFILE') {
-          console.error(`[watcher] FD limit hit — unwatching ${repoName}. Consider raising maxWatchedRepos or OS limits.`);
+          log.error(`[watcher] FD limit hit — unwatching ${repoName}. Consider raising maxWatchedRepos or OS limits.`);
           this.unwatchRepo(repoId);
           return;
         }
@@ -86,9 +87,9 @@ export class RepoWatcher extends EventEmitter {
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'EMFILE') {
-        console.error(`[watcher] FD limit hit — cannot watch ${repoName}.`);
+        log.error(`[watcher] FD limit hit — cannot watch ${repoName}.`);
       } else {
-        console.error(`[watcher] Failed to watch ${repoName}:`, err instanceof Error ? err.message : err);
+        log.error(`[watcher] Failed to watch ${repoName}:`, err instanceof Error ? err.message : err);
       }
     }
   }

@@ -7,6 +7,7 @@ import { generateAndStoreEmbedding } from '../memory/lifecycle.js';
 import { selectAdapter } from '../backend/index.js';
 import { applyBondDelta } from '../profile/bond.js';
 import { safeParseJson } from '../backend/json-repair.js';
+import { log } from '../log.js';
 
 import type { HeartbeatContext } from './state-machine.js';
 import { ExtractResponseSchema, ObserveResponseSchema, ObserveCleanupResponseSchema, EXTRACT_FORMAT, OBSERVE_FORMAT, OBSERVE_CLEANUP_FORMAT } from './schemas.js';
@@ -212,14 +213,14 @@ export async function activityAnalyze(
       });
       llmCalls++;
       tokensUsed += (summaryResult.inputTokens ?? 0) + (summaryResult.outputTokens ?? 0);
-      console.error(`[shadow:summarize] status=${summaryResult.status} tokens=${(summaryResult.inputTokens ?? 0) + (summaryResult.outputTokens ?? 0)}`);
+      log.info(`[shadow:summarize] status=${summaryResult.status} tokens=${(summaryResult.inputTokens ?? 0) + (summaryResult.outputTokens ?? 0)}`);
       ctx.db.recordLlmUsage({ source: 'heartbeat_summarize', sourceId: heartbeatId ?? null, model: summarizeModel, inputTokens: summaryResult.inputTokens ?? 0, outputTokens: summaryResult.outputTokens ?? 0 });
 
       if (summaryResult.status === 'success' && summaryResult.output) {
         sessionSummary = summaryResult.output;
       }
     } catch (e) {
-      console.error('[shadow:summarize] LLM failed:', e instanceof Error ? e.message : e);
+      log.error('[shadow:summarize] LLM failed:', e instanceof Error ? e.message : e);
     }
   }
 
@@ -316,17 +317,17 @@ export async function activityAnalyze(
     });
     llmCalls++;
     tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
-    console.error(`[shadow:extract] status=${result.status} tokens=${(result.inputTokens ?? 0) + (result.outputTokens ?? 0)}`);
+    log.info(`[shadow:extract] status=${result.status} tokens=${(result.inputTokens ?? 0) + (result.outputTokens ?? 0)}`);
     ctx.db.recordLlmUsage({ source: 'heartbeat_extract', sourceId: heartbeatId ?? null, model: extractModel, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
     if (result.status === 'success' && result.output) {
       const parseResult = safeParseJson(result.output, ExtractResponseSchema, 'extract');
       if (!parseResult.success) {
-        console.error(`[shadow:extract] ${parseResult.error}`);
-        console.error(`[shadow:extract] Raw (500): ${result.output.slice(0, 500)}`);
+        log.error(`[shadow:extract] ${parseResult.error}`);
+        log.warn(`[shadow:extract] Raw (500): ${result.output.slice(0, 500)}`);
       } else {
         const parsed = parseResult.data;
-        console.error(`[shadow:extract] ${parsed.insights.length} insights, profile: ${JSON.stringify(parsed.profileUpdates ?? {})}${parseResult.repaired ? ' (repaired)' : ''}`);
+        log.info(`[shadow:extract] ${parsed.insights.length} insights, profile: ${JSON.stringify(parsed.profileUpdates ?? {})}${parseResult.repaired ? ' (repaired)' : ''}`);
 
         if (parsed.profileUpdates) {
           const pu: Record<string, unknown> = {};
@@ -351,11 +352,11 @@ export async function activityAnalyze(
               if (moodResult.status === 'success' && moodResult.output) {
                 const phrase = moodResult.output.trim().replace(/^["']|["']$/g, '').slice(0, 100);
                 ctx.db.updateProfile(ctx.profile.id, { moodPhrase: phrase });
-                console.error(`[shadow:extract] Mood phrase: "${phrase}"`);
+                log.info(`[shadow:extract] Mood phrase: "${phrase}"`);
               }
               ctx.db.recordLlmUsage({ source: 'mood_phrase', sourceId: heartbeatId ?? null, model: 'haiku', inputTokens: moodResult.inputTokens ?? 0, outputTokens: moodResult.outputTokens ?? 0 });
             } catch (e) {
-              console.error(`[shadow:extract] Mood phrase generation failed:`, e);
+              log.error(`[shadow:extract] Mood phrase generation failed:`, e);
             }
           }
         }
@@ -367,10 +368,10 @@ export async function activityAnalyze(
 
           switch (decision.action) {
             case 'skip':
-              console.error(`[shadow:extract] Skip duplicate (${(decision.similarity * 100).toFixed(0)}%): ${insight.title}`);
+              log.info(`[shadow:extract] Skip duplicate (${(decision.similarity * 100).toFixed(0)}%): ${insight.title}`);
               break;
             case 'update':
-              console.error(`[shadow:extract] Update existing (${(decision.similarity * 100).toFixed(0)}%): ${insight.title}`);
+              log.info(`[shadow:extract] Update existing (${(decision.similarity * 100).toFixed(0)}%): ${insight.title}`);
               ctx.db.mergeMemoryBody(decision.existingId, insight.bodyMd, insight.tags);
               // Regenerate embedding for the updated memory
               const updated = ctx.db.getMemory(decision.existingId);
@@ -403,9 +404,9 @@ export async function activityAnalyze(
                   triggerChronicleMilestone(ctx.db, `memories:${total.n}`, {
                     title: `${total.n} memories`,
                     data: { count: total.n, kind: insight.kind },
-                  }).catch((e) => console.error('[chronicle] milestone hook failed:', e));
+                  }).catch((e) => log.error('[chronicle] milestone hook failed:', e));
                 }
-              } catch (e) { console.error('[chronicle] memories:N hook failed:', e); }
+              } catch (e) { log.error('[chronicle] memories:N hook failed:', e); }
               break;
             }
           }
@@ -413,7 +414,7 @@ export async function activityAnalyze(
       }
     }
   } catch (e) {
-    console.error('[shadow:extract] LLM failed:', e instanceof Error ? e.message : e);
+    log.error('[shadow:extract] LLM failed:', e instanceof Error ? e.message : e);
   }
 
   // ========== CALL 2: Observe-cleanup (list-based JSON — resolve obsolete/duplicate observations) ==========
@@ -468,7 +469,7 @@ export async function activityAnalyze(
       if (cleanupResult.status === 'success' && cleanupResult.output) {
         const parsed = safeParseJson(cleanupResult.output, ObserveCleanupResponseSchema, 'observe-cleanup');
         if (!parsed.success) {
-          console.error(`[shadow:cleanup] ${parsed.error}`);
+          log.error(`[shadow:cleanup] ${parsed.error}`);
         } else {
           const obsById = new Map(preCleanupObs.map(o => [o.id, o]));
           const alreadyApplied = new Set<string>();
@@ -480,7 +481,7 @@ export async function activityAnalyze(
             const obs = obsById.get(r.id);
             if (!obs) {
               skippedHallucinated++;
-              console.error(`[shadow:cleanup] Skipping resolution for unknown id=${r.id} (hallucinated — not in preCleanup list)`);
+              log.warn(`[shadow:cleanup] Skipping resolution for unknown id=${r.id} (hallucinated — not in preCleanup list)`);
               continue;
             }
             if (obs.status === 'done') continue; // defensive
@@ -492,19 +493,19 @@ export async function activityAnalyze(
               });
               alreadyApplied.add(r.id);
               applied++;
-              console.error(`[shadow:cleanup] Resolved obs=${obs.id.slice(0, 8)} [${obs.severity}/${obs.kind}] — ${r.reason || '(no reason)'}`);
+              log.info(`[shadow:cleanup] Resolved obs=${obs.id.slice(0, 8)} [${obs.severity}/${obs.kind}] — ${r.reason || '(no reason)'}`);
             } catch (e) {
-              console.error(`[shadow:cleanup] Failed to resolve obs=${obs.id}: ${e instanceof Error ? e.message : e}`);
+              log.error(`[shadow:cleanup] Failed to resolve obs=${obs.id}: ${e instanceof Error ? e.message : e}`);
             }
           }
-          console.error(`[shadow:cleanup] Applied ${applied}/${parsed.data.resolutions.length} resolutions (${skippedHallucinated} hallucinated ids skipped). Tokens: ${(cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0)}`);
+          log.info(`[shadow:cleanup] Applied ${applied}/${parsed.data.resolutions.length} resolutions (${skippedHallucinated} hallucinated ids skipped). Tokens: ${(cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0)}`);
         }
       } else {
-        console.error(`[shadow:cleanup] Completed with status=${cleanupResult.status} — no resolutions applied. Tokens: ${(cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0)}`);
+        log.info(`[shadow:cleanup] Completed with status=${cleanupResult.status} — no resolutions applied. Tokens: ${(cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0)}`);
       }
     }
   } catch (e) {
-    console.error('[shadow:cleanup] Failed:', e instanceof Error ? e.message : e);
+    log.error('[shadow:cleanup] Failed:', e instanceof Error ? e.message : e);
   }
 
   // ========== CALL 3: Observe (generate new observations — JSON-only) ==========
@@ -562,11 +563,11 @@ export async function activityAnalyze(
     if (result.status === 'success' && result.output) {
       const parseResult = safeParseJson(result.output, ObserveResponseSchema, 'observe');
       if (!parseResult.success) {
-        console.error(`[shadow:observe] ${parseResult.error}`);
-        console.error(`[shadow:observe] Raw (500): ${result.output.slice(0, 500)}`);
+        log.error(`[shadow:observe] ${parseResult.error}`);
+        log.warn(`[shadow:observe] Raw (500): ${result.output.slice(0, 500)}`);
       } else {
         const parsed = parseResult.data;
-        console.error(`[shadow:observe] ${parsed.observations.length} new observations${parseResult.repaired ? ' (repaired)' : ''}`);
+        log.info(`[shadow:observe] ${parsed.observations.length} new observations${parseResult.repaired ? ' (repaired)' : ''}`);
 
         const { checkObservationDuplicate } = await import('../memory/dedup.js');
 
@@ -588,12 +589,12 @@ export async function activityAnalyze(
           // Pass 1: check vs active (open/acknowledged)
           const vsActive = await checkObservationDuplicate(ctx.db, dedupEntity, 'active');
           if (vsActive.action === 'skip') {
-            console.error(`[shadow:observe] Skip duplicate obs (${(vsActive.similarity * 100).toFixed(0)}%): ${obs.title}`);
+            log.info(`[shadow:observe] Skip duplicate obs (${(vsActive.similarity * 100).toFixed(0)}%): ${obs.title}`);
             continue;
           }
           if (vsActive.action === 'update') {
             ctx.db.bumpObservationVotes(vsActive.existingId, context);
-            console.error(`[shadow:observe] Merge into existing obs (${(vsActive.similarity * 100).toFixed(0)}%): ${obs.title}`);
+            log.info(`[shadow:observe] Merge into existing obs (${(vsActive.similarity * 100).toFixed(0)}%): ${obs.title}`);
             continue;
           }
 
@@ -605,14 +606,14 @@ export async function activityAnalyze(
               if (ctx.db.hasResolveFeedback(vsResolved.existingId)) {
                 // Protected: deliberately resolved by user or cleanup
                 ctx.db.bumpObservationVotes(vsResolved.existingId, context);
-                console.error(`[shadow:observe] Protected resolved obs, votes++ (${(vsResolved.similarity * 100).toFixed(0)}%): ${obs.title}`);
+                log.info(`[shadow:observe] Protected resolved obs, votes++ (${(vsResolved.similarity * 100).toFixed(0)}%): ${obs.title}`);
               } else {
                 // Safe to reopen: was capped by overflow, not deliberately resolved
                 ctx.db.reopenObservation(vsResolved.existingId, context);
                 const obsEntities = buildEntityLinks(ctx.db, firstRepoId, `${obs.title} ${obs.detail}`, entityCache);
                 if (obsEntities.length > 0) persistEntityLinks(ctx.db, 'observations', vsResolved.existingId, obsEntities);
                 ctx.db.createAuditEvent({ actor: 'shadow', interface: 'heartbeat', action: 'observation_reopen', targetKind: 'observation', targetId: vsResolved.existingId, detail: { reason: 'reappeared_in_heartbeat', similarity: vsResolved.similarity } });
-                console.error(`[shadow:observe] Reopened resolved obs (${(vsResolved.similarity * 100).toFixed(0)}%): ${obs.title}`);
+                log.info(`[shadow:observe] Reopened resolved obs (${(vsResolved.similarity * 100).toFixed(0)}%): ${obs.title}`);
               }
               continue;
             }
@@ -627,7 +628,7 @@ export async function activityAnalyze(
               const obsEntities = buildEntityLinks(ctx.db, firstRepoId, `${obs.title} ${obs.detail}`, entityCache);
               if (obsEntities.length > 0) persistEntityLinks(ctx.db, 'observations', vsExpired.existingId, obsEntities);
               ctx.db.createAuditEvent({ actor: 'shadow', interface: 'heartbeat', action: 'observation_reopen', targetKind: 'observation', targetId: vsExpired.existingId, detail: { reason: 'reappeared_after_expiry', similarity: vsExpired.similarity } });
-              console.error(`[shadow:observe] Reopened expired obs (${(vsExpired.similarity * 100).toFixed(0)}%): ${obs.title}`);
+              log.info(`[shadow:observe] Reopened expired obs (${(vsExpired.similarity * 100).toFixed(0)}%): ${obs.title}`);
               continue;
             }
           }
@@ -658,13 +659,19 @@ export async function activityAnalyze(
       }
     }
   } catch (e) {
-    console.error('[shadow:observe] LLM failed:', e instanceof Error ? e.message : e);
+    log.error('[shadow:observe] LLM failed:', e instanceof Error ? e.message : e);
   }
 
   // Post-processing
   for (const obs of observations) ctx.db.markObservationProcessed(obs.id);
-  if (llmCalls > 0) { try { applyBondDelta(ctx.db, 'heartbeat_completed'); } catch { /* */ } }
-  if (recentInteractions.length >= 10) { try { applyBondDelta(ctx.db, 'interaction_logged'); } catch { /* */ } }
+  if (llmCalls > 0) {
+    try { applyBondDelta(ctx.db, 'heartbeat_completed'); }
+    catch (e) { log.error('[heartbeat:extract] applyBondDelta heartbeat_completed failed:', e instanceof Error ? e.message : e); }
+  }
+  if (recentInteractions.length >= 10) {
+    try { applyBondDelta(ctx.db, 'interaction_logged'); }
+    catch (e) { log.error('[heartbeat:extract] applyBondDelta interaction_logged failed:', e instanceof Error ? e.message : e); }
+  }
   // Consume-and-delete: clean up .rotating files
   cleanupRotating(rotatingInt);
   cleanupRotating(rotatingConv);

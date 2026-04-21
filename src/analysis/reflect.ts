@@ -2,6 +2,7 @@ import { selectAdapter } from '../backend/index.js';
 import { budgetSkipIfExceeded } from './budget.js';
 
 import type { HeartbeatContext } from './state-machine.js';
+import { log } from '../log.js';
 
 export async function activityReflect(
   ctx: HeartbeatContext,
@@ -48,11 +49,11 @@ export async function activityReflect(
   const totalDeltas = newMemories.length + newFeedback.length + newObservations.length + resolvedObs.length + recentSugs.length + dismissedSugs.length;
 
   if (totalDeltas === 0) {
-    console.error('[shadow:reflect] Skipping — no changes since last reflect');
+    log.error('[shadow:reflect] Skipping — no changes since last reflect');
     return { llmCalls: 0, tokensUsed: 0, skipped: true, reason: 'no changes since last reflect' };
   }
 
-  console.error(`[shadow:reflect] Phase 1: ${totalDeltas} deltas (${newMemories.length} memories, ${newFeedback.length} feedback, ${newObservations.length} observations)`);
+  log.error(`[shadow:reflect] Phase 1: ${totalDeltas} deltas (${newMemories.length} memories, ${newFeedback.length} feedback, ${newObservations.length} observations)`);
 
   const deltaPrompt = [
     'Summarize what changed in this developer\'s work since the last reflection.',
@@ -84,13 +85,13 @@ export async function activityReflect(
 
     if (deltaResult.status === 'success' && deltaResult.output) {
       changeReport = deltaResult.output;
-      console.error(`[shadow:reflect] Phase 1 complete: ${changeReport.length} chars change report`);
+      log.error(`[shadow:reflect] Phase 1 complete: ${changeReport.length} chars change report`);
     } else {
-      console.error('[shadow:reflect] Phase 1 failed — proceeding with raw deltas');
+      log.error('[shadow:reflect] Phase 1 failed — proceeding with raw deltas');
       changeReport = [newMemories.join('\n'), newFeedback.join('\n'), newObservations.join('\n')].filter(Boolean).join('\n');
     }
   } catch (e) {
-    console.error('[shadow:reflect] Phase 1 error:', e instanceof Error ? e.message : e);
+    log.error('[shadow:reflect] Phase 1 error:', e instanceof Error ? e.message : e);
     changeReport = [newMemories.join('\n'), newFeedback.join('\n'), newObservations.join('\n')].filter(Boolean).join('\n');
   }
 
@@ -174,7 +175,7 @@ export async function activityReflect(
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[shadow:reflect] Phase 2 error: ${msg}`);
+    log.error(`[shadow:reflect] Phase 2 error: ${msg}`);
   }
 
   // Validate: check if soul was updated in DB (LLM uses shadow_soul_update MCP tool)
@@ -185,14 +186,14 @@ export async function activityReflect(
     if (missing.length > 0) {
       const lenDiff = currentSoul.bodyMd.length - (originalSoulMd?.length ?? 0);
       const preview = currentSoul.bodyMd.slice(0, 200).replace(/\s+/g, ' ').trim();
-      console.error(`[shadow:reflect] Soul updated but missing sections: ${missing.join(', ')} — reverting. Len diff: ${lenDiff >= 0 ? '+' : ''}${lenDiff}. Preview: "${preview}..."`);
+      log.error(`[shadow:reflect] Soul updated but missing sections: ${missing.join(', ')} — reverting. Len diff: ${lenDiff >= 0 ? '+' : ''}${lenDiff}. Preview: "${preview}..."`);
       if (originalSoulMd) ctx.db.updateMemory(currentSoul.id, { bodyMd: originalSoulMd });
       return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: `Soul missing sections: ${missing.join(', ')}` };
     }
-    console.error(`[shadow:reflect] Soul evolved (${originalSoulMd?.length ?? 0} → ${currentSoul.bodyMd.length} chars). Tokens: ${tokensUsed}`);
+    log.error(`[shadow:reflect] Soul evolved (${originalSoulMd?.length ?? 0} → ${currentSoul.bodyMd.length} chars). Tokens: ${tokensUsed}`);
     return { llmCalls, tokensUsed, skipped: false, soulUpdated: true };
   }
 
-  console.error('[shadow:reflect] Soul not updated — LLM did not call shadow_soul_update');
+  log.error('[shadow:reflect] Soul not updated — LLM did not call shadow_soul_update');
   return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: 'LLM did not update the soul' };
 }

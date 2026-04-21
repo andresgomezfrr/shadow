@@ -6,6 +6,7 @@ import {
   toSnake,
   toSqlValue,
 } from '../mappers.js';
+import { log } from '../../log.js';
 
 export function getProfile(db: DatabaseSync, id = 'default'): UserProfileRecord | null {
   const row = db.prepare('SELECT * FROM user_profile WHERE id = ?').get(id);
@@ -58,11 +59,11 @@ export function updateProfile(db: DatabaseSync, id: string, updates: Record<stri
     }
   }
   if (skipped.length > 0) {
-    console.error(`[updateProfile] skipped unknown keys: ${skipped.join(', ')}. If writing to a _json column, remember the Json suffix in the TS key (e.g. bondAxesJson, not bondAxes).`);
+    log.error(`[updateProfile] skipped unknown keys: ${skipped.join(', ')}. If writing to a _json column, remember the Json suffix in the TS key (e.g. bondAxesJson, not bondAxes).`);
   }
   if (sets.length === 0) {
     if (Object.keys(updates).length > 0) {
-      console.error(`[updateProfile] no valid updates to apply (input had ${Object.keys(updates).length} keys, all unknown)`);
+      log.error(`[updateProfile] no valid updates to apply (input had ${Object.keys(updates).length} keys, all unknown)`);
     }
     return;
   }

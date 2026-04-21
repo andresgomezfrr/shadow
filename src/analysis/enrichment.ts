@@ -2,6 +2,7 @@ import type { ShadowConfig } from '../config/load-config.js';
 import type { ShadowDatabase } from '../storage/database.js';
 import { selectAdapter } from '../backend/index.js';
 import { discoverMcpServerNames } from '../observation/mcp-discovery.js';
+import { log } from '../log.js';
 
 // --- Types ---
 
@@ -212,10 +213,10 @@ function analyzeTtlDrift(db: ShadowDatabase): void {
         detail: newDetail,
         contentHash,
       });
-      console.error(`[shadow:enrich] TTL drift: ${row.source} ${currentTtl ?? 'default'}→${optimal} (change_rate=${changeRate.toFixed(2)}, ${row.changes}/${row.refreshes})`);
+      log.error(`[shadow:enrich] TTL drift: ${row.source} ${currentTtl ?? 'default'}→${optimal} (change_rate=${changeRate.toFixed(2)}, ${row.changes}/${row.refreshes})`);
     }
   } catch (e) {
-    console.error('[shadow:enrich] TTL analysis failed:', e instanceof Error ? e.message : e);
+    log.error('[shadow:enrich] TTL analysis failed:', e instanceof Error ? e.message : e);
   }
 }
 
@@ -247,7 +248,7 @@ export async function activityEnrich(
   const mcpServers = allServers.filter(s => !disabledServers.includes(s));
 
   if (mcpServers.length === 0) {
-    console.error(`[shadow:enrich] No enabled MCP servers (${allServers.length} discovered, ${disabledServers.length} disabled) — skipping`);
+    log.error(`[shadow:enrich] No enabled MCP servers (${allServers.length} discovered, ${disabledServers.length} disabled) — skipping`);
     return { itemsCollected: 0, llmCalls: 0, tokensUsed: 0 };
   }
 
@@ -274,7 +275,7 @@ export async function activityEnrich(
     const eligibleProjects = activeProjects.filter(p => !lowerDisabled.includes(p.projectName.toLowerCase()));
     if (eligibleProjects.length < activeProjects.length) {
       const skipped = activeProjects.filter(p => lowerDisabled.includes(p.projectName.toLowerCase())).map(p => p.projectName);
-      console.error(`[shadow:enrich] Skipping disabled projects: ${skipped.join(', ')}`);
+      log.error(`[shadow:enrich] Skipping disabled projects: ${skipped.join(', ')}`);
     }
     const projectResults: PerProjectResult[] = [];
 
@@ -311,7 +312,7 @@ export async function activityEnrich(
           existingCache, runHistory, sourceEffectiveness: sourceEff,
         });
 
-        console.error(`[shadow:enrich] Starting enrichment for ${project.name} (${repoNames.length} repos, ${cachedItems.length} cached)`);
+        log.error(`[shadow:enrich] Starting enrichment for ${project.name} (${repoNames.length} repos, ${cachedItems.length} cached)`);
 
         const result = await adapter.execute({
           repos: [],
@@ -341,10 +342,10 @@ export async function activityEnrich(
         pr.dedupStats = { created: newItems.length, updated: updatedItems.length };
         totalItems += pr.itemsCollected;
 
-        console.error(`[shadow:enrich] ${project.name}: ${newItems.length} new, ${updatedItems.length} updated from ${pr.sources.join(', ') || 'no sources'}`);
+        log.error(`[shadow:enrich] ${project.name}: ${newItems.length} new, ${updatedItems.length} updated from ${pr.sources.join(', ') || 'no sources'}`);
       } catch (e) {
         pr.error = e instanceof Error ? e.message : String(e);
-        console.error(`[shadow:enrich] Project ${ap.projectName} failed:`, pr.error);
+        log.error(`[shadow:enrich] Project ${ap.projectName} failed:`, pr.error);
       }
 
       projectResults.push(pr);
@@ -359,7 +360,7 @@ export async function activityEnrich(
           .join('\n');
 
         if (findingSummaries) {
-          console.error(`[shadow:enrich] Post-analysis: reviewing ${allNewFindings.length} findings for stable knowledge`);
+          log.error(`[shadow:enrich] Post-analysis: reviewing ${allNewFindings.length} findings for stable knowledge`);
           const postResult = await adapter.execute({
             repos: [],
             title: 'Enrichment: memory analysis',
@@ -379,7 +380,7 @@ export async function activityEnrich(
           });
         }
       } catch (e) {
-        console.error('[shadow:enrich] Post-analysis failed:', e instanceof Error ? e.message : e);
+        log.error('[shadow:enrich] Post-analysis failed:', e instanceof Error ? e.message : e);
       }
     }
 
@@ -433,9 +434,9 @@ export async function activityEnrich(
 
     const newItems = db.listEnrichment({ createdSince: phaseStart, limit: 50 });
     totalItems = newItems.length;
-    console.error(`[shadow:enrich] Generic enrichment: ${totalItems} items from ${new Set(newItems.map(i => i.source)).size} sources`);
+    log.error(`[shadow:enrich] Generic enrichment: ${totalItems} items from ${new Set(newItems.map(i => i.source)).size} sources`);
   } catch (e) {
-    console.error('[shadow:enrich] Generic enrichment failed:', e instanceof Error ? e.message : e);
+    log.error('[shadow:enrich] Generic enrichment failed:', e instanceof Error ? e.message : e);
   }
 
   db.expireStaleEnrichment();

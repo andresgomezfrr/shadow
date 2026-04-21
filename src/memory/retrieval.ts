@@ -6,6 +6,7 @@ import { generateAndStoreEmbedding } from './lifecycle.js';
 import { selectAdapter } from '../backend/index.js';
 import { safeParseJson } from '../backend/json-repair.js';
 import { z } from 'zod';
+import { log } from '../log.js';
 
 /**
  * Grace window during which a recently enforced correction stays visible to readers
@@ -282,7 +283,7 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
               // indices or overshoots the candidate array. Silent !candidate
               // check swallowed those; now we log so drift is visible.
               if (decision.index < 0 || decision.index >= candidates.length) {
-                console.error(`[corrections] out-of-range index ${decision.index} (candidates=${candidates.length}) for correction "${correction.title}" — skipping`);
+                log.error(`[corrections] out-of-range index ${decision.index} (candidates=${candidates.length}) for correction "${correction.title}" — skipping`);
                 continue;
               }
               const candidate = candidates[decision.index];
@@ -297,7 +298,7 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
                 // providing the rewrite, leaving the contradiction in place
                 // without signal. Log + skip so the next consolidate retries.
                 if (!decision.editedBody || decision.editedBody.trim().length === 0) {
-                  console.error(`[corrections] 'edit' decision missing editedBody for candidate ${candidate.id.slice(0, 8)} (correction: "${correction.title}") — skipping`);
+                  log.error(`[corrections] 'edit' decision missing editedBody for candidate ${candidate.id.slice(0, 8)} (correction: "${correction.title}") — skipping`);
                   continue;
                 }
                 db.updateMemory(candidate.id, { bodyMd: decision.editedBody });
@@ -311,13 +312,13 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
             }
             enforceSucceeded = true;
           } else {
-            console.error(`[corrections] JSON parse failed for "${correction.title}" — correction stays pending`);
+            log.error(`[corrections] JSON parse failed for "${correction.title}" — correction stays pending`);
           }
         } else {
-          console.error(`[corrections] LLM returned non-success for "${correction.title}" — correction stays pending`);
+          log.error(`[corrections] LLM returned non-success for "${correction.title}" — correction stays pending`);
         }
       } catch (err) {
-        console.error(`[corrections] LLM enforcement failed for "${correction.title}":`, err instanceof Error ? err.message : err);
+        log.error(`[corrections] LLM enforcement failed for "${correction.title}":`, err instanceof Error ? err.message : err);
       }
     }
 
@@ -373,7 +374,7 @@ export async function mergeRelatedMemories(
       deduped++;
     }
   }
-  if (deduped > 0) console.error(`[memory-merge] Deduped ${deduped} exact duplicates`);
+  if (deduped > 0) log.error(`[memory-merge] Deduped ${deduped} exact duplicates`);
 
   // Filter out just-archived duplicates from candidates
   const dedupedCandidates = candidates.filter(m => !dedupArchived.has(m.id));
@@ -540,10 +541,14 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
         db.updateEntityLinks('memories', newMem.id, allEntities as EntityLink[]);
       }
 
-      // Generate embedding for new memory
+      // Generate embedding for new memory. Failure here leaves the merged
+      // memory searchable via FTS but not via vector — log so we notice if
+      // it's happening systematically (model load, transformers runtime).
       try {
         await generateAndStoreEmbedding(db, 'memory', newMem.id, { kind: newMem.kind, title: mergedTitle, bodyMd: mergedBody });
-      } catch { /* best-effort */ }
+      } catch (e) {
+        log.error(`[memory-merge] embedding generation failed for merged memory ${newMem.id.slice(0, 8)}:`, e instanceof Error ? e.message : e);
+      }
 
       // Archive source memories
       for (const m of toMerge) {
@@ -558,9 +563,9 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
       }
 
       merged++;
-      console.error(`[memory-merge] Merged ${toMerge.length} memories → "${mergedTitle}"`);
+      log.error(`[memory-merge] Merged ${toMerge.length} memories → "${mergedTitle}"`);
     } catch (err) {
-      console.error('[memory-merge] LLM call failed:', err instanceof Error ? err.message : err);
+      log.error('[memory-merge] LLM call failed:', err instanceof Error ? err.message : err);
     }
   }
 

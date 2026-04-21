@@ -1,6 +1,7 @@
 import { loadConfig } from './config/load-config.js';
 import { createDatabase } from './storage/database.js';
 import { runHeartbeat } from './analysis/state-machine.js';
+import { log } from './log.js';
 
 const config = loadConfig();
 const db = createDatabase(config);
@@ -13,9 +14,9 @@ try {
     lastHeartbeat: lastHb,
     pendingEventCount: db.listPendingEvents().length,
   });
-  console.log(JSON.stringify(result, null, 2));
+  log.info(JSON.stringify(result, null, 2));
 } catch (e) {
-  console.error('Heartbeat failed:', e);
+  log.error('Heartbeat failed:', e);
 } finally {
   db.close();
 }

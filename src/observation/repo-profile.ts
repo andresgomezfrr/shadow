@@ -7,6 +7,7 @@ import type { ShadowConfig } from '../config/schema.js';
 import { selectAdapter } from '../backend/index.js';
 import { safeParseJson } from '../backend/json-repair.js';
 import { z } from 'zod';
+import { log } from '../log.js';
 
 // ---------------------------------------------------------------------------
 // Git/FS signal gathering (no LLM)
@@ -233,9 +234,9 @@ Be concise. Each field 1-2 lines max. Respond with JSON: { "contextMd": "..." }`
     if (hasTemplate) {
       return { contextMd: result.output.trim(), llmCalls: 1, tokensUsed: tokens };
     }
-    console.error(`[shadow:repo-profile] Parse failed for ${repo.name} and raw output missing **Type**/**Summary**: ${parsed.error}`);
+    log.error(`[shadow:repo-profile] Parse failed for ${repo.name} and raw output missing **Type**/**Summary**: ${parsed.error}`);
   } else {
-    console.error(`[shadow:repo-profile] LLM call failed for ${repo.name}: status=${result.status}`);
+    log.error(`[shadow:repo-profile] LLM call failed for ${repo.name}: status=${result.status}`);
   }
 
   return { contextMd: '', llmCalls: 1, tokensUsed: tokens };
@@ -275,7 +276,7 @@ export async function profileRepos(
     .slice(0, batchSize);
 
   if (candidates.length === 0) {
-    console.error('[shadow:repo-profile] No repos with new commits, skipping');
+    log.error('[shadow:repo-profile] No repos with new commits, skipping');
     return { reposProfiled: 0, llmCalls: 0, tokensUsed: 0, profiledRepoIds: [], profiledRepoNames: [] };
   }
 
@@ -287,7 +288,7 @@ export async function profileRepos(
   for (let i = 0; i < candidates.length; i++) {
     const repo = candidates[i];
     onProgress?.(repo.name, i + 1, candidates.length);
-    console.error(`[shadow:repo-profile] Profiling: ${repo.name}`);
+    log.error(`[shadow:repo-profile] Profiling: ${repo.name}`);
     const signals = gatherRepoSignals(repo);
     const { contextMd, llmCalls, tokensUsed } = await analyzeRepoContext(signals, repo, config, db);
 
@@ -295,7 +296,7 @@ export async function profileRepos(
       db.updateRepo(repo.id, { contextMd, contextUpdatedAt: new Date().toISOString() });
       profiledRepoIds.push(repo.id);
       profiledRepoNames.push(repo.name);
-      console.error(`[shadow:repo-profile] ${repo.name}: ${contextMd.length} chars context saved`);
+      log.error(`[shadow:repo-profile] ${repo.name}: ${contextMd.length} chars context saved`);
     }
 
     db.recordLlmUsage({

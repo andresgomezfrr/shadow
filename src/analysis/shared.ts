@@ -6,6 +6,7 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { EntityLink } from '../storage/models.js';
 
 import type { HeartbeatContext } from './state-machine.js';
+import { log } from '../log.js';
 
 // --- Entity auto-linking ---
 
@@ -121,7 +122,7 @@ export function cleanupRotating(rotatingPath: string | null): void {
     // leftovers older than 24h (audit A-07).
     const errno = (e as NodeJS.ErrnoException).code;
     if (errno !== 'ENOENT') {
-      console.error(`[shared] failed to unlink ${rotatingPath}: ${errno ?? 'unknown'}`);
+      log.error(`[shared] failed to unlink ${rotatingPath}: ${errno ?? 'unknown'}`);
     }
   }
 }
@@ -146,14 +147,14 @@ export function purgeStaleRotatingFiles(dataDir: string, maxAgeMs = 24 * 60 * 60
         if (stat.mtimeMs < cutoff) {
           unlinkSync(full);
           purged++;
-          console.error(`[shared] purged stale rotating file: ${name} (age ${Math.round((Date.now() - stat.mtimeMs) / 3_600_000)}h)`);
+          log.error(`[shared] purged stale rotating file: ${name} (age ${Math.round((Date.now() - stat.mtimeMs) / 3_600_000)}h)`);
         }
       } catch (e) {
-        console.error(`[shared] failed to stat/unlink ${name}:`, e instanceof Error ? e.message : e);
+        log.error(`[shared] failed to stat/unlink ${name}:`, e instanceof Error ? e.message : e);
       }
     }
   } catch (e) {
-    console.error('[shared] failed to read dataDir for rotating sweep:', e instanceof Error ? e.message : e);
+    log.error('[shared] failed to read dataDir for rotating sweep:', e instanceof Error ? e.message : e);
   }
   return purged;
 }

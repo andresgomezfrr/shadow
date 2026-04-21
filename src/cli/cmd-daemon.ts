@@ -7,6 +7,7 @@ import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { printOutput } from './output.js';
 import { JOB_TYPES } from '../daemon/job-types.js';
+import { log } from '../log.js';
 
 function parseLatestSemver(tagOutput: string): string | null {
   const tags = tagOutput
@@ -192,7 +193,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         config,
         execSync,
         plistPath,
-        log: json ? undefined : (msg) => console.error(msg),
+        log: json ? undefined : (msg) => log.error(msg),
       });
 
       const messages: Record<StopResult, string> = {
@@ -215,7 +216,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         config,
         execSync,
         plistPath,
-        log: json ? undefined : (msg) => console.error(msg),
+        log: json ? undefined : (msg) => log.error(msg),
       });
 
       if (!existsSync(plistPath)) {
@@ -256,7 +257,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         config,
         execSync,
         plistPath: PLIST_PATH,
-        log: json ? undefined : (msg) => console.error(msg),
+        log: json ? undefined : (msg) => log.error(msg),
       });
 
       const runner = resolveDaemonRunner();
@@ -297,12 +298,12 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
     .action((type: string) => {
       if (type === 'list') {
         const lines = Object.entries(JOB_TYPES).map(([t, info]) => `  ${t.padEnd(24)} ${info.description}`);
-        console.log('Available job types:\n' + lines.join('\n'));
+        log.info('Available job types:\n' + lines.join('\n'));
         return;
       }
       const info = JOB_TYPES[type];
       if (!info) {
-        console.error(`Unknown job type: ${type}\nRun "shadow job list" to see available types.`);
+        log.error(`Unknown job type: ${type}\nRun "shadow job list" to see available types.`);
         process.exit(1);
       }
       withDb((db, json) => {
@@ -355,10 +356,10 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         readFileSync(join(projectRoot, 'package.json'), 'utf8'),
       ).version;
 
-      console.error(`Current version: v${currentVersion}`);
+      log.error(`Current version: v${currentVersion}`);
 
       // Fetch tags + branches
-      console.error('Fetching updates...');
+      log.error('Fetching updates...');
       try {
         execSync('git fetch --tags origin', { cwd: projectRoot, stdio: 'pipe' });
       } catch {
@@ -394,10 +395,10 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         targetLabel = latest;
       }
 
-      console.error(`Upgrading to ${targetLabel}...`);
+      log.error(`Upgrading to ${targetLabel}...`);
 
       // Stop daemon
-      console.error('Stopping daemon...');
+      log.error('Stopping daemon...');
       const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
       await gracefulStopDaemon({ config, execSync, plistPath });
 
@@ -410,19 +411,19 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       }
 
       // Rebuild
-      console.error('Installing dependencies...');
+      log.error('Installing dependencies...');
       execSync('npm install --loglevel=error', { cwd: projectRoot, stdio: 'inherit' });
       execSync('npm run dashboard:install --loglevel=error', { cwd: projectRoot, stdio: 'inherit' });
 
-      console.error('Building...');
+      log.error('Building...');
       execSync('npm run build', { cwd: projectRoot, stdio: 'inherit' });
 
       // Re-init (regenerate hooks, settings)
-      console.error('Re-initializing...');
+      log.error('Re-initializing...');
       execSync('node dist/cli.js init', { cwd: projectRoot, stdio: 'inherit', input: '' });
 
       // Start daemon
-      console.error('Starting daemon...');
+      log.error('Starting daemon...');
       if (existsSync(plistPath)) {
         try {
           execSync(`launchctl bootstrap gui/$(id -u) ${plistPath} 2>/dev/null || launchctl kickstart gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });

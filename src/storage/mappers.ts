@@ -24,6 +24,7 @@ import type {
   UnlockableRecord,
   UserProfileRecord,
 } from './models.js';
+import { log } from '../log.js';
 
 // --- Primitive types ---
 
@@ -74,7 +75,7 @@ export function jsonParse<T>(v: unknown, fallback: T, ctx?: string): T {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const preview = String(v).slice(0, 80).replace(/\s+/g, ' ');
-    console.error(`[mappers] jsonParse fallback${ctx ? ` at ${ctx}` : ''}: ${msg} — value='${preview}'`);
+    log.error(`[mappers] jsonParse fallback${ctx ? ` at ${ctx}` : ''}: ${msg} — value='${preview}'`);
     return fallback;
   }
 }

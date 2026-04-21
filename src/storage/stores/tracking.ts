@@ -15,6 +15,7 @@ import {
   mapAuditEvent,
   mapLlmUsage,
 } from '../mappers.js';
+import { log } from '../../log.js';
 
 // --- Interactions ---
 
@@ -41,7 +42,7 @@ export function createInteraction(db: DatabaseSync, input: { interface: string; 
   try {
     db.prepare('UPDATE user_profile SET total_interactions = total_interactions + 1').run();
   } catch (e) {
-    console.error('[tracking] profile counter update failed:', e instanceof Error ? e.message : e);
+    log.error('[tracking] profile counter update failed:', e instanceof Error ? e.message : e);
   }
   return getInteraction(db, id)!;
 }

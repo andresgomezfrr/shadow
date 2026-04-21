@@ -1,5 +1,6 @@
 import type { JobContext, JobHandlerResult, DaemonSharedState } from '../job-handlers.js';
 import { errorHint, classifyError } from '../job-handlers.js';
+import { log } from '../../log.js';
 
 export async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedState): Promise<JobHandlerResult> {
   ctx.setPhase('remote-sync');
@@ -24,7 +25,7 @@ export async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedStat
     const minGapMs = 2 * 60 * 60 * 1000; // 2h minimum between profiles
     if (gapMs >= minGapMs) {
       ctx.db.enqueueJob('repo-profile', { priority: 3, triggerSource: 'reactive' });
-      console.error(`[daemon] Reactive repo-profile triggered: ${withChanges.length} repos with changes`);
+      log.error(`[daemon] Reactive repo-profile triggered: ${withChanges.length} repos with changes`);
     }
   }
 
@@ -64,7 +65,7 @@ export async function handleRepoProfile(ctx: JobContext, shared: DaemonSharedSta
           .filter(j => (j.result as Record<string, unknown>)?.repoId === repoId);
         if (prevDeepScans.length === 0 && !ctx.db.hasQueuedOrRunningWithParams('suggest-deep', 'repoId', repoId)) {
           ctx.db.enqueueJob('suggest-deep', { priority: 6, triggerSource: 'first-scan', params: { repoId } });
-          console.error(`[daemon] First-time suggest-deep triggered for repo ${repoId.slice(0, 8)}`);
+          log.error(`[daemon] First-time suggest-deep triggered for repo ${repoId.slice(0, 8)}`);
           break; // one at a time
         }
       }
@@ -85,7 +86,7 @@ export async function handleRepoProfile(ctx: JobContext, shared: DaemonSharedSta
           const gap = lastPp ? Date.now() - new Date(lastPp.startedAt).getTime() : Infinity;
           if (gap >= ctx.config.projectProfileMinGapMs) {
             ctx.db.enqueueJob('project-profile', { priority: 4, triggerSource: 'reactive', params: { projectId: project.id } });
-            console.error(`[daemon] Reactive project-profile triggered for ${project.name}`);
+            log.error(`[daemon] Reactive project-profile triggered for ${project.name}`);
             break;
           }
         }
@@ -223,7 +224,7 @@ Be concise. Each field 1-3 lines max. Respond with JSON: { "contextMd": "..." }`
     if (parsed.success) {
       ctx.db.updateProject(projectId, { contextMd: parsed.data.contextMd, contextUpdatedAt: new Date().toISOString() });
     } else {
-      console.error(`[project-profile] skipped update for ${project.name} — ${parsed.error}`);
+      log.error(`[project-profile] skipped update for ${project.name} — ${parsed.error}`);
     }
   }
 

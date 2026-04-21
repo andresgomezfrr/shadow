@@ -1,23 +1,25 @@
+import { log } from '../log.js';
+
 export function printOutput(value: unknown, json: boolean): void {
   if (json) {
-    console.log(JSON.stringify(value, null, 2));
+    log.info(JSON.stringify(value, null, 2));
     return;
   }
 
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      console.log('No results.');
+      log.info('No results.');
       return;
     }
 
     for (const item of value) {
-      console.log(renderHuman(item));
-      console.log('---');
+      log.info(renderHuman(item));
+      log.info('---');
     }
     return;
   }
 
-  console.log(renderHuman(value));
+  log.info(renderHuman(value));
 }
 
 function renderHuman(value: unknown): string {

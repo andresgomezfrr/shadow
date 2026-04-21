@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ShadowDatabase } from '../../storage/database.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 import { json, clampLimit } from '../helpers.js';
+import { log } from '../../log.js';
 
 const LOOKUP_TYPES = ['memory', 'observation', 'suggestion', 'run', 'task', 'project', 'system', 'repo', 'contact'] as const;
 const LookupTypeSchema = z.enum(LOOKUP_TYPES);
@@ -60,7 +61,7 @@ export async function handleSearchRoutes(
         case 'contact': record = db.getContact(id); break;
       }
     } catch (e) {
-      console.error('[lookup]', e instanceof Error ? e.message : e);
+      log.error('[lookup]', e instanceof Error ? e.message : e);
       return json(res, { error: 'lookup failed' }, 500), true;
     }
     if (!record) return json(res, { error: 'not found' }, 404), true;
@@ -102,7 +103,7 @@ export async function handleSearchRoutes(
     }
     if (items.length > 0) groups.push({ type: 'memory', label: 'Memories', items });
   } catch (e) {
-    console.error('[search] memories:', e instanceof Error ? e.message : e);
+    log.error('[search] memories:', e instanceof Error ? e.message : e);
   }
 
   // Observations
@@ -132,7 +133,7 @@ export async function handleSearchRoutes(
     }
     if (items.length > 0) groups.push({ type: 'observation', label: 'Observations', items });
   } catch (e) {
-    console.error('[search] observations:', e instanceof Error ? e.message : e);
+    log.error('[search] observations:', e instanceof Error ? e.message : e);
   }
 
   // Suggestions
@@ -152,7 +153,7 @@ export async function handleSearchRoutes(
     }
     if (items.length > 0) groups.push({ type: 'suggestion', label: 'Suggestions', items });
   } catch (e) {
-    console.error('[search] suggestions:', e instanceof Error ? e.message : e);
+    log.error('[search] suggestions:', e instanceof Error ? e.message : e);
   }
 
   // --- Structural entities (SQL LIKE / in-memory filter) ---
@@ -172,7 +173,7 @@ export async function handleSearchRoutes(
     }));
     if (items.length > 0) groups.push({ type: 'task', label: 'Tasks', items });
   } catch (e) {
-    console.error('[search] tasks:', e instanceof Error ? e.message : e);
+    log.error('[search] tasks:', e instanceof Error ? e.message : e);
   }
 
   // Runs — LIKE on prompt
@@ -188,7 +189,7 @@ export async function handleSearchRoutes(
     }));
     if (items.length > 0) groups.push({ type: 'run', label: 'Runs', items });
   } catch (e) {
-    console.error('[search] runs:', e instanceof Error ? e.message : e);
+    log.error('[search] runs:', e instanceof Error ? e.message : e);
   }
 
   // Projects — in-memory filter
@@ -205,7 +206,7 @@ export async function handleSearchRoutes(
       }));
     if (items.length > 0) groups.push({ type: 'project', label: 'Projects', items });
   } catch (e) {
-    console.error('[search] projects:', e instanceof Error ? e.message : e);
+    log.error('[search] projects:', e instanceof Error ? e.message : e);
   }
 
   // Systems — in-memory filter
@@ -222,7 +223,7 @@ export async function handleSearchRoutes(
       }));
     if (items.length > 0) groups.push({ type: 'system', label: 'Systems', items });
   } catch (e) {
-    console.error('[search] systems:', e instanceof Error ? e.message : e);
+    log.error('[search] systems:', e instanceof Error ? e.message : e);
   }
 
   // Repos — in-memory filter
@@ -239,7 +240,7 @@ export async function handleSearchRoutes(
       }));
     if (items.length > 0) groups.push({ type: 'repo', label: 'Repos', items });
   } catch (e) {
-    console.error('[search] repos:', e instanceof Error ? e.message : e);
+    log.error('[search] repos:', e instanceof Error ? e.message : e);
   }
 
   // Contacts — in-memory filter
@@ -256,7 +257,7 @@ export async function handleSearchRoutes(
       }));
     if (items.length > 0) groups.push({ type: 'contact', label: 'Team', items });
   } catch (e) {
-    console.error('[search] contacts:', e instanceof Error ? e.message : e);
+    log.error('[search] contacts:', e instanceof Error ? e.message : e);
   }
 
   return json(res, { groups }), true;

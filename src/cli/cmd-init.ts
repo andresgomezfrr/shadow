@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, chmod
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { log } from '../log.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -114,7 +115,7 @@ ${endMarker}`;
           // Existing block — check if content changed
           const existingBlock = claudeMdContent.slice(startIdx, endIdx + endMarker.length);
           if (existingBlock === shadowSection) {
-            console.error('[init] CLAUDE.md Shadow section already up to date');
+            log.error('[init] CLAUDE.md Shadow section already up to date');
           } else {
             // Content differs — ask for confirmation (auto-accept in non-interactive mode)
             let answer = '';
@@ -132,16 +133,16 @@ ${endMarker}`;
                 shadowSection +
                 claudeMdContent.slice(endIdx + endMarker.length);
               writeFileSync(claudeMdPath, claudeMdContent, 'utf8');
-              console.error('[init] CLAUDE.md Shadow section updated');
+              log.error('[init] CLAUDE.md Shadow section updated');
             } else {
-              console.error('[init] CLAUDE.md Shadow section skipped');
+              log.error('[init] CLAUDE.md Shadow section skipped');
             }
           }
         } else {
           // First time — append without confirmation
           claudeMdContent = claudeMdContent.trimEnd() + '\n\n' + shadowSection + '\n';
           writeFileSync(claudeMdPath, claudeMdContent, 'utf8');
-          console.error('[init] CLAUDE.md Shadow section added');
+          log.error('[init] CLAUDE.md Shadow section added');
         }
 
         // Deploy hook scripts from scripts/ (single source of truth — edit there, not here)
@@ -172,10 +173,10 @@ ${endMarker}`;
             copyFileSync(src, dest);
             chmodSync(dest, '755');
           } else {
-            console.error(`[init] WARNING: scripts/${name} not found, skipping`);
+            log.error(`[init] WARNING: scripts/${name} not found, skipping`);
           }
         }
-        console.error('[init] hook scripts deployed from scripts/');
+        log.error('[init] hook scripts deployed from scripts/');
 
         // Update ~/.claude/settings.json with hooks and statusLine
         const settingsPath = resolve(homedir(), '.claude', 'settings.json');
@@ -239,7 +240,7 @@ ${endMarker}`;
         const mcpServers = (settings.mcpServers ?? {}) as Record<string, unknown>;
         if ('shadow' in mcpServers) {
           delete mcpServers.shadow;
-          console.error('[init] Removed legacy MCP entry from settings.json');
+          log.error('[init] Removed legacy MCP entry from settings.json');
         }
         settings.mcpServers = mcpServers;
 
@@ -325,7 +326,7 @@ ${endMarker}`;
           const existing = execSync(`${claudeBin} mcp get shadow 2>&1`, { encoding: 'utf8', timeout: 10000 }).trim();
           if (existing.includes('Status:')) {
             mcpResult = { mcp: 'already registered' };
-            console.error('[init] MCP server shadow already registered');
+            log.error('[init] MCP server shadow already registered');
           } else {
             throw new Error('not found');
           }
@@ -338,11 +339,11 @@ ${endMarker}`;
               { encoding: 'utf8', timeout: 10000 },
             );
             mcpResult = { mcp: 'registered via claude mcp add' };
-            console.error('[init] MCP server shadow registered via claude mcp add');
+            log.error('[init] MCP server shadow registered via claude mcp add');
           } catch (e) {
             mcpResult = { mcp: 'failed to register', error: String(e) };
-            console.error('[init] Failed to register MCP server — Claude CLI may not be installed');
-            console.error('[init] Run manually: claude mcp add --transport http -s user shadow http://localhost:3700/api/mcp');
+            log.error('[init] Failed to register MCP server — Claude CLI may not be installed');
+            log.error('[init] Run manually: claude mcp add --transport http -s user shadow http://localhost:3700/api/mcp');
           }
         }
 

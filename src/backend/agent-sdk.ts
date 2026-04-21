@@ -1,5 +1,6 @@
 import type { ShadowConfig } from '../config/load-config.js';
 import type { BackendAdapter, BackendDoctorResult, BackendExecutionResult, ObjectivePack } from './types.js';
+import { log } from '../log.js';
 
 /**
  * Claude Agent SDK adapter.
@@ -37,7 +38,7 @@ export class AgentSdkAdapter implements BackendAdapter {
       if (pack.disallowedTools?.length) {
         const builtinDenies = pack.disallowedTools.filter((d) => !d.includes('__') && !d.endsWith('*'));
         if (builtinDenies.length > 0) {
-          console.error(
+          log.error(
             `[agent-sdk] Built-in tools cannot be denied via allowedTools filter (backend=api): ${builtinDenies.join(', ')}`,
           );
         }

@@ -2,6 +2,7 @@ import { execFile as _execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { JobContext, JobHandlerResult, DaemonSharedState } from '../job-handlers.js';
 import type { RunRecord } from '../../storage/models.js';
+import { log } from '../../log.js';
 
 const execFile = promisify(_execFile);
 
@@ -24,7 +25,7 @@ export async function handlePrSync(ctx: JobContext, shared: DaemonSharedState): 
   ctx.setPhase('pr-sync');
 
   if (!shared.networkAvailable) {
-    console.error('[pr-sync] Skipping — network unavailable');
+    log.error('[pr-sync] Skipping — network unavailable');
     return {
       llmCalls: 0, tokensUsed: 0, phases: ['pr-sync'],
       result: { runsChecked: 0, merged: 0, closed: 0, stillOpen: 0, errors: 0, skipped: 'network_unavailable', processed: [] },
@@ -45,7 +46,7 @@ export async function handlePrSync(ctx: JobContext, shared: DaemonSharedState): 
     for (const result of results) {
       if (result.kind === 'skip') continue;
       if (result.kind === 'error') {
-        console.error(`[pr-sync] Failed to check PR for run ${result.runId.slice(0, 8)}: ${result.error}`);
+        log.error(`[pr-sync] Failed to check PR for run ${result.runId.slice(0, 8)}: ${result.error}`);
         errors++;
         processed.push({ runId: result.runId, action: 'error', error: result.error.slice(0, 200) });
         continue;
@@ -82,7 +83,7 @@ export async function handlePrSync(ctx: JobContext, shared: DaemonSharedState): 
     }
   }
 
-  console.error(`[pr-sync] Checked ${awaitingRuns.length} runs: ${merged} merged, ${closed} closed, ${stillOpen} still open, ${errors} errors`);
+  log.error(`[pr-sync] Checked ${awaitingRuns.length} runs: ${merged} merged, ${closed} closed, ${stillOpen} still open, ${errors} errors`);
   return {
     llmCalls: 0,
     tokensUsed: 0,

@@ -4,6 +4,7 @@ import type { RunRecord } from '../storage/models.js';
 import type { EventBus } from '../web/event-bus.js';
 import { killAllActiveChildren } from '../backend/claude-cli.js';
 import { RunnerService } from './service.js';
+import { log } from '../log.js';
 
 type ActiveRun = {
   runId: string;
@@ -81,7 +82,7 @@ export class RunQueue {
     const runner = new RunnerService(this.config, this.db, this.eventBus);
 
     const promise = runner.processRun(run.id).then(() => {}).catch((err) => {
-      console.error(`[run-queue] Run ${run.id.slice(0, 8)} error:`, err instanceof Error ? err.message : err);
+      log.error(`[run-queue] Run ${run.id.slice(0, 8)} error:`, err instanceof Error ? err.message : err);
     }).finally(() => {
       this.active.delete(run.id);
     });
@@ -91,7 +92,7 @@ export class RunQueue {
 
   async drainAll(timeoutMs = 60_000): Promise<void> {
     if (this.active.size === 0) return;
-    console.error(`[run-queue] Draining ${this.active.size} active runs (max ${Math.round(timeoutMs / 1000)}s)...`);
+    log.error(`[run-queue] Draining ${this.active.size} active runs (max ${Math.round(timeoutMs / 1000)}s)...`);
     const promises = [...this.active.values()].map((a) => a.promise);
     await Promise.race([
       Promise.allSettled(promises),

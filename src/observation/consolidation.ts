@@ -1,5 +1,6 @@
 import type { ShadowDatabase } from '../storage/database.js';
 import { embed, embeddingText } from '../memory/embeddings.js';
+import { log } from '../log.js';
 
 const MERGE_THRESHOLD = 0.65; // Cosine similarity above which observations are merged
 
@@ -84,7 +85,7 @@ export async function consolidateObservations(db: ShadowDatabase): Promise<numbe
       resolved.add(loser.id);
       merged++;
 
-      console.error(`[shadow:obs-consolidate] Merged "${loser.title.slice(0, 50)}" → "${keeper.title.slice(0, 50)}" (${(similarity * 100).toFixed(0)}%)`);
+      log.error(`[shadow:obs-consolidate] Merged "${loser.title.slice(0, 50)}" → "${keeper.title.slice(0, 50)}" (${(similarity * 100).toFixed(0)}%)`);
     }
   }
 

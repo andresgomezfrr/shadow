@@ -1,5 +1,6 @@
 import type { JobContext, JobHandlerResult, DaemonSharedState } from '../job-handlers.js';
 import { loadAutonomyConfig, effortWithinLimit } from '../../autonomy/rules.js';
+import { log } from '../../log.js';
 
 // ---------------------------------------------------------------------------
 // Auto-Plan Job
@@ -50,7 +51,7 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
     };
   }
 
-  console.error(`[auto-plan] ${candidates.length} candidates after filtering (from ${allOpen.length} open)`);
+  log.error(`[auto-plan] ${candidates.length} candidates after filtering (from ${allOpen.length} open)`);
 
   // --- Phase: revalidating (LLM per candidate) ---
   ctx.setPhase('revalidating');
@@ -139,7 +140,7 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
         await dismissSuggestion(ctx.db, suggestion.id, `Auto-dismissed: ${parsed.data.reason}`, 'not_applicable');
         autoDismissed++;
         resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'dismissed', reason: parsed.data.reason });
-        console.error(`[auto-plan] Dismissed: "${suggestion.title}" — ${parsed.data.reason}`);
+        log.error(`[auto-plan] Dismissed: "${suggestion.title}" — ${parsed.data.reason}`);
         continue;
       }
 
@@ -149,13 +150,13 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
       if (accepted.ok && accepted.runCreated) {
         autoPlanned++;
         resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'planned', reason: accepted.runCreated });
-        console.error(`[auto-plan] Planned: "${suggestion.title}" → run ${accepted.runCreated.slice(0, 8)}`);
+        log.error(`[auto-plan] Planned: "${suggestion.title}" → run ${accepted.runCreated.slice(0, 8)}`);
       } else {
         skipped++;
         resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skip', reason: 'accept failed' });
       }
     } catch (e) {
-      console.error(`[auto-plan] Error processing "${suggestion.title}":`, e instanceof Error ? e.message : e);
+      log.error(`[auto-plan] Error processing "${suggestion.title}":`, e instanceof Error ? e.message : e);
       skipped++;
       resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'skip', reason: e instanceof Error ? e.message : 'unknown error' });
     }
@@ -249,7 +250,7 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
     };
   }
 
-  console.error(`[auto-execute] ${candidates.length} candidates after filtering (from ${plannedRuns.length} planned)`);
+  log.error(`[auto-execute] ${candidates.length} candidates after filtering (from ${plannedRuns.length} planned)`);
 
   // --- Phase: executing ---
   ctx.setPhase('executing');
@@ -291,7 +292,7 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
           doubts: run.doubts,
         },
       });
-      console.error(`[auto-execute] Needs review: run ${run.id.slice(0, 8)} — ${reason}`);
+      log.error(`[auto-execute] Needs review: run ${run.id.slice(0, 8)} — ${reason}`);
       continue;
     }
 
@@ -312,9 +313,9 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
       ctx.db.updateRun(run.id, { autoEvalAt: now });
       autoExecuted++;
       allEntries.push({ runId: run.id, title, action: 'auto_executed' });
-      console.error(`[auto-execute] Executing: run ${run.id.slice(0, 8)} → child ${childRun.id.slice(0, 8)}`);
+      log.error(`[auto-execute] Executing: run ${run.id.slice(0, 8)} → child ${childRun.id.slice(0, 8)}`);
     } catch (e) {
-      console.error(`[auto-execute] Failed to create execution run for ${run.id.slice(0, 8)}:`, e instanceof Error ? e.message : e);
+      log.error(`[auto-execute] Failed to create execution run for ${run.id.slice(0, 8)}:`, e instanceof Error ? e.message : e);
       ctx.db.updateRun(run.id, { autoEvalAt: now });
       filtered++;
       allEntries.push({ runId: run.id, title, action: 'error', reason: e instanceof Error ? e.message : String(e) });

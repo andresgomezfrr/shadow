@@ -20,6 +20,7 @@ import { handleSearchRoutes } from './routes/search.js';
 import { handleChronicleRoutes } from './routes/chronicle.js';
 import { handleWorkspaceRoutes } from './routes/workspace.js';
 import { handleTaskRoutes } from './routes/tasks.js';
+import { log } from '../log.js';
 
 const MUTATING_TOOLS = new Set([
   'shadow_memory_teach', 'shadow_memory_forget', 'shadow_memory_update', 'shadow_correct',
@@ -226,14 +227,14 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
       const indexHtml = readFileSync(legacyHtmlPath, 'utf8');
       html(res, indexHtml);
     } catch (err) {
-      console.error('Shadow web error:', err);
+      log.error('Shadow web error:', err);
       json(res, { error: 'Internal server error' }, 500);
     }
   });
 
   return new Promise<{ close: () => Promise<void> }>((resolve) => {
     server.listen(port, host, () => {
-      console.log(`Shadow dashboard: http://${host}:${port}`);
+      log.info(`Shadow dashboard: http://${host}:${port}`);
       resolve({
         // Stop accepting new connections and wait for in-flight to drain.
         // The caller is responsible for db.close() — we no longer touch the DB
@@ -243,7 +244,7 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
         close: () => new Promise<void>((done) => {
           try {
             server.close((err) => {
-              if (err) console.error('[web] server.close error:', err.message);
+              if (err) log.error('[web] server.close error:', err.message);
               done();
             });
           } catch { done(); }

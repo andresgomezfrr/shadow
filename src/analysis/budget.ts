@@ -1,5 +1,6 @@
 import type { ShadowDatabase } from '../storage/database.js';
 import { DAILY_TOKEN_BUDGET_PREF_KEY, DAILY_TOKEN_BUDGET_DEFAULT } from '../config/schema.js';
+import { log } from '../log.js';
 
 /**
  * Daily token budget gate (audit A-10). Non-critical jobs call this before
@@ -58,7 +59,7 @@ export function budgetSkipIfExceeded(
   const status = getBudgetStatus(db);
   if (!status.exceeded) return null;
   const pct = status.budget > 0 ? Math.round((status.used / status.budget) * 100) : 0;
-  console.error(
+  log.error(
     `[budget] skipping ${jobName} — daily token budget exceeded (`
     + `used=${status.used}/${status.budget}, ${pct}%)`,
   );

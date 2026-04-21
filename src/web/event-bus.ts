@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'node:http';
+import { log } from '../log.js';
 
 export type SSEEvent = {
   type: string;
@@ -45,7 +46,7 @@ export class EventBus {
           // TCP send buffer is full — client is slow or stalled. Kick it;
           // EventSource will reconnect cleanly instead of us holding an
           // unbounded in-memory queue (audit W-06).
-          console.error('[event-bus] dropping slow SSE client (write backpressure)');
+          log.error('[event-bus] dropping slow SSE client (write backpressure)');
           try { client.end(); } catch { /* best-effort */ }
           this.removeClient(client);
         }

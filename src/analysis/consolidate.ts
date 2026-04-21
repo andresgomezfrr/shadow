@@ -12,6 +12,7 @@ import { budgetSkipIfExceeded } from './budget.js';
 
 import type { HeartbeatContext } from './state-machine.js';
 import { getModel } from './shared.js';
+import { log } from '../log.js';
 
 const MetaPatternSchema = z.object({
   title: z.string().min(1),
@@ -112,7 +113,7 @@ export async function activityConsolidate(
       if (result.status === 'success' && result.output) {
         const parsed = safeParseJson(result.output, ConsolidateSchema, 'consolidate');
         if (!parsed.success) {
-          console.error('[shadow:consolidate] Failed to parse LLM output — skipping meta-pattern detection this tick');
+          log.error('[shadow:consolidate] Failed to parse LLM output — skipping meta-pattern detection this tick');
         } else {
           for (const pattern of parsed.data.metaPatterns) {
             try {
@@ -121,7 +122,7 @@ export async function activityConsolidate(
                   kind: 'meta_pattern', title: pattern.title, bodyMd: pattern.bodyMd,
                 });
                 if (decision.action === 'skip') {
-                  console.error(`[shadow:consolidate] Skip duplicate meta_pattern: ${pattern.title}`);
+                  log.error(`[shadow:consolidate] Skip duplicate meta_pattern: ${pattern.title}`);
                   continue;
                 }
                 if (decision.action === 'update') {
@@ -130,7 +131,7 @@ export async function activityConsolidate(
                   if (merged) {
                     await generateAndStoreEmbedding(ctx.db, 'memory', merged.id, { kind: merged.kind, title: merged.title, bodyMd: merged.bodyMd });
                   }
-                  console.error(`[shadow:consolidate] Updated existing meta_pattern: ${pattern.title}`);
+                  log.error(`[shadow:consolidate] Updated existing meta_pattern: ${pattern.title}`);
                   continue;
                 }
 
@@ -161,22 +162,22 @@ export async function activityConsolidate(
                   ctx.db.updateMemory(mem.id, { archivedAt: new Date().toISOString() });
                   ctx.db.deleteEmbedding('memory_vectors', mem.id);
                   ctx.db.createFeedback({ targetKind: 'memory', targetId: mem.id, action: 'consolidated', note: `merged into meta_pattern: ${pattern.title}` });
-                  console.error(`[shadow:consolidate] Archived hot source: ${mem.title}`);
+                  log.error(`[shadow:consolidate] Archived hot source: ${mem.title}`);
                 }
             } catch (e) {
-              console.error(`[shadow:consolidate] Meta-pattern failed: ${pattern.title}:`, e instanceof Error ? e.message : e);
+              log.error(`[shadow:consolidate] Meta-pattern failed: ${pattern.title}:`, e instanceof Error ? e.message : e);
             }
           }
         }
       }
     } catch (e) {
-      console.error('[shadow:consolidate] LLM call failed:', e instanceof Error ? e.message : e);
+      log.error('[shadow:consolidate] LLM call failed:', e instanceof Error ? e.message : e);
     }
   }
 
   // Step 3: Synthesize knowledge_summary (narrative present-state memory)
   const knowledgeSummary: KnowledgeSummaryResult = await synthesizeKnowledgeSummary(ctx).catch((e) => {
-    console.error('[shadow:consolidate] knowledgeSummary synthesis failed:', e instanceof Error ? e.message : e);
+    log.error('[shadow:consolidate] knowledgeSummary synthesis failed:', e instanceof Error ? e.message : e);
     return { action: 'skipped', reason: 'error during synthesis' };
   });
   llmCalls += knowledgeSummary.llmCalls ?? 0;
@@ -190,7 +191,7 @@ export async function activityConsolidate(
         knowledgeSummary.clustered = clustered;
       }
     } catch (e) {
-      console.error('[shadow:consolidate] cluster merge failed:', e instanceof Error ? e.message : e);
+      log.error('[shadow:consolidate] cluster merge failed:', e instanceof Error ? e.message : e);
     }
   }
 
@@ -493,7 +494,11 @@ function filterValidEntities(
     try {
       const row = ctx.db.rawDb.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(e.id);
       if (row) valid.push({ type: e.type, id: e.id });
-    } catch { /* ignore */ }
+    } catch (err) {
+      // Table might not exist on fresh install, or SQL error — log and skip,
+      // don't silently discard entities (audit O-01).
+      log.error(`[consolidate] entity validation query failed for ${e.type}:${e.id.slice(0, 8)} on table ${table}:`, err instanceof Error ? err.message : err);
+    }
   }
   return valid;
 }

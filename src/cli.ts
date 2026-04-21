@@ -18,6 +18,7 @@ import { registerProfileCommands } from './cli/cmd-profile.js';
 import { registerMiscCommands } from './cli/cmd-misc.js';
 import { registerTaskCommands } from './cli/cmd-tasks.js';
 import { registerDocsCommands } from './cli/cmd-docs.js';
+import { log } from './log.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = join(__dirname, '..', 'package.json');
@@ -55,6 +56,6 @@ registerTaskCommands(program, config, withDb);
 registerDocsCommands(program);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  log.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

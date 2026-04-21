@@ -17,6 +17,7 @@ import { readRunPid, isPidAlive, clearRunPid } from '../runner/pidfile.js';
 import { JobQueue } from './job-queue.js';
 import { buildHandlerRegistry } from './job-handlers.js';
 import type { DaemonSharedState } from './job-handlers.js';
+import { log } from '../log.js';
 
 // --- Types ---
 
@@ -305,10 +306,10 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       if (shouldReset) {
         const { resetBondState } = await import('../profile/bond.js');
         resetBondState(db);
-        console.error('[bond] v49 reset applied — bond starts at tier 1 (memories preserved)');
+        log.error('[bond] v49 reset applied — bond starts at tier 1 (memories preserved)');
       }
     } catch (e) {
-      console.error('[bond] v49 reset hook failed:', e);
+      log.error('[bond] v49 reset hook failed:', e);
     }
 
     // Step 3b: Initialize shared state arrays + DaemonSharedState (needed by web server)
@@ -343,12 +344,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       // cleanly (code 0) so launchd's KeepAlive: { Crashed: true } does
       // NOT trigger a restart loop on a persistent error like EADDRINUSE.
       const e = err as NodeJS.ErrnoException;
-      console.error(`[daemon] FATAL: web server failed to start on :3700`);
-      console.error(`[daemon] ${e?.message ?? String(err)}`);
+      log.error(`[daemon] FATAL: web server failed to start on :3700`);
+      log.error(`[daemon] ${e?.message ?? String(err)}`);
       if (e?.code === 'EADDRINUSE') {
-        console.error(`[daemon] Port 3700 is already in use — likely an orphan`);
-        console.error(`[daemon] from a previous shadow instance. Run:`);
-        console.error(`[daemon]   shadow daemon stop && shadow daemon start`);
+        log.error(`[daemon] Port 3700 is already in use — likely an orphan`);
+        log.error(`[daemon] from a previous shadow instance. Run:`);
+        log.error(`[daemon]   shadow daemon stop && shadow daemon start`);
       }
       if (db) try { db.close(); } catch { /* best-effort */ }
       removePidFile(config);
@@ -451,7 +452,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
             durationMs: age,
             finishedAt: new Date().toISOString(),
           });
-          console.error(`[daemon] Marked stale job ${job.type}/${job.id.slice(0, 8)} as failed (${Math.round(age / 60000)}m)`);
+          log.error(`[daemon] Marked stale job ${job.type}/${job.id.slice(0, 8)} as failed (${Math.round(age / 60000)}m)`);
         }
       }
     }
@@ -467,7 +468,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           durationMs: age,
           finishedAt: new Date().toISOString(),
         });
-        console.error(`[daemon] Marked orphaned job ${job.type}/${job.id.slice(0, 8)} as failed (daemon restart)`);
+        log.error(`[daemon] Marked orphaned job ${job.type}/${job.id.slice(0, 8)} as failed (daemon restart)`);
       }
       const runningRuns = _db.listRuns({ status: 'running' });
       for (const run of runningRuns) {
@@ -476,7 +477,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           errorSummary: 'orphaned — daemon restarted',
           finishedAt: new Date().toISOString(),
         });
-        console.error(`[daemon] Marked orphaned run ${run.id.slice(0, 8)} as failed (daemon restart)`);
+        log.error(`[daemon] Marked orphaned run ${run.id.slice(0, 8)} as failed (daemon restart)`);
       }
       // Note: 'queued' runs are intentionally left untouched — RunQueue.tick() re-picks them on the next tick.
     }
@@ -488,9 +489,9 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const { backfillEmbeddings } = await import('../memory/lifecycle.js');
         const counts = await backfillEmbeddings(_db);
         const total = counts.memories + counts.observations + counts.suggestions;
-        if (total > 0) console.error(`[daemon] Backfilled embeddings: ${counts.memories} memories, ${counts.observations} observations, ${counts.suggestions} suggestions`);
+        if (total > 0) log.error(`[daemon] Backfilled embeddings: ${counts.memories} memories, ${counts.observations} observations, ${counts.suggestions} suggestions`);
       } catch (e) {
-        console.error('[daemon] Embedding backfill failed:', e instanceof Error ? e.message : e);
+        log.error('[daemon] Embedding backfill failed:', e instanceof Error ? e.message : e);
       }
     })();
 
@@ -523,15 +524,15 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       try {
         const { reactivateSnoozed } = await import('../suggestion/engine.js');
         const reactivated = reactivateSnoozed(_db);
-        if (reactivated > 0) console.error(`[daemon] Reactivated ${reactivated} snoozed suggestions`);
+        if (reactivated > 0) log.error(`[daemon] Reactivated ${reactivated} snoozed suggestions`);
       } catch { /* ignore */ }
 
       // Observation lifecycle: auto-expire stale + cap per repo
       try {
         const expired = _db.expireObservationsBySeverity();
         const capped = _db.capObservationsPerRepo(10);
-        if (expired > 0) console.error(`[daemon] Expired ${expired} stale observations`);
-        if (capped > 0) console.error(`[daemon] Capped ${capped} excess observations`);
+        if (expired > 0) log.error(`[daemon] Expired ${expired} stale observations`);
+        if (capped > 0) log.error(`[daemon] Capped ${capped} excess observations`);
       } catch { /* ignore */ }
 
       // Sync shared state from job handlers BEFORE enqueue decisions
@@ -551,7 +552,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       const canSchedule = networkUp && systemAwake;
       if (!canSchedule) {
         const reason = !networkUp ? 'no network' : 'system not fully awake (darkwake/sleep)';
-        console.error(`[daemon] Skipping job scheduling — ${reason}`);
+        log.error(`[daemon] Skipping job scheduling — ${reason}`);
       }
       daemonShared.networkAvailable = networkUp;
       daemonShared.systemAwake = systemAwake;
@@ -732,7 +733,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const jobsActive = await jobQueue.tick({ allowClaim: canSchedule });
         if (jobsActive) worked = true;
       } catch (jqErr) {
-        console.error('[daemon] Job queue tick failed:', jqErr instanceof Error ? jqErr.message : jqErr);
+        log.error('[daemon] Job queue tick failed:', jqErr instanceof Error ? jqErr.message : jqErr);
       }
 
       // --- Stale run detector ---
@@ -764,7 +765,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         }
 
         if (reason) {
-          console.error(`[daemon] Marked stale run ${sr.id.slice(0, 8)} as failed (${Math.round(elapsed / 60000)}m): ${reason}`);
+          log.error(`[daemon] Marked stale run ${sr.id.slice(0, 8)} as failed (${Math.round(elapsed / 60000)}m): ${reason}`);
           _db.transitionRun(sr.id, 'failed');
           _db.updateRun(sr.id, {
             errorSummary: `Stale: ${reason}`,
@@ -780,7 +781,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         if (runQueueActive) worked = true;
         state.activeRunCount = runQueue.activeCount;
       } catch (runErr) {
-        console.error('[daemon] Run queue tick failed:', runErr instanceof Error ? runErr.message : runErr);
+        log.error('[daemon] Run queue tick failed:', runErr instanceof Error ? runErr.message : runErr);
       }
 
       // --- Fast tick ---
@@ -840,10 +841,10 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
                 if (idx === -1) continue;
                 if (action.action === 'ack') {
                   state.alerts[idx].acked = true;
-                  console.error(`[daemon] Alert acked: ${action.id}`);
+                  log.error(`[daemon] Alert acked: ${action.id}`);
                 } else if (action.action === 'resolve') {
                   state.alerts.splice(idx, 1);
-                  console.error(`[daemon] Alert resolved: ${action.id}`);
+                  log.error(`[daemon] Alert resolved: ${action.id}`);
                 }
               } catch { /* skip malformed line */ }
             }
@@ -869,10 +870,10 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           since: new Date().toISOString(),
           acked: false,
         });
-        console.error(`[daemon] Alert raised: backend_unhealthy code=${code ?? 'unknown'} (${daemonShared.consecutiveGhostJobs} consecutive ghost jobs)`);
+        log.error(`[daemon] Alert raised: backend_unhealthy code=${code ?? 'unknown'} (${daemonShared.consecutiveGhostJobs} consecutive ghost jobs)`);
       } else if (daemonShared.consecutiveGhostJobs === 0 && existingBackendAlert !== -1) {
         state.alerts.splice(existingBackendAlert, 1);
-        console.error('[daemon] Alert cleared: backend_unhealthy — LLM jobs recovering');
+        log.error('[daemon] Alert cleared: backend_unhealthy — LLM jobs recovering');
       }
 
       // Derive lastHeartbeatPhase from the highest-priority active job
@@ -977,7 +978,7 @@ if (isDirectExecution) {
   const { loadConfig } = await import('../config/load-config.js');
   const config = loadConfig();
   startDaemon(config).catch((err) => {
-    console.error('Daemon failed:', err);
+    log.error('Daemon failed:', err);
     process.exit(1);
   });
 }

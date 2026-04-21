@@ -15,6 +15,7 @@ import {
   getModel,
   getEffort,
 } from './shared.js';
+import { log } from '../log.js';
 
 export async function activitySuggest(
   ctx: HeartbeatContext,
@@ -151,13 +152,13 @@ export async function activitySuggest(
         const parseResult = safeParseJson(genResult.output, SuggestResponseSchema, 'suggest');
         if (parseResult.success) {
           candidates = parseResult.data.suggestions.filter(s => s.impactScore >= 3 && s.confidenceScore >= 60);
-          console.error(`[shadow:suggest] Phase 1 (${repo.name}): ${candidates.length} candidates generated`);
+          log.error(`[shadow:suggest] Phase 1 (${repo.name}): ${candidates.length} candidates generated`);
         } else {
-          console.error(`[shadow:suggest] Phase 1 parse failed (${repo.name}): ${parseResult.error}`);
+          log.error(`[shadow:suggest] Phase 1 parse failed (${repo.name}): ${parseResult.error}`);
         }
       }
     } catch (e) {
-      console.error(`[shadow:suggest] Phase 1 failed (${repo.name}):`, e instanceof Error ? e.message : e);
+      log.error(`[shadow:suggest] Phase 1 failed (${repo.name}):`, e instanceof Error ? e.message : e);
     }
 
     if (candidates.length === 0) continue;
@@ -215,27 +216,27 @@ export async function activitySuggest(
           const keptIndices = new Set<number>();
           for (const v of valParsed.data.verdicts) {
             if (v.index < 0 || v.index >= candidates.length) {
-              console.error(`[shadow:suggest] Phase 2 IGNORE (${repo.name}): out-of-range index ${v.index}`);
+              log.error(`[shadow:suggest] Phase 2 IGNORE (${repo.name}): out-of-range index ${v.index}`);
               continue;
             }
             if (v.keep) {
               keptIndices.add(v.index);
-              console.error(`[shadow:suggest] Phase 2 KEEP (${repo.name}) [${v.index}]: "${v.title}" — ${v.reason}`);
+              log.error(`[shadow:suggest] Phase 2 KEEP (${repo.name}) [${v.index}]: "${v.title}" — ${v.reason}`);
             } else {
-              console.error(`[shadow:suggest] Phase 2 DROP (${repo.name}) [${v.index}]: "${v.title}" — ${v.reason}`);
+              log.error(`[shadow:suggest] Phase 2 DROP (${repo.name}) [${v.index}]: "${v.title}" — ${v.reason}`);
             }
           }
           candidates = candidates.filter((_, i) => keptIndices.has(i));
         } else {
-          console.error(`[shadow:suggest] Phase 2 parse failed (${repo.name}): ${valParsed.error} — discarding all candidates (fail-close)`);
+          log.error(`[shadow:suggest] Phase 2 parse failed (${repo.name}): ${valParsed.error} — discarding all candidates (fail-close)`);
           candidates = [];
         }
       } else {
-        console.error(`[shadow:suggest] Phase 2 LLM failed (${repo.name}): status=${valResult.status} — discarding all candidates (fail-close)`);
+        log.error(`[shadow:suggest] Phase 2 LLM failed (${repo.name}): status=${valResult.status} — discarding all candidates (fail-close)`);
         candidates = [];
       }
     } catch (e) {
-      console.error(`[shadow:suggest] Phase 2 failed (${repo.name}):`, e instanceof Error ? e.message : e, '— discarding all candidates (fail-close)');
+      log.error(`[shadow:suggest] Phase 2 failed (${repo.name}):`, e instanceof Error ? e.message : e, '— discarding all candidates (fail-close)');
       candidates = [];
     }
 
@@ -243,13 +244,13 @@ export async function activitySuggest(
     for (const sug of candidates) {
       const vsPending = await checkSuggestionDuplicate(ctx.db, { kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd }, 'open');
       if (vsPending.action !== 'create') {
-        console.error(`[shadow:suggest] Skip (similar to pending, ${(vsPending.similarity * 100).toFixed(0)}%): ${sug.title}`);
+        log.error(`[shadow:suggest] Skip (similar to pending, ${(vsPending.similarity * 100).toFixed(0)}%): ${sug.title}`);
         continue;
       }
 
       const vsDismissed = await checkSuggestionDuplicate(ctx.db, { kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd }, 'dismissed');
       if (vsDismissed.action !== 'create') {
-        console.error(`[shadow:suggest] Skip (similar to dismissed, ${(vsDismissed.similarity * 100).toFixed(0)}%): ${sug.title}`);
+        log.error(`[shadow:suggest] Skip (similar to dismissed, ${(vsDismissed.similarity * 100).toFixed(0)}%): ${sug.title}`);
         continue;
       }
 

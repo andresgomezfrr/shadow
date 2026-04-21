@@ -1,6 +1,7 @@
 import type { JobContext, JobHandlerResult, DaemonSharedState } from '../job-handlers.js';
 import { errorHint, classifyError, recentItems } from '../job-handlers.js';
 import { budgetSkipIfExceeded } from '../../analysis/budget.js';
+import { log } from '../../log.js';
 
 export async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> {
   const { activitySuggest, activityNotify } = await import('../../analysis/activities.js');
@@ -536,7 +537,7 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
   // Retry once with a reinforced prompt if the LLM went narrative (common when it
   // explored with tools and forgot the JSON contract at the end). See audit A-02.
   if (!parsed.success) {
-    console.error(`[daemon] revalidate-suggestion first-pass parse failed: ${parsed.error} — retrying with reinforced prompt`);
+    log.error(`[daemon] revalidate-suggestion first-pass parse failed: ${parsed.error} — retrying with reinforced prompt`);
     const reinforcedPrompt = prompt + '\n\n---\nIMPORTANT: Your FINAL message must be ONLY the JSON object described above. No prose before or after, no markdown code fences, no explanation. Start with { and end with }.';
     const retryResult = await adapter.execute({
       repos: [{ id: repo.id, name: repo.name, path: repo.path }],
@@ -560,7 +561,7 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
     if (!parsed.success) {
       // Mark the job as failed (not silently completed with an error blob) — the
       // dashboard Activity will show this as a real failure, not a zombie "ok".
-      console.error(`[daemon] revalidate-suggestion parse failed after retry: ${parsed.error}`);
+      log.error(`[daemon] revalidate-suggestion parse failed after retry: ${parsed.error}`);
       return {
         llmCalls: llmCallsTotal,
         tokensUsed: tokensTotal,

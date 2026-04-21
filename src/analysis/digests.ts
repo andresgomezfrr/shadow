@@ -5,6 +5,7 @@ import type { ShadowConfig } from '../config/load-config.js';
 import { selectAdapter } from '../backend/index.js';
 import { getEnrichmentSummary } from './enrichment.js';
 import { budgetSkipIfExceeded } from './budget.js';
+import { log } from '../log.js';
 
 // --- Helpers ---
 
@@ -287,7 +288,7 @@ export async function activityBragDoc(
   if (!rawOutput || !hasQuarterSection) {
     const reason = !rawOutput ? 'empty output' : `missing "## ${quarter}" section`;
     const preview = rawOutput.slice(0, 200).replace(/\s+/g, ' ').trim();
-    console.error(`[shadow:digest-brag] ${reason} — keeping existing (no overwrite). Preview: "${preview}..."`);
+    log.error(`[shadow:digest-brag] ${reason} — keeping existing (no overwrite). Preview: "${preview}..."`);
     return { contentMd: existingContent, tokensUsed, skipped: true, reason };
   }
 
