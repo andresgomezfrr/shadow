@@ -121,6 +121,42 @@ export const ConfigSchema = z.object({
   projectProfileMinGapMs: z.coerce.number().int().positive().default(4 * 60 * 60 * 1000),
 });
 
+/**
+ * Whitelist of known `preferences` keys (audit W-07). Unknown keys arriving
+ * via the API get silently stripped (`.strip()` on the schema) rather than
+ * going into the generic `jsonb` bucket forever — that was the previous
+ * behaviour with `z.record(z.string(), z.unknown())`. Keeps the preferences
+ * column disciplined and self-documenting: if you grep this schema, you
+ * know the entire surface area.
+ *
+ * Grouped:
+ *   - enrichment.*    — external MCP enrichment feature flags + runtime filters
+ *   - thought.*       — background thought generation tunables
+ *   - models / efforts — per-phase LLM overrides (also exposed at top-level on
+ *                        ProfileUpdateSchema for legacy reasons; either works)
+ *   - autonomy        — per-repo auto-plan/auto-execute config
+ *   - dailyTokenBudget — global LLM spend cap; see A-10
+ *   - enrichmentServerOrder — UI-22: persisted order for the settings UI
+ *   - _fieldConfidence — internal (shadow_profile_set writes it to remember
+ *                        which fields the user explicitly set vs inferred)
+ */
+export const PreferencesSchema = z.object({
+  enrichmentEnabled: z.boolean().optional(),
+  enrichmentIntervalMin: z.number().int().min(1).optional(),
+  enrichmentDisabledServers: z.array(z.string()).optional(),
+  enrichmentDisabledProjects: z.array(z.string()).optional(),
+  enrichmentServerOrder: z.array(z.string()).optional(),
+  thoughtsEnabled: z.boolean().optional(),
+  thoughtIntervalMinMs: z.number().int().min(1000).optional(),
+  thoughtIntervalMaxMs: z.number().int().min(1000).optional(),
+  thoughtDurationMs: z.number().int().min(1000).optional(),
+  dailyTokenBudget: z.number().int().min(0).optional(),
+  models: z.record(z.string(), z.string()).optional(),
+  efforts: z.record(z.string(), z.string()).optional(),
+  autonomy: z.record(z.string(), z.unknown()).optional(),
+  _fieldConfidence: z.record(z.string(), z.number()).optional(),
+}).strip();
+
 /** Validates profile fields coming from the API / MCP. */
 export const ProfileUpdateSchema = z.object({
   displayName: z.string().max(100).optional(),
@@ -129,7 +165,7 @@ export const ProfileUpdateSchema = z.object({
   proactivityLevel: z.coerce.number().int().min(1).max(10).optional(),
   models: ModelsSchema.partial().optional(),
   efforts: EffortsSchema.partial().optional(),
-  preferences: z.record(z.string(), z.unknown()).optional(),
+  preferences: PreferencesSchema.optional(),
 }).strip();
 
 /**
