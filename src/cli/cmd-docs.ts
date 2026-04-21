@@ -115,15 +115,15 @@ export function registerDocsCommands(program: Command): void {
         process.exit(drift.length === 0 ? 0 : 1);
       }
 
-      log.info(drift.length === 0 ? '✓ docs check: CLAUDE.md matches code' : '✗ docs check: drift detected');
+      console.log(drift.length === 0 ? '✓ docs check: CLAUDE.md matches code' : '✗ docs check: drift detected');
       for (const c of checks) {
         const mark = c.ok ? '✓' : '✗';
         const doc = c.documented ?? '(not documented)';
-        log.info(`  ${mark} ${c.label.padEnd(20)} documented=${doc}  actual=${c.actual}`);
+        console.log(`  ${mark} ${c.label.padEnd(20)} documented=${doc}  actual=${c.actual}`);
       }
       if (drift.length > 0) {
-        log.info('');
-        log.info('Update CLAUDE.md to match the actual counts, or investigate why the code diverged.');
+        console.log('');
+        console.log('Update CLAUDE.md to match the actual counts, or investigate why the code diverged.');
       }
       process.exit(drift.length === 0 ? 0 : 1);
     });

@@ -126,8 +126,8 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         args.push('-p', `Quiero enseñarte sobre: ${options.topic}`);
       }
 
-      log.info('Starting teaching session... Shadow is ready to learn.');
-      log.info('Ctrl+C to end.\n');
+      console.log('Starting teaching session... Shadow is ready to learn.');
+      console.log('Ctrl+C to end.\n');
 
       const result = spawnSync(config.claudeBin, args, {
         stdio: 'inherit',
@@ -167,7 +167,7 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         // SessionStart hook is redundant and makes the model burn turns on shadow_check_in.
         if (process.env.SHADOW_JOB === '1') {
           // Emit a benign comment (not empty) to avoid "hook error" warnings in the CLI.
-          log.info('# shadow runner context — soul injected by runner briefing');
+          console.log('# shadow runner context — soul injected by runner briefing');
           return;
         }
 
@@ -276,7 +276,7 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         );
 
         // Print to stdout (SessionStart hook captures this)
-        log.info(lines.join('\n'));
+        console.log(lines.join('\n'));
       }),
     );
 
@@ -352,7 +352,7 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         });
 
         if (result.stdout) {
-          log.info(result.stdout);
+          process.stdout.write(result.stdout);
         } else if (result.stderr) {
           log.error(result.stderr);
         }

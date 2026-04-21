@@ -1,25 +1,35 @@
-import { log } from '../log.js';
+/**
+ * CLI output goes to stdout — shell scripts, hooks (statusline.sh), and
+ * pipes (`shadow --json status | jq`) depend on this. The daemon `log.ts`
+ * module is stderr-only because it's for operational logs; this printer
+ * is for user-facing data, which is a different stream contract.
+ *
+ * Regression history: the O-05 logger migration initially replaced these
+ * `console.log` calls with `log.info` (stderr), which broke the statusline
+ * hook — it saw empty stdout and showed "{•_•} offline" despite the daemon
+ * being healthy. Reverted to stdout + documented the stream boundary.
+ */
 
 export function printOutput(value: unknown, json: boolean): void {
   if (json) {
-    log.info(JSON.stringify(value, null, 2));
+    console.log(JSON.stringify(value, null, 2));
     return;
   }
 
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      log.info('No results.');
+      console.log('No results.');
       return;
     }
 
     for (const item of value) {
-      log.info(renderHuman(item));
-      log.info('---');
+      console.log(renderHuman(item));
+      console.log('---');
     }
     return;
   }
 
-  log.info(renderHuman(value));
+  console.log(renderHuman(value));
 }
 
 function renderHuman(value: unknown): string {

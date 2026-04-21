@@ -337,7 +337,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
     .action((type: string) => {
       if (type === 'list') {
         const lines = Object.entries(JOB_TYPES).map(([t, info]) => `  ${t.padEnd(24)} ${info.description}`);
-        log.info('Available job types:\n' + lines.join('\n'));
+        console.log('Available job types:\n' + lines.join('\n'));
         return;
       }
       const info = JOB_TYPES[type];
