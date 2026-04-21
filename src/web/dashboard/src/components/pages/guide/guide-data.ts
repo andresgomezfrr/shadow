@@ -15,6 +15,8 @@ export const CLI_GROUPS: CliGroup[] = [
     name: 'General',
     description: 'Setup, status, and daily use',
     commands: [
+      { command: 'shadow', description: 'Spawn interactive Claude with soul pre-loaded via --append-system-prompt (cleaner transcript than the SessionStart hook path)' },
+      { command: 'shadow --', args: '<claude args>', description: 'Passthrough to claude — e.g. `shadow -- --resume <id>`, `shadow -- -p "quick ask"`, `shadow -- --help` for claude help' },
       { command: 'shadow init', description: 'Bootstrap the global shadow home for this user (~/.shadow, hooks, launchd, soul)' },
       { command: 'shadow status', description: 'Show current shadow state summary (bond, repos, suggestions, heartbeat)' },
       { command: 'shadow doctor', description: 'Check local environment (Node, Claude CLI, daemon, DB, hooks)' },

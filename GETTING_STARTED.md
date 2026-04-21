@@ -59,7 +59,10 @@ claude mcp add --transport http shadow http://localhost:3700/api/mcp
 ## Verify it works
 
 ```bash
-# Restart Claude Code, then open a session:
+# Preferred: spawn Claude with soul pre-loaded as --append-system-prompt
+shadow
+
+# Or the classic path (SessionStart hook injects the soul at session start):
 claude
 
 # Say hello:
@@ -67,6 +70,11 @@ claude
 ```
 
 Shadow should respond with its personality, greet you by name, and share any pending events or observations.
+
+**Tip**: `shadow -- <claude args>` passes flags through to claude — e.g.
+`shadow -- --resume <session-id>` to resume a previous session,
+`shadow -- -p "quick question"` for a one-shot, `shadow -- --help` to see
+claude's own help. Anything after `--` is opaque to Shadow.
 
 You can also verify the daemon and MCP endpoint directly:
 

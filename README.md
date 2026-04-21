@@ -92,7 +92,10 @@ Shadow exposes three surfaces that share the same SQLite state.
 1. **Claude CLI (primary).** Shadow exposes 68 MCP tools (`mcp__shadow__*`).
    Claude reaches for them naturally — `shadow_check_in` on every session
    start, `shadow_suggestions` for advice, `shadow_task_create` when an idea
-   crystallizes.
+   crystallizes. Start a session via `shadow` (spawns `claude` with the soul
+   pre-loaded as `--append-system-prompt`) or `claude` bare (SessionStart
+   hook injects the soul). Passthrough: `shadow -- --resume <id>`,
+   `shadow -- -p "quick ask"`, `shadow -- --help` for claude's own help.
 
 2. **Web dashboard** at `http://localhost:3700`. Every entity Shadow tracks
    is visible and editable: memories, observations, suggestions, tasks, runs,
