@@ -19,13 +19,13 @@ import { log } from '../../log.js';
 
 // --- Interactions ---
 
-export function createInteraction(db: DatabaseSync, input: { interface: string; kind: string; inputSummary?: string | null; outputSummary?: string | null; sentiment?: string | null; topics?: string[]; trustDelta?: number }): InteractionRecord {
+export function createInteraction(db: DatabaseSync, input: { interface: string; kind: string; inputSummary?: string | null; outputSummary?: string | null; sentiment?: string | null; topics?: string[] }): InteractionRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db
     .prepare(
-      `INSERT INTO interactions (id, interface, kind, input_summary, output_summary, sentiment, topics_json, trust_delta, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO interactions (id, interface, kind, input_summary, output_summary, sentiment, topics_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -35,7 +35,6 @@ export function createInteraction(db: DatabaseSync, input: { interface: string; 
       input.outputSummary ?? null,
       input.sentiment ?? null,
       JSON.stringify(input.topics ?? []),
-      input.trustDelta ?? 0.0,
       now,
     );
   // Increment totalInteractions on profile

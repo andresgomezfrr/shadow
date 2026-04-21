@@ -134,7 +134,6 @@ export type CreateSuggestionInput = {
   impactScore?: number;
   confidenceScore?: number;
   riskScore?: number;
-  requiredTrustLevel?: number;
   effort?: string;
 };
 
@@ -354,7 +353,7 @@ export class ShadowDatabase {
 
   // --- Interactions ---
 
-  createInteraction(input: { interface: string; kind: string; inputSummary?: string | null; outputSummary?: string | null; sentiment?: string | null; topics?: string[]; trustDelta?: number }): InteractionRecord { return tracking.createInteraction(this.database, input); }
+  createInteraction(input: { interface: string; kind: string; inputSummary?: string | null; outputSummary?: string | null; sentiment?: string | null; topics?: string[] }): InteractionRecord { return tracking.createInteraction(this.database, input); }
   getInteraction(id: string): InteractionRecord | null { return tracking.getInteraction(this.database, id); }
   listRecentInteractions(limit = 20): InteractionRecord[] { return tracking.listRecentInteractions(this.database, limit); }
 

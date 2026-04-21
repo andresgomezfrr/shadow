@@ -332,7 +332,6 @@ export function mapSuggestion(row: unknown): SuggestionRecord {
     impactScore: num(d.impact_score),
     confidenceScore: num(d.confidence_score),
     riskScore: num(d.risk_score),
-    requiredTrustLevel: num(d.required_trust_level),
     status: str(d.status),
     feedbackNote: strOrNull(d.feedback_note),
     shownAt: strOrNull(d.shown_at),
@@ -357,7 +356,6 @@ export function mapInteraction(row: unknown): InteractionRecord {
     outputSummary: strOrNull(d.output_summary),
     sentiment: strOrNull(d.sentiment),
     topics: jsonParse(d.topics_json, []),
-    trustDelta: num(d.trust_delta),
     createdAt: str(d.created_at),
   };
 }

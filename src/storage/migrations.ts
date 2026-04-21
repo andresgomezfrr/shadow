@@ -1145,6 +1145,23 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_obs_metrics_key ON observability_metrics(metric_key);
     `,
   },
+  {
+    version: 59,
+    name: 'v49_legacy_trust_columns_drop',
+    // Audit D-10: `trust_level`, `trust_score`, `bond_level`,
+    // `required_trust_level`, `trust_delta` son residuo del sistema pre-bond
+    // (v48 trust-based). Bond v49 los reemplazó. Ningún consumer los usa
+    // (previos commits removieron las últimas referencias en storage layer,
+    // models.ts y createSuggestion/createInteraction input types).
+    // ADD-only convention finaliza: ahora borramos columnas huérfanas.
+    sql: `
+      ALTER TABLE user_profile DROP COLUMN trust_level;
+      ALTER TABLE user_profile DROP COLUMN trust_score;
+      ALTER TABLE user_profile DROP COLUMN bond_level;
+      ALTER TABLE suggestions DROP COLUMN required_trust_level;
+      ALTER TABLE interactions DROP COLUMN trust_delta;
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {

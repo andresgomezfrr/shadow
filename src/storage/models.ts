@@ -225,7 +225,6 @@ export type SuggestionRecord = {
   impactScore: number;
   confidenceScore: number;
   riskScore: number;
-  requiredTrustLevel: number;
   status: string;
   feedbackNote: string | null;
   shownAt: string | null;
@@ -250,7 +249,6 @@ export type InteractionRecord = {
   outputSummary: string | null;
   sentiment: string | null;
   topics: string[];
-  trustDelta: number;
   createdAt: string;
 };
 
