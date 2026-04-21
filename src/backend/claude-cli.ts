@@ -86,6 +86,14 @@ export class ClaudeCliAdapter implements BackendAdapter {
       args.push('--system-prompt', 'You are a JSON-only analysis engine for the Shadow engineering companion. Output raw JSON only. Never wrap in markdown fences. Never add explanations before or after the JSON.');
     }
 
+    // appendSystemPrompt stacks on top of Claude's default (or the explicit
+    // --system-prompt above). Runner uses this for the soul/persona so it
+    // lives in system context instead of polluting the user briefing.
+    // Audit P-12.
+    if (typeof pack.appendSystemPrompt === 'string' && pack.appendSystemPrompt.length > 0) {
+      args.push('--append-system-prompt', pack.appendSystemPrompt);
+    }
+
     if (pack.model) {
       args.push('--model', pack.model);
     }

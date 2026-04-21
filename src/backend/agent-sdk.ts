@@ -45,10 +45,15 @@ export class AgentSdkAdapter implements BackendAdapter {
         tools = tools.filter((t) => !pack.disallowedTools!.some((d) => matchToolPattern(t, d)));
       }
 
-      const agent = new sdk.Agent({
-        model,
-        tools,
-      });
+      // Audit P-12: appendSystemPrompt maps to Agent SDK's `systemPromptSuffix`
+      // (or `appendSystemPrompt` depending on SDK version). Fallback to
+      // prepending into the prompt if the SDK field isn't recognized — the
+      // CLI backend is the primary production path, SDK is opt-in.
+      const agentOpts: Record<string, unknown> = { model, tools };
+      if (typeof pack.appendSystemPrompt === 'string' && pack.appendSystemPrompt.length > 0) {
+        agentOpts.systemPromptSuffix = pack.appendSystemPrompt;
+      }
+      const agent = new sdk.Agent(agentOpts);
 
       const result = await agent.run(pack.prompt, {
         cwd: pack.repos.length > 0 ? pack.repos[0].path : process.cwd(),

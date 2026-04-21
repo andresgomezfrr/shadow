@@ -28,6 +28,7 @@ export type ObjectivePack = {
   model?: string;
   effort?: string;
   systemPrompt?: string | null; // string = override, null = no --system-prompt, undefined = JSON-only default
+  appendSystemPrompt?: string;   // appended to Claude's default system prompt via --append-system-prompt (stacks with CLAUDE.md)
   allowedTools?: string[];       // extra tools beyond mcp__shadow__*. undefined = default MCP, [] = no tools at all
   disallowedTools?: string[];    // explicit deny list — takes precedence over allowedTools (deny rules win)
   permissionMode?: 'plan' | 'acceptEdits' | 'bypassPermissions';
