@@ -4,6 +4,30 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-21 (Audit block 5V — hardening DB/MCP/Web/Hooks/Cross-platform)
+
+Bloque 5V cierra 9 items mezcla. **6 eran audit-stale** (la wave de sweeping ya convencida): D-02 cleanup job, M-02 ZodError context, R-03 summary/diffStat coherence, R-04 pr-sync batch — todos ya implementados. **3 real work**: W-07 preferences whitelist + H-02 SubagentStart hook + D-10 v49 legacy columns DROP + C-01 Linux systemd + C-02 Linux isSystemAwake. 339 tests verdes, build limpio.
+
+**Audit-stale marks**:
+- **D-02 cleanup job** — `handlers/cleanup.ts` ya existe con 90d retention (interactions/event_queue/llm_usage/jobs), rollup `llm_usage → llm_usage_daily` antes de purge, sweep de `.rotating` orphans. Protegidos: feedback (dedup-load-bearing), audit_events (append-only), undelivered events.
+- **M-02 ZodError context** — `mcp/server.ts:139` check `err instanceof ZodError` mapea a `-32602` con `err.issues.map(i => '${path}: ${message}')`. Fallback `-32603` solo para no-Zod.
+- **R-03 summary/diffStat coherence** — `runner/service.ts:414-436` implementa cruce post-diff: `CHANGE_VERBS` regex + `diffStat.trim() === ''` → `verified: 'needs_review'`, bloquea propagación a parent, emite `plan_needs_review` event.
+- **R-04 pr-sync batch** — `pr-sync.ts:21` `BATCH_SIZE = 8` + chunks con `Promise.all`. Audit reflejaba estado serial anterior.
+
+**Real work**:
+
+- **W-07 preferences whitelist** (`src/config/schema.ts`) — Nuevo `PreferencesSchema` con 14 keys whitelisted (enrichment*/thought*/dailyTokenBudget/models/efforts/autonomy/enrichmentServerOrder/_fieldConfidence). `.strip()` → keys desconocidos se descartan silentes. Antes `z.record(z.string(), z.unknown())` aceptaba cualquier cosa.
+
+- **H-02 SubagentStart hook context** (`scripts/subagent-start.sh`) — Hook extendido a capturar `tool_input.subagent_type`, `tool_input.description`, `tool_input.model`, `tool_input.prompt` preview (200 chars). Missing fields → null gracefully. Hook re-deployed a `~/.shadow/` para efecto inmediato.
+
+- **D-10 v49 legacy columns DROP** (migrations v59 + storage layer) — `trust_level`, `trust_score`, `bond_level`, `required_trust_level`, `trust_delta` eran residuo del sistema pre-bond v48. 9 referencias auditadas (todas en storage layer, ningún consumer externo). Removidas de `createSuggestion`/`createInteraction` input types, INSERT statements, mappers, y SuggestionRecord/InteractionRecord types. Migration v59 `v49_legacy_trust_columns_drop` borra las 5 columnas. ADD-only convention finaliza.
+
+- **C-01 Linux systemd init** (`src/cli/systemd.ts` nuevo, cmd-init.ts, cmd-daemon.ts) — Nuevo módulo systemd.ts analog de plist.ts: genera unit user en `~/.config/systemd/user/shadow-daemon.service` con `Restart=on-failure`, `RestartSec=5`, `WantedBy=default.target`. Stamp `shadow-unit-version: 1` para auto-upgrade. `writeAndReloadSystemdUnit` hace `systemctl --user daemon-reload && enable --now` primera vez, `restart` si ya instalado. cmd-init.ts branch por `process.platform === 'linux'` antes de la cadena launchd. cmd-daemon.ts `start/stop/restart` con guard Linux → `systemctl --user ${op} shadow-daemon.service` antes de fallthrough launchctl. Windows/otros: fallback manual spawn.
+
+- **C-02 Linux isSystemAwake** (`src/daemon/runtime.ts`) — `isSystemAwake()` refactor a platform-dispatcher: `darwin` → `isSystemAwakeMacOS()` (pmset UserIsActive existente), `linux` → `isSystemAwakeLinux()` nuevo via `loginctl show-session $XDG_SESSION_ID -p State -p Active` (State='active' o Active='yes' → awake), otros → fail-open true. Timeouts/errores → fail-open para no bloquear jobs en entornos exóticos sin systemd.
+
+---
+
 ## Session 2026-04-21 (Audit block 5T — observability full)
 
 Bloque 5T cierra los 5 items de observability en full scope. Logger module + convention + migración de 312 console calls a `log.error|warn|info`. Audit events en todas las mutaciones MCP + bond tier. Métricas diarias via nueva tabla `observability_metrics` + job `metrics-snapshot`. 339 tests verdes.
