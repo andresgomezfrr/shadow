@@ -120,6 +120,10 @@ export class RunnerService {
 
       const repo = this.db.getRepo(run.repoId);
       const soulMem = this.db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
+      // Audit P-12: soul goes into --append-system-prompt (system context), not
+      // into the user briefing. Semantics correct + user prompt stays focused
+      // on the task. Fallback to a small default if the soul memory doesn't
+      // exist yet (fresh install, pre-reflect).
       const personalityPrompt = soulMem?.bodyMd
         ? `You are Shadow.\n\n${soulMem.bodyMd}`
         : DEFAULT_RUNNER_PERSONALITY;
@@ -128,8 +132,6 @@ export class RunnerService {
       const planOnly = run.kind !== 'execution';
 
       const briefing = [
-        personalityPrompt,
-        '',
         `## Suggestion: ${suggestion?.title ?? run.kind}`,
         suggestion?.kind ? `Kind: ${suggestion.kind}` : '',
         '',
@@ -204,6 +206,7 @@ export class RunnerService {
         model: this.config.models.runner,
         effort: this.config.efforts.runner,
         systemPrompt: null, // No override — Claude uses default behavior with MCP tools + filesystem
+        appendSystemPrompt: personalityPrompt, // Soul in system context (audit P-12)
         allowedTools,
         disallowedTools,
         permissionMode,
