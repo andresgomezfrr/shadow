@@ -21,7 +21,7 @@ export function TasksPage() {
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newRef, setNewRef] = useState('');
-  const { dialog, prompt } = useDialog();
+  const { dialog, prompt, confirm } = useDialog();
 
   const apiStatus = status === 'all' ? undefined : status;
   const { data, refresh } = useApi(() => fetchTasks({ status: apiStatus, limit: PAGE_SIZE, offset }), [status, offset], 15_000);
@@ -71,10 +71,11 @@ export function TasksPage() {
   }, [refresh, prompt]);
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('Delete this task?')) return;
+    const ok = await confirm({ title: 'Delete task', message: 'This task will be permanently deleted.', confirmLabel: 'Delete', variant: 'danger' });
+    if (!ok) return;
     await deleteTask(id);
     refresh();
-  }, [refresh]);
+  }, [confirm, refresh]);
 
   const filterOptions = [
     { label: 'All', value: 'all' },

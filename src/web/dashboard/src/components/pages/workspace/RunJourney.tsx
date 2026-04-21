@@ -1,6 +1,7 @@
 import { useApi } from '../../../hooks/useApi';
 import { useDialog } from '../../../hooks/useDialog';
 import { fetchRunContext, fetchPrStatus, createRunSession, executeRun, discardRun, retryRun, archiveRun, closeRun, cleanupWorktree, createDraftPr } from '../../../api/client';
+import { useToast } from '../../common/Toast';
 import { ConfidenceIndicator } from '../../common/ConfidenceIndicator';
 import { Badge } from '../../common/Badge';
 import { RunSpinner } from '../../common/RunSpinner';
@@ -68,6 +69,7 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
   const [expandedAttempt, setExpandedAttempt] = useState<string | null>(null);
   const { drillToItem, expandedPlan, setExpandedPlan } = useWorkspace();
   const { dialog, prompt } = useDialog();
+  const toast = useToast();
 
   const run = ctx?.run;
   const childRuns = ctx?.childRuns ?? [];
@@ -150,9 +152,9 @@ export function RunJourney({ runId, onRefresh }: { runId: string; onRefresh?: ()
       if (result?.prUrl) window.open(result.prUrl, '_blank');
       doRefresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to create draft PR');
+      toast.error(err instanceof Error ? err.message : 'Failed to create draft PR');
     } finally { setLoading(null); }
-  }, [activeRun, doRefresh]);
+  }, [activeRun, doRefresh, toast]);
 
   const handleCleanup = useCallback(async () => {
     if (!activeRun) return;

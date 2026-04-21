@@ -1,9 +1,11 @@
 import { timeAgo } from '../../utils/format';
 import { useApi } from '../../hooks/useApi';
 import { useDialog } from '../../hooks/useDialog';
+import { useToast } from '../common/Toast';
 import { useHighlight } from '../../hooks/useHighlight';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, closeRun, archiveRun, retryRun, rollbackRun, createDraftPr, lookupEntity } from '../../api/client';
+import { fetchRuns, fetchRepos, executeRun, createRunSession, discardRun, closeRun, archiveRun, retryRun, rollbackRun, createDraftPr } from '../../api/client';
+import { usePrefetchHighlight } from '../../hooks/usePrefetchHighlight';
 import { POLL_FAST, POLL_SLOW } from '../../constants/polling';
 import { Badge } from '../common/Badge';
 import { Markdown } from '../common/Markdown';
@@ -12,7 +14,7 @@ import { FilterTabs } from '../common/FilterTabs';
 import { Pagination } from '../common/Pagination';
 import { ConfidenceIndicator } from '../common/ConfidenceIndicator';
 import { RunPipeline } from '../common/RunPipeline';
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import type { Run } from '../../api/types';
 
 import { RUN_STATUS_BORDER, RUN_STATUS_ICON, RUN_STATUS_ICON_COLOR } from '../../utils/run-colors';
@@ -74,25 +76,8 @@ export function RunsPage() {
   const rawItems = rawData?.items ?? null;
   const total = rawData?.total ?? 0;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [prefetched, setPrefetched] = useState<Run | null>(null);
   const { pulseId, scrollRef, highlightId } = useHighlight(expanded, setExpanded);
-
-  // Prefetch highlighted run if not in current list
-  useEffect(() => {
-    if (!highlightId || !rawItems) return;
-    if (rawItems.some(r => r.id === highlightId)) { setPrefetched(null); return; }
-    if (prefetched?.id === highlightId) return;
-    (async () => {
-      const resp = await lookupEntity<Run>('run', highlightId);
-      if (resp?.item) setPrefetched(resp.item);
-    })();
-  }, [highlightId, rawItems]);
-
-  const data = useMemo(() => {
-    if (!rawItems) return null;
-    if (!prefetched || rawItems.some(r => r.id === prefetched.id)) return rawItems;
-    return [prefetched, ...rawItems];
-  }, [rawItems, prefetched]);
+  const { items: data } = usePrefetchHighlight<Run>('run', highlightId, rawItems);
   const { data: repos } = useApi(fetchRepos, [], POLL_SLOW);
   const githubRepoIds = new Set(
     (repos ?? []).filter((r) => r.remoteUrl?.includes('github')).map((r) => r.id),
@@ -125,6 +110,7 @@ export function RunsPage() {
   };
 
   const { dialog, prompt } = useDialog();
+  const toast = useToast();
   const handleExecute = useCallback(async (id: string) => { await executeRun(id); refresh(); }, [refresh]);
   const handleSession = useCallback(async (id: string) => {
     setSessionLoading(id);
@@ -150,9 +136,9 @@ export function RunsPage() {
   const handleDraftPr = useCallback(async (id: string) => {
     setPrLoading(id);
     try { const result = await createDraftPr(id); if (result?.prUrl) window.open(result.prUrl, '_blank'); refresh(); }
-    catch (err) { alert(err instanceof Error ? err.message : 'Failed to create draft PR'); }
+    catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to create draft PR'); }
     finally { setPrLoading(null); }
-  }, [refresh]);
+  }, [refresh, toast]);
 
   // Filter out child runs from the top-level list (they render inline under parent)
   const topLevelRuns = data?.filter((r) => !childIds.has(r.id)) ?? [];
