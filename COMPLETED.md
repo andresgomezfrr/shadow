@@ -4,6 +4,22 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-21 (Block 5S — observations abiertas de check_in)
+
+Bloque 5S cierra 4 observations que recurrían en `shadow_check_in` cada sesión (fuera del audit 2026-04-18, generadas por mí durante el trabajo). Todas high-severity relacionadas con robustez structural. 339 tests verdes (4 nuevos de cascade rollback).
+
+- **S-02 llm_usage tracking gap** (`src/memory/retrieval.ts`) — Audit exhaustivo encontró que `retrieval.ts:250` (correction enforcement) y `:458` (memory merge evaluation) hacían `adapter.execute` sin el `recordLlmUsage` correspondiente. Tokens no contaban hacia el daily budget ni aparecían en Usage dashboard. Añadidos ambos con sources `correction_enforce` y `memory_merge`. Resto del codebase limpio (15 archivos verificados: execute count == recordLlmUsage count per file).
+
+- **S-03 --disallowedTools gap** (`src/backend/claude-cli.ts`) — Solo runner (service.ts:189/771) aplicaba `disallowedTools: ['AskUserQuestion']`. Todos los otros spawns daemon (suggest/autonomy/reflect/profiling/digests/enrichment/consolidate/chronicle/mcp-discover) quedaban sin guard — Claude podía invocar el built-in sin humano respondiendo. Fix: default-deny en el adapter CLI. Si caller no pasa `AskUserQuestion` explícito en `allowedTools`, se añade automáticamente al `--disallowedTools`. Runner sigue funcionando (su deny explícito se dedupe con el default). Agent SDK adapter documenta que los built-ins no son deny-ables por esa ruta (limitación estructural del SDK).
+
+- **S-01 v55 migration gate + helper pattern** (`src/storage/migrations.ts`) — v55 (task_repo_links junction + DROP repo_ids_json) ya era atómico implícitamente: `json_each` aborta en JSON malformado, la transacción hace ROLLBACK, y v55 no queda registrado en `schema_migrations` si algo falla (verified post-facto: DB del user tiene estado consistente — 1 task / 1 link). Pero faltaba un pattern explícito para futuros big-bang drops. Añadido: tipo `Migration.assertInvariant?(db)` opcional que corre antes de COMMIT + helper `assertBackfillComplete({label, sourceSql, linkSql})` que throws si la junction tiene menos filas que el source — triggerea rollback. Migration runner modificado para invocar `assertInvariant` si está presente. v55 documentado con comentario explicando la safety implícita y apuntando al nuevo pattern para futuros.
+
+- **S-04 cascade rollback tests** (`src/storage/database.test.ts`) — `withTransaction` ya usaba `BEGIN IMMEDIATE + ROLLBACK on throw`, pero el rollback nunca se había testeado. Añadidos 4 tests (deleteRepo/Project/System/Contact) que inyectan fallo mid-cascade con `CREATE TEMP TRIGGER ... RAISE(ABORT, ...)` sobre `enrichment_cache`. Los tests verifican que tras el throw, el estado queda como antes: memorias mantienen sus foreign keys, observations/suggestions/runs siguen existiendo. Pure SQL injection, sin module mocks.
+
+**Observations resueltas** — las 4 entradas que me marcaba check_in recurrentemente. Esperado: mood queue y recent observations de la próxima llamada a `shadow_check_in` no incluirán ninguna de estas.
+
+---
+
 ## Session 2026-04-21 (Audit block 5Q — analysis residual, todo audit-stale)
 
 Bloque 5Q verificado — los 4 items pendientes ya estaban implementados en blocks previos, solo faltaba actualizar el audit. Cero código nuevo, solo marks. Tipo "sweeper block" para cerrar confusión de items mirage.
