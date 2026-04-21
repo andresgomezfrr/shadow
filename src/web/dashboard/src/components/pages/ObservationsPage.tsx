@@ -1,7 +1,8 @@
 import { useApi } from '../../hooks/useApi';
 import { useDialog } from '../../hooks/useDialog';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchObservations, fetchRepos, fetchProjects, acknowledgeObservation, resolveObservation, reopenObservation, lookupEntity } from '../../api/client';
+import { fetchObservations, fetchRepos, fetchProjects, acknowledgeObservation, resolveObservation, reopenObservation } from '../../api/client';
+import { usePrefetchHighlight } from '../../hooks/usePrefetchHighlight';
 import { POLL_NORMAL, POLL_SLOW } from '../../constants/polling';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { CorrectionPanel } from '../common/CorrectionPanel';
@@ -11,7 +12,7 @@ import { EmptyState } from '../common/EmptyState';
 import { PlayOnceVideo } from '../common/PlayOnceVideo';
 import { FilterTabs } from '../common/FilterTabs';
 import { OBS_KIND_COLORS, OBS_KIND_COLOR_DEFAULT, OBS_KIND_OPTIONS, OBS_SEVERITY_BORDER, OBS_SEVERITY_ICON, OBS_SEVERITY_ICON_COLOR } from '../../utils/observation-colors';
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { useHighlight } from '../../hooks/useHighlight';
 import { timeAgo } from '../../utils/format';
 import type { Observation } from '../../api/types';
@@ -48,26 +49,8 @@ export function ObservationsPage() {
   const fbState = rawData?.feedbackState ?? null;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [correctingId, setCorrectingId] = useState<string | null>(null);
-  const [prefetched, setPrefetched] = useState<Observation | null>(null);
   const { pulseId, scrollRef, highlightId } = useHighlight(expanded, setExpanded);
-
-  // Prefetch highlighted observation if it's not in the current list
-  useEffect(() => {
-    if (!highlightId || !rawItems) return;
-    if (rawItems.some(o => o.id === highlightId)) { setPrefetched(null); return; }
-    if (prefetched?.id === highlightId) return;
-    (async () => {
-      const resp = await lookupEntity<Observation>('observation', highlightId);
-      if (resp?.item) setPrefetched(resp.item);
-    })();
-  }, [highlightId, rawItems]);
-
-  // Merge prefetched item with list, de-duplicated
-  const data = useMemo(() => {
-    if (!rawItems) return null;
-    if (!prefetched || rawItems.some(o => o.id === prefetched.id)) return rawItems;
-    return [prefetched, ...rawItems];
-  }, [rawItems, prefetched]);
+  const { items: data } = usePrefetchHighlight<Observation>('observation', highlightId, rawItems);
 
   const toggle = (id: string) => {
     setExpanded((s) => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });

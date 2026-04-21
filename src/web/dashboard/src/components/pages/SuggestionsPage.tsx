@@ -4,7 +4,8 @@ import type { Suggestion } from '../../api/types';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { useFilterParams } from '../../hooks/useFilterParams';
-import { fetchSuggestions, fetchSuggestionContext, fetchRepos, fetchRuns, fetchProjects, acceptSuggestion, dismissSuggestion, snoozeSuggestion, bulkSuggestionAction, revalidateSuggestion, getActiveRevalidations, lookupEntity } from '../../api/client';
+import { fetchSuggestions, fetchSuggestionContext, fetchRepos, fetchRuns, fetchProjects, acceptSuggestion, dismissSuggestion, snoozeSuggestion, bulkSuggestionAction, revalidateSuggestion, getActiveRevalidations } from '../../api/client';
+import { usePrefetchHighlight } from '../../hooks/usePrefetchHighlight';
 import { ThumbsFeedback, thumbsFromAction } from '../common/ThumbsFeedback';
 import { FilterTabs } from '../common/FilterTabs';
 import { Pagination } from '../common/Pagination';
@@ -84,30 +85,7 @@ export function SuggestionsPage() {
   const total = rawData?.total ?? 0;
   const scores = rawData?.scores ?? {};
 
-  const [prefetched, setPrefetched] = useState<Suggestion | null>(null);
-  const [capturedHighlight, setCapturedHighlight] = useState<string | null>(null);
-
-  // Capture highlight so we can prefetch even after URL is cleared
-  useEffect(() => {
-    if (highlightId) setCapturedHighlight(highlightId);
-  }, [highlightId]);
-
-  // Prefetch suggestion if not in list
-  useEffect(() => {
-    if (!capturedHighlight || !rawItems) return;
-    if (rawItems.some(s => s.id === capturedHighlight)) { setPrefetched(null); return; }
-    if (prefetched?.id === capturedHighlight) return;
-    (async () => {
-      const resp = await lookupEntity<Suggestion>('suggestion', capturedHighlight);
-      if (resp?.item) setPrefetched(resp.item);
-    })();
-  }, [capturedHighlight, rawItems]);
-
-  const data = useMemo(() => {
-    if (!rawItems) return null;
-    if (!prefetched || rawItems.some(s => s.id === prefetched.id)) return rawItems;
-    return [prefetched, ...rawItems];
-  }, [rawItems, prefetched]);
+  const { items: data } = usePrefetchHighlight<Suggestion>('suggestion', highlightId, rawItems, { persistCapture: true });
 
   // Handle highlight
   if (highlightId && !pulseId && data?.some((s) => s.id === highlightId)) {
