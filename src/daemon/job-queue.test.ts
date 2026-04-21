@@ -261,6 +261,79 @@ describe('JobQueue', () => {
       assert.equal(db.listJobs({ type: 'slow-llm' })[0].status, 'completed');
     } finally { cleanup(); }
   });
+
+  // Audit T-09: stress test with many concurrent jobs. Verifies that the
+  // queue handles larger bursts without deadlocking or starving io jobs,
+  // and that separation between llm and io categories holds under load.
+  it('stress: 20 mixed llm+io jobs all complete without starvation', async () => {
+    const { db, config, cleanup } = createTestDb();
+    const q = new JobQueue(config, db, new EventBus(), createHandlers(), createShared());
+    try {
+      // 15 llm + 5 io = 20 total. Types are varied so same-type exclusion
+      // doesn't serialize them; priority is uniform to keep FIFO under
+      // the priority heap.
+      const llmTypes = ['fast-llm', 'slow-llm', 'another-llm', 'third-llm'] as const;
+      const enqueued: string[] = [];
+      for (let i = 0; i < 15; i++) {
+        const job = db.enqueueJob(llmTypes[i % llmTypes.length], { priority: 5 });
+        if (job) enqueued.push(job.id);
+      }
+      for (let i = 0; i < 5; i++) {
+        const job = db.enqueueJob('fast-io', { priority: 5 });
+        if (job) enqueued.push(job.id);
+      }
+      assert.equal(db.listJobs({ status: 'queued' }).length, 20);
+
+      // Drive the queue until everything drains. Each tick picks up what
+      // capacity allows; drainAll awaits outstanding work.
+      const start = Date.now();
+      while (db.listJobs({ status: 'queued' }).length > 0 || q.activeCount > 0) {
+        await q.tick();
+        await q.drainAll(3000);
+        // Safety valve — if we're here more than 10s, something starved.
+        if (Date.now() - start > 10_000) {
+          throw new Error(`stress test did not drain in 10s — queued=${db.listJobs({ status: 'queued' }).length} active=${q.activeCount}`);
+        }
+      }
+
+      const completed = db.listJobs({ status: 'completed' });
+      assert.equal(completed.length, 20, 'all 20 jobs should complete');
+      assert.equal(db.listJobs({ status: 'queued' }).length, 0);
+      assert.equal(db.listJobs({ status: 'running' }).length, 0);
+      assert.equal(db.listJobs({ status: 'failed' }).length, 0);
+    } finally { cleanup(); }
+  });
+
+  // Audit T-09: llm and io queues have independent capacity. Filling llm
+  // capacity should not block io jobs from making progress.
+  it('stress: io jobs run even when llm capacity is saturated with slow work', async () => {
+    const { db, config, cleanup } = createTestDb();
+    const q = new JobQueue(config, db, new EventBus(), createHandlers(), createShared());
+    try {
+      // Fill llm capacity (maxConcurrentJobs=2) with slow work.
+      db.enqueueJob('slow-llm', { priority: 10 });
+      db.enqueueJob('another-llm', { priority: 10 });
+      // Enqueue many io jobs behind them.
+      for (let i = 0; i < 10; i++) db.enqueueJob('fast-io', { priority: 5 });
+
+      const start = Date.now();
+      // First tick picks up slow-llm + another-llm (llm capacity saturated)
+      // plus some io jobs (io capacity independent).
+      await q.tick();
+      await q.drainAll(3000);
+      // Continue ticking until everything drains.
+      while (db.listJobs({ status: 'queued' }).length > 0 || q.activeCount > 0) {
+        await q.tick();
+        await q.drainAll(3000);
+        if (Date.now() - start > 10_000) {
+          throw new Error(`io+llm drain exceeded 10s — io queued=${db.listJobs({ type: 'fast-io', status: 'queued' }).length}`);
+        }
+      }
+
+      assert.equal(db.listJobs({ status: 'completed' }).length, 12);
+      assert.equal(db.listJobs({ type: 'fast-io', status: 'completed' }).length, 10, 'all io jobs completed');
+    } finally { cleanup(); }
+  });
 });
 
 // --- Schedules ---
