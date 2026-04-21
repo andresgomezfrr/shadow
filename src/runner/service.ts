@@ -159,6 +159,12 @@ export class RunnerService {
               '## Changes per file',
               '## Risks and edge cases',
               '## Verification steps',
+              '',
+              '**COMPLETION MARKER**: End your plan file with a line containing exactly:',
+              '',
+              '    <!-- PLAN COMPLETE -->',
+              '',
+              'This lets the runner verify you finished rather than being interrupted mid-plan.',
             ].join('\n')
           : [
               'Implement the plan below. Read the relevant files, make the changes, and verify.',
@@ -231,6 +237,13 @@ export class RunnerService {
             effectivePlan = capture.content;
             writeFileSync(join(artifactDir, 'plan.md'), capture.content, 'utf-8');
             console.error(`[runner] Captured plan from session: ${capture.filePath} (${capture.content.length} chars)`);
+            // Audit P-04: verify LLM emitted the completion marker. Missing marker
+            // is a soft-fail signal — the plan might be a half-written doc that
+            // looks structured but stops mid-thought. Log only (user decision:
+            // warn, don't fail loud) so downstream confidence eval still runs.
+            if (!/<!--\s*PLAN COMPLETE\s*-->/i.test(capture.content.trimEnd().slice(-200))) {
+              console.error('[runner] Plan missing "<!-- PLAN COMPLETE -->" marker — proceeding but may be incomplete');
+            }
           }
         } catch (err) {
           console.error('[runner] Plan capture failed (non-fatal):', err instanceof Error ? err.message : err);
