@@ -4,6 +4,24 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-21 (Audit block 5T — observability full)
+
+Bloque 5T cierra los 5 items de observability en full scope. Logger module + convention + migración de 312 console calls a `log.error|warn|info`. Audit events en todas las mutaciones MCP + bond tier. Métricas diarias via nueva tabla `observability_metrics` + job `metrics-snapshot`. 339 tests verdes.
+
+- **O-01 silent catches** — 2 específicos del audit (job-queue.ts:132, tracking.ts:41) ya tenían log. Audit broader: 3 catches con info loss real fijados (`extract.ts:666/667` applyBondDelta bond deltas silenciosos, `consolidate.ts:496` entity validation, `retrieval.ts:546` embedding en memory-merge). Silent catches legítimos (JSONL per-line tolerance, worktree cleanup "may not exist") quedan intactos con comentario de intent.
+
+- **O-02 audit events full** — `createAuditEvent` añadido en todas las mutaciones MCP: memory teach/forget/update; observation ack/resolve/reopen; task create/update/close/archive/remove; repo add/update/remove; contact add/update/remove; system add/remove; project add/update/remove. También en bond tier rise (`profile/bond.ts:254`) — antes solo event_queue, ahora también audit_events. Todas las mutaciones quedan trazadas.
+
+- **O-03 daily token spend** — stale (cubierto por T-03 done 2026-04-19).
+
+- **O-04 observability_metrics table** — Migration v58 crea tabla con UNIQUE(snapshot_date, metric_key) para idempotencia. Nuevo job `metrics-snapshot` (`handlers/metrics.ts`) captura bond axes (5 dims) + tier + total memories + per-layer counts (5) + observations open + suggestions open. Extensible — añadir métricas es push al array. Registrado en `job-types.ts` + `job-handlers.ts`. Manual trigger: `shadow job metrics-snapshot`.
+
+- **O-05 logging convention full** — Nuevo `src/log.ts`: `log.error/warn/info` varargs-compat con `console.error`. Convention: error = real failure, warn = degradation (fallback), info = lifecycle/progress. Todos a stderr (launchd captura). Migración: Node script con cálculo de relative path + import inyection + bulk swap `console.X → log.X`. 312 calls migradas en 47 archivos. Reclasificación obvia en hot paths (analysis/runner/daemon) a `log.info` para progress msgs ("Captured", "Resolved", "Completed", "N insights", "Evolved") y `log.warn` para degradation markers ("Raw (500) after parse fail", "Skipping hallucinated id"). Convention documentada en CLAUDE.md. New code pain-driven usa logger.
+
+**Verificación**: 339 tests verdes pre y post migración. Typecheck limpio. Logger varargs compat = zero breaking change en stderr output (mismo formato, mismo stream).
+
+---
+
 ## Session 2026-04-21 (Block 5S — observations abiertas de check_in)
 
 Bloque 5S cierra 4 observations que recurrían en `shadow_check_in` cada sesión (fuera del audit 2026-04-18, generadas por mí durante el trabajo). Todas high-severity relacionadas con robustez structural. 339 tests verdes (4 nuevos de cascade rollback).
