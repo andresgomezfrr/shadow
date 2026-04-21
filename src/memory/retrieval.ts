@@ -257,6 +257,14 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
           effort: 'high',
         });
 
+        db.recordLlmUsage({
+          source: 'correction_enforce',
+          sourceId: correction.id,
+          model: 'opus',
+          inputTokens: result.inputTokens ?? 0,
+          outputTokens: result.outputTokens ?? 0,
+        });
+
         if (result.status === 'success' && result.output) {
           const schema = z.object({
             decisions: z.array(z.object({
@@ -463,6 +471,14 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
         relevantMemories: [],
         model: 'opus',
         effort: 'high',
+      });
+
+      db.recordLlmUsage({
+        source: 'memory_merge',
+        sourceId: cluster[0].id,
+        model: 'opus',
+        inputTokens: result.inputTokens ?? 0,
+        outputTokens: result.outputTokens ?? 0,
       });
 
       if (result.status !== 'success' || !result.output) continue;
