@@ -193,12 +193,20 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         const existing = db.findRepoByPath(repoPath);
         if (existing) return err(`Repo already registered: ${existing.name} (${existing.id})`);
 
-        return ok(db.createRepo({
+        const repo = db.createRepo({
           path: repoPath,
           name: repoName,
           defaultBranch: defaultBranch ?? 'main',
           languageHint: languageHint ?? null,
-        }));
+        });
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'repo_add',
+          targetKind: 'repo',
+          targetId: repo.id,
+          detail: { name: repo.name, path: repo.path, defaultBranch: repo.defaultBranch },
+        });
+        return ok(repo);
       },
     },
     {
@@ -219,6 +227,13 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         if (Object.keys(updates).length === 0) return err('No fields to update');
 
         db.updateRepo(p.repoId, updates as Parameters<typeof db.updateRepo>[1]);
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'repo_update',
+          targetKind: 'repo',
+          targetId: p.repoId,
+          detail: { updatedFields: Object.keys(updates) },
+        });
         return ok(db.getRepo(p.repoId));
       },
     },
@@ -233,6 +248,13 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         if (!repo) return err(`Repo not found: ${repoId}`);
 
         db.deleteRepo(repoId);
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'repo_remove',
+          targetKind: 'repo',
+          targetId: repoId,
+          detail: { name: repo.name, path: repo.path },
+        });
         return ok({ removed: repoId, name: repo.name });
       },
     },
@@ -256,7 +278,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         const p = ContactAddSchema.parse(params);
         const existing = db.findContactByName(p.name);
         if (existing) return err(`Contact "${p.name}" already exists (id: ${existing.id}). Use shadow_contact_update to modify.`);
-        return ok(db.createContact({
+        const contact = db.createContact({
           name: p.name,
           role: p.role ?? null,
           team: p.team ?? null,
@@ -265,7 +287,15 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           githubHandle: p.githubHandle ?? null,
           notesMd: p.notesMd ?? null,
           preferredChannel: p.preferredChannel ?? null,
-        }));
+        });
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'contact_add',
+          targetKind: 'contact',
+          targetId: contact.id,
+          detail: { name: contact.name, role: contact.role, team: contact.team },
+        });
+        return ok(contact);
       },
     },
     {
@@ -282,6 +312,13 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         if (Object.keys(cleanUpdates).length === 0) return err('No fields to update');
 
         db.updateContact(contactId, cleanUpdates);
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'contact_update',
+          targetKind: 'contact',
+          targetId: contactId,
+          detail: { updatedFields: Object.keys(cleanUpdates) },
+        });
         return ok(db.getContact(contactId));
       },
     },
@@ -296,6 +333,13 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         if (!contact) return err(`Contact not found: ${contactId}`);
 
         db.deleteContact(contactId);
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'contact_remove',
+          targetKind: 'contact',
+          targetId: contactId,
+          detail: { name: contact.name, role: contact.role, team: contact.team },
+        });
         return ok({ removed: contactId, name: contact.name });
       },
     },
@@ -317,7 +361,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
 
         const p = SystemAddSchema.parse(params);
-        return ok(db.createSystem({
+        const system = db.createSystem({
           name: p.name,
           kind: p.kind,
           url: p.url ?? null,
@@ -327,7 +371,15 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           logsLocation: p.logsLocation ?? null,
           deployMethod: p.deployMethod ?? null,
           debugGuide: p.debugGuide ?? null,
-        }));
+        });
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'system_add',
+          targetKind: 'system',
+          targetId: system.id,
+          detail: { name: system.name, kind: system.kind, url: system.url },
+        });
+        return ok(system);
       },
     },
     {
@@ -341,6 +393,13 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         if (!system) return err(`System not found: ${systemId}`);
 
         db.deleteSystem(systemId);
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'system_remove',
+          targetKind: 'system',
+          targetId: systemId,
+          detail: { name: system.name, kind: system.kind },
+        });
         return ok({ removed: systemId, name: system.name });
       },
     },
@@ -362,7 +421,7 @@ export function entityTools(ctx: ToolContext): McpTool[] {
       handler: async (params) => {
 
         const p = ProjectAddSchema.parse(params);
-        return ok(db.createProject({
+        const project = db.createProject({
           name: p.name,
           kind: p.kind ?? 'long-term',
           description: p.description ?? null,
@@ -371,7 +430,15 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           contactIds: p.contactIds ?? [],
           startDate: p.startDate ?? null,
           endDate: p.endDate ?? null,
-        }));
+        });
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'project_add',
+          targetKind: 'project',
+          targetId: project.id,
+          detail: { name: project.name, kind: project.kind, repoCount: project.repoIds.length },
+        });
+        return ok(project);
       },
     },
     {
@@ -385,6 +452,13 @@ export function entityTools(ctx: ToolContext): McpTool[] {
         if (!project) return err(`Project not found: ${projectId}`);
 
         db.deleteProject(projectId);
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'project_remove',
+          targetKind: 'project',
+          targetId: projectId,
+          detail: { name: project.name, kind: project.kind },
+        });
         return ok({ removed: projectId, name: project.name });
       },
     },
@@ -403,7 +477,15 @@ export function entityTools(ctx: ToolContext): McpTool[] {
           if (p[key] !== undefined) updates[key] = p[key];
         }
 
-        return ok(db.updateProject(p.projectId, updates as Parameters<typeof db.updateProject>[1]));
+        const updated = db.updateProject(p.projectId, updates as Parameters<typeof db.updateProject>[1]);
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'project_update',
+          targetKind: 'project',
+          targetId: p.projectId,
+          detail: { updatedFields: Object.keys(updates) },
+        });
+        return ok(updated);
       },
     },
     {

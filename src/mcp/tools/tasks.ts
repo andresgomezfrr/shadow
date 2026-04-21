@@ -83,6 +83,13 @@ export function taskTools(ctx: ToolContext): McpTool[] {
           sessionId: input.sessionId,
           sessionRepoPath: input.sessionRepoPath,
         });
+        ctx.db.createAuditEvent({
+          interface: 'mcp',
+          action: 'task_create',
+          targetKind: 'task',
+          targetId: task.id,
+          detail: { title: task.title, status: task.status, suggestionId: input.suggestionId ?? null, projectId: input.projectId ?? null },
+        });
         return ok({ task, message: `Task "${task.title}" created` });
       },
     },
@@ -102,6 +109,13 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         if (updates.status === 'done' && !task.closedAt) updates.closedAt = new Date().toISOString();
         if (updates.status && updates.status !== 'done') updates.closedAt = null;
         ctx.db.updateTask(input.id, updates as Parameters<typeof ctx.db.updateTask>[1]);
+        ctx.db.createAuditEvent({
+          interface: 'mcp',
+          action: 'task_update',
+          targetKind: 'task',
+          targetId: input.id,
+          detail: { updatedFields: Object.keys(updates), newStatus: updates.status ?? null },
+        });
         return ok({ task: ctx.db.getTask(input.id), message: 'Task updated' });
       },
     },
@@ -118,6 +132,13 @@ export function taskTools(ctx: ToolContext): McpTool[] {
           closedAt: new Date().toISOString(),
           ...(input.closedNote !== undefined ? { closedNote: input.closedNote } : {}),
         });
+        ctx.db.createAuditEvent({
+          interface: 'mcp',
+          action: 'task_close',
+          targetKind: 'task',
+          targetId: input.id,
+          detail: { title: task.title, closedNote: input.closedNote ?? null },
+        });
         return ok({ task: ctx.db.getTask(input.id), message: `Task "${task.title}" closed` });
       },
     },
@@ -130,6 +151,13 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         const task = ctx.db.getTask(input.id);
         if (!task) return err(`Task ${input.id} not found`);
         ctx.db.updateTask(input.id, { archived: true });
+        ctx.db.createAuditEvent({
+          interface: 'mcp',
+          action: 'task_archive',
+          targetKind: 'task',
+          targetId: input.id,
+          detail: { title: task.title },
+        });
         return ok({ taskId: input.id, archived: true });
       },
     },
@@ -163,6 +191,13 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         const task = ctx.db.getTask(input.id);
         if (!task) return err(`Task ${input.id} not found`);
         ctx.db.deleteTask(input.id);
+        ctx.db.createAuditEvent({
+          interface: 'mcp',
+          action: 'task_remove',
+          targetKind: 'task',
+          targetId: input.id,
+          detail: { title: task.title },
+        });
         return ok({ message: `Task "${task.title}" deleted` });
       },
     },

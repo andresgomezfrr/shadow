@@ -99,6 +99,13 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         if (obs.status !== 'open') return err(`Observation is ${obs.status}, not open`);
         db.updateObservationStatus(id, 'acknowledged');
         db.touchObservationLastSeen(id);
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'observation_ack',
+          targetKind: 'observation',
+          targetId: id,
+          detail: { title: obs.title, severity: obs.severity, kind: obs.kind },
+        });
         return ok({ observationId: id, status: 'acknowledged' });
       },
     },
@@ -115,6 +122,13 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         db.updateObservationStatus(id, 'done');
         db.deleteEmbedding('observation_vectors', id);
         db.createFeedback({ targetKind: 'observation', targetId: id, action: 'resolve', note: reason });
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'observation_resolve',
+          targetKind: 'observation',
+          targetId: id,
+          detail: { title: obs.title, severity: obs.severity, kind: obs.kind, reason: reason ?? null },
+        });
         return ok({ observationId: id, status: 'done' });
       },
     },
@@ -130,6 +144,13 @@ export function observationTools(ctx: ToolContext): McpTool[] {
         if (obs.status === 'open') return err('Already open');
         db.updateObservationStatus(id, 'open');
         db.touchObservationLastSeen(id);
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'observation_reopen',
+          targetKind: 'observation',
+          targetId: id,
+          detail: { title: obs.title, previousStatus: obs.status },
+        });
         return ok({ observationId: id, status: 'open' });
       },
     },

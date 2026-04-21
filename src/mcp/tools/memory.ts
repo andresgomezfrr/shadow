@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mcpSchema, ok, err, type McpTool, type ToolContext } from './types.js';
+import { log } from '../../log.js';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -99,11 +100,20 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
         if (entityType && entityId) {
           db.updateMemory(memory.id, { entities: [{ type: entityType, id: entityId }] });
         } else if (params.entityType || params.entityId) {
-          console.error(`[mcp:teach] Entity params received but not parsed: entityType=${params.entityType} entityId=${params.entityId}`);
+          log.error(`[mcp:teach] Entity params received but not parsed: entityType=${params.entityType} entityId=${params.entityId}`);
         }
 
         // Bond: teaching recomputes bond axes (depth grows)
-        try { applyBondDelta(db, 'memory_taught'); } catch { /* ignore */ }
+        try { applyBondDelta(db, 'memory_taught'); }
+        catch (e) { log.error('[mcp:memory_teach] applyBondDelta memory_taught failed:', e instanceof Error ? e.message : e); }
+
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'memory_teach',
+          targetKind: 'memory',
+          targetId: memory.id,
+          detail: { title, layer: layer ?? 'working', kind: kind ?? 'taught', linked: !!(entityType && entityId) },
+        });
         return ok(entityType && entityId ? (db.getMemory(memory.id) ?? memory) : memory);
       },
     },
@@ -124,6 +134,13 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
         db.updateMemory(memoryId, { archivedAt: new Date().toISOString() });
         db.deleteEmbedding('memory_vectors', memoryId);
         db.createFeedback({ targetKind: 'memory', targetId: memoryId, action: 'archive', note: reason });
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'memory_forget',
+          targetKind: 'memory',
+          targetId: memoryId,
+          detail: { title: memory.title, reason: reason ?? null },
+        });
         return ok({ archived: memoryId, title: memory.title });
       },
     },
@@ -151,6 +168,13 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
 
         db.updateMemory(memoryId, updates as Parameters<typeof db.updateMemory>[1]);
         db.createFeedback({ targetKind: 'memory', targetId: memoryId, action: 'modify', note: reason ?? `updated: ${Object.keys(updates).join(', ')}` });
+        db.createAuditEvent({
+          interface: 'mcp',
+          action: 'memory_update',
+          targetKind: 'memory',
+          targetId: memoryId,
+          detail: { updatedFields: Object.keys(updates), reason: reason ?? null },
+        });
         return ok({ memoryId, updated: Object.keys(updates) });
       },
     },
@@ -236,9 +260,9 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
             triggerChronicleMilestone(db, 'first_correction', {
               title: memory.title,
               data: { scope: parsed.scope, body: parsed.body.slice(0, 200) },
-            }).catch((e) => console.error('[chronicle] first_correction hook failed:', e));
+            }).catch((e) => log.error('[chronicle] first_correction hook failed:', e));
           }
-        } catch (e) { console.error('[chronicle] first_correction hook failed:', e); }
+        } catch (e) { log.error('[chronicle] first_correction hook failed:', e); }
 
         return ok({ correction: { id: memory.id, title: memory.title, kind: memory.kind, layer: memory.layer } });
       },

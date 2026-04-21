@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { ShadowDatabase } from '../storage/database.js';
 import type { BondAxes } from '../storage/models.js';
+import { log } from '../log.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -252,10 +253,18 @@ export function applyBondDelta(
   } as Record<string, unknown>);
 
   if (rose) {
+    db.createAuditEvent({
+      interface: 'bond',
+      action: 'tier_rise',
+      targetKind: 'profile',
+      targetId: profile.id,
+      detail: { oldTier, newTier: tier, eventKind, axes },
+    });
+
     // Fire-and-forget async: chronicle lore (Opus call, may take seconds)
     import('../analysis/chronicle.js')
       .then(({ triggerChronicleLore }) => triggerChronicleLore(db, tier, oldTier))
-      .catch((e) => console.error('[bond] lore hook failed:', e));
+      .catch((e) => log.error('[bond] lore hook failed:', e));
 
     // Sync: event queue (cheap DB write)
     try {
@@ -265,13 +274,13 @@ export function applyBondDelta(
         payload: { from: oldTier, to: tier, name: BOND_TIER_NAMES[tier] },
       });
     } catch (e) {
-      console.error('[bond] event emit failed:', e);
+      log.error('[bond] event emit failed:', e);
     }
 
     // Fire-and-forget async: unlocks (cheap, but may emit N events)
     import('./unlockables.js')
       .then(({ evaluateUnlocks }) => evaluateUnlocks(db, tier))
-      .catch((e) => console.error('[bond] unlocks hook failed:', e));
+      .catch((e) => log.error('[bond] unlocks hook failed:', e));
   }
 
   // eventKind kept in signature for audit/telemetry but unused in computation
