@@ -169,10 +169,10 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
 
     detectedProjects = detectActiveProjects(db, recentInteractions, recentConvTexts, shared.pendingRemoteSyncResults);
     if (detectedProjects.length > 0) {
-      console.error(`[daemon] Active projects: ${detectedProjects.map(p => `${p.projectName}(${p.score.toFixed(0)})`).join(', ')}`);
+      log.error(`[daemon] Active projects: ${detectedProjects.map(p => `${p.projectName}(${p.score.toFixed(0)})`).join(', ')}`);
     }
   } catch (e) {
-    console.error('[daemon] Project detection failed:', e instanceof Error ? e.message : e);
+    log.error('[daemon] Project detection failed:', e instanceof Error ? e.message : e);
   }
 
   // Persist to daemon state
@@ -241,7 +241,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
   try {
     const { consolidateObservations } = await import('../observation/consolidation.js');
     const obsMerged = await consolidateObservations(db);
-    if (obsMerged > 0) console.error(`[daemon] Consolidated ${obsMerged} similar observations`);
+    if (obsMerged > 0) log.error(`[daemon] Consolidated ${obsMerged} similar observations`);
   } catch { /* ignore */ }
 
   // Post-heartbeat: reactive suggest boost (only if many observations + enough gap)
@@ -276,7 +276,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
         });
         if (needsProfile) {
           db.enqueueJob('repo-profile', { priority: 3, triggerSource: 'reactive' });
-          console.error('[daemon] Reactive repo-profile triggered: repos with new local commits');
+          log.error('[daemon] Reactive repo-profile triggered: repos with new local commits');
         }
       }
     }
@@ -300,7 +300,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
   try {
     consolidateResult = await activityConsolidate(actCtx);
   } catch (e) {
-    console.error('[daemon] Consolidate layer maintenance failed:', e instanceof Error ? e.message : e);
+    log.error('[daemon] Consolidate layer maintenance failed:', e instanceof Error ? e.message : e);
   }
 
   // Phase 2: Correction enforcement
@@ -310,10 +310,10 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
     const { enforceCorrections } = await import('../memory/retrieval.js');
     correctionsResult = await enforceCorrections(ctx.db, ctx.config);
     if (correctionsResult.processed > 0) {
-      console.error(`[daemon] Corrections enforced: ${correctionsResult.processed} processed, ${correctionsResult.archived} archived, ${correctionsResult.edited} edited`);
+      log.error(`[daemon] Corrections enforced: ${correctionsResult.processed} processed, ${correctionsResult.archived} archived, ${correctionsResult.edited} edited`);
     }
   } catch (e) {
-    console.error('[daemon] Correction enforcement failed:', e instanceof Error ? e.message : e);
+    log.error('[daemon] Correction enforcement failed:', e instanceof Error ? e.message : e);
   }
 
   // Phase 3: Memory merge
@@ -323,10 +323,10 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
     const { mergeRelatedMemories } = await import('../memory/retrieval.js');
     mergeResult = await mergeRelatedMemories(ctx.db, ctx.config);
     if (mergeResult.merged > 0 || mergeResult.deduped > 0) {
-      console.error(`[daemon] Memory merge: ${mergeResult.merged} clusters merged, ${mergeResult.archived} archived, ${mergeResult.deduped} deduped`);
+      log.error(`[daemon] Memory merge: ${mergeResult.merged} clusters merged, ${mergeResult.archived} archived, ${mergeResult.deduped} deduped`);
     }
   } catch (e) {
-    console.error('[daemon] Memory merge failed:', e instanceof Error ? e.message : e);
+    log.error('[daemon] Memory merge failed:', e instanceof Error ? e.message : e);
   }
 
   const totalLlmCalls = consolidateResult.llmCalls
@@ -440,7 +440,7 @@ async function handleVersionCheck(ctx: JobContext): Promise<JobHandlerResult> {
       cwd: projectRoot, encoding: 'utf8', timeout: 15_000,
     });
   } catch {
-    console.error('[version-check] Failed to reach remote');
+    log.error('[version-check] Failed to reach remote');
     return { llmCalls: 0, tokensUsed: 0, phases: ['version-check'], result: { error: 'network' } };
   }
 
@@ -485,7 +485,7 @@ async function handleVersionCheck(ctx: JobContext): Promise<JobHandlerResult> {
           message: `Shadow ${latestVersion} disponible — ejecuta: shadow upgrade`,
         },
       });
-      console.error(`[version-check] New version available: v${latestVersion} (current: v${currentVersion})`);
+      log.error(`[version-check] New version available: v${latestVersion} (current: v${currentVersion})`);
     }
   }
 
@@ -502,6 +502,8 @@ import { handleRemoteSync, handleRepoProfile, handleContextEnrich, handleMcpDisc
 import { handleAutoPlan, handleAutoExecute } from './handlers/autonomy.js';
 import { handlePrSync } from './handlers/pr-sync.js';
 import { handleCleanup } from './handlers/cleanup.js';
+import { handleMetricsSnapshot } from './handlers/metrics.js';
+import { log } from '../log.js';
 
 export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
   const registry = new Map<string, JobHandlerEntry>();
@@ -523,6 +525,7 @@ export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
   registry.set('auto-execute', { category: 'llm', fn: handleAutoExecute, timeoutMs: 60 * 60 * 1000 });
   registry.set('pr-sync', { category: 'io', fn: handlePrSync });
   registry.set('cleanup', { category: 'io', fn: handleCleanup, timeoutMs: 10 * 60 * 1000 });
+  registry.set('metrics-snapshot', { category: 'io', fn: handleMetricsSnapshot });
 
   // Digest handlers registered with their full type name
   for (const digestType of ['digest-daily', 'digest-weekly', 'digest-brag']) {

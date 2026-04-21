@@ -28,6 +28,7 @@ export const JOB_TYPES: Record<string, { priority: number; description: string }
   'auto-execute':         { priority: 4,  description: 'execute planned runs with high confidence' },
   cleanup:                { priority: 2,  description: 'purge interactions/event_queue/llm_usage/jobs older than 90d; rollup llm_usage_daily' },
   'version-check':        { priority: 1,  description: 'check for new Shadow releases' },
+  'metrics-snapshot':     { priority: 1,  description: 'daily snapshot of bond axes + memory layers into observability_metrics' },
 };
 
 export const JOB_TYPE_NAMES: readonly string[] = Object.freeze(Object.keys(JOB_TYPES));

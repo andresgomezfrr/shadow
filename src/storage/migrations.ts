@@ -1124,6 +1124,27 @@ export const migrations: Migration[] = [
       END;
     `,
   },
+  {
+    version: 58,
+    name: 'observability_metrics',
+    // Daily snapshots of interesting counters. Populated by the
+    // `metrics-snapshot` daemon job. Queryable for time-series later
+    // (bond axes evolution, memory layer distribution, dedup hit rate).
+    // See audit O-04.
+    sql: `
+      CREATE TABLE IF NOT EXISTS observability_metrics (
+        id TEXT PRIMARY KEY,
+        snapshot_date TEXT NOT NULL,  -- YYYY-MM-DD
+        metric_key TEXT NOT NULL,     -- e.g. 'bond.depth', 'memories.layer.core', 'dedup.suggest.hit_rate'
+        metric_value REAL NOT NULL,
+        context_json TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        UNIQUE (snapshot_date, metric_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_obs_metrics_date ON observability_metrics(snapshot_date);
+      CREATE INDEX IF NOT EXISTS idx_obs_metrics_key ON observability_metrics(metric_key);
+    `,
+  },
 ];
 
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {
