@@ -4,6 +4,20 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-21 (Audit block 5Q — analysis residual, todo audit-stale)
+
+Bloque 5Q verificado — los 4 items pendientes ya estaban implementados en blocks previos, solo faltaba actualizar el audit. Cero código nuevo, solo marks. Tipo "sweeper block" para cerrar confusión de items mirage.
+
+- **A-01 notify dedup infinito** — throttle 24h via `observations.last_notified_at` completamente wired: migration + mapper + store method (`setObservationNotifiedAt`) + check+update en `notify.ts:57-82`. Comentario inline referencia el bug histórico (90+ eventos en prod).
+
+- **A-02 JSON repair heuristic** — (1) `extractJson` tiene schema beacon `{"verdict":` con `extractBalancedObject` (json-repair.ts:22-28), (2) revalidate-suggestion hace retry con prompt reforzado al fallar el parse y termina loud como `parse_failed_after_retry` (handlers/suggest.ts:536-572). Zombie completions eliminados.
+
+- **A-04 opus hardcoded heartbeat** — las 3 call sites (extract.ts:209/311/498) usan `getModel(ctx, 'summarize'|'extract'|'observe')`. Config schema con keys configurables y defaults.
+
+- **A-09 consolidate JSON.parse** — duplicado de P-05 con otro label. Ya marcado en 5P. Ambos parses usan safeParseJson.
+
+---
+
 ## Session 2026-04-21 (Audit block 5R — UI cleanup)
 
 Bloque 5R cierra 4 items UI del audit. 2 eran audit-stale (UI-01 y UI-06 ya estaban done) — scope real reducido a Toast system + prefetch hook. 335 tests verdes.
