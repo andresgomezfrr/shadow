@@ -1,4 +1,4 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -620,5 +620,138 @@ describe('toSqlValue via updateRun', () => {
     db.updateRun(run.id, { archived: false });
     const reverted = db.getRun(run.id)!;
     assert.equal(reverted.archived, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cascade rollback (audit S-04)
+//
+// Verifies that application-layer cascades inside `withTransaction` actually
+// roll back fully when a later step throws — previously untested surface.
+//
+// Injection technique: temp TRIGGER on one of the cascade tables that RAISEs
+// ABORT for the target entity. The cascade steps before the trigger fire as
+// normal; the trigger-guarded step raises; withTransaction catches and issues
+// ROLLBACK. Pure SQL, no module mocks.
+// ---------------------------------------------------------------------------
+
+describe('cascade rollback', () => {
+  let db: ShadowDatabase;
+  let cleanup: () => void;
+
+  beforeEach(() => {
+    ({ db, cleanup } = createTestDb());
+  });
+  afterEach(() => cleanup());
+
+  it('deleteRepo rolls back memory SET NULL + child DELETEs on mid-cascade failure', () => {
+    const repo = db.createRepo({ name: 'rollback-repo', path: '/tmp/rollback-repo-' + randomUUID() });
+    const mem = db.createMemory({
+      layer: 'hot', scope: 'repo', kind: 'workflow',
+      title: 'will survive rollback', bodyMd: 'body', sourceType: 'test',
+      repoId: repo.id,
+    });
+    const obs = db.createObservation({ repoId: repo.id, kind: 'improvement', title: 'obs survive' });
+    const sug = db.createSuggestion({ repoId: repo.id, kind: 'plan', title: 'sug survive', summaryMd: 'sm' });
+    const run = db.createRun({ repoId: repo.id, kind: 'execution', prompt: 'run survive' });
+    db.upsertEnrichment({ source: 'test', entityType: 'repo', entityId: repo.id, summary: 'cached', contentHash: 'hash-' + repo.id });
+
+    // Trigger raises on DELETE of this repo's enrichment row — 5th cascade step.
+    // By the time it fires, memories UPDATE, suggestions/observations/runs DELETE
+    // already ran. Rollback must revert all of them.
+    (db as unknown as { database: { exec(s: string): void } }).database.exec(
+      `CREATE TEMP TRIGGER fail_enrichment_cascade
+       BEFORE DELETE ON enrichment_cache
+       WHEN OLD.entity_type = 'repo' AND OLD.entity_id = '${repo.id}'
+       BEGIN SELECT RAISE(ABORT, 'injected mid-cascade failure'); END;`,
+    );
+
+    assert.throws(() => db.deleteRepo(repo.id), /injected mid-cascade/);
+
+    // Cleanup trigger before assertions so later ops work
+    (db as unknown as { database: { exec(s: string): void } }).database.exec('DROP TRIGGER IF EXISTS fail_enrichment_cascade');
+
+    // Verify rollback: everything untouched
+    assert.ok(db.getRepo(repo.id), 'repo should still exist');
+    const memAfter = db.getMemory(mem.id);
+    assert.ok(memAfter, 'memory should still exist');
+    assert.equal(memAfter.repoId, repo.id, 'memory.repoId should still point to repo (UPDATE rolled back)');
+    assert.ok(db.getObservation(obs.id), 'observation should still exist (DELETE rolled back)');
+    assert.ok(db.getSuggestion(sug.id), 'suggestion should still exist (DELETE rolled back)');
+    assert.ok(db.getRun(run.id), 'run should still exist (DELETE rolled back)');
+  });
+
+  it('deleteProject rolls back tasks.project_id SET NULL on mid-cascade failure', () => {
+    const project = db.createProject({ name: 'rollback-project' });
+    const task = db.createTask({ title: 'linked', projectId: project.id });
+    db.upsertEnrichment({ source: 'test', entityType: 'project', entityId: project.id, summary: 'cached', contentHash: 'hash-' + project.id });
+
+    (db as unknown as { database: { exec(s: string): void } }).database.exec(
+      `CREATE TEMP TRIGGER fail_project_enrichment_cascade
+       BEFORE DELETE ON enrichment_cache
+       WHEN OLD.entity_type = 'project' AND OLD.entity_id = '${project.id}'
+       BEGIN SELECT RAISE(ABORT, 'injected mid-cascade failure'); END;`,
+    );
+
+    assert.throws(() => db.deleteProject(project.id), /injected mid-cascade/);
+
+    (db as unknown as { database: { exec(s: string): void } }).database.exec('DROP TRIGGER IF EXISTS fail_project_enrichment_cascade');
+
+    assert.ok(db.getProject(project.id), 'project should still exist');
+    const taskAfter = db.getTask(task.id);
+    assert.ok(taskAfter, 'task should still exist');
+    assert.equal(taskAfter.projectId, project.id, 'task.projectId should still point to project (UPDATE rolled back)');
+  });
+
+  it('deleteSystem rolls back memories.system_id SET NULL on mid-cascade failure', () => {
+    const system = db.createSystem({ name: 'rollback-system', kind: 'service' });
+    const mem = db.createMemory({
+      layer: 'hot', scope: 'personal', kind: 'infrastructure',
+      title: 'linked to system', bodyMd: 'body', sourceType: 'test',
+      systemId: system.id,
+    });
+    db.upsertEnrichment({ source: 'test', entityType: 'system', entityId: system.id, summary: 'cached', contentHash: 'hash-' + system.id });
+
+    (db as unknown as { database: { exec(s: string): void } }).database.exec(
+      `CREATE TEMP TRIGGER fail_system_enrichment_cascade
+       BEFORE DELETE ON enrichment_cache
+       WHEN OLD.entity_type = 'system' AND OLD.entity_id = '${system.id}'
+       BEGIN SELECT RAISE(ABORT, 'injected mid-cascade failure'); END;`,
+    );
+
+    assert.throws(() => db.deleteSystem(system.id), /injected mid-cascade/);
+
+    (db as unknown as { database: { exec(s: string): void } }).database.exec('DROP TRIGGER IF EXISTS fail_system_enrichment_cascade');
+
+    assert.ok(db.getSystem(system.id), 'system should still exist');
+    const memAfter = db.getMemory(mem.id);
+    assert.ok(memAfter, 'memory should still exist');
+    assert.equal(memAfter.systemId, system.id, 'memory.systemId should still point to system (UPDATE rolled back)');
+  });
+
+  it('deleteContact rolls back memories.contact_id SET NULL on mid-cascade failure', () => {
+    const contact = db.createContact({ name: 'rollback-contact' });
+    const mem = db.createMemory({
+      layer: 'hot', scope: 'personal', kind: 'team_knowledge',
+      title: 'linked to contact', bodyMd: 'body', sourceType: 'test',
+      contactId: contact.id,
+    });
+    db.upsertEnrichment({ source: 'test', entityType: 'contact', entityId: contact.id, summary: 'cached', contentHash: 'hash-' + contact.id });
+
+    (db as unknown as { database: { exec(s: string): void } }).database.exec(
+      `CREATE TEMP TRIGGER fail_contact_enrichment_cascade
+       BEFORE DELETE ON enrichment_cache
+       WHEN OLD.entity_type = 'contact' AND OLD.entity_id = '${contact.id}'
+       BEGIN SELECT RAISE(ABORT, 'injected mid-cascade failure'); END;`,
+    );
+
+    assert.throws(() => db.deleteContact(contact.id), /injected mid-cascade/);
+
+    (db as unknown as { database: { exec(s: string): void } }).database.exec('DROP TRIGGER IF EXISTS fail_contact_enrichment_cascade');
+
+    assert.ok(db.getContact(contact.id), 'contact should still exist');
+    const memAfter = db.getMemory(mem.id);
+    assert.ok(memAfter, 'memory should still exist');
+    assert.equal(memAfter.contactId, contact.id, 'memory.contactId should still point to contact (UPDATE rolled back)');
   });
 });
