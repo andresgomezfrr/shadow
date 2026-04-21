@@ -4,6 +4,20 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-21 (Audit block 5R — UI cleanup)
+
+Bloque 5R cierra 4 items UI del audit. 2 eran audit-stale (UI-01 y UI-06 ya estaban done) — scope real reducido a Toast system + prefetch hook. 335 tests verdes.
+
+- **UI-01 + UI-06 audit-stale marks** — `ActivityEntry.tsx` hace tiempo splitteado a 190 líneas + 3 sub-components (Header/Phases/ExpandedDetail), comentario inline lo documenta. `RunSpinner` component extraído con prop `size='sm'|'md'`, consumido por FeedRunCard/RunPipeline/RunJourney. Cero código nuevo — solo marks.
+
+- **UI-02 Toast system + native dialogs replaced** (`src/web/dashboard/src/components/common/Toast.tsx`, nuevo archivo ~120 líneas) — `ToastProvider` con context + portal a document.body, `useToast()` devuelve API `{success, error, info, warn}` con auto-dismiss diferenciado (success/info 4s, warn 5s, error 6s), hover pausa timer, dismiss manual via botón ✕, stackable bottom-right. Wrappeado en `App.tsx` entre ErrorBoundary y AppShell. Callsites migrados: 2 `alert()` (RunJourney + RunsPage draft-pr errors) → `toast.error()`; `confirm('Delete this task?')` en TasksPage → `useDialog().confirm({variant:'danger'})`.
+
+- **UI-03 usePrefetchHighlight hook** (`src/web/dashboard/src/hooks/usePrefetchHighlight.ts`, nuevo archivo ~50 líneas) — Hook genérico reemplaza la triple duplicación de logic prefetch en Suggestions/Runs/Observations. Signature: `usePrefetchHighlight<T>(entityType, highlightId, rawItems, { persistCapture? })` → `{ items, prefetched }`. `entityType` pasa a `lookupEntity<T>`. `persistCapture: true` captura highlight al primer render y lo preserva tras URL clear (SuggestionsPage lo necesita por su patrón de pulsar + limpiar URL). Las 3 páginas migradas: ObservationsPage pierde useEffect/useMemo imports no usados, RunsPage igual, SuggestionsPage mantiene otros usos.
+
+**Toast infra disponible para próximos usos** — success notifs ("Task created"), info ("Session ready"), warn del presupuesto. No hay callsites nuevos añadidos aún; se usará pain-driven cuando salgan necesidades.
+
+---
+
 ## Session 2026-04-21 (Audit block 5P — prompts hardening)
 
 Bloque 5P cierra 5 items de robustez LLM en analysis/runner/digests — structural containment sobre validation frágil o inexistente. 335 tests verdes. P-11 (summarize→Sonnet) overruled por user (deja Opus). P-12 (persona SYSTEM vs USER) diferido a bloque propio (refactor amplio en adapters).
