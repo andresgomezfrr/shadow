@@ -103,9 +103,17 @@ export class ClaudeCliAdapter implements BackendAdapter {
     }
 
     // Explicit deny list — deny rules win over allowedTools in Claude CLI.
-    // Used by runner to block built-in tools that have no place in autonomous sessions (e.g. AskUserQuestion).
-    if (pack.disallowedTools && pack.disallowedTools.length > 0) {
-      args.push('--disallowedTools', pack.disallowedTools.join(','));
+    // `AskUserQuestion` is ALWAYS denied by default: daemon-spawned Claude has
+    // no human to answer questions, so if it tries, the session hangs or errors.
+    // Previously only runner applied this guard; suggest/autonomy/reflect/etc.
+    // paths leaked the built-in. Caller can override by passing the tool name
+    // in `allowedTools` explicitly (it's filtered out before merging here).
+    // See audit S-03.
+    const denies = new Set<string>(pack.disallowedTools ?? []);
+    const callerAllowedAsk = (pack.allowedTools ?? []).some((t) => t === 'AskUserQuestion');
+    if (!callerAllowedAsk) denies.add('AskUserQuestion');
+    if (denies.size > 0) {
+      args.push('--disallowedTools', [...denies].join(','));
     }
 
     // Prompt via stdin — avoids ARG_MAX limit with large prompts (conversations, memories, etc.)
