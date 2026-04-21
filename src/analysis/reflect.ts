@@ -147,7 +147,16 @@ export async function activityReflect(
     'When done, call shadow_soul_update with the complete evolved soul markdown.',
   ].filter(Boolean).join('\n');
 
-  const expectedSections = ['## Shadow\'s voice', '## Developer profile', '## Decision patterns', '## Tensions & gaps'];
+  // Section validation uses tolerant regex (case + apostrophe + & vs y)
+  // so LLM variations like "## shadow's voice" or "## Tensions y gaps" don't
+  // trigger silent reverts. Audit P-02: strict `includes()` was case-sensitive
+  // and exact-literal, reverting on superficial formatting drift.
+  const sectionChecks: Array<{ name: string; pattern: RegExp }> = [
+    { name: "Shadow's voice", pattern: /##\s+Shadow'?s?\s+voice/i },
+    { name: 'Developer profile', pattern: /##\s+Developer\s+profile/i },
+    { name: 'Decision patterns', pattern: /##\s+Decision\s+patterns/i },
+    { name: 'Tensions & gaps', pattern: /##\s+Tensions\s*(?:&|y)\s*gaps/i },
+  ];
   const originalSoulMd = existingSoul?.bodyMd ?? null;
 
   try {
@@ -172,9 +181,11 @@ export async function activityReflect(
   opts?.onPhase?.('reflect-validate');
   const currentSoul = ctx.db.listMemories({ archived: false }).find(m => m.kind === 'soul_reflection');
   if (currentSoul && currentSoul.bodyMd !== originalSoulMd) {
-    const missing = expectedSections.filter(s => !currentSoul.bodyMd.includes(s));
+    const missing = sectionChecks.filter(c => !c.pattern.test(currentSoul.bodyMd)).map(c => c.name);
     if (missing.length > 0) {
-      console.error(`[shadow:reflect] Soul updated but missing sections: ${missing.join(', ')} — reverting`);
+      const lenDiff = currentSoul.bodyMd.length - (originalSoulMd?.length ?? 0);
+      const preview = currentSoul.bodyMd.slice(0, 200).replace(/\s+/g, ' ').trim();
+      console.error(`[shadow:reflect] Soul updated but missing sections: ${missing.join(', ')} — reverting. Len diff: ${lenDiff >= 0 ? '+' : ''}${lenDiff}. Preview: "${preview}..."`);
       if (originalSoulMd) ctx.db.updateMemory(currentSoul.id, { bodyMd: originalSoulMd });
       return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: `Soul missing sections: ${missing.join(', ')}` };
     }
