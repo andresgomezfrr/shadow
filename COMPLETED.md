@@ -4,6 +4,30 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-21 (Audit block 5X — testing gaps)
+
+Bloque 5X cierra 6 items de testing. **3 eran audit-stale** (T-01 runner 73 tests ya existen, T-07 task lifecycle 21 tests, T-12 timeout no aplica). **3 real work**: T-08 (5 tests nuevos), T-09 (2 stress tests añadidos), T-10 (8 tests nuevos). +15 tests → 354/354 verdes.
+
+- **T-01 runner completo** — stale: `runner/state-machine.test.ts` (142L), `runner/queue.test.ts` (246L), `runner/service.integration.test.ts` (376L), `runner/plan-validation.test.ts` (51L). Total 73 tests runner-scope, ~815 líneas. Audit reflejaba estado pre-block 3.
+
+- **T-07 task lifecycle** — stale: `mcp/tools/tasks.test.ts` 21 tests. Cubre create (minimal/full/refs), list (status/project), update (status/title, closedAt set on done, clear on reopen), close, archive, execute (run + active), delete, not-found.
+
+- **T-12 job-queue timeout tolerance** — stale: no existe asserción `elapsed < 2_000`. Los 2000 son `drainAll(2000)` timeout config, no assertions. Sin flaky risk descrito.
+
+- **T-08 consolidate observations boundary tests** (`src/observation/consolidation.test.ts`, nuevo, 5 tests) — Mockea `memory/embeddings.js` con embeddings deterministas derivados del prefijo del título (first 32 chars → vector de 384 dims normalizado). Casos: (1) merge cuando similarity > threshold (títulos casi iguales → 100% sim), (2) NO merge cuando similarity < threshold (topics distintos), (3) keeper con más votes absorbe loser votes + repoIds, (4) no-op con <2 active obs, (5) skip de ya-resolved. Populates vec0 via real `generateAndStoreEmbedding` (mockeado) para cerrar el loop.
+
+- **T-09 job queue stress tests** (`src/daemon/job-queue.test.ts`, 2 tests nuevos) — (1) 20 mixed llm+io jobs drain sin starvation en <10s. Types variados (fast-llm/slow-llm/another-llm/third-llm + fast-io), priority uniforme. Todos completan, 0 queued/running/failed. (2) IO queue independiente: llm capacity saturada con slow-llm + another-llm + 10 fast-io → todos completan. Verifica que io progresa sin bloqueo por llm saturation.
+
+- **T-10 digests tests con mock LLM** (`src/analysis/digests.test.ts`, nuevo, 8 tests) — Mockea `backend/index.js` con selectAdapter sintético (`setMockOutput` + `adapterCalls` counter). Cubre:
+  - **Daily**: (a) llama adapter 1x + persist digest + llm_usage row; (b) upsert idempotente en re-run mismo día; (c) llm_usage correctamente grabado con source=digest_daily
+  - **Weekly**: llama adapter + persiste correctamente
+  - **Brag + P-01 validation**: (a) persiste cuando output contiene `## ${quarter}`; (b) skip + keep existing cuando missing section (P-01 guard); (c) skip cuando output empty
+  - **Budget (A-10)**: skip sin llamar adapter cuando `dailyTokenBudget` exhausted (adapterCalls === 0)
+
+**Totales**: 339 → 354 tests (+15). Runner + task + consolidate + job-queue stress + digests ahora cubiertos. Gap real significativo cerrado sin tests mock-heavy ni acoplamiento frágil.
+
+---
+
 ## Session 2026-04-21 (Audit block 5V — hardening DB/MCP/Web/Hooks/Cross-platform)
 
 Bloque 5V cierra 9 items mezcla. **6 eran audit-stale** (la wave de sweeping ya convencida): D-02 cleanup job, M-02 ZodError context, R-03 summary/diffStat coherence, R-04 pr-sync batch — todos ya implementados. **3 real work**: W-07 preferences whitelist + H-02 SubagentStart hook + D-10 v49 legacy columns DROP + C-01 Linux systemd + C-02 Linux isSystemAwake. 339 tests verdes, build limpio.
