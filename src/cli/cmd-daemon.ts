@@ -138,6 +138,23 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
     .description('start the background daemon')
     .action(async () => {
       const { execSync } = await import('node:child_process');
+      const json = Boolean(program.opts().json);
+
+      // Linux (systemd): delegate to systemctl --user. Audit C-01.
+      if (process.platform === 'linux') {
+        const { SYSTEMD_UNIT_PATH } = await import('./systemd.js');
+        if (existsSync(SYSTEMD_UNIT_PATH)) {
+          try {
+            execSync('systemctl --user start shadow-daemon.service', { stdio: 'pipe' });
+            printOutput({ ok: true, message: 'daemon started via systemd --user' }, json);
+            return;
+          } catch (e) {
+            printOutput({ error: `systemctl start failed: ${(e as Error).message}` }, json);
+            return;
+          }
+        }
+        // Fall through to manual spawn if unit missing
+      }
 
       // Kill stale processes first to avoid EADDRINUSE
       try { execSync('pkill -f "shadow/src/daemon/runtime.ts"', { stdio: 'pipe' }); } catch { /* ok */ }
@@ -150,7 +167,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       if (existsSync(plistPath)) {
         try {
           execSync(`launchctl bootstrap gui/$(id -u) ${plistPath} 2>/dev/null || launchctl kickstart gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
-          printOutput({ ok: true, message: 'daemon started via launchd' }, Boolean(program.opts().json));
+          printOutput({ ok: true, message: 'daemon started via launchd' }, json);
           return;
         } catch { /* fallback to manual start */ }
       }
@@ -189,6 +206,17 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
       const json = Boolean(program.opts().json);
 
+      if (process.platform === 'linux') {
+        try {
+          execSync('systemctl --user stop shadow-daemon.service', { stdio: 'pipe' });
+          printOutput({ ok: true, status: 'graceful', message: 'daemon stopped via systemd --user' }, json);
+          return;
+        } catch (e) {
+          printOutput({ error: `systemctl stop failed: ${(e as Error).message}` }, json);
+          return;
+        }
+      }
+
       const result = await gracefulStopDaemon({
         config,
         execSync,
@@ -211,6 +239,17 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       const { execSync } = await import('node:child_process');
       const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
       const json = Boolean(program.opts().json);
+
+      if (process.platform === 'linux') {
+        try {
+          execSync('systemctl --user restart shadow-daemon.service', { stdio: 'pipe' });
+          printOutput({ ok: true, status: 'graceful', message: 'daemon restarted via systemd --user' }, json);
+          return;
+        } catch (e) {
+          printOutput({ error: `systemctl restart failed: ${(e as Error).message}` }, json);
+          return;
+        }
+      }
 
       const stopResult = await gracefulStopDaemon({
         config,

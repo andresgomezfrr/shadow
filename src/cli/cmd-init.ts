@@ -246,8 +246,26 @@ ${endMarker}`;
 
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
 
-        // Install launchd service for persistent daemon
+        // Install persistent daemon service: launchd on macOS, systemd --user on Linux.
         let daemonResult: Record<string, unknown> = {};
+
+        if (process.platform === 'linux') {
+          // --- Linux: systemd user service (audit C-01) ---
+          const { SYSTEMD_UNIT_PATH, SYSTEMD_UNIT_VERSION, readSystemdUnitVersion, writeAndReloadSystemdUnit } = await import('./systemd.js');
+          const installedSdVersion = readSystemdUnitVersion(SYSTEMD_UNIT_PATH);
+          if (installedSdVersion !== null && installedSdVersion >= SYSTEMD_UNIT_VERSION) {
+            daemonResult = { systemd: 'already installed', unit: SYSTEMD_UNIT_PATH, version: installedSdVersion };
+          } else {
+            const runner = resolveDaemonRunner();
+            const result = await writeAndReloadSystemdUnit(config, runner);
+            daemonResult = result.status === 'failed'
+              ? { systemd: 'installed but failed to start', unit: SYSTEMD_UNIT_PATH, error: result.error }
+              : { systemd: installedSdVersion !== null ? `unit upgraded v${installedSdVersion} → v${SYSTEMD_UNIT_VERSION}` : 'installed and started', unit: SYSTEMD_UNIT_PATH, version: SYSTEMD_UNIT_VERSION };
+          }
+          // Fall through to rest of init (MCP register, docs) — skip the launchd block.
+          // We accomplish this by setting a flag that guards the launchd sections.
+        } else {
+
         const { PLIST_PATH, PLIST_VERSION, readPlistVersion, writeAndReloadPlist } = await import('./plist.js');
         const plistPath = PLIST_PATH;
         const installedVersion = readPlistVersion(plistPath);
@@ -305,7 +323,7 @@ ${endMarker}`;
             daemonResult.fallback = { pid: child.pid };
           }
         } else {
-          // Non-macOS: fallback to manual daemon start
+          // Non-macOS + non-Linux (e.g. Windows): fallback to manual daemon start
           const { spawn } = await import('node:child_process');
           const runner = resolveDaemonRunner();
           const child = spawn(
@@ -314,8 +332,10 @@ ${endMarker}`;
             { detached: true, stdio: 'ignore', env: { ...process.env }, cwd: runner.cwd },
           );
           child.unref();
-          daemonResult = { launchd: 'not available (not macOS)', fallback: { pid: child.pid } };
+          daemonResult = { launchd: 'not available (unsupported platform)', fallback: { pid: child.pid } };
         }
+
+        } // end non-Linux branch
 
         // Register MCP server via `claude mcp add` (the correct way for Claude Code)
         let mcpResult: Record<string, unknown> = {};
