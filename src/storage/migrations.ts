@@ -6,7 +6,37 @@ export type Migration = {
   version: number;
   name: string;
   sql: string;
+  /**
+   * Optional sanity check run AFTER the migration SQL but BEFORE COMMIT.
+   * Used for big-bang schema drops (e.g. backfill → DROP COLUMN) where an
+   * incomplete backfill would silently lose data on DROP. The check receives
+   * the in-transaction database handle and should throw if the invariant
+   * is violated — throwing triggers ROLLBACK so the migration doesn't apply.
+   * See audit S-01.
+   */
+  assertInvariant?: (db: DatabaseSync) => void;
 };
+
+/**
+ * Helper: throws if backfill row counts don't match, used in assertInvariant
+ * for migrations that DROP a JSON column after copying to a junction table.
+ * `sourceSql` = count of rows that should have links. `linkSql` = count of
+ * distinct source rows present in the junction. If `linkSql < sourceSql`,
+ * backfill is incomplete and committing would drop data.
+ */
+export function assertBackfillComplete(
+  db: DatabaseSync,
+  opts: { label: string; sourceSql: string; linkSql: string },
+): void {
+  const source = (db.prepare(opts.sourceSql).get() as { n: number } | undefined)?.n ?? 0;
+  const link = (db.prepare(opts.linkSql).get() as { n: number } | undefined)?.n ?? 0;
+  if (link < source) {
+    throw new Error(
+      `[migration ${opts.label}] backfill incomplete: expected ${source} linked rows, found ${link}. ` +
+      `Aborting to protect data (ROLLBACK). Investigate the source table for malformed rows before retrying.`,
+    );
+  }
+}
 
 export const migrations: Migration[] = [
   {
@@ -1023,6 +1053,13 @@ export const migrations: Migration[] = [
   {
     version: 55,
     name: 'task_repo_links_junction',
+    // Big-bang migration: backfill + DROP in a single step. Safe because
+    // (a) `json_each` raises SQLITE_ERROR on malformed JSON → transaction
+    // rolls back and migration doesn't record as applied; (b) entire migration
+    // wraps in BEGIN/COMMIT in applyMigrations loop. Future big-bang drops
+    // should prefer a split `assertInvariant` pattern (see audit S-01 + the
+    // `assertBackfillComplete` helper above) so the backfill count can be
+    // verified explicitly before the destructive DROP.
     sql: `
       CREATE TABLE IF NOT EXISTS task_repo_links (
         task_id TEXT NOT NULL,
@@ -1136,6 +1173,9 @@ export function applyMigrations(database: DatabaseSync, dbPath?: string): void {
     database.exec('BEGIN');
     try {
       database.exec(migration.sql);
+      if (migration.assertInvariant) {
+        migration.assertInvariant(database);
+      }
       insertMigration.run(migration.version, migration.name, new Date().toISOString());
       database.exec('COMMIT');
     } catch (error) {
