@@ -9,7 +9,7 @@ import { applyBondDelta } from '../profile/bond.js';
 import { safeParseJson } from '../backend/json-repair.js';
 
 import type { HeartbeatContext } from './state-machine.js';
-import { ExtractResponseSchema, ObserveResponseSchema, EXTRACT_FORMAT, OBSERVE_FORMAT } from './schemas.js';
+import { ExtractResponseSchema, ObserveResponseSchema, ObserveCleanupResponseSchema, EXTRACT_FORMAT, OBSERVE_FORMAT, OBSERVE_CLEANUP_FORMAT } from './schemas.js';
 import { resolve } from 'node:path';
 import {
   loadEntityNameCache,
@@ -147,7 +147,7 @@ export async function activityAnalyze(
   ].filter(Boolean).join('\n');
 
   const adapter = selectAdapter(ctx.config);
-  const cleanupModel = getModel(ctx, 'analyze'); // configurable model for cleanup (MCP tools)
+  const cleanupModel = getModel(ctx, 'analyze'); // configurable model for cleanup (JSON output since P-03)
   const effort = getEffort(ctx, 'analyze');
 
   let llmCalls = 0;
@@ -416,10 +416,20 @@ export async function activityAnalyze(
     console.error('[shadow:extract] LLM failed:', e instanceof Error ? e.message : e);
   }
 
-  // ========== CALL 2: Observe-cleanup (MCP — resolve obsolete/duplicate observations) ==========
+  // ========== CALL 2: Observe-cleanup (list-based JSON — resolve obsolete/duplicate observations) ==========
+  // Audit P-03: LLM previously received the list via MCP (`shadow_observations`) and
+  // applied resolutions via `shadow_observation_resolve`. No validation that calls
+  // happened at all. Refactored: pass obs list inline, LLM returns JSON decisions,
+  // code applies deterministically inside a transaction. Same 3-op sequence as the
+  // MCP tool (updateObservationStatus + deleteEmbedding + createFeedback).
   try {
     const preCleanupObs = ctx.db.listObservations({ status: 'open', limit: 30 });
     if (preCleanupObs.length > 5) {
+      const obsList = preCleanupObs.map(o => {
+        const created = o.createdAt.slice(0, 10);
+        return `- id=${o.id} · [${o.severity}/${o.kind}] votes=${o.votes} created=${created}\n  title: ${o.title}`;
+      }).join('\n');
+
       const cleanupPrompt = [
         'You are Shadow\'s observation cleanup phase.',
         '',
@@ -434,8 +444,12 @@ export async function activityAnalyze(
         'DO NOT resolve observations with severity "high" unless you have strong evidence the condition is fully resolved.',
         'Err on the side of keeping observations active — automated expiration handles stale ones over time.',
         '',
-        'Use shadow_observations to see the full list, then use shadow_observation_resolve for each one you want to resolve.',
-        'Provide a reason when resolving.',
+        'Return JSON only. Include ONLY the observations you want to resolve (omit ones to keep).',
+        `Format: ${OBSERVE_CLEANUP_FORMAT}`,
+        'The id must match one from the list exactly — do not invent ids.',
+        '',
+        `## Observations (${preCleanupObs.length})`,
+        obsList,
         '',
         dataSources,
       ].join('\n');
@@ -444,13 +458,50 @@ export async function activityAnalyze(
       const cleanupResult = await adapter.execute({
         repos: [], title: 'Observe Cleanup', goal: 'Resolve obsolete observations',
         prompt: cleanupPrompt, relevantMemories: [], model: cleanupModel, effort,
-        systemPrompt: null, // MCP access — Claude calls shadow_observation_resolve directly
+        systemPrompt: null, allowedTools: [], // No MCP — JSON output only
         timeoutMs: ctx.config.analysisTimeoutMs,
       });
       llmCalls++;
       tokensUsed += (cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0);
       ctx.db.recordLlmUsage({ source: 'heartbeat_cleanup', sourceId: heartbeatId ?? null, model: cleanupModel, inputTokens: cleanupResult.inputTokens ?? 0, outputTokens: cleanupResult.outputTokens ?? 0 });
-      console.error(`[shadow:cleanup] Completed. Tokens: ${(cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0)}`);
+
+      if (cleanupResult.status === 'success' && cleanupResult.output) {
+        const parsed = safeParseJson(cleanupResult.output, ObserveCleanupResponseSchema, 'observe-cleanup');
+        if (!parsed.success) {
+          console.error(`[shadow:cleanup] ${parsed.error}`);
+        } else {
+          const obsById = new Map(preCleanupObs.map(o => [o.id, o]));
+          const alreadyApplied = new Set<string>();
+          let applied = 0;
+          let skippedHallucinated = 0;
+          for (const r of parsed.data.resolutions) {
+            if (!r.resolve) continue;
+            if (alreadyApplied.has(r.id)) continue; // LLM dup
+            const obs = obsById.get(r.id);
+            if (!obs) {
+              skippedHallucinated++;
+              console.error(`[shadow:cleanup] Skipping resolution for unknown id=${r.id} (hallucinated — not in preCleanup list)`);
+              continue;
+            }
+            if (obs.status === 'done') continue; // defensive
+            try {
+              ctx.db.withTransaction(() => {
+                ctx.db.updateObservationStatus(obs.id, 'done');
+                ctx.db.deleteEmbedding('observation_vectors', obs.id);
+                ctx.db.createFeedback({ targetKind: 'observation', targetId: obs.id, action: 'resolve', note: r.reason || null });
+              });
+              alreadyApplied.add(r.id);
+              applied++;
+              console.error(`[shadow:cleanup] Resolved obs=${obs.id.slice(0, 8)} [${obs.severity}/${obs.kind}] — ${r.reason || '(no reason)'}`);
+            } catch (e) {
+              console.error(`[shadow:cleanup] Failed to resolve obs=${obs.id}: ${e instanceof Error ? e.message : e}`);
+            }
+          }
+          console.error(`[shadow:cleanup] Applied ${applied}/${parsed.data.resolutions.length} resolutions (${skippedHallucinated} hallucinated ids skipped). Tokens: ${(cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0)}`);
+        }
+      } else {
+        console.error(`[shadow:cleanup] Completed with status=${cleanupResult.status} — no resolutions applied. Tokens: ${(cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0)}`);
+      }
     }
   } catch (e) {
     console.error('[shadow:cleanup] Failed:', e instanceof Error ? e.message : e);

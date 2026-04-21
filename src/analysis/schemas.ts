@@ -81,6 +81,17 @@ export const SuggestValidateResponseSchema = z.object({
   })).default([]),
 });
 
+// Observation cleanup (audit P-03): deterministic apply over LLM-returned list.
+// Replaces "tell LLM to call MCP resolve tools" with "pass obs list inline, parse JSON,
+// apply resolutions server-side". No MCP roundtrip, hallucinated IDs caught.
+export const ObserveCleanupResponseSchema = z.object({
+  resolutions: z.array(z.object({
+    id: z.string().min(1),
+    resolve: z.boolean(),
+    reason: z.string().default(''),
+  })).default([]),
+});
+
 // ---------------------------------------------------------------------------
 // Prompt format specs — co-located with schemas to prevent drift
 // ---------------------------------------------------------------------------
@@ -98,3 +109,6 @@ export const SUGGEST_FORMAT =
 
 export const SUGGEST_VALIDATE_FORMAT =
   '{ "verdicts": [{ "index": number (0-based candidate index), "title": string, "keep": true/false, "reason": string }] }';
+
+export const OBSERVE_CLEANUP_FORMAT =
+  '{ "resolutions": [{ "id": string (existing observation id), "resolve": true/false, "reason": string }] }';
