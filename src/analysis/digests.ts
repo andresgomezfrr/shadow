@@ -253,7 +253,7 @@ export async function activityBragDoc(
     '- The document must be self-sufficient for a performance review',
     `- If no existing content, start with: # Brag Doc — ${year}`,
     '',
-    existingContent ? `## Current Brag Doc\n\`\`\`markdown\n${existingContent}\n\`\`\`\n` : `Start a new brag doc for ${year}.`,
+    existingContent ? `## Current Brag Doc\n<existing-brag-doc>\n${existingContent}\n</existing-brag-doc>\n` : `Start a new brag doc for ${year}.`,
     '',
     weeklies.length > 0 ? `## Recent Weekly Digests\n${weeklies.join('\n\n')}` : '',
     memories.length > 0 ? `## Key Achievements\n${memories.slice(0, 20).join('\n')}` : '',
@@ -277,7 +277,21 @@ export async function activityBragDoc(
   const tokensUsed = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
   db.recordLlmUsage({ source: 'digest_brag', sourceId: null, model, inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0 });
 
-  const contentMd = result.output ?? existingContent;
+  // Audit P-01: validate output is a brag doc (not JSON, error text, empty).
+  // Triple-backtick wrapping was replaced by <existing-brag-doc> XML above —
+  // closes the markdown-injection path. Here we validate the LLM emitted at
+  // least a `## ${quarter}` section; otherwise keep existing rather than
+  // overwriting with garbage.
+  const rawOutput = (result.output ?? '').trim();
+  const hasQuarterSection = new RegExp(`##\\s+${quarter}\\b`, 'i').test(rawOutput);
+  if (!rawOutput || !hasQuarterSection) {
+    const reason = !rawOutput ? 'empty output' : `missing "## ${quarter}" section`;
+    const preview = rawOutput.slice(0, 200).replace(/\s+/g, ' ').trim();
+    console.error(`[shadow:digest-brag] ${reason} — keeping existing (no overwrite). Preview: "${preview}..."`);
+    return { contentMd: existingContent, tokensUsed, skipped: true, reason };
+  }
+
+  const contentMd = rawOutput;
 
   // Upsert: always one active brag doc
   if (existing) {
