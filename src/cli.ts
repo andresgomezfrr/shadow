@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,9 +30,53 @@ const config = loadConfig();
 
 program
   .name('shadow')
-  .description(packageJson.description)
+  .description(
+    `${packageJson.description}\n\n` +
+    `Bare "shadow" spawns an interactive Claude session with Shadow's soul\n` +
+    `pre-loaded as the append-system-prompt. Use "shadow -- <args>" to pass\n` +
+    `flags through to claude (e.g. "shadow -- --resume <id>").`,
+  )
   .version(packageJson.version, '-v, --version', 'print version')
   .option('--json', 'output structured json where supported', false);
+
+// Bare `shadow` → spawn Claude interactive with soul in --append-system-prompt.
+// Audit P-12 + user-facing complement: all Shadow-initiated Claude sessions
+// (daemon runner + user interactive) carry persona via system prompt rather
+// than user-prompt concatenation. Zero interference with `claude` bare (which
+// keeps using the SessionStart hook to inject soul). Scripts detect the
+// wrapper via SHADOW_INTERACTIVE=1 env and skip duplicate injection.
+//
+// Passthrough to claude: anything after `--` in argv goes to the child
+// unparsed. Shadow never touches those tokens — opaque-by-design so this
+// wrapper stays immune to Claude CLI flag renames. Variadic argument
+// declaration + allowUnknownOption + allowExcessArguments so Commander
+// accepts arbitrary trailing tokens without erroring.
+program
+  .argument('[claudeArgs...]', 'arguments passed to claude after --')
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .action(() => {
+    const dashIdx = process.argv.indexOf('--');
+    const claudeArgs = dashIdx >= 0 ? process.argv.slice(dashIdx + 1) : [];
+
+    const db = createDatabase(config);
+    let soul: string;
+    try {
+      const soulMem = db.listMemories({ archived: false }).find((m) => m.kind === 'soul_reflection');
+      soul = soulMem?.bodyMd
+        ? `You are Shadow.\n\n${soulMem.bodyMd}`
+        : 'You are Shadow — a digital engineering companion. Warm, informal, like a teammate.';
+    } finally {
+      db.close();
+    }
+
+    const args = ['--append-system-prompt', soul, ...claudeArgs];
+    const result = spawnSync(config.claudeBin, args, {
+      stdio: 'inherit',
+      env: { ...process.env, SHADOW_INTERACTIVE: '1' },
+    });
+    process.exit(result.status ?? (result.signal ? 1 : 0));
+  });
 
 const withDb = async <T>(handler: (db: ShadowDatabase, json: boolean) => Promise<T> | T) => {
   const db = createDatabase(config);
