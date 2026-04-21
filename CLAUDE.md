@@ -249,6 +249,7 @@ SHADOW_DATA_DIR=~/.shadow            # Data directory
 - **Confidence eval model** — uses `config.models.runner` (default Opus). Critical gate decision for autonomous execution warrants highest quality.
 - **Access count honesty** — heartbeat internal lookups use `touch=false`; only MCP searches increment access counts.
 - **Child process cleanup** — `killJobAdapters(jobId)` sends SIGTERM to spawned `claude` processes per job. `pkill` in daemon stop/restart kills orphaned matches to `--allowedTools.*mcp__shadow`.
+- **Logging convention** — prefer `log.error|warn|info(component, message, context?)` from `src/log.ts` over `console.*`. Convention: `error` = real failure, `warn` = degradation (fallback triggered), `info` = lifecycle/progress/milestone. All go to stderr (single stream — launchd captures to `~/.shadow/daemon.log`). Format: `[component] message: {context-json}`. Legacy `console.error` calls still work (same stream) and are migrated incrementally.
 
 ## Backlog
 
