@@ -343,7 +343,9 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
 export async function mergeRelatedMemories(
   db: ShadowDatabase,
   config: ShadowConfig,
+  opts: { signal?: AbortSignal } = {},
 ): Promise<{ merged: number; archived: number; deduped: number }> {
+  const signal = opts.signal;
   const PROTECTED_KINDS = new Set(['soul_reflection', 'correction', 'knowledge_summary']);
   const now = Date.now();
   const isAbsorbableCorrection = (m: MemoryRecord): boolean =>
@@ -434,6 +436,7 @@ export async function mergeRelatedMemories(
   const adapter = selectAdapter(config);
 
   for (const cluster of clusters) {
+    if (signal?.aborted) break; // daemon shutdown — stop cleanly instead of racing DB close
     if (archived >= maxArchived) break; // proportion safeguard
 
     const hasCorrection = cluster.some(m => m.kind === 'correction');
@@ -482,6 +485,7 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
         outputTokens: result.outputTokens ?? 0,
       });
 
+      if (signal?.aborted) break; // LLM returned but daemon is tearing down — don't write
       if (result.status !== 'success' || !result.output) continue;
 
       const schema = z.object({

@@ -321,7 +321,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
   let mergeResult = { merged: 0, archived: 0, deduped: 0 };
   try {
     const { mergeRelatedMemories } = await import('../memory/retrieval.js');
-    mergeResult = await mergeRelatedMemories(ctx.db, ctx.config);
+    mergeResult = await mergeRelatedMemories(ctx.db, ctx.config, { signal: ctx.signal });
     if (mergeResult.merged > 0 || mergeResult.deduped > 0) {
       log.error(`[daemon] Memory merge: ${mergeResult.merged} clusters merged, ${mergeResult.archived} archived, ${mergeResult.deduped} deduped`);
     }

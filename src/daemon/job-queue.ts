@@ -272,6 +272,14 @@ export class JobQueue {
     if (result === 'timeout' && this.active.size > 0) {
       log.error(`[job-queue] Drain timeout — killing ${this.active.size} remaining jobs`);
       this.killAll();
+      // After aborting + killing children, give handlers up to 5s to unwind
+      // catch/finally blocks (LLM promise rejection propagation, final
+      // setPhase/updateJob writes). Silences "database is not open" errors
+      // when the caller closes DB right after drainAll returns. Audit R-16.
+      await Promise.race([
+        Promise.allSettled(promises),
+        new Promise<void>(r => setTimeout(r, 5_000)),
+      ]);
     }
   }
 

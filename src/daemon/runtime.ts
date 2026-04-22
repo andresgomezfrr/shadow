@@ -1030,6 +1030,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         ]);
       } catch { /* best-effort */ }
     }
+    // Final grace period: allow any in-flight async writes (scheduled by aborted
+    // handlers' catch/finally blocks) to drain their microtask queue before we
+    // close the DB. Belt-and-suspenders on top of drainAll's post-killAll wait.
+    // Audit R-16.
+    await new Promise<void>((r) => setTimeout(r, 500));
     if (db) {
       try { db.close(); } catch { /* best-effort */ }
     }
