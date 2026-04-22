@@ -123,7 +123,7 @@ is possible but not done.
 ## Contributing
 
 Shadow is an opinionated design — the architecture, decisions, and trade-offs
-are documented in [CLAUDE.md](CLAUDE.md) and [BACKLOG.md](BACKLOG.md). If
+are documented in [CLAUDE.md](CLAUDE.md). If
 you're interested in contributing:
 
 - **Bugs and regressions**: open an issue with a reproduction and your env
@@ -144,8 +144,6 @@ premature generalization.
 - [CLAUDE.md](CLAUDE.md) — developer guide: architecture, tech stack, schema, conventions
 - [GETTING_STARTED.md](GETTING_STARTED.md) — install and first run
 - [GUIDE.md](GUIDE.md) — in-app Guide page mirrored here
-- [BACKLOG.md](BACKLOG.md) — prioritized upcoming work
-- [COMPLETED.md](COMPLETED.md) — changelog of shipped work
 
 ## License
 
