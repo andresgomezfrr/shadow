@@ -296,7 +296,10 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
     lastHeartbeat: ctx.db.getLastJob('heartbeat'),
     pendingEventCount: ctx.db.listPendingEvents().length,
   };
-  let consolidateResult = { memoriesPromoted: 0, memoriesDemoted: 0, memoriesExpired: 0, llmCalls: 0, tokensUsed: 0 };
+  let consolidateResult: Awaited<ReturnType<typeof activityConsolidate>> = {
+    memoriesPromoted: 0, memoriesDemoted: 0, memoriesExpired: 0, llmCalls: 0, tokensUsed: 0,
+    knowledgeSummary: { action: 'skipped', reason: 'consolidate failed before synthesis' },
+  };
   try {
     consolidateResult = await activityConsolidate(actCtx);
   } catch (e) {
@@ -336,7 +339,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
   return {
     llmCalls: totalLlmCalls,
     tokensUsed: consolidateResult.tokensUsed,
-    phases: ['layer-maintenance', 'corrections', 'merge', 'meta-patterns'],
+    phases: ['layer-maintenance', 'meta-patterns', 'knowledge-summary', 'corrections', 'merge'],
     result: {
       memoriesPromoted: consolidateResult.memoriesPromoted,
       memoriesDemoted: consolidateResult.memoriesDemoted,
@@ -347,6 +350,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
       memoriesMerged: mergeResult.merged,
       memoriesArchivedByMerge: mergeResult.archived,
       memoriesDeduped: mergeResult.deduped,
+      knowledgeSummary: consolidateResult.knowledgeSummary,
     },
   };
 }

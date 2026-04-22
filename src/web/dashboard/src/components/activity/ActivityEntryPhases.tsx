@@ -135,7 +135,7 @@ export const RUN_EXEC_PHASES = ['preparing', 'executing', 'verifying'];
 export const JOB_PHASES: Record<string, string[]> = {
   heartbeat: ['prepare', 'summarize', 'extract', 'cleanup', 'observe', 'notify'],
   suggest: ['suggest', 'notify'],
-  consolidate: ['layer-maintenance', 'corrections', 'merge', 'meta-patterns'],
+  consolidate: ['layer-maintenance', 'meta-patterns', 'knowledge-summary', 'corrections', 'merge'],
   reflect: ['reflect-delta', 'reflect-evolve'],
   'remote-sync': ['remote-sync'],
   'repo-profile': ['repo-profile'],
