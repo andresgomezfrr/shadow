@@ -39,13 +39,18 @@ export function getRun(db: DatabaseSync, id: string): RunRecord | null {
   return row ? mapRun(row) : null;
 }
 
-export function listRuns(db: DatabaseSync, filters?: { status?: string; repoId?: string; repoIds?: string[]; parentRunId?: string; suggestionId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] {
+export function listRuns(db: DatabaseSync, filters?: { status?: string; statuses?: string[]; repoId?: string; repoIds?: string[]; parentRunId?: string; parentRunIdIsNull?: boolean; suggestionId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
 
   if (filters?.status) {
     clauses.push('status = ?');
     values.push(filters.status);
+  } else if (filters?.statuses && filters.statuses.length > 0) {
+    // Batch form — avoids N+1 when callers need multiple statuses (audit W-02).
+    const placeholders = filters.statuses.map(() => '?').join(',');
+    clauses.push(`status IN (${placeholders})`);
+    for (const s of filters.statuses) values.push(s);
   }
   if (filters?.repoId) {
     clauses.push('repo_id = ?');
@@ -59,6 +64,8 @@ export function listRuns(db: DatabaseSync, filters?: { status?: string; repoId?:
   if (filters?.parentRunId) {
     clauses.push('parent_run_id = ?');
     values.push(filters.parentRunId);
+  } else if (filters?.parentRunIdIsNull) {
+    clauses.push('parent_run_id IS NULL');
   }
   if (filters?.suggestionId) {
     clauses.push('suggestion_id = ?');
@@ -85,10 +92,24 @@ export function listRuns(db: DatabaseSync, filters?: { status?: string; repoId?:
     .map(mapRun);
 }
 
-export function countRuns(db: DatabaseSync, filters?: { status?: string; archived?: boolean }): number {
+export function countRuns(db: DatabaseSync, filters?: { status?: string; statuses?: string[]; repoId?: string; parentRunIdIsNull?: boolean; archived?: boolean }): number {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
-  if (filters?.status) { clauses.push('status = ?'); values.push(filters.status); }
+  if (filters?.status) {
+    clauses.push('status = ?');
+    values.push(filters.status);
+  } else if (filters?.statuses && filters.statuses.length > 0) {
+    const placeholders = filters.statuses.map(() => '?').join(',');
+    clauses.push(`status IN (${placeholders})`);
+    for (const s of filters.statuses) values.push(s);
+  }
+  if (filters?.repoId) {
+    clauses.push('repo_id = ?');
+    values.push(filters.repoId);
+  }
+  if (filters?.parentRunIdIsNull) {
+    clauses.push('parent_run_id IS NULL');
+  }
   if (filters?.archived === true) { clauses.push('archived = 1'); }
   else { clauses.push('archived = 0'); }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';

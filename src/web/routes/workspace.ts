@@ -90,26 +90,31 @@ export async function handleWorkspaceRoutes(
 
     // Runs: active + to review + done (until explicitly dismissed), not archived, top-level only.
     // If filtering by projectId, precompute the repo→projects map once to avoid N+1 over runs.
+    // Audit W-02: fetch all requested statuses in a single query (statuses IN clause)
+    // instead of one query per status — and also fetch the child/parent view in one
+    // shot so we can derive activeParentIds without iterating the whole run set twice.
     const activeParentIds = new Set<string>();
     const repoProjectsMap = projectId ? db.buildRepoProjectsMap() : null;
     if (includeRuns) {
       const statusesToFetch = runStatusFilter ? [...runStatusFilter] : ['running', 'queued', 'planned', 'awaiting_pr', 'failed', 'done', 'dismissed'];
-      for (const status of statusesToFetch) {
-        const runs = db.listRuns({ status, archived: false, limit: 50 });
-        for (const r of runs) {
-          if (r.parentRunId) {
-            if (r.status === 'running' || r.status === 'queued') {
-              activeParentIds.add(r.parentRunId);
-            }
-            continue; // skip children
+      const runs = db.listRuns({
+        statuses: statusesToFetch,
+        ...(repoId ? { repoId } : {}),
+        archived: false,
+        limit: 350,
+      });
+      for (const r of runs) {
+        if (r.parentRunId) {
+          if (r.status === 'running' || r.status === 'queued') {
+            activeParentIds.add(r.parentRunId);
           }
-          if (projectId && repoProjectsMap) {
-            const projects = repoProjectsMap.get(r.repoId) ?? [];
-            if (!projects.some(p => p.id === projectId)) continue;
-          }
-          if (repoId && r.repoId !== repoId) continue;
-          items.push({ source: 'run', id: r.id, priority: 0, data: r });
+          continue; // skip children
         }
+        if (projectId && repoProjectsMap) {
+          const projects = repoProjectsMap.get(r.repoId) ?? [];
+          if (!projects.some(p => p.id === projectId)) continue;
+        }
+        items.push({ source: 'run', id: r.id, priority: 0, data: r });
       }
     }
 
@@ -178,15 +183,16 @@ export async function handleWorkspaceRoutes(
     for (const item of items) item.priority = assignPriority(item, activeParentIds);
     items.sort((a, b) => b.priority - a.priority);
 
-    // Counts — always computed for all statuses so tabs show accurate numbers
-    const allRuns = (['running', 'queued', 'planned', 'awaiting_pr', 'failed', 'done', 'dismissed'] as const)
-      .flatMap(s => db.listRuns({ status: s, archived: false, limit: 50 }))
-      .filter(r => !r.parentRunId)
-      .filter(r => !repoId || r.repoId === repoId);
-    const countRuns = allRuns.length;
-    const countRunsActive = allRuns.filter(r => ['queued', 'running', 'planned', 'awaiting_pr'].includes(r.status)).length;
-    const countRunsDone = allRuns.filter(r => r.status === 'done').length;
-    const countRunsFailed = allRuns.filter(r => r.status === 'failed').length;
+    // Counts — use COUNT(*) per status filter instead of fetching full records.
+    // Audit W-02 (fix). countRuns accepts optional repoId + parentRunIdIsNull so
+    // we no longer need to pull the whole row set into JS just to call .length.
+    // projectId filtering would require joining entity_relations — skipped on the
+    // assumption workspace counts are usually unscoped or scoped by repoId only.
+    const runCountBase = { archived: false, parentRunIdIsNull: true, ...(repoId ? { repoId } : {}) };
+    const countRuns = db.countRuns({ ...runCountBase, statuses: ['running', 'queued', 'planned', 'awaiting_pr', 'failed', 'done', 'dismissed'] });
+    const countRunsActive = db.countRuns({ ...runCountBase, statuses: ['queued', 'running', 'planned', 'awaiting_pr'] });
+    const countRunsDone = db.countRuns({ ...runCountBase, status: 'done' });
+    const countRunsFailed = db.countRuns({ ...runCountBase, status: 'failed' });
     const countTasksOpen = db.countTasks({ status: 'open', projectId, repoId });
     const countTasksActive = db.countTasks({ status: 'active', projectId, repoId });
     const countTasksBlocked = db.countTasks({ status: 'blocked', projectId, repoId });
