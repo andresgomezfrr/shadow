@@ -31,7 +31,7 @@ const KnowledgeSummaryLLMSchema = z.object({
   highlights: z.array(z.object({
     title: z.string().min(1),
     why: z.string().min(1),
-  })).min(3).max(7),
+  })).min(3).max(10),
   entities: z.array(z.object({
     type: z.enum(['repo', 'project', 'system', 'contact']),
     id: z.string(),
@@ -309,15 +309,15 @@ async function synthesizeKnowledgeSummary(ctx: HeartbeatContext): Promise<Knowle
     '## Memories input',
     memoryLines,
     previousBlock,
-    'Respond ONLY with JSON:',
+    'Respond ONLY with JSON. Respect the size constraints — oversized outputs are rejected:',
     '{',
-    '  "summary": "<narrative paragraph, 150-400 words>",',
-    '  "themes": ["<short theme>", ...],',
+    '  "summary": "<narrative paragraph, 150-400 words; min 100 chars>",',
+    '  "themes": ["<short theme, min 2 chars>", ...],  // at least 2 themes',
     '  "highlights": [',
     '    {"title": "<one-line headline>", "why": "<why this matters>"},',
-    '    ...',
+    '    ...  // between 3 and 10 items, no more',
     '  ],',
-    '  "entities": [{"type": "repo|project|system|contact", "id": "<uuid>"}, ...]',
+    '  "entities": [{"type": "repo|project|system|contact", "id": "<uuid>"}, ...]  // optional',
     '}',
   ].join('\n');
 
@@ -350,7 +350,10 @@ async function synthesizeKnowledgeSummary(ctx: HeartbeatContext): Promise<Knowle
 
   const parsed = safeParseJson(result.output, KnowledgeSummaryLLMSchema, 'knowledge-summary');
   if (!parsed.success) {
-    return { action: 'skipped', reason: 'llm output parse failed', llmCalls, tokensUsed };
+    log.error(`[shadow:consolidate] knowledge-summary parse failed: ${parsed.error}`);
+    log.error(`[shadow:consolidate] knowledge-summary raw output (first 2k chars): ${result.output.slice(0, 2000)}`);
+    const shortReason = parsed.error.length > 120 ? parsed.error.slice(0, 117) + '...' : parsed.error;
+    return { action: 'skipped', reason: `parse failed — ${shortReason}`, llmCalls, tokensUsed };
   }
 
   const { summary, themes, highlights, entities } = parsed.data;
