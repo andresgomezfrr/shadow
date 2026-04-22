@@ -85,7 +85,7 @@ export function SuggestionsPage() {
   const total = rawData?.total ?? 0;
   const scores = rawData?.scores ?? {};
 
-  const { items: data } = usePrefetchHighlight<Suggestion>('suggestion', highlightId, rawItems, { persistCapture: true });
+  const { items: data, capturedHighlight } = usePrefetchHighlight<Suggestion>('suggestion', highlightId, rawItems, { persistCapture: true });
 
   // Handle highlight
   if (highlightId && !pulseId && data?.some((s) => s.id === highlightId)) {

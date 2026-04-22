@@ -19,7 +19,7 @@ export function usePrefetchHighlight<T extends { id: string }>(
   highlightId: string | null,
   rawItems: T[] | null,
   opts?: { persistCapture?: boolean },
-): { items: T[] | null; prefetched: T | null } {
+): { items: T[] | null; prefetched: T | null; capturedHighlight: string | null } {
   const [prefetched, setPrefetched] = useState<T | null>(null);
   const [capturedHighlight, setCapturedHighlight] = useState<string | null>(null);
   const persistCapture = opts?.persistCapture ?? false;
@@ -46,5 +46,5 @@ export function usePrefetchHighlight<T extends { id: string }>(
     return [prefetched, ...rawItems];
   }, [rawItems, prefetched]);
 
-  return { items, prefetched };
+  return { items, prefetched, capturedHighlight: effectiveHighlight };
 }
