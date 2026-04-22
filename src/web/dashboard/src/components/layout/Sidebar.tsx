@@ -29,6 +29,7 @@ const NAV: NavEntry[] = [
   // System
   { divider: true, groupLabel: 'SYSTEM' },
   { to: '/activity', icon: '/icons/activity.webp', label: 'Activity' },
+  { to: '/logs', icon: '/icons/logs.webp', label: 'Logs' },
   { to: '/digests', icon: '/icons/digests.webp', label: 'Digests' },
   { to: '/projects', icon: '/icons/projects.webp', label: 'Projects' },
   { to: '/memories', icon: '/icons/memories.webp', label: 'Memories' },

@@ -92,6 +92,25 @@ export const fetchSuggestions = (params?: { status?: string; kind?: string; sort
 export const fetchObservations = (params?: { limit?: number; offset?: number; status?: string; severity?: string; kind?: string; repoId?: string; projectId?: string }) =>
   api<{ items: Observation[]; total: number; feedbackState: Record<string, string> }>(`/api/observations${qs({ limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined, status: params?.status, severity: params?.severity, kind: params?.kind, repoId: params?.repoId, projectId: params?.projectId })}`);
 
+export type LogLine = { lineNo: number; component: string | null; message: string; raw: string };
+export type LogsResponse = {
+  logPath: string;
+  totalBytes: number;
+  truncated: boolean;
+  linesRequested: number;
+  linesReturned: number;
+  linesScanned: number;
+  components: string[];
+  lines: LogLine[];
+};
+
+export const fetchLogs = (params?: { lines?: number; component?: string; q?: string }) =>
+  api<LogsResponse>(`/api/logs${qs({
+    lines: params?.lines != null ? String(params.lines) : undefined,
+    component: params?.component,
+    q: params?.q,
+  })}`);
+
 export const fetchRepos = () => api<Repo[]>('/api/repos');
 
 export const fetchContacts = (team?: string) =>

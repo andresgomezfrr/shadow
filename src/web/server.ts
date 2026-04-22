@@ -20,6 +20,7 @@ import { handleSearchRoutes } from './routes/search.js';
 import { handleChronicleRoutes } from './routes/chronicle.js';
 import { handleWorkspaceRoutes } from './routes/workspace.js';
 import { handleTaskRoutes } from './routes/tasks.js';
+import { handleLogsRoutes } from './routes/logs.js';
 import { log } from '../log.js';
 
 const MUTATING_TOOLS = new Set([
@@ -195,7 +196,7 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
           handleSuggestionRoutes, handleObservationRoutes, handleRunRoutes,
           handleActivityRoutes, handleJobRoutes, handleEntityRoutes,
           handleKnowledgeRoutes, handleProfileRoutes, handleSearchRoutes,
-          handleChronicleRoutes,
+          handleChronicleRoutes, handleLogsRoutes,
         ];
         for (const handler of handlers) {
           if (await handler(req, res, pathname, params, db, daemonState)) return;

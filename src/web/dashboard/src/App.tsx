@@ -20,6 +20,7 @@ import { RunsPage } from './components/pages/RunsPage';
 import { WorkspacePage } from './components/pages/WorkspacePage';
 import { TasksPage } from './components/pages/TasksPage';
 import { ActivityPage } from './components/pages/ActivityPage';
+import { LogsPage } from './components/pages/LogsPage';
 
 import { DigestsPage } from './components/pages/DigestsPage';
 import { GuidePage } from './components/pages/GuidePage';
@@ -52,6 +53,7 @@ export function App() {
         <Route path="/workspace" element={<WorkspacePage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/activity" element={<ActivityPage />} />
+        <Route path="/logs" element={<LogsPage />} />
         <Route path="/digests" element={<DigestsPage />} />
         <Route path="/events" element={<Navigate to="/activity" replace />} />
         <Route path="/guide" element={<GuidePage />} />
