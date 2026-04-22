@@ -56,7 +56,14 @@ export const MODEL_OPTIONS = [
 ];
 
 export const MODEL_PHASES = [
-  { key: 'analyze', label: 'Analyze', desc: 'Heartbeat: extract memories + generate observations', default: 'sonnet' },
+  // Heartbeat phases — separate models per phase since A-04. summarize is the
+  // first call (compresses raw session data into a brief), extract pulls
+  // memories + mood, observe generates new observations from the summary.
+  // Audit P-11 surfaced summarize specifically; UI now exposes all three.
+  { key: 'summarize', label: 'Summarize', desc: 'Heartbeat phase 0: compress raw session data into a brief', default: 'opus' },
+  { key: 'extract', label: 'Extract', desc: 'Heartbeat phase 1: pull memories + mood from summary', default: 'opus' },
+  { key: 'observe', label: 'Observe', desc: 'Heartbeat phase 3: generate new observations from summary', default: 'opus' },
+  { key: 'analyze', label: 'Cleanup obs', desc: 'Heartbeat phase 2: resolve obsolete/duplicate observations (JSON output)', default: 'sonnet' },
   { key: 'suggest', label: 'Suggest', desc: 'Incremental suggestions for active repos', default: 'opus' },
   { key: 'suggestValidate', label: 'Suggest Validate', desc: 'Code validation of suggestion candidates', default: 'opus' },
   { key: 'suggestDeep', label: 'Suggest Deep', desc: 'Full codebase review with tool access', default: 'opus' },

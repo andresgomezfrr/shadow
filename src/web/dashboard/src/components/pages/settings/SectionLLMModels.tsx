@@ -12,7 +12,11 @@ type Props = {
 
 const SELECT_CLASS = 'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm outline-none focus:border-accent transition-colors cursor-pointer';
 
-const CORE_KEYS = new Set(['analyze', 'suggest', 'consolidate', 'runner']);
+// Core = the most-used phases users want quick access to. Heartbeat trio
+// (summarize/extract/observe) included since they fire every 30min and are
+// the easiest cost knob (audit P-11). Cleanup ('analyze') stays in extras —
+// it's a small JSON-output call, low cost impact.
+const CORE_KEYS = new Set(['summarize', 'extract', 'observe', 'suggest', 'consolidate', 'runner']);
 
 export function SectionLLMModels({ profile, saved, onSavePreference, visible }: Props) {
   const [showExtra, setShowExtra] = useState(false);
