@@ -1,4 +1,5 @@
 #!/bin/bash
+# shadow-hook-version: __SHADOW_VERSION__
 # Shadow SubagentStart hook — tracks subagent spawns.
 # Extended per audit H-02 to capture subagent_type/description/model from the
 # Agent tool call that triggered this hook. Fields missing in payload fall

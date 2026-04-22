@@ -1,4 +1,5 @@
 #!/bin/bash
+# shadow-hook-version: __SHADOW_VERSION__
 # Shadow SessionStart hook — injects personality and context.
 # Skipped when Shadow spawned Claude itself (SHADOW_INTERACTIVE=1 set by the
 # `shadow` bare wrapper, SHADOW_JOB=1 set by daemon spawns): those paths

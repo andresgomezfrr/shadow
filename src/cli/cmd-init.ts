@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { log } from '../log.js';
+import { ensureHooksDeployed } from './hooks.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -58,7 +59,8 @@ export function registerInitCommand(program: Command, config: ShadowConfig, with
   program
     .command('init')
     .description('bootstrap the global shadow home for this user')
-    .action(() =>
+    .option('--force', 'force re-deploy hooks even if the deployed version matches the current release', false)
+    .action((opts: { force?: boolean }) =>
       withDb(async (db) => {
         db.ensureProfile();
 
@@ -145,10 +147,24 @@ ${endMarker}`;
           log.error('[init] CLAUDE.md Shadow section added');
         }
 
-        // Deploy hook scripts from scripts/ (single source of truth — edit there, not here)
+        // Deploy hook scripts from scripts/ with semver stamp check (audit
+        // d74a6227). Stamps are tied to the Shadow package version so every
+        // release auto-bumps; zero manual bumping required. Substitutes the
+        // `__SHADOW_VERSION__` placeholder in source scripts with the actual
+        // version on copy. Single source of truth: `src/cli/hooks.ts`.
         const shadowSrcDir = resolve(__dirname, '..');
         const projectRoot = resolve(shadowSrcDir, '..');
         const scriptsDir = resolve(projectRoot, 'scripts');
+        const packageVersion = JSON.parse(readFileSync(resolve(projectRoot, 'package.json'), 'utf-8')).version as string;
+        const force = opts.force ?? false;
+        const hookResult = ensureHooksDeployed(config.resolvedDataDir, scriptsDir, packageVersion, { force });
+        if (force) log.error('[init] --force: re-deploying all hooks regardless of deployed version');
+        if (hookResult.deployed.length > 0) log.error(`[init] hooks deployed (v${packageVersion}): ${hookResult.deployed.join(', ')}`);
+        if (hookResult.upgraded.length > 0) log.error(`[init] hooks upgraded to v${packageVersion}: ${hookResult.upgraded.join(', ')}`);
+        if (hookResult.current.length > 0) log.error(`[init] hooks already at v${packageVersion} (skipped): ${hookResult.current.join(', ')}`);
+        for (const missing of hookResult.missingSrc) {
+          log.error(`[init] WARNING: scripts/${missing} not found, skipping`);
+        }
         const statuslinePath = resolve(config.resolvedDataDir, 'statusline.sh');
         const sessionStartPath = resolve(config.resolvedDataDir, 'session-start.sh');
         const postToolPath = resolve(config.resolvedDataDir, 'post-tool.sh');
@@ -156,27 +172,6 @@ ${endMarker}`;
         const stopHookPath = resolve(config.resolvedDataDir, 'stop.sh');
         const stopFailurePath = resolve(config.resolvedDataDir, 'stop-failure.sh');
         const subagentStartPath = resolve(config.resolvedDataDir, 'subagent-start.sh');
-
-        const hookScripts = [
-          ['statusline.sh', statuslinePath],
-          ['session-start.sh', sessionStartPath],
-          ['post-tool.sh', postToolPath],
-          ['user-prompt.sh', userPromptPath],
-          ['stop.sh', stopHookPath],
-          ['stop-failure.sh', stopFailurePath],
-          ['subagent-start.sh', subagentStartPath],
-        ] as const;
-
-        for (const [name, dest] of hookScripts) {
-          const src = resolve(scriptsDir, name);
-          if (existsSync(src)) {
-            copyFileSync(src, dest);
-            chmodSync(dest, '755');
-          } else {
-            log.error(`[init] WARNING: scripts/${name} not found, skipping`);
-          }
-        }
-        log.error('[init] hook scripts deployed from scripts/');
 
         // Update ~/.claude/settings.json with hooks and statusLine
         const settingsPath = resolve(homedir(), '.claude', 'settings.json');

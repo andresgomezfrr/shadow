@@ -1,4 +1,5 @@
 #!/bin/bash
+# shadow-hook-version: __SHADOW_VERSION__
 # Shadow PostToolUse hook — logs tool usage with rich detail
 # Portable version for plugin distribution
 [ "$SHADOW_JOB" = "1" ] && exit 0

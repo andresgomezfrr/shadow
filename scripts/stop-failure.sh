@@ -1,4 +1,5 @@
 #!/bin/bash
+# shadow-hook-version: __SHADOW_VERSION__
 # Shadow StopFailure hook — captures API errors with heuristic triage
 # shadow-stop-failure-version: 2
 INPUT=$(cat)

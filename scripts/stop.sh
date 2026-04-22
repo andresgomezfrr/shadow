@@ -1,4 +1,5 @@
 #!/bin/bash
+# shadow-hook-version: __SHADOW_VERSION__
 # Shadow Stop hook — captures what Claude responds (full text, no truncation)
 [ "$SHADOW_JOB" = "1" ] && exit 0
 INPUT=$(cat)

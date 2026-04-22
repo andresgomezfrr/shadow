@@ -1,4 +1,5 @@
 #!/bin/bash
+# shadow-hook-version: __SHADOW_VERSION__
 # Shadow status line for Claude Code
 # Shows Shadow's current state with emojis — alive and expressive
 
