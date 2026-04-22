@@ -20,7 +20,8 @@
     "clean": "rm -rf dist",
     "dashboard:install": "cd src/web/dashboard && npm install",
     "dashboard:dev": "cd src/web/dashboard && npm run dev",
-    "dashboard:build": "cd src/web/dashboard && npm run build"
+    "dashboard:build": "cd src/web/dashboard && npm run build",
+    "dashboard:test": "cd src/web/dashboard && npm test"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.0.1",
