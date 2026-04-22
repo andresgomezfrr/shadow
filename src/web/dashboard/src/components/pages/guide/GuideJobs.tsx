@@ -99,13 +99,13 @@ revalidate-suggestion (on-demand from Workspace)`}</pre>
           <JobCard
             name="consolidate"
             color="bg-orange-500/20 text-orange-300"
-            purpose="Memory maintenance: layer promotion/demotion, correction enforcement, merge similar memories, meta-pattern synthesis"
+            purpose="Memory maintenance: layer promotion/demotion, meta-pattern synthesis, knowledge_summary synthesis, correction enforcement, merge similar memories"
             trigger="Every 6h"
             model="Opus high"
-            phases={['layer-maintenance', 'corrections', 'merge', 'meta-patterns']}
-            output="Promoted/demoted/merged/deduped memory counts"
+            phases={['layer-maintenance', 'meta-patterns', 'knowledge-summary', 'corrections', 'merge']}
+            output="Promoted/demoted/merged/deduped memory counts + knowledge_summary action"
             reactive={false}
-            note="Corrections are consumed here: contradicting memories archived/edited, corrections promoted to taught"
+            note="Corrections are consumed here: contradicting memories archived/edited, corrections promoted to taught. Knowledge summary gated to ≥10 durable new memories since last synthesis."
           />
 
           <JobCard
