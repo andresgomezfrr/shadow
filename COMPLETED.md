@@ -4,6 +4,26 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-22 (Audit block 5Z — observations cleanup + audit hygiene)
+
+Bloque 5Z cierra 5 observations + 3 audit-stale marks + 1 audit hygiene convention. Mix de stales verificados, 2 fixes reales (hook staleness, dashboard test infra), y 1 procedural (audit doc convention). 354 backend tests + 4 dashboard tests verdes.
+
+**Audit-stale marks** (verificados contra HEAD):
+- **UI-21 ghost icons sidebar** — `Sidebar.tsx:18-` ya usa `/icons/*.webp` (16 neon glyphs), no emojis. Documented en auto-memory `project_sidebar_neon_icons`.
+- **UI-26 Days together bug** — Cerrado ayer (commit `f372119`) con `analysis/chronicle.ts` calendar-day diff.
+- **A-03 depth axis no crece** — Widen ya aplicado en `profile/bond.ts:53` (DEPTH_ELIGIBLE_KINDS de 4 a 14 kinds). Comentario referencia el audit. Verificación empírica: depth=78 (no stuck en 0).
+
+**Audit hygiene** (`internal/AUDIT-2026-04-18.md` Section 0):
+- **79cce8e1 cross-val false positives** — Convención añadida al header del audit: "Antes de marcar ✅, hacer pass grep/read contra HEAD. Cada closure debe citar `file:line` del código que prueba el fix (o stale)". Ejemplo de buen vs mal closure. Pattern aplicado consistentemente desde bloque 5P (2026-04-21).
+
+**Real work**:
+
+- **d74a6227 hook staleness detection** (`src/cli/hooks.ts` nuevo, ~80 líneas + `cmd-init.ts` + 7 hook scripts) — Pattern análogo a `plist.ts` y `systemd.ts`: stamp `# shadow-hook-version: <semver>` en el primer comentario de cada hook (post-shebang). Source carries placeholder `__SHADOW_VERSION__` que se sustituye con la `package.json.version` en deploy. Comparison por equality (no semver ordering — el target es siempre "matches current shadow version", no "deployed >= current"). `ensureHooksDeployed(dataDir, scriptsDir, targetVersion, opts?)` helper deploys solo lo que necesita upgrade. **Bonus user request**: `shadow init --force` flag para forzar re-deploy de todos los hooks aunque la version matche (útil tras editar manualmente o reset). Init logs lista deployed/upgraded/current.
+
+- **6052e0a9 Toast tests + Vitest infra** (`src/web/dashboard/`, infra nueva + 4 tests) — Honest scope: dashboard estaba con CERO tests y CERO test infrastructure. Decisión user: B = pay the install cost upfront, Toast como first unit. Instalado: vitest + @vitest/ui + happy-dom + @testing-library/react + @testing-library/jest-dom. Config: `vitest.config.ts` (separate de vite.config.ts para evitar polución del prod build) + `src/test-setup.ts` (jest-dom matchers + cleanup hook). Scripts: `npm test` y `npm test:watch` en dashboard, plus `dashboard:test` en root package.json. **Toast.test.tsx** con 4 cases: (1) render via Portal + role=alert; (2) auto-dismiss tras durationMs (vi.useFakeTimers + advanceTimersByTime); (3) manual dismiss via ✕ button; (4) stack independence (2 toasts, dismiss más temprano persiste el otro). Pattern para futuros component tests del dashboard.
+
+---
+
 ## Session 2026-04-21 (Audit block 5Y — persona SYSTEM + `shadow` bare wrapper)
 
 Bloque 5Y cierra P-12 con scope extendido: no solo mueve el soul del user prompt al system prompt en los spawns del daemon (runner), sino que además añade un wrapper `shadow` bare para sesiones interactivas del user, usando el mismo mecanismo (`--append-system-prompt`). Todos los paths Shadow-initiated (daemon + user interactive) ahora llevan soul en system context. `claude` bare sigue funcionando inalterado via SessionStart hook.
