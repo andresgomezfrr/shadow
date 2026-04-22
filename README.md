@@ -4,6 +4,13 @@
 
 > A local-first memory, observation, and autonomy layer for Claude.
 
+<p align="center">
+  <a href="assets/readme/promo.mp4">
+    <img src="assets/readme/promo.webp" alt="Shadow — watch. remember. act." width="800">
+  </a>
+</p>
+<p align="center"><sub>Product tour — <a href="assets/readme/promo.mp4">download mp4</a></sub></p>
+
 ![Shadow dashboard](assets/readme/dashboard.png)
 
 Shadow is a background daemon that runs alongside Claude and turns your coding
