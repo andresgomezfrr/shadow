@@ -603,7 +603,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const expired = _db.expireObservationsBySeverity();
         const capped = _db.capObservationsPerRepo(10);
         if (expired > 0) log.error(`[daemon] Expired ${expired} stale observations`);
-        if (capped > 0) log.error(`[daemon] Capped ${capped} excess observations`);
+        if (capped > 0) log.warn(`[daemon] Capped ${capped} excess observations`);
       } catch { /* ignore */ }
 
       // Sync shared state from job handlers BEFORE enqueue decisions

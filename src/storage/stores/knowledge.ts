@@ -615,10 +615,17 @@ export function countPendingSuggestions(db: DatabaseSync): number {
 // --- Vector embeddings ---
 
 export function storeEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'observation_vectors' | 'suggestion_vectors' | 'enrichment_vectors', id: string, embedding: Float32Array): void {
+  // sqlite-vec (vec0) virtual tables don't reliably honor INSERT OR REPLACE
+  // under concurrent writes — we've seen UNIQUE constraint failures when two
+  // jobs (e.g. consolidate + heartbeat) race to re-embed the same row.
+  // Explicit DELETE + INSERT is idempotent and avoids the conflict.
   try {
-    db.prepare(`INSERT OR REPLACE INTO ${table}(id, embedding) VALUES (?, ?)`).run(id, embedding);
+    db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+    db.prepare(`INSERT INTO ${table}(id, embedding) VALUES (?, ?)`).run(id, embedding);
   } catch (e) {
-    log.error(`[shadow:db] Failed to store embedding in ${table}:`, e instanceof Error ? e.message : e);
+    // Degradation — row stays without a vector this cycle; FTS still works
+    // and the next backfill recovers it. Not a real failure.
+    log.warn(`[shadow:db] Failed to store embedding in ${table}:`, e instanceof Error ? e.message : e);
   }
 }
 
