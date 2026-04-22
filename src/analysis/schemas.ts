@@ -116,18 +116,78 @@ export const OBSERVE_CLEANUP_FORMAT =
 // ---------------------------------------------------------------------------
 // Few-shot examples (audit P-14)
 //
-// Single positive example per phase — anchors format compliance + the
-// "what counts as durable" judgment without doubling the prompt size with
-// counter-examples (the rules section already says what NOT to do).
+// Single positive example per phase + locale variant — anchors format
+// compliance + the "what counts as durable" judgment without doubling the
+// prompt size with counter-examples (the rules section already says what
+// NOT to do).
+//
+// English is the base. Spanish variant exists for current ES-locale users
+// (Andrés). Picker in `src/analysis/locale.ts` returns the right one based
+// on profile.locale; see `pickExtractExample` / `pickObserveExample`. Add a
+// new locale = add a new constant + branch in the picker.
+//
+// **Keep ES and EN in sync** when you edit one — the example IS the spec.
 //
 // Token cost per call: ~400-600 tokens added to prompt. Across 48 heartbeats/
 // day × 2 phases ≈ 50-60k tokens/day extra. ~$0.20/day Opus, ~$0.04 Sonnet.
-//
-// Update the example when you change the schema or evolve what "good" looks
-// like — the example IS the implicit spec.
 // ---------------------------------------------------------------------------
 
-export const EXTRACT_EXAMPLE = `## Example
+export const EXTRACT_EXAMPLE_EN = `## Example
+
+INPUT (representative session data — yours will look different):
+
+\`\`\`
+### Conversations
+User: "We're moving the auth middleware from Express to Hono. Hono's middleware composition is cleaner and we get type-safe context inference out of the box."
+Assistant: "Got it, refactoring middleware.ts to Hono."
+User: "And from now on JWT validation always goes inside the middleware, never in route handlers."
+
+### Tool Usage
+- Edit src/auth/middleware.ts × 5
+- Edit src/auth/session.ts × 2
+- Bash: npm run test (passed)
+\`\`\`
+
+OUTPUT:
+
+\`\`\`json
+{
+  "insights": [
+    {
+      "kind": "tech_stack",
+      "title": "Auth layer migrated from Express to Hono",
+      "bodyMd": "Auth middleware now uses Hono. Reasons cited by the user: cleaner middleware composition, type-safe context inference. Affects all of \`src/auth/\`. Conversion in progress (middleware.ts + session.ts edited).",
+      "confidence": 95,
+      "tags": ["hono", "auth", "framework-migration"],
+      "layer": "core",
+      "scope": "repo"
+    },
+    {
+      "kind": "convention",
+      "title": "JWT validation always in middleware, never in route handlers",
+      "bodyMd": "User rule: JWT validation belongs in the middleware. Route handlers must assume the request is already authenticated — they don't re-verify.",
+      "confidence": 90,
+      "tags": ["auth", "jwt", "convention"],
+      "layer": "core",
+      "scope": "repo"
+    }
+  ],
+  "profileUpdates": { "moodHint": "focused", "energyLevel": "normal" }
+}
+\`\`\`
+
+Notes on this example:
+- Two distinct insights from the same conversation — separated by kind.
+- "Moving from Express to Hono" → tech_stack with reasoning preserved.
+- "Always in middleware" → convention (rule, not a stack choice).
+- Layer = "core" because both are stable architectural decisions.
+- Mood = "focused" — task-driven conversation, no frustration markers.
+- ZERO insights extracted from raw tool counts ("Edit middleware.ts × 5") —
+  those alone are activity, not knowledge. Only the conversation carries
+  the durable signal.
+`;
+
+export const EXTRACT_EXAMPLE_ES = `## Example
 
 INPUT (representative session data — yours will look different):
 
@@ -182,7 +242,52 @@ Notes on this example:
   durable signal.
 `;
 
-export const OBSERVE_EXAMPLE = `## Example
+export const OBSERVE_EXAMPLE_EN = `## Example
+
+INPUT (representative session data — yours will look different):
+
+\`\`\`
+### Repository Status
+shadow: 12 modified files in src/runner/, mid-refactor of state machine
+
+### Tool Usage
+- src/runner/queue.ts edited 8 times in 2h
+- src/runner/queue.test.ts edited 0 times
+- Bash: npm test (last run: 4h ago)
+\`\`\`
+
+OUTPUT:
+
+\`\`\`json
+{
+  "observations": [
+    {
+      "kind": "risk",
+      "title": "runner/queue.ts churn without test updates — silent regression risk",
+      "detail": "src/runner/queue.ts edited 8 times in 2h with no corresponding changes to queue.test.ts. The state machine refactor (12 modified files in src/runner/) is mid-flight; without coverage tracking the new paths, regressions can land silently. Last test run: 4h ago, before the bulk of changes. Action: pause for a test pass over the new transitions before continuing the refactor.",
+      "severity": "warning",
+      "files": ["src/runner/queue.ts", "src/runner/queue.test.ts"],
+      "projectNames": []
+    }
+  ]
+}
+\`\`\`
+
+Notes on this example:
+- Specific + actionable: cites the ratio (8 edits to source, 0 to tests),
+  provides temporal context (last test 4h ago), suggests a concrete action
+  (pause for test pass).
+- Severity "warning" — not "high" because no concrete bug observed yet,
+  just a drift signal; not "info" because a concrete recommended action
+  exists.
+- Files list contains both paths (source + missing test) — useful for
+  deep-link.
+- ZERO observations about the obvious raw input ("12 modified files",
+  "edited 8 times") in isolation. The observation synthesises the pattern
+  (source-test divergence + test staleness) into one observation.
+`;
+
+export const OBSERVE_EXAMPLE_ES = `## Example
 
 INPUT (representative session data — yours will look different):
 
