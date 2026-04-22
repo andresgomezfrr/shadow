@@ -206,42 +206,39 @@ export function ActivityEntryExpandedDetail({ entry }: { entry: ActivityEntryTyp
           )}
         </div>
         {ks && (
-          <div className="pt-1 mt-1 border-t border-border/30 text-[11px]">
-            <span className="text-accent">Knowledge summary:</span>{' '}
-            {ks.action === 'created' && (
-              <>
-                <span className="text-text-dim">created</span>
-                {ks.themes && ks.themes.length > 0 && (
-                  <span className="text-text-muted"> — themes: {ks.themes.join(', ')}</span>
-                )}
-                {ks.memoryId && (
-                  <a
-                    href={`/memories?highlight=${ks.memoryId}`}
-                    className="text-accent hover:underline ml-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >view →</a>
-                )}
-              </>
-            )}
-            {ks.action === 'merged' && (
-              <>
-                <span className="text-text-dim">merged into existing summary (semantic dedup)</span>
-                {ks.memoryId && (
-                  <a
-                    href={`/memories?highlight=${ks.memoryId}`}
-                    className="text-accent hover:underline ml-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >view →</a>
-                )}
-              </>
-            )}
-            {ks.action === 'skipped' && (
-              <span className="text-text-muted">skipped{ks.reason ? ` — ${ks.reason}` : ''}</span>
-            )}
-            {ks.clustered && ks.clustered.merged > 0 && (
-              <span className="text-text-muted ml-2">
-                · clustered {ks.clustered.merged}/{ks.clustered.checked}
-              </span>
+          <div className="pt-1.5 mt-1.5 border-t border-border/30 text-[11px] space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-accent">Knowledge summary:</span>
+              {ks.action === 'created' && <span className="text-green-400">created</span>}
+              {ks.action === 'merged' && <span className="text-sky-400">merged</span>}
+              {ks.action === 'skipped' && <span className="text-text-muted">skipped</span>}
+              {ks.action === 'merged' && (
+                <span className="text-text-muted">· absorbed into existing summary (semantic dedup)</span>
+              )}
+              {ks.action === 'skipped' && ks.reason && (
+                <span className="text-text-muted">· {ks.reason}</span>
+              )}
+              {ks.clustered && ks.clustered.merged > 0 && (
+                <span className="text-text-muted">· cluster-merged {ks.clustered.merged}/{ks.clustered.checked}</span>
+              )}
+              {ks.memoryId && (ks.action === 'created' || ks.action === 'merged') && (
+                <a
+                  href={`/memories?highlight=${ks.memoryId}`}
+                  className="text-accent hover:underline ml-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >view →</a>
+              )}
+            </div>
+            {ks.themes && ks.themes.length > 0 && (ks.action === 'created' || ks.action === 'merged') && (
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-text-muted shrink-0">themes:</span>
+                {ks.themes.map((t, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center rounded-full border border-border/60 bg-border/20 px-1.5 py-px text-[10px] text-text-dim"
+                  >{t}</span>
+                ))}
+              </div>
             )}
           </div>
         )}
