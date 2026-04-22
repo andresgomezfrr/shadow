@@ -11,8 +11,6 @@
 </p>
 <p align="center"><sub>Product tour — <a href="assets/readme/promo.mp4">download mp4</a></sub></p>
 
-![Shadow dashboard](assets/readme/dashboard.png)
-
 Shadow is a background daemon that runs alongside Claude and turns your coding
 sessions into persistent knowledge. It watches what you work on, remembers it,
 surfaces suggestions grounded in your own history, and — when you let it —
