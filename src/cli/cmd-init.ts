@@ -332,29 +332,41 @@ ${endMarker}`;
 
         } // end non-Linux branch
 
-        // Register MCP server via `claude mcp add` (the correct way for Claude Code)
+        // Register MCP server via `claude mcp add`. Must detect transport:
+        // stale stdio registrations are the most common breakage (spawn-per-session,
+        // fragile). Re-register as http if the transport is wrong.
         let mcpResult: Record<string, unknown> = {};
         const claudeBin = config.claudeBin || 'claude';
+        const { execSync } = await import('node:child_process');
+
+        let existing = '';
+        let registered = false;
         try {
-          const { execSync } = await import('node:child_process');
-          // Check if already registered
-          const existing = execSync(`${claudeBin} mcp get shadow 2>&1`, { encoding: 'utf8', timeout: 10000 }).trim();
-          if (existing.includes('Status:')) {
-            mcpResult = { mcp: 'already registered' };
-            log.error('[init] MCP server shadow already registered');
-          } else {
-            throw new Error('not found');
-          }
+          existing = execSync(`${claudeBin} mcp get shadow 2>&1`, { encoding: 'utf8', timeout: 10000 }).trim();
+          registered = /Type:\s*\w+/i.test(existing);
         } catch {
-          // Not registered yet — add it
+          // exit 1 from `mcp get` when not found, or claude CLI missing — will attempt register below
+        }
+
+        const isHttp = /Type:\s*http/i.test(existing);
+
+        if (registered && isHttp) {
+          mcpResult = { mcp: 'already registered (http)' };
+          log.error('[init] MCP server shadow already registered as http');
+        } else {
+          if (registered && !isHttp) {
+            log.error('[init] MCP server shadow registered with wrong transport — removing to re-register as http');
+            try {
+              execSync(`${claudeBin} mcp remove shadow -s user 2>&1`, { encoding: 'utf8', timeout: 10000 });
+            } catch { /* scope mismatch or already gone — proceed anyway */ }
+          }
           try {
-            const { execSync } = await import('node:child_process');
             execSync(
               `${claudeBin} mcp add --transport http -s user shadow http://localhost:3700/api/mcp`,
               { encoding: 'utf8', timeout: 10000 },
             );
-            mcpResult = { mcp: 'registered via claude mcp add' };
-            log.error('[init] MCP server shadow registered via claude mcp add');
+            mcpResult = { mcp: registered ? 'migrated stdio → http' : 'registered' };
+            log.error(`[init] MCP server shadow ${registered ? 'migrated to http transport' : 'registered via claude mcp add'}`);
           } catch (e) {
             mcpResult = { mcp: 'failed to register', error: String(e) };
             log.error('[init] Failed to register MCP server — Claude CLI may not be installed');
