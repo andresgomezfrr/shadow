@@ -2,6 +2,7 @@ import type { JobContext, JobHandlerResult, DaemonSharedState } from '../job-han
 import { errorHint, classifyError, recentItems } from '../job-handlers.js';
 import { budgetSkipIfExceeded } from '../../analysis/budget.js';
 import { log } from '../../log.js';
+import { outputLanguageInstruction } from '../../analysis/locale.js';
 
 export async function handleSuggest(ctx: JobContext): Promise<JobHandlerResult> {
   const { activitySuggest, activityNotify } = await import('../../analysis/activities.js');
@@ -126,7 +127,9 @@ Respond with JSON:
   ]
 }
 
-Generate 1-5 suggestions. Quality over quantity.`;
+Generate 1-5 suggestions. Quality over quantity.
+
+${outputLanguageInstruction(ctx.db.ensureProfile().locale)}`;
 
   const { selectAdapter } = await import('../../backend/index.js');
   const adapter = selectAdapter(ctx.config);
@@ -329,7 +332,9 @@ Respond with JSON:
   ]
 }
 
-Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-repo issues.`;
+Generate 1-3 cross-repo suggestions. Only genuinely cross-repo — not single-repo issues.
+
+${outputLanguageInstruction(ctx.db.ensureProfile().locale)}`;
 
   const { selectAdapter } = await import('../../backend/index.js');
   const adapter = selectAdapter(ctx.config);
@@ -490,7 +495,9 @@ IMPORTANT: After your investigation, your FINAL message must be ONLY a JSON obje
   "confidenceScore": 0-100,
   "riskScore": 1-5,
   "dismissReason": "If verdict is 'outdated', a pre-written dismiss note the user can use as-is or edit"
-}`;
+}
+
+${outputLanguageInstruction(ctx.db.ensureProfile().locale)}`;
 
   const { selectAdapter } = await import('../../backend/index.js');
   const adapter = selectAdapter(ctx.config);

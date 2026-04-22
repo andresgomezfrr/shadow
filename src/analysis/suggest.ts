@@ -16,6 +16,7 @@ import {
   getEffort,
 } from './shared.js';
 import { log } from '../log.js';
+import { outputLanguageInstruction } from './locale.js';
 
 export async function activitySuggest(
   ctx: HeartbeatContext,
@@ -133,8 +134,9 @@ export async function activitySuggest(
       patternSection,
       dismissFeedback ? `## Dismissed by User\n${dismissFeedback}\n` : '',
       acceptedContext ? `## Accepted by User (what they value)\n${acceptedContext}\n` : '',
+      outputLanguageInstruction(ctx.profile.locale),
       'Respond with JSON only.',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     let candidates: Array<{ kind: string; title: string; summaryMd: string; reasoningMd: string | null; impactScore: number; confidenceScore: number; riskScore: number; effort: string; repoId: string | null }> = [];
 

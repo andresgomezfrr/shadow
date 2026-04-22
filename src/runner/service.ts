@@ -13,6 +13,7 @@ import { ConfidenceEvaluationSchema, type ConfidenceEvaluation } from './schemas
 import { aggregateParentStatus } from './state-machine.js';
 import { isEmptyPlanInDisguise } from './plan-validation.js';
 import { log } from '../log.js';
+import { outputLanguageInstruction } from '../analysis/locale.js';
 
 const DEFAULT_RUNNER_PERSONALITY = 'You are Shadow, a proactive coding companion. Show initiative and personality.';
 
@@ -175,6 +176,7 @@ export class RunnerService {
               '**IMPORTANT**: When finished, commit your changes with `git add -A && git commit -m "<descriptive message>"`.',
               'Uncommitted changes will be lost. Only commit; do NOT push.',
             ].join('\n'),
+        outputLanguageInstruction(this.db.ensureProfile().locale),
       ].filter(Boolean).join('\n');
 
       const fullPrompt = briefing;

@@ -8,6 +8,7 @@ import { selectAdapter } from '../backend/index.js';
 import { safeParseJson } from '../backend/json-repair.js';
 import { z } from 'zod';
 import { log } from '../log.js';
+import { outputLanguageInstruction } from '../analysis/locale.js';
 
 // ---------------------------------------------------------------------------
 // Git/FS signal gathering (no LLM)
@@ -207,7 +208,9 @@ Produce a structured context summary in markdown with EXACTLY this format:
 **Valuable suggestions**: (what kind of suggestions would genuinely help this repo — be specific)
 **Avoid suggesting**: (what kind of suggestions are NOT appropriate given the repo's context — be specific based on team size, phase, CI maturity)
 ${correctionsSection ? `\n${correctionsSection}\nYou MUST respect these corrections in your analysis.\n` : ''}
-Be concise. Each field 1-2 lines max. Respond with JSON: { "contextMd": "..." }`;
+Be concise. Each field 1-2 lines max. Respond with JSON: { "contextMd": "..." }
+
+${outputLanguageInstruction(db.ensureProfile().locale)}`;
 
   const result = await adapter.execute({
     repos: [],

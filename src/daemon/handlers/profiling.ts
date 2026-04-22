@@ -1,6 +1,7 @@
 import type { JobContext, JobHandlerResult, DaemonSharedState } from '../job-handlers.js';
 import { errorHint, classifyError } from '../job-handlers.js';
 import { log } from '../../log.js';
+import { outputLanguageInstruction } from '../../analysis/locale.js';
 
 export async function handleRemoteSync(ctx: JobContext, shared: DaemonSharedState): Promise<JobHandlerResult> {
   ctx.setPhase('remote-sync');
@@ -185,7 +186,9 @@ Produce a structured project profile in markdown with EXACTLY this format:
 **Active tensions**: (divergence, parity gaps, naming drift, version mismatches)
 **Valuable cross-repo suggestions**: (what would help this project as a whole — be specific)
 
-Be concise. Each field 1-3 lines max. Respond with JSON: { "contextMd": "..." }`;
+Be concise. Each field 1-3 lines max. Respond with JSON: { "contextMd": "..." }
+
+${outputLanguageInstruction(ctx.db.ensureProfile().locale)}`;
 
   const { selectAdapter } = await import('../../backend/index.js');
   const adapter = selectAdapter(ctx.config);

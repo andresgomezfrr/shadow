@@ -10,7 +10,8 @@ import { safeParseJson } from '../backend/json-repair.js';
 import { log } from '../log.js';
 
 import type { HeartbeatContext } from './state-machine.js';
-import { ExtractResponseSchema, ObserveResponseSchema, ObserveCleanupResponseSchema, EXTRACT_FORMAT, EXTRACT_EXAMPLE, OBSERVE_FORMAT, OBSERVE_EXAMPLE, OBSERVE_CLEANUP_FORMAT } from './schemas.js';
+import { ExtractResponseSchema, ObserveResponseSchema, ObserveCleanupResponseSchema, EXTRACT_FORMAT, OBSERVE_FORMAT, OBSERVE_CLEANUP_FORMAT } from './schemas.js';
+import { outputLanguageInstruction, pickExtractExample, pickObserveExample } from './locale.js';
 import { resolve } from 'node:path';
 import {
   loadEntityNameCache,
@@ -288,7 +289,9 @@ export async function activityAnalyze(
       'Return 0-2 insights. ZERO is valid — return empty array if nothing durable was learned.',
       'Confidence: 90+ for verified facts, 70-89 for inferences.',
       '',
-      EXTRACT_EXAMPLE,
+      outputLanguageInstruction(ctx.profile.locale),
+      '',
+      pickExtractExample(ctx.profile.locale),
       '',
       '## Mood & Energy',
       'ALWAYS update profileUpdates.moodHint based on conversation tone. Be opinionated — don\'t default to neutral.',
@@ -540,7 +543,9 @@ export async function activityAnalyze(
       '- Session activity descriptions ("the developer worked on X")',
       '- Things obvious from git status or git log',
       '',
-      OBSERVE_EXAMPLE,
+      outputLanguageInstruction(ctx.profile.locale),
+      '',
+      pickObserveExample(ctx.profile.locale),
       '',
       dataSources,
       soulSection,

@@ -6,6 +6,7 @@ import { selectAdapter } from '../backend/index.js';
 import { getEnrichmentSummary } from './enrichment.js';
 import { budgetSkipIfExceeded } from './budget.js';
 import { log } from '../log.js';
+import { outputLanguageInstruction } from './locale.js';
 
 // --- Helpers ---
 
@@ -81,7 +82,7 @@ export async function activityDailyDigest(
     'Generate a standup summary for today in 3-5 bullet points.',
     'Format: what I did, what I plan next, blockers (if any).',
     'Natural language, concise, oriented for a team standup.',
-    'Write in the same language as the data below.',
+    outputLanguageInstruction(db.ensureProfile().locale),
     '',
     '## Recent Commits',
     commits.length > 0 ? commits.join('\n') : 'No commits today.',
@@ -163,7 +164,7 @@ export async function activityWeeklyDigest(
     'Generate a weekly summary for a 1:1 with my manager.',
     'Include: achievements, key decisions, risks/blockers, next steps.',
     '5-10 bullets max. Professional but concise.',
-    'Write in the same language as the data below.',
+    outputLanguageInstruction(db.ensureProfile().locale),
     '',
     dailies.length > 0 ? `## Daily Summaries This Week\n${dailies.join('\n\n')}` : '',
     '',
@@ -261,6 +262,7 @@ export async function activityBragDoc(
     sugAccepted.length > 0 ? `## Suggestions Implemented\n${sugAccepted.map(s => `- ${s.title}`).join('\n')}` : '',
     '',
     'Respond with the FULL updated brag doc in markdown. No JSON wrapping.',
+    outputLanguageInstruction(db.ensureProfile().locale),
   ].filter(Boolean).join('\n');
 
   const profile = db.ensureProfile();
