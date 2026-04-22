@@ -25,7 +25,6 @@ const NAV: NavEntry[] = [
   { to: '/suggestions', icon: '/icons/suggestions.webp', label: 'Suggestions', countKey: 'pendingSuggestions' },
   { to: '/tasks', icon: '/icons/tasks.webp', label: 'Tasks', countKey: 'activeTasks' },
   { to: '/runs', icon: '/icons/runs.webp', label: 'Runs' },
-  { to: '/correct', icon: '/icons/correct.webp', label: 'Correct' },
 
   // System
   { divider: true, groupLabel: 'SYSTEM' },
@@ -168,9 +167,9 @@ export function Sidebar({ counts }: { counts?: Counts | null }) {
       <div className="mt-auto pb-2">
         <button
           onClick={() => setShowCorrection(true)}
-          className="group relative w-[44px] h-[44px] flex items-center justify-center rounded-lg cursor-pointer text-[18px] transition-all duration-150 hover:bg-border hover:scale-105 bg-transparent border-none"
+          className="group relative w-[44px] h-[44px] flex items-center justify-center rounded-lg cursor-pointer transition-all duration-150 hover:bg-border hover:scale-105 bg-transparent border-none"
         >
-          <span>✏️</span>
+          <img src="/icons/correct.webp" alt="" className="w-11 h-11 object-cover rounded-full" />
           <span className="absolute left-[calc(60px+4px)] top-1/2 -translate-y-1/2 bg-card-hover text-text px-2.5 py-1 rounded text-xs whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-[200] border border-border">
             Correct Shadow
           </span>
