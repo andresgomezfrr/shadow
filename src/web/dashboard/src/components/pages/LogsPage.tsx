@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchLogs } from '../../api/client';
-import type { LogLine, LogsResponse } from '../../api/client';
+import type { LogLine, LogLevel, LogsResponse } from '../../api/client';
 
 /**
  * Tail view of the daemon stderr log (audit F-07). Polls /api/logs every
@@ -14,19 +14,25 @@ export function LogsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
   const [component, setComponent] = useState<string>('');
+  const [level, setLevel] = useState<'' | 'ERROR' | 'WARN' | 'INFO'>('');
   const [q, setQ] = useState<string>('');
   const [linesRequested, setLinesRequested] = useState<number>(500);
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const r = await fetchLogs({ lines: linesRequested, component: component || undefined, q: q || undefined });
+      const r = await fetchLogs({
+        lines: linesRequested,
+        component: component || undefined,
+        level: level || undefined,
+        q: q || undefined,
+      });
       setData(r);
       setErr(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
-  }, [linesRequested, component, q]);
+  }, [linesRequested, component, level, q]);
 
   // Initial load + reload when filters change.
   useEffect(() => {
@@ -51,7 +57,8 @@ export function LogsPage() {
 
   const total = data?.lines.length ?? 0;
   const components = data?.components ?? [];
-  const activeFilters = Boolean(component || q);
+  const levelCounts = data?.levelCounts ?? { ERROR: 0, WARN: 0, INFO: 0, unknown: 0 };
+  const activeFilters = Boolean(component || level || q);
 
   return (
     <div className="h-full flex flex-col gap-3 p-4">
@@ -84,6 +91,20 @@ export function LogsPage() {
       </div>
 
       <div className="flex items-center gap-2 flex-wrap text-xs">
+        <div className="inline-flex items-center gap-1 rounded border border-border/60 bg-border/10 p-0.5">
+          <LevelPill active={level === ''} onClick={() => setLevel('')}>
+            all ({levelCounts.ERROR + levelCounts.WARN + levelCounts.INFO + levelCounts.unknown})
+          </LevelPill>
+          <LevelPill active={level === 'ERROR'} onClick={() => setLevel('ERROR')} className="text-red">
+            error ({levelCounts.ERROR})
+          </LevelPill>
+          <LevelPill active={level === 'WARN'} onClick={() => setLevel('WARN')} className="text-amber-300">
+            warn ({levelCounts.WARN})
+          </LevelPill>
+          <LevelPill active={level === 'INFO'} onClick={() => setLevel('INFO')} className="text-accent">
+            info ({levelCounts.INFO})
+          </LevelPill>
+        </div>
         <select
           value={component}
           onChange={(e) => setComponent(e.target.value)}
@@ -117,7 +138,7 @@ export function LogsPage() {
         {activeFilters && (
           <button
             type="button"
-            onClick={() => { setComponent(''); setQ(''); }}
+            onClick={() => { setComponent(''); setLevel(''); setQ(''); }}
             className="text-text-muted hover:text-accent underline"
           >clear filters</button>
         )}
@@ -151,11 +172,18 @@ export function LogsPage() {
 
 function LogRow({ line }: { line: LogLine }) {
   // Color-code the component prefix so lines from the same subsystem cluster
-  // visually. Everything else stays muted so prefixes "pop" first.
+  // visually. Level gets its own fixed-width badge so the eye can scan down
+  // the left column and catch ERROR rows at a glance.
   const color = componentColor(line.component);
+  const rowBg = line.level === 'ERROR'
+    ? 'bg-red/5 hover:bg-red/10'
+    : line.level === 'WARN'
+    ? 'bg-amber-500/5 hover:bg-amber-500/10'
+    : 'hover:bg-border/10';
   return (
-    <div className="flex gap-2 px-3 hover:bg-border/10">
+    <div className={`flex gap-2 px-3 ${rowBg}`}>
       <span className="text-text-muted/50 select-none shrink-0 w-10 text-right tabular-nums">{line.lineNo}</span>
+      <LevelBadge level={line.level} />
       {line.component ? (
         <>
           <span className={`shrink-0 ${color}`}>[{line.component}]</span>
@@ -165,6 +193,32 @@ function LogRow({ line }: { line: LogLine }) {
         <span className="text-text-muted whitespace-pre-wrap break-all">{line.raw}</span>
       )}
     </div>
+  );
+}
+
+function LevelBadge({ level }: { level: LogLevel }) {
+  // Fixed-width 4-char badge so the [component] column after it aligns
+  // across all rows regardless of level.
+  const cls = level === 'ERROR'
+    ? 'text-red'
+    : level === 'WARN'
+    ? 'text-amber-300'
+    : level === 'INFO'
+    ? 'text-accent'
+    : 'text-text-muted/40';
+  const text = level ?? '····';
+  return (
+    <span className={`shrink-0 w-12 font-semibold tabular-nums ${cls}`}>{text}</span>
+  );
+}
+
+function LevelPill({ active, onClick, className, children }: { active: boolean; onClick: () => void; className?: string; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded px-1.5 py-0.5 text-[11px] transition-colors ${active ? 'bg-border/50 text-text-bright' : 'text-text-muted hover:bg-border/30'} ${className ?? ''}`}
+    >{children}</button>
   );
 }
 

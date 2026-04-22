@@ -17,14 +17,21 @@ function clampLines(raw: string | null): number {
 }
 
 /**
- * Parse `[component:phase] rest of line` → { component, message }. Lines that
- * don't start with a bracketed prefix return { component: null, message: raw }.
- * Keeps the raw line around for the UI too (some users prefer raw over parsed).
+ * Parse `LEVEL [component] rest of line` → { level, component, message }.
+ * Level is one of ERROR | WARN | INFO when emitted by src/log.ts. Lines that
+ * lack a level prefix (legacy entries written before log.ts gained level
+ * prefixes, or raw console.* not yet migrated) are still parsed for
+ * [component] alone with level=null. Lines with neither return
+ * { level: null, component: null, message: raw }.
  */
-const PREFIX_RE = /^\[([^\]]+)\]\s*(.*)$/;
+const LEVEL_PREFIX_RE = /^(ERROR|WARN|INFO)\s+(.*)$/;
+const COMPONENT_RE = /^\[([^\]]+)\]\s*(.*)$/;
+
+type LogLevel = 'ERROR' | 'WARN' | 'INFO' | null;
 
 type LogLine = {
   lineNo: number;
+  level: LogLevel;
   component: string | null;
   message: string;
   raw: string;
@@ -78,6 +85,10 @@ export async function handleLogsRoutes(
 
     const lines = clampLines(params.get('lines'));
     const componentFilter = params.get('component')?.trim() ?? '';
+    const levelFilterRaw = params.get('level')?.trim().toUpperCase() ?? '';
+    const levelFilter: LogLevel = (levelFilterRaw === 'ERROR' || levelFilterRaw === 'WARN' || levelFilterRaw === 'INFO')
+      ? levelFilterRaw
+      : null;
     const q = params.get('q')?.trim().toLowerCase() ?? '';
 
     const { lines: raw, truncated, totalBytes } = tailLog(logPath, lines);
@@ -86,19 +97,42 @@ export async function handleLogsRoutes(
     // the client doesn't do regex work on every render.
     const parsed: LogLine[] = [];
     const componentsSeen = new Set<string>();
+    const levelCounts: Record<'ERROR' | 'WARN' | 'INFO' | 'unknown', number> = {
+      ERROR: 0, WARN: 0, INFO: 0, unknown: 0,
+    };
 
     for (let i = 0; i < raw.length; i++) {
       const line = raw[i];
-      const m = line.match(PREFIX_RE);
-      const component = m ? m[1] : null;
-      const message = m ? m[2] : line;
+
+      // Two independent prefixes, applied in order: LEVEL (post-log.ts
+      // format) and [component] (present on most log calls). A line can
+      // have both, just one, or neither.
+      let level: LogLevel = null;
+      let component: string | null = null;
+      let rest = line;
+      const levelMatch = rest.match(LEVEL_PREFIX_RE);
+      if (levelMatch) {
+        level = levelMatch[1] as LogLevel;
+        rest = levelMatch[2];
+      }
+      const compMatch = rest.match(COMPONENT_RE);
+      if (compMatch) {
+        component = compMatch[1];
+        rest = compMatch[2];
+      }
+      const message = rest;
+
       if (component) componentsSeen.add(component);
+      if (level) levelCounts[level]++;
+      else levelCounts.unknown++;
 
       if (componentFilter && component !== componentFilter) continue;
+      if (levelFilter && level !== levelFilter) continue;
       if (q && !line.toLowerCase().includes(q)) continue;
 
       parsed.push({
         lineNo: i,
+        level,
         component,
         message,
         raw: line,
@@ -113,6 +147,7 @@ export async function handleLogsRoutes(
       linesReturned: parsed.length,
       linesScanned: raw.length,
       components: [...componentsSeen].sort(),
+      levelCounts,
       lines: parsed,
     }), true;
   }

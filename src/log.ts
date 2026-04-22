@@ -37,19 +37,25 @@
  * become `log.warn`; catch-block error-context calls stay `log.error`.
  */
 
+/**
+ * Serialize a stringify-able arg list into a single space-separated line.
+ * Mirrors what console.error does under the hood but lets us prepend a level.
+ */
+function formatLine(args: unknown[]): string {
+  return args
+    .map((a) => (typeof a === 'string' ? a : typeof a === 'object' ? JSON.stringify(a) : String(a)))
+    .join(' ');
+}
+
 export const log = {
   error: (...args: unknown[]): void => {
-    console.error(...args);
+    process.stderr.write(`ERROR ${formatLine(args)}\n`);
   },
   warn: (...args: unknown[]): void => {
-    console.error(...args);
+    process.stderr.write(`WARN ${formatLine(args)}\n`);
   },
   info: (...args: unknown[]): void => {
-    // stderr via process.stderr.write to keep stdout clean for CLI JSON
-    const out = args
-      .map((a) => (typeof a === 'string' ? a : typeof a === 'object' ? JSON.stringify(a) : String(a)))
-      .join(' ');
-    process.stderr.write(out + '\n');
+    process.stderr.write(`INFO ${formatLine(args)}\n`);
   },
 };
 

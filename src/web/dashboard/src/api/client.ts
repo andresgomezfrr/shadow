@@ -92,7 +92,8 @@ export const fetchSuggestions = (params?: { status?: string; kind?: string; sort
 export const fetchObservations = (params?: { limit?: number; offset?: number; status?: string; severity?: string; kind?: string; repoId?: string; projectId?: string }) =>
   api<{ items: Observation[]; total: number; feedbackState: Record<string, string> }>(`/api/observations${qs({ limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined, status: params?.status, severity: params?.severity, kind: params?.kind, repoId: params?.repoId, projectId: params?.projectId })}`);
 
-export type LogLine = { lineNo: number; component: string | null; message: string; raw: string };
+export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | null;
+export type LogLine = { lineNo: number; level: LogLevel; component: string | null; message: string; raw: string };
 export type LogsResponse = {
   logPath: string;
   totalBytes: number;
@@ -101,13 +102,15 @@ export type LogsResponse = {
   linesReturned: number;
   linesScanned: number;
   components: string[];
+  levelCounts: { ERROR: number; WARN: number; INFO: number; unknown: number };
   lines: LogLine[];
 };
 
-export const fetchLogs = (params?: { lines?: number; component?: string; q?: string }) =>
+export const fetchLogs = (params?: { lines?: number; component?: string; level?: string; q?: string }) =>
   api<LogsResponse>(`/api/logs${qs({
     lines: params?.lines != null ? String(params.lines) : undefined,
     component: params?.component,
+    level: params?.level,
     q: params?.q,
   })}`);
 
