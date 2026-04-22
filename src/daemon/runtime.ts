@@ -285,7 +285,7 @@ export async function waitForDaemonStopped(
 
   while (Date.now() < deadline) {
     if (!isDaemonRunning(config)) return true;
-    if (onProgress && Date.now() - lastProgressAt >= 5_000) {
+    if (onProgress && Date.now() - lastProgressAt >= 2_000) {
       lastProgressAt = Date.now();
       const elapsedSec = Math.floor((Date.now() - start) / 1000);
       let activeJobCount: number | null = null;
@@ -318,7 +318,7 @@ export async function waitForDaemonReady(
   let lastProgressAt = start;
   while (Date.now() < deadline) {
     if (isDaemonRunning(config)) return true;
-    if (onProgress && Date.now() - lastProgressAt >= 5_000) {
+    if (onProgress && Date.now() - lastProgressAt >= 2_000) {
       lastProgressAt = Date.now();
       onProgress(Math.floor((Date.now() - start) / 1000));
     }

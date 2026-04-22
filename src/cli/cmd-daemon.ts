@@ -76,6 +76,56 @@ async function waitForLaunchdUnload(
 
 type StopResult = 'not_running' | 'graceful' | 'forced';
 
+/** Read activeJobCount from `daemon.json`. Returns null if file missing/malformed. */
+function readActiveJobCount(config: ShadowConfig): number | null {
+  try {
+    const raw = readFileSync(resolve(config.resolvedDataDir, 'daemon.json'), 'utf-8');
+    const state = JSON.parse(raw) as { activeJobCount?: unknown };
+    return typeof state?.activeJobCount === 'number' ? state.activeJobCount : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Run `launchctl bootout` asynchronously (via spawn), polling daemon.json every
+ * 2s in parallel so the CLI can show live drain progress. execSync would block
+ * the event loop during the entire 65s graceful drain, making the CLI look
+ * frozen. stdio is ignored to avoid pipe-buffer lock-ups.
+ */
+async function bootoutLaunchdAsync(opts: {
+  plistPath: string;
+  config: ShadowConfig;
+  log?: (msg: string) => void;
+}): Promise<void> {
+  const { spawn } = await import('node:child_process');
+  const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
+  const started = Date.now();
+
+  return new Promise<void>((resolveP) => {
+    const child = spawn('launchctl', ['bootout', `gui/${uid}`, opts.plistPath], { stdio: 'ignore' });
+
+    const interval = opts.log
+      ? setInterval(() => {
+          const elapsedSec = Math.floor((Date.now() - started) / 1000);
+          const jobCount = readActiveJobCount(opts.config);
+          if (jobCount !== null && jobCount > 0) {
+            opts.log!(`  draining ${jobCount} job(s) (${elapsedSec}s)…`);
+          } else {
+            opts.log!(`  draining (${elapsedSec}s)…`);
+          }
+        }, 2_000)
+      : null;
+
+    const done = () => {
+      if (interval) clearInterval(interval);
+      resolveP();
+    };
+    child.on('close', done);
+    child.on('error', done);
+  });
+}
+
 async function gracefulStopDaemon(opts: {
   config: ShadowConfig;
   execSync: typeof import('node:child_process').execSync;
@@ -94,7 +144,14 @@ async function gracefulStopDaemon(opts: {
   // 1. Unload launchd FIRST so KeepAlive cannot respawn mid-shutdown.
   //    (Harmless if the plist isn't loaded or doesn't exist.)
   if (existsSync(plistPath)) {
-    try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'pipe' }); } catch { /* ok */ }
+    // Initial hint so the user sees scope before the bootout blocks for jobs.
+    if (log && wasRunning) {
+      const initial = readActiveJobCount(config);
+      if (initial !== null && initial > 0) {
+        log(`  ${initial} active job(s), graceful drain up to ${Math.round(drainTimeoutMs / 1000)}s`);
+      }
+    }
+    await bootoutLaunchdAsync({ plistPath, config, log });
     await waitForLaunchdUnload(execSync, 5_000);
   }
 
@@ -207,6 +264,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       const json = Boolean(program.opts().json);
 
       if (process.platform === 'linux') {
+        if (!json) log.error('Stopping daemon…');
         try {
           execSync('systemctl --user stop shadow-daemon.service', { stdio: 'pipe' });
           printOutput({ ok: true, status: 'graceful', message: 'daemon stopped via systemd --user' }, json);
@@ -217,17 +275,20 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         }
       }
 
+      if (!json) log.error('Stopping daemon…');
+      const startedAt = Date.now();
       const result = await gracefulStopDaemon({
         config,
         execSync,
         plistPath,
-        log: json ? undefined : (msg) => log.error(msg),
+        log: json ? undefined : (msg) => log.error(`  ${msg}`),
       });
+      const elapsedSec = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
 
       const messages: Record<StopResult, string> = {
         not_running: 'daemon was not running',
-        graceful: 'daemon stopped gracefully',
-        forced: 'daemon force-killed after graceful timeout',
+        graceful: `daemon stopped gracefully (${elapsedSec}s)`,
+        forced: `daemon force-killed after ${elapsedSec}s graceful timeout`,
       };
       printOutput({ ok: true, status: result, message: messages[result] }, json);
     });
@@ -241,6 +302,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       const json = Boolean(program.opts().json);
 
       if (process.platform === 'linux') {
+        if (!json) log.error('Restarting daemon…');
         try {
           execSync('systemctl --user restart shadow-daemon.service', { stdio: 'pipe' });
           printOutput({ ok: true, status: 'graceful', message: 'daemon restarted via systemd --user' }, json);
@@ -251,17 +313,23 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         }
       }
 
+      if (!json) log.error('Stopping daemon…');
+      const stopStartedAt = Date.now();
       const stopResult = await gracefulStopDaemon({
         config,
         execSync,
         plistPath,
-        log: json ? undefined : (msg) => log.error(msg),
+        log: json ? undefined : (msg) => log.error(`  ${msg}`),
       });
+      const stopElapsedSec = Math.max(1, Math.round((Date.now() - stopStartedAt) / 1000));
 
       if (!existsSync(plistPath)) {
         printOutput({ error: 'could not restart — plist not found (run `shadow init` or `shadow daemon reinstall`)' }, json);
         return;
       }
+
+      if (!json) log.error('Starting daemon…');
+      const startStartedAt = Date.now();
 
       // Prefer bootstrap (clean load after bootout). Fall back to kickstart -k
       // (force-restart) if bootstrap fails because the service is in a
@@ -286,13 +354,19 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       // success when the daemon is actually ready.
       const { waitForDaemonReady } = await import('../daemon/runtime.js');
       const ready = await waitForDaemonReady(config, 30_000, (elapsedSec) => {
-        if (!json) log.error(`waiting for daemon to come up (${elapsedSec}s elapsed)…`);
+        if (!json) log.error(`  waiting for daemon to come up (${elapsedSec}s)…`);
       });
+      const startElapsedSec = Math.max(1, Math.round((Date.now() - startStartedAt) / 1000));
       if (!ready) {
         printOutput({ error: `daemon ${bootstrapMode} reported success but daemon did not come up within 30s — check ~/.shadow/daemon.stderr.log` }, json);
         return;
       }
-      printOutput({ ok: true, status: stopResult, message: `daemon restarted via ${bootstrapMode === 'bootstrap' ? 'launchd' : 'kickstart'}` }, json);
+      const transport = bootstrapMode === 'bootstrap' ? 'launchd' : 'kickstart';
+      printOutput({
+        ok: true,
+        status: stopResult,
+        message: `daemon restarted via ${transport} (${stopElapsedSec}s stop + ${startElapsedSec}s start = ${stopElapsedSec + startElapsedSec}s total)`,
+      }, json);
     });
 
   daemon
@@ -305,19 +379,31 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
 
       // Stop the current daemon first (if running). This also unloads launchd
       // so writeAndReloadPlist's bootstrap gets a clean slate.
+      if (!json) log.error('Stopping daemon…');
       await gracefulStopDaemon({
         config,
         execSync,
         plistPath: PLIST_PATH,
-        log: json ? undefined : (msg) => log.error(msg),
+        log: json ? undefined : (msg) => log.error(`  ${msg}`),
       });
 
+      if (!json) log.error('Regenerating plist and starting daemon…');
       const runner = resolveDaemonRunner();
       const result = await writeAndReloadPlist(config, runner);
       if (result.status === 'failed') {
         printOutput({ error: `failed to reinstall plist: ${result.error}` }, json);
         return;
       }
+
+      const { waitForDaemonReady } = await import('../daemon/runtime.js');
+      const ready = await waitForDaemonReady(config, 30_000, (elapsedSec) => {
+        if (!json) log.error(`  waiting for daemon to come up (${elapsedSec}s)…`);
+      });
+      if (!ready) {
+        printOutput({ error: 'plist reinstalled but daemon did not come up within 30s — check ~/.shadow/daemon.stderr.log' }, json);
+        return;
+      }
+
       printOutput({
         ok: true,
         status: result.status,
