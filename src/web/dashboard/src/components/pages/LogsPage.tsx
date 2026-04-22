@@ -199,14 +199,14 @@ function LogRow({ line }: { line: LogLine }) {
 }
 
 function TimestampCell({ iso }: { iso: string | null }) {
-  // Fixed-width column showing local MM-DD HH:MM:SS.mmm. The date prefix
-  // disambiguates when the tail crosses day boundaries (which it does for
-  // any non-trivial log retention). Full ISO with timezone in the tooltip
-  // for unambiguous correlation with audit_events/db rows.
+  // Fixed-width column showing local YYYY-MM-DD HH:MM:SS.mmm. Full date so
+  // it reads cleanly regardless of tail span; full ISO (with timezone) in
+  // the tooltip for unambiguous correlation with audit_events/db rows.
   if (!iso) {
-    return <span className="shrink-0 w-[10.5rem] text-text-muted/40 tabular-nums">················</span>;
+    return <span className="shrink-0 w-[13rem] text-text-muted/40 tabular-nums">······················</span>;
   }
   const d = new Date(iso);
+  const YYYY = d.getFullYear();
   const MM = String(d.getMonth() + 1).padStart(2, '0');
   const DD = String(d.getDate()).padStart(2, '0');
   const hh = String(d.getHours()).padStart(2, '0');
@@ -215,9 +215,9 @@ function TimestampCell({ iso }: { iso: string | null }) {
   const ms = String(d.getMilliseconds()).padStart(3, '0');
   return (
     <span
-      className="shrink-0 w-[10.5rem] text-text-muted/70 tabular-nums"
+      className="shrink-0 w-[13rem] text-text-muted/70 tabular-nums"
       title={iso}
-    >{MM}-{DD} {hh}:{mm}:{ss}.{ms}</span>
+    >{YYYY}-{MM}-{DD} {hh}:{mm}:{ss}.{ms}</span>
   );
 }
 
