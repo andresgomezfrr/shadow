@@ -93,7 +93,7 @@ export const fetchObservations = (params?: { limit?: number; offset?: number; st
   api<{ items: Observation[]; total: number; feedbackState: Record<string, string> }>(`/api/observations${qs({ limit: params?.limit != null ? String(params.limit) : undefined, offset: params?.offset != null ? String(params.offset) : undefined, status: params?.status, severity: params?.severity, kind: params?.kind, repoId: params?.repoId, projectId: params?.projectId })}`);
 
 export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | null;
-export type LogLine = { lineNo: number; level: LogLevel; component: string | null; message: string; raw: string };
+export type LogLine = { lineNo: number; timestamp: string | null; level: LogLevel; component: string | null; message: string; raw: string };
 export type LogsResponse = {
   logPath: string;
   totalBytes: number;

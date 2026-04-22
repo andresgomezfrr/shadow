@@ -24,6 +24,7 @@ function clampLines(raw: string | null): number {
  * [component] alone with level=null. Lines with neither return
  * { level: null, component: null, message: raw }.
  */
+const TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(.*)$/;
 const LEVEL_PREFIX_RE = /^(ERROR|WARN|INFO)\s+(.*)$/;
 const COMPONENT_RE = /^\[([^\]]+)\]\s*(.*)$/;
 
@@ -31,6 +32,7 @@ type LogLevel = 'ERROR' | 'WARN' | 'INFO' | null;
 
 type LogLine = {
   lineNo: number;
+  timestamp: string | null;
   level: LogLevel;
   component: string | null;
   message: string;
@@ -104,12 +106,18 @@ export async function handleLogsRoutes(
     for (let i = 0; i < raw.length; i++) {
       const line = raw[i];
 
-      // Two independent prefixes, applied in order: LEVEL (post-log.ts
-      // format) and [component] (present on most log calls). A line can
-      // have both, just one, or neither.
+      // Three independent prefixes applied in order: ISO timestamp (post-
+      // log.ts v2), LEVEL (post-log.ts v1), and [component] (most call
+      // sites). A line can carry any subset or none of them.
+      let timestamp: string | null = null;
       let level: LogLevel = null;
       let component: string | null = null;
       let rest = line;
+      const tsMatch = rest.match(TIMESTAMP_RE);
+      if (tsMatch) {
+        timestamp = tsMatch[1];
+        rest = tsMatch[2];
+      }
       const levelMatch = rest.match(LEVEL_PREFIX_RE);
       if (levelMatch) {
         level = levelMatch[1] as LogLevel;
@@ -132,6 +140,7 @@ export async function handleLogsRoutes(
 
       parsed.push({
         lineNo: i,
+        timestamp,
         level,
         component,
         message,

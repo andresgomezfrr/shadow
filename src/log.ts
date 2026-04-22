@@ -47,15 +47,20 @@ function formatLine(args: unknown[]): string {
     .join(' ');
 }
 
+/** ISO 8601 UTC — consistent with audit_events.created_at and sortable as a string. */
+function ts(): string {
+  return new Date().toISOString();
+}
+
 export const log = {
   error: (...args: unknown[]): void => {
-    process.stderr.write(`ERROR ${formatLine(args)}\n`);
+    process.stderr.write(`${ts()} ERROR ${formatLine(args)}\n`);
   },
   warn: (...args: unknown[]): void => {
-    process.stderr.write(`WARN ${formatLine(args)}\n`);
+    process.stderr.write(`${ts()} WARN ${formatLine(args)}\n`);
   },
   info: (...args: unknown[]): void => {
-    process.stderr.write(`INFO ${formatLine(args)}\n`);
+    process.stderr.write(`${ts()} INFO ${formatLine(args)}\n`);
   },
 };
 
