@@ -4,6 +4,20 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-22 (P-11 + P-14 — model UI exposure + few-shot examples)
+
+User revisited dos items que estaban deferred y decidió implementarlos:
+
+- **P-11 summarize model configurable en Settings** (`src/web/dashboard/src/components/pages/settings/`) — Backend ya tenía `getModel(ctx, 'summarize')` desde A-04 (audit), así que el modelo era tunable via env/config pero no via UI. Falta cubierto: extender `MODEL_PHASES` con summarize/extract/observe (los 3 phases del heartbeat) más re-etiquetar `analyze` a "Cleanup obs" para distinguir. CORE_KEYS en `SectionLLMModels` ahora incluye los 3 nuevos — visibles primero (no en collapsible) porque son los que más fire (48 heartbeats/día) y el knob de cost más directo. Default mantenido en Opus.
+
+- **P-14 few-shot examples para extract + observe** (`src/analysis/schemas.ts`, `src/analysis/extract.ts`) — Single positive example per phase, diseñados con cuidado para anclar judgement calls. `EXTRACT_EXAMPLE` muestra: separar insights por kind, layer="core" para architectural decisions, mood inferido de conversational tone, ZERO insights de raw tool counts (la conversación lleva la señal durable, no el activity log). `OBSERVE_EXAMPLE` muestra: síntesis de patrón vs item reporting, severity="warning" para drift signals sin bug confirmado, files list completos para deep-link, NEVER de cosas obvias del input ("12 modified files", "edited 8 times" en aislamiento). Notes section debajo de cada example explica las decisiones — la idea es que sirven como spec implícita, update juntos cuando evolucione el "good".
+
+**Coste few-shot**: ~500-700 tokens extra por call × 96 calls/día (48 heartbeats × 2 phases) = ~50-60k tokens/día. ~$0.20/día Opus, ~$0.04 Sonnet. Bajo, pago anclar quality.
+
+354 backend tests + 4 dashboard tests verdes.
+
+---
+
 ## Session 2026-04-22 (Audit block 5Z — observations cleanup + audit hygiene)
 
 Bloque 5Z cierra 5 observations + 3 audit-stale marks + 1 audit hygiene convention. Mix de stales verificados, 2 fixes reales (hook staleness, dashboard test infra), y 1 procedural (audit doc convention). 354 backend tests + 4 dashboard tests verdes.
