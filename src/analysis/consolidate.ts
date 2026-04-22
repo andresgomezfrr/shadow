@@ -113,7 +113,7 @@ export async function activityConsolidate(
       if (result.status === 'success' && result.output) {
         const parsed = safeParseJson(result.output, ConsolidateSchema, 'consolidate');
         if (!parsed.success) {
-          log.error('[shadow:consolidate] Failed to parse LLM output — skipping meta-pattern detection this tick');
+          log.warn('[shadow:consolidate] Failed to parse LLM output — skipping meta-pattern detection this tick');
         } else {
           for (const pattern of parsed.data.metaPatterns) {
             try {
@@ -122,7 +122,7 @@ export async function activityConsolidate(
                   kind: 'meta_pattern', title: pattern.title, bodyMd: pattern.bodyMd,
                 });
                 if (decision.action === 'skip') {
-                  log.error(`[shadow:consolidate] Skip duplicate meta_pattern: ${pattern.title}`);
+                  log.info(`[shadow:consolidate] Skip duplicate meta_pattern: ${pattern.title}`);
                   continue;
                 }
                 if (decision.action === 'update') {
@@ -131,7 +131,7 @@ export async function activityConsolidate(
                   if (merged) {
                     await generateAndStoreEmbedding(ctx.db, 'memory', merged.id, { kind: merged.kind, title: merged.title, bodyMd: merged.bodyMd });
                   }
-                  log.error(`[shadow:consolidate] Updated existing meta_pattern: ${pattern.title}`);
+                  log.info(`[shadow:consolidate] Updated existing meta_pattern: ${pattern.title}`);
                   continue;
                 }
 
@@ -162,7 +162,7 @@ export async function activityConsolidate(
                   ctx.db.updateMemory(mem.id, { archivedAt: new Date().toISOString() });
                   ctx.db.deleteEmbedding('memory_vectors', mem.id);
                   ctx.db.createFeedback({ targetKind: 'memory', targetId: mem.id, action: 'consolidated', note: `merged into meta_pattern: ${pattern.title}` });
-                  log.error(`[shadow:consolidate] Archived hot source: ${mem.title}`);
+                  log.info(`[shadow:consolidate] Archived hot source: ${mem.title}`);
                 }
             } catch (e) {
               log.error(`[shadow:consolidate] Meta-pattern failed: ${pattern.title}:`, e instanceof Error ? e.message : e);
@@ -350,8 +350,8 @@ async function synthesizeKnowledgeSummary(ctx: HeartbeatContext): Promise<Knowle
 
   const parsed = safeParseJson(result.output, KnowledgeSummaryLLMSchema, 'knowledge-summary');
   if (!parsed.success) {
-    log.error(`[shadow:consolidate] knowledge-summary parse failed: ${parsed.error}`);
-    log.error(`[shadow:consolidate] knowledge-summary raw output (first 2k chars): ${result.output.slice(0, 2000)}`);
+    log.warn(`[shadow:consolidate] knowledge-summary parse failed: ${parsed.error}`);
+    log.warn(`[shadow:consolidate] knowledge-summary raw output (first 2k chars): ${result.output.slice(0, 2000)}`);
     const shortReason = parsed.error.length > 120 ? parsed.error.slice(0, 117) + '...' : parsed.error;
     return { action: 'skipped', reason: `parse failed — ${shortReason}`, llmCalls, tokensUsed };
   }
@@ -500,7 +500,7 @@ function filterValidEntities(
     } catch (err) {
       // Table might not exist on fresh install, or SQL error — log and skip,
       // don't silently discard entities (audit O-01).
-      log.error(`[consolidate] entity validation query failed for ${e.type}:${e.id.slice(0, 8)} on table ${table}:`, err instanceof Error ? err.message : err);
+      log.warn(`[consolidate] entity validation query failed for ${e.type}:${e.id.slice(0, 8)} on table ${table}:`, err instanceof Error ? err.message : err);
     }
   }
   return valid;

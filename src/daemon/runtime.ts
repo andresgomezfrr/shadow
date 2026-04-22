@@ -377,7 +377,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       if (shouldReset) {
         const { resetBondState } = await import('../profile/bond.js');
         resetBondState(db);
-        log.error('[bond] v49 reset applied — bond starts at tier 1 (memories preserved)');
+        log.info('[bond] v49 reset applied — bond starts at tier 1 (memories preserved)');
       }
     } catch (e) {
       log.error('[bond] v49 reset hook failed:', e);
@@ -523,7 +523,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
             durationMs: age,
             finishedAt: new Date().toISOString(),
           });
-          log.error(`[daemon] Marked stale job ${job.type}/${job.id.slice(0, 8)} as failed (${Math.round(age / 60000)}m)`);
+          log.warn(`[daemon] Marked stale job ${job.type}/${job.id.slice(0, 8)} as failed (${Math.round(age / 60000)}m)`);
         }
       }
     }
@@ -560,7 +560,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         const { backfillEmbeddings } = await import('../memory/lifecycle.js');
         const counts = await backfillEmbeddings(_db);
         const total = counts.memories + counts.observations + counts.suggestions;
-        if (total > 0) log.error(`[daemon] Backfilled embeddings: ${counts.memories} memories, ${counts.observations} observations, ${counts.suggestions} suggestions`);
+        if (total > 0) log.info(`[daemon] Backfilled embeddings: ${counts.memories} memories, ${counts.observations} observations, ${counts.suggestions} suggestions`);
       } catch (e) {
         log.error('[daemon] Embedding backfill failed:', e instanceof Error ? e.message : e);
       }

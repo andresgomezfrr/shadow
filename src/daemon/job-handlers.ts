@@ -169,7 +169,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
 
     detectedProjects = detectActiveProjects(db, recentInteractions, recentConvTexts, shared.pendingRemoteSyncResults);
     if (detectedProjects.length > 0) {
-      log.error(`[daemon] Active projects: ${detectedProjects.map(p => `${p.projectName}(${p.score.toFixed(0)})`).join(', ')}`);
+      log.info(`[daemon] Active projects: ${detectedProjects.map(p => `${p.projectName}(${p.score.toFixed(0)})`).join(', ')}`);
     }
   } catch (e) {
     log.error('[daemon] Project detection failed:', e instanceof Error ? e.message : e);
@@ -241,7 +241,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
   try {
     const { consolidateObservations } = await import('../observation/consolidation.js');
     const obsMerged = await consolidateObservations(db);
-    if (obsMerged > 0) log.error(`[daemon] Consolidated ${obsMerged} similar observations`);
+    if (obsMerged > 0) log.info(`[daemon] Consolidated ${obsMerged} similar observations`);
   } catch { /* ignore */ }
 
   // Post-heartbeat: reactive suggest boost (only if many observations + enough gap)
@@ -276,7 +276,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
         });
         if (needsProfile) {
           db.enqueueJob('repo-profile', { priority: 3, triggerSource: 'reactive' });
-          log.error('[daemon] Reactive repo-profile triggered: repos with new local commits');
+          log.info('[daemon] Reactive repo-profile triggered: repos with new local commits');
         }
       }
     }
@@ -313,7 +313,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
     const { enforceCorrections } = await import('../memory/corrections.js');
     correctionsResult = await enforceCorrections(ctx.db, ctx.config);
     if (correctionsResult.processed > 0) {
-      log.error(`[daemon] Corrections enforced: ${correctionsResult.processed} processed, ${correctionsResult.archived} archived, ${correctionsResult.edited} edited`);
+      log.info(`[daemon] Corrections enforced: ${correctionsResult.processed} processed, ${correctionsResult.archived} archived, ${correctionsResult.edited} edited`);
     }
   } catch (e) {
     log.error('[daemon] Correction enforcement failed:', e instanceof Error ? e.message : e);
@@ -326,7 +326,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
     const { mergeRelatedMemories } = await import('../memory/corrections.js');
     mergeResult = await mergeRelatedMemories(ctx.db, ctx.config, { signal: ctx.signal });
     if (mergeResult.merged > 0 || mergeResult.deduped > 0) {
-      log.error(`[daemon] Memory merge: ${mergeResult.merged} clusters merged, ${mergeResult.archived} archived, ${mergeResult.deduped} deduped`);
+      log.info(`[daemon] Memory merge: ${mergeResult.merged} clusters merged, ${mergeResult.archived} archived, ${mergeResult.deduped} deduped`);
     }
   } catch (e) {
     log.error('[daemon] Memory merge failed:', e instanceof Error ? e.message : e);
@@ -444,7 +444,7 @@ async function handleVersionCheck(ctx: JobContext): Promise<JobHandlerResult> {
       cwd: projectRoot, encoding: 'utf8', timeout: 15_000,
     });
   } catch {
-    log.error('[version-check] Failed to reach remote');
+    log.warn('[version-check] Failed to reach remote');
     return { llmCalls: 0, tokensUsed: 0, phases: ['version-check'], result: { error: 'network' } };
   }
 
@@ -489,7 +489,7 @@ async function handleVersionCheck(ctx: JobContext): Promise<JobHandlerResult> {
           message: `Shadow ${latestVersion} disponible — ejecuta: shadow upgrade`,
         },
       });
-      log.error(`[version-check] New version available: v${latestVersion} (current: v${currentVersion})`);
+      log.info(`[version-check] New version available: v${latestVersion} (current: v${currentVersion})`);
     }
   }
 

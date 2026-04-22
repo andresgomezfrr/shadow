@@ -154,9 +154,9 @@ export async function activitySuggest(
         const parseResult = safeParseJson(genResult.output, SuggestResponseSchema, 'suggest');
         if (parseResult.success) {
           candidates = parseResult.data.suggestions.filter(s => s.impactScore >= 3 && s.confidenceScore >= 60);
-          log.error(`[shadow:suggest] Phase 1 (${repo.name}): ${candidates.length} candidates generated`);
+          log.info(`[shadow:suggest] Phase 1 (${repo.name}): ${candidates.length} candidates generated`);
         } else {
-          log.error(`[shadow:suggest] Phase 1 parse failed (${repo.name}): ${parseResult.error}`);
+          log.warn(`[shadow:suggest] Phase 1 parse failed (${repo.name}): ${parseResult.error}`);
         }
       }
     } catch (e) {
@@ -218,19 +218,19 @@ export async function activitySuggest(
           const keptIndices = new Set<number>();
           for (const v of valParsed.data.verdicts) {
             if (v.index < 0 || v.index >= candidates.length) {
-              log.error(`[shadow:suggest] Phase 2 IGNORE (${repo.name}): out-of-range index ${v.index}`);
+              log.warn(`[shadow:suggest] Phase 2 IGNORE (${repo.name}): out-of-range index ${v.index}`);
               continue;
             }
             if (v.keep) {
               keptIndices.add(v.index);
-              log.error(`[shadow:suggest] Phase 2 KEEP (${repo.name}) [${v.index}]: "${v.title}" — ${v.reason}`);
+              log.info(`[shadow:suggest] Phase 2 KEEP (${repo.name}) [${v.index}]: "${v.title}" — ${v.reason}`);
             } else {
-              log.error(`[shadow:suggest] Phase 2 DROP (${repo.name}) [${v.index}]: "${v.title}" — ${v.reason}`);
+              log.info(`[shadow:suggest] Phase 2 DROP (${repo.name}) [${v.index}]: "${v.title}" — ${v.reason}`);
             }
           }
           candidates = candidates.filter((_, i) => keptIndices.has(i));
         } else {
-          log.error(`[shadow:suggest] Phase 2 parse failed (${repo.name}): ${valParsed.error} — discarding all candidates (fail-close)`);
+          log.warn(`[shadow:suggest] Phase 2 parse failed (${repo.name}): ${valParsed.error} — discarding all candidates (fail-close)`);
           candidates = [];
         }
       } else {
@@ -246,13 +246,13 @@ export async function activitySuggest(
     for (const sug of candidates) {
       const vsPending = await checkSuggestionDuplicate(ctx.db, { kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd }, 'open');
       if (vsPending.action !== 'create') {
-        log.error(`[shadow:suggest] Skip (similar to pending, ${(vsPending.similarity * 100).toFixed(0)}%): ${sug.title}`);
+        log.info(`[shadow:suggest] Skip (similar to pending, ${(vsPending.similarity * 100).toFixed(0)}%): ${sug.title}`);
         continue;
       }
 
       const vsDismissed = await checkSuggestionDuplicate(ctx.db, { kind: sug.kind, title: sug.title, summaryMd: sug.summaryMd }, 'dismissed');
       if (vsDismissed.action !== 'create') {
-        log.error(`[shadow:suggest] Skip (similar to dismissed, ${(vsDismissed.similarity * 100).toFixed(0)}%): ${sug.title}`);
+        log.info(`[shadow:suggest] Skip (similar to dismissed, ${(vsDismissed.similarity * 100).toFixed(0)}%): ${sug.title}`);
         continue;
       }
 

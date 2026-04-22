@@ -328,7 +328,7 @@ export async function activityAnalyze(
     if (result.status === 'success' && result.output) {
       const parseResult = safeParseJson(result.output, ExtractResponseSchema, 'extract');
       if (!parseResult.success) {
-        log.error(`[shadow:extract] ${parseResult.error}`);
+        log.warn(`[shadow:extract] ${parseResult.error}`);
         log.warn(`[shadow:extract] Raw (500): ${result.output.slice(0, 500)}`);
       } else {
         const parsed = parseResult.data;
@@ -474,7 +474,7 @@ export async function activityAnalyze(
       if (cleanupResult.status === 'success' && cleanupResult.output) {
         const parsed = safeParseJson(cleanupResult.output, ObserveCleanupResponseSchema, 'observe-cleanup');
         if (!parsed.success) {
-          log.error(`[shadow:cleanup] ${parsed.error}`);
+          log.warn(`[shadow:cleanup] ${parsed.error}`);
         } else {
           const obsById = new Map(preCleanupObs.map(o => [o.id, o]));
           const alreadyApplied = new Set<string>();
@@ -572,7 +572,7 @@ export async function activityAnalyze(
     if (result.status === 'success' && result.output) {
       const parseResult = safeParseJson(result.output, ObserveResponseSchema, 'observe');
       if (!parseResult.success) {
-        log.error(`[shadow:observe] ${parseResult.error}`);
+        log.warn(`[shadow:observe] ${parseResult.error}`);
         log.warn(`[shadow:observe] Raw (500): ${result.output.slice(0, 500)}`);
       } else {
         const parsed = parseResult.data;

@@ -49,11 +49,11 @@ export async function activityReflect(
   const totalDeltas = newMemories.length + newFeedback.length + newObservations.length + resolvedObs.length + recentSugs.length + dismissedSugs.length;
 
   if (totalDeltas === 0) {
-    log.error('[shadow:reflect] Skipping — no changes since last reflect');
+    log.info('[shadow:reflect] Skipping — no changes since last reflect');
     return { llmCalls: 0, tokensUsed: 0, skipped: true, reason: 'no changes since last reflect' };
   }
 
-  log.error(`[shadow:reflect] Phase 1: ${totalDeltas} deltas (${newMemories.length} memories, ${newFeedback.length} feedback, ${newObservations.length} observations)`);
+  log.info(`[shadow:reflect] Phase 1: ${totalDeltas} deltas (${newMemories.length} memories, ${newFeedback.length} feedback, ${newObservations.length} observations)`);
 
   const deltaPrompt = [
     'Summarize what changed in this developer\'s work since the last reflection.',
@@ -85,9 +85,9 @@ export async function activityReflect(
 
     if (deltaResult.status === 'success' && deltaResult.output) {
       changeReport = deltaResult.output;
-      log.error(`[shadow:reflect] Phase 1 complete: ${changeReport.length} chars change report`);
+      log.info(`[shadow:reflect] Phase 1 complete: ${changeReport.length} chars change report`);
     } else {
-      log.error('[shadow:reflect] Phase 1 failed — proceeding with raw deltas');
+      log.warn('[shadow:reflect] Phase 1 failed — proceeding with raw deltas');
       changeReport = [newMemories.join('\n'), newFeedback.join('\n'), newObservations.join('\n')].filter(Boolean).join('\n');
     }
   } catch (e) {
@@ -186,14 +186,14 @@ export async function activityReflect(
     if (missing.length > 0) {
       const lenDiff = currentSoul.bodyMd.length - (originalSoulMd?.length ?? 0);
       const preview = currentSoul.bodyMd.slice(0, 200).replace(/\s+/g, ' ').trim();
-      log.error(`[shadow:reflect] Soul updated but missing sections: ${missing.join(', ')} — reverting. Len diff: ${lenDiff >= 0 ? '+' : ''}${lenDiff}. Preview: "${preview}..."`);
+      log.warn(`[shadow:reflect] Soul updated but missing sections: ${missing.join(', ')} — reverting. Len diff: ${lenDiff >= 0 ? '+' : ''}${lenDiff}. Preview: "${preview}..."`);
       if (originalSoulMd) ctx.db.updateMemory(currentSoul.id, { bodyMd: originalSoulMd });
       return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: `Soul missing sections: ${missing.join(', ')}` };
     }
-    log.error(`[shadow:reflect] Soul evolved (${originalSoulMd?.length ?? 0} → ${currentSoul.bodyMd.length} chars). Tokens: ${tokensUsed}`);
+    log.info(`[shadow:reflect] Soul evolved (${originalSoulMd?.length ?? 0} → ${currentSoul.bodyMd.length} chars). Tokens: ${tokensUsed}`);
     return { llmCalls, tokensUsed, skipped: false, soulUpdated: true };
   }
 
-  log.error('[shadow:reflect] Soul not updated — LLM did not call shadow_soul_update');
+  log.warn('[shadow:reflect] Soul not updated — LLM did not call shadow_soul_update');
   return { llmCalls, tokensUsed, skipped: false, soulUpdated: false, reason: 'LLM did not update the soul' };
 }

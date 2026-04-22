@@ -101,7 +101,7 @@ export class JobQueue {
       excludeTypes.push(claimed.type);
 
       if (triggerSource === 'manual') {
-        log.error(`[job-queue] Claimed manual job '${claimed.type}' (bypassing canSchedule=false)`);
+        log.info(`[job-queue] Claimed manual job '${claimed.type}' (bypassing canSchedule=false)`);
       }
     }
   }
@@ -191,7 +191,7 @@ export class JobQueue {
           this.shared.consecutiveGhostJobs++;
           this.shared.lastGhostHint = result.lastError ?? null;
           this.shared.lastGhostCode = errorCode ?? 'unknown';
-          log.error(`[job-queue] Ghost job detected: ${job.type}/${job.id.slice(0, 8)} — code=${this.shared.lastGhostCode} llmCalls=${result.llmCalls} tokens=0 (consecutive: ${this.shared.consecutiveGhostJobs})`);
+          log.warn(`[job-queue] Ghost job detected: ${job.type}/${job.id.slice(0, 8)} — code=${this.shared.lastGhostCode} llmCalls=${result.llmCalls} tokens=0 (consecutive: ${this.shared.consecutiveGhostJobs})`);
         } else if (entry.category === 'llm' && result.tokensUsed > 0) {
           this.shared.consecutiveGhostJobs = 0;
           this.shared.lastGhostHint = null;
@@ -224,7 +224,7 @@ export class JobQueue {
             triggerSource: job.triggerSource,
             params,
           });
-          log.error(`[job-queue] Auto-retry ${job.type}/${job.id.slice(0, 8)} (attempt ${retryCount + 2}/${MAX_RETRIES + 1})`);
+          log.info(`[job-queue] Auto-retry ${job.type}/${job.id.slice(0, 8)} (attempt ${retryCount + 2}/${MAX_RETRIES + 1})`);
         }
       } finally {
         setPhase(null);
@@ -263,14 +263,14 @@ export class JobQueue {
 
   async drainAll(timeoutMs = 60_000): Promise<void> {
     if (this.active.size === 0) return;
-    log.error(`[job-queue] Draining ${this.active.size} active jobs (max ${Math.round(timeoutMs / 1000)}s)...`);
+    log.info(`[job-queue] Draining ${this.active.size} active jobs (max ${Math.round(timeoutMs / 1000)}s)...`);
     const promises = [...this.active.values()].map(a => a.promise);
     const result = await Promise.race([
       Promise.allSettled(promises).then(() => 'done' as const),
       new Promise<'timeout'>(r => setTimeout(r, timeoutMs)),
     ]);
     if (result === 'timeout' && this.active.size > 0) {
-      log.error(`[job-queue] Drain timeout — killing ${this.active.size} remaining jobs`);
+      log.warn(`[job-queue] Drain timeout — killing ${this.active.size} remaining jobs`);
       this.killAll();
       // After aborting + killing children, give handlers up to 5s to unwind
       // catch/finally blocks (LLM promise rejection propagation, final

@@ -175,7 +175,7 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
               // indices or overshoots the candidate array. Silent !candidate
               // check swallowed those; now we log so drift is visible.
               if (decision.index < 0 || decision.index >= candidates.length) {
-                log.error(`[corrections] out-of-range index ${decision.index} (candidates=${candidates.length}) for correction "${correction.title}" — skipping`);
+                log.warn(`[corrections] out-of-range index ${decision.index} (candidates=${candidates.length}) for correction "${correction.title}" — skipping`);
                 continue;
               }
               const candidate = candidates[decision.index];
@@ -190,7 +190,7 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
                 // providing the rewrite, leaving the contradiction in place
                 // without signal. Log + skip so the next consolidate retries.
                 if (!decision.editedBody || decision.editedBody.trim().length === 0) {
-                  log.error(`[corrections] 'edit' decision missing editedBody for candidate ${candidate.id.slice(0, 8)} (correction: "${correction.title}") — skipping`);
+                  log.warn(`[corrections] 'edit' decision missing editedBody for candidate ${candidate.id.slice(0, 8)} (correction: "${correction.title}") — skipping`);
                   continue;
                 }
                 db.updateMemory(candidate.id, { bodyMd: decision.editedBody });
@@ -204,10 +204,10 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
             }
             enforceSucceeded = true;
           } else {
-            log.error(`[corrections] JSON parse failed for "${correction.title}" — correction stays pending`);
+            log.warn(`[corrections] JSON parse failed for "${correction.title}" — correction stays pending`);
           }
         } else {
-          log.error(`[corrections] LLM returned non-success for "${correction.title}" — correction stays pending`);
+          log.warn(`[corrections] LLM returned non-success for "${correction.title}" — correction stays pending`);
         }
       } catch (err) {
         log.error(`[corrections] LLM enforcement failed for "${correction.title}":`, err instanceof Error ? err.message : err);
@@ -268,7 +268,7 @@ export async function mergeRelatedMemories(
       deduped++;
     }
   }
-  if (deduped > 0) log.error(`[memory-merge] Deduped ${deduped} exact duplicates`);
+  if (deduped > 0) log.info(`[memory-merge] Deduped ${deduped} exact duplicates`);
 
   // Filter out just-archived duplicates from candidates
   const dedupedCandidates = candidates.filter(m => !dedupArchived.has(m.id));
@@ -443,7 +443,7 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
       try {
         await generateAndStoreEmbedding(db, 'memory', newMem.id, { kind: newMem.kind, title: mergedTitle, bodyMd: mergedBody });
       } catch (e) {
-        log.error(`[memory-merge] embedding generation failed for merged memory ${newMem.id.slice(0, 8)}:`, e instanceof Error ? e.message : e);
+        log.warn(`[memory-merge] embedding generation failed for merged memory ${newMem.id.slice(0, 8)}:`, e instanceof Error ? e.message : e);
       }
 
       // Archive source memories
@@ -459,7 +459,7 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
       }
 
       merged++;
-      log.error(`[memory-merge] Merged ${toMerge.length} memories → "${mergedTitle}"`);
+      log.info(`[memory-merge] Merged ${toMerge.length} memories → "${mergedTitle}"`);
     } catch (err) {
       log.error('[memory-merge] LLM call failed:', err instanceof Error ? err.message : err);
     }

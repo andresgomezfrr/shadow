@@ -291,7 +291,7 @@ export async function profileRepos(
   for (let i = 0; i < candidates.length; i++) {
     const repo = candidates[i];
     onProgress?.(repo.name, i + 1, candidates.length);
-    log.error(`[shadow:repo-profile] Profiling: ${repo.name}`);
+    log.info(`[shadow:repo-profile] Profiling: ${repo.name}`);
     const signals = gatherRepoSignals(repo);
     const { contextMd, llmCalls, tokensUsed } = await analyzeRepoContext(signals, repo, config, db);
 
@@ -299,7 +299,7 @@ export async function profileRepos(
       db.updateRepo(repo.id, { contextMd, contextUpdatedAt: new Date().toISOString() });
       profiledRepoIds.push(repo.id);
       profiledRepoNames.push(repo.name);
-      log.error(`[shadow:repo-profile] ${repo.name}: ${contextMd.length} chars context saved`);
+      log.info(`[shadow:repo-profile] ${repo.name}: ${contextMd.length} chars context saved`);
     }
 
     db.recordLlmUsage({
