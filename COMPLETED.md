@@ -4,6 +4,41 @@ Historical record of completed backlog items.
 
 ---
 
+## Session 2026-04-22 (P-13 — locale-aware prompts sistémico)
+
+User refinement sobre P-14: tener examples ES/EN sin tener locale-awareness en el resto de prompts era inconsistente. Diseño aplicado: NO traducir las instrucciones (LLM entiende inglés bien), SI inyectar el language name directamente — "Write in Spanish" en lugar de "respond in user's locale". Estructural, sin indirección.
+
+**Nuevo `src/analysis/locale.ts`** (~50 líneas) con:
+- `LANGUAGE_NAMES` map (en/es/fr/de/pt/it/ca/ja/zh)
+- `languageFromLocale('es-ES')` → `'Spanish'` (normaliza locale codes)
+- `outputLanguageInstruction(locale)` → ready-to-inject string ("LANGUAGE: write all user-facing strings (titles, body content, summaries, notes) in Spanish. Identifiers, code, file paths, and JSON keys stay as-is."). Empty cuando locale es inglés (default base, no necesita instrucción).
+- `pickExtractExample(locale)` y `pickObserveExample(locale)` — devuelven ES o EN
+
+**Examples renamed + EN base** (`src/analysis/schemas.ts`):
+- `EXTRACT_EXAMPLE` → `EXTRACT_EXAMPLE_EN` (base inglés) + `EXTRACT_EXAMPLE_ES`
+- `OBSERVE_EXAMPLE` → `OBSERVE_EXAMPLE_EN` + `OBSERVE_EXAMPLE_ES`
+- Comment header señala "keep ES and EN in sync — example IS the spec"
+
+**8 callsites instrumented** con locale instruction:
+- `analysis/extract.ts` — extract + observe phases (también pickers de examples)
+- `analysis/suggest.ts` — generate suggestions
+- `daemon/handlers/suggest.ts` — suggest-deep, suggest-project, revalidate-suggestion
+- `daemon/handlers/profiling.ts` — project-profile
+- `observation/repo-profile.ts` — repo-profile
+- `runner/service.ts` — runner briefing (afecta los plans/executions del runner)
+- `analysis/digests.ts` — daily, weekly, brag (replazadas las `'Write in the same language as the data below'` ad-hoc por el helper centralizado)
+
+**Decisiones de diseño explícitas en el código**:
+- Inglés es base — no se emite instruction cuando locale=en (no hace falta + ahorra tokens)
+- Identifiers/code/JSON keys NO se traducen (preserva paths, function names, enums)
+- Validate prompt NO recibe locale instruction (output `verdict`/`reason` es interno, no user-facing)
+
+**Costo**: ~80-120 tokens/call extra cuando locale ≠ en. Negligible.
+
+354 backend tests + 4 dashboard tests verdes. P-13 estaba marked "diferido — locale support es complejo"; resulta no ser tan complejo cuando se ataca como structural injection (1 helper + 8 line additions).
+
+---
+
 ## Session 2026-04-22 (P-11 + P-14 — model UI exposure + few-shot examples)
 
 User revisited dos items que estaban deferred y decidió implementarlos:
