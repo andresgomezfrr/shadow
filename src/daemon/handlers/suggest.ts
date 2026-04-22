@@ -75,7 +75,7 @@ export async function handleSuggestDeep(ctx: JobContext, shared: DaemonSharedSta
   }
 
   // Load corrections for this repo
-  const { loadPendingCorrections } = await import('../../memory/retrieval.js');
+  const { loadPendingCorrections } = await import('../../memory/corrections.js');
   const corrections = loadPendingCorrections(ctx.db, [{ type: 'repo', id: repoId }]);
 
   // External context from enrichment

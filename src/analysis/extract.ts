@@ -250,7 +250,7 @@ export async function activityAnalyze(
       .join('\n');
 
     // Load pending corrections for repos being analyzed
-    const { loadPendingCorrections } = await import('../memory/retrieval.js');
+    const { loadPendingCorrections } = await import('../memory/corrections.js');
     const repoEntities = [...repoIds].map(id => ({ type: 'repo' as const, id }));
     const correctionsSection = loadPendingCorrections(ctx.db, repoEntities);
 

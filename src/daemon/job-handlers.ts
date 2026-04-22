@@ -310,7 +310,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
   ctx.setPhase('corrections');
   let correctionsResult = { processed: 0, archived: 0, edited: 0 };
   try {
-    const { enforceCorrections } = await import('../memory/retrieval.js');
+    const { enforceCorrections } = await import('../memory/corrections.js');
     correctionsResult = await enforceCorrections(ctx.db, ctx.config);
     if (correctionsResult.processed > 0) {
       log.error(`[daemon] Corrections enforced: ${correctionsResult.processed} processed, ${correctionsResult.archived} archived, ${correctionsResult.edited} edited`);
@@ -323,7 +323,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
   ctx.setPhase('merge');
   let mergeResult = { merged: 0, archived: 0, deduped: 0 };
   try {
-    const { mergeRelatedMemories } = await import('../memory/retrieval.js');
+    const { mergeRelatedMemories } = await import('../memory/corrections.js');
     mergeResult = await mergeRelatedMemories(ctx.db, ctx.config, { signal: ctx.signal });
     if (mergeResult.merged > 0 || mergeResult.deduped > 0) {
       log.error(`[daemon] Memory merge: ${mergeResult.merged} clusters merged, ${mergeResult.archived} archived, ${mergeResult.deduped} deduped`);

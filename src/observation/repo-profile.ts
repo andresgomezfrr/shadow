@@ -186,7 +186,7 @@ async function analyzeRepoContext(
   const model = config.models.repoProfile;
 
   // Load corrections relevant to this repo
-  const { loadPendingCorrections } = await import('../memory/retrieval.js');
+  const { loadPendingCorrections } = await import('../memory/corrections.js');
   const correctionsSection = loadPendingCorrections(db, [{ type: 'repo', id: repo.id }]);
 
   const prompt = `You are Shadow, an engineering companion analyzing a repository to understand its context.
