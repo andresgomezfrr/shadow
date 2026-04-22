@@ -222,7 +222,8 @@ describe('RunQueue.drainAll', () => {
     const started = Date.now();
     await queue.drainAll(200);
     const elapsed = Date.now() - started;
-    assert.ok(elapsed >= 200 && elapsed < 400, `should respect ~200ms timeout, got ${elapsed}ms`);
+    // Lower bound 180 (not 200) — Node timers have ±few-ms drift, CI saw 199ms.
+    assert.ok(elapsed >= 180 && elapsed < 400, `should respect ~200ms timeout, got ${elapsed}ms`);
   });
 });
 
