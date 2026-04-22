@@ -301,6 +301,32 @@ export async function waitForDaemonStopped(
   return false;
 }
 
+/**
+ * Poll isDaemonRunning() until it returns true or timeoutMs elapses.
+ * Inverse of waitForDaemonStopped — used by start/restart/reinstall to confirm
+ * that bootstrap succeeded and the daemon actually came up, not just that
+ * launchctl accepted the command. Startup can take ~10s due to migrations,
+ * store init, MCP init, and embeddings backfill.
+ */
+export async function waitForDaemonReady(
+  config: ShadowConfig,
+  timeoutMs: number = 30_000,
+  onProgress?: (elapsedSec: number) => void,
+): Promise<boolean> {
+  const start = Date.now();
+  const deadline = start + timeoutMs;
+  let lastProgressAt = start;
+  while (Date.now() < deadline) {
+    if (isDaemonRunning(config)) return true;
+    if (onProgress && Date.now() - lastProgressAt >= 5_000) {
+      lastProgressAt = Date.now();
+      onProgress(Math.floor((Date.now() - start) / 1000));
+    }
+    await sleep(250);
+  }
+  return false;
+}
+
 export async function startDaemon(config: ShadowConfig): Promise<void> {
   let running = true;
   let draining = false;

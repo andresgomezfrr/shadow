@@ -266,20 +266,33 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       // Prefer bootstrap (clean load after bootout). Fall back to kickstart -k
       // (force-restart) if bootstrap fails because the service is in a
       // transitional state.
+      let bootstrapMode: 'bootstrap' | 'kickstart';
       try {
         execSync(`launchctl bootstrap gui/$(id -u) ${plistPath}`, { stdio: 'pipe' });
-        printOutput({ ok: true, status: stopResult, message: 'daemon restarted via launchd' }, json);
-        return;
+        bootstrapMode = 'bootstrap';
       } catch {
         try {
           execSync(`launchctl kickstart -k gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
-          printOutput({ ok: true, status: stopResult, message: 'daemon restarted via kickstart' }, json);
-          return;
+          bootstrapMode = 'kickstart';
         } catch (e) {
           printOutput({ error: `failed to restart launchd service: ${(e as Error).message}` }, json);
           return;
         }
       }
+
+      // launchd accepting the command does NOT mean the daemon is up. Startup
+      // takes ~5-15s (migrations, stores, MCP, embeddings backfill). Poll until
+      // the pid file appears and the process is alive, so the CLI only reports
+      // success when the daemon is actually ready.
+      const { waitForDaemonReady } = await import('../daemon/runtime.js');
+      const ready = await waitForDaemonReady(config, 30_000, (elapsedSec) => {
+        if (!json) log.error(`waiting for daemon to come up (${elapsedSec}s elapsed)…`);
+      });
+      if (!ready) {
+        printOutput({ error: `daemon ${bootstrapMode} reported success but daemon did not come up within 30s — check ~/.shadow/daemon.stderr.log` }, json);
+        return;
+      }
+      printOutput({ ok: true, status: stopResult, message: `daemon restarted via ${bootstrapMode === 'bootstrap' ? 'launchd' : 'kickstart'}` }, json);
     });
 
   daemon
