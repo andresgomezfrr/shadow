@@ -21,6 +21,7 @@ import { WorkspacePage } from './components/pages/WorkspacePage';
 import { TasksPage } from './components/pages/TasksPage';
 import { ActivityPage } from './components/pages/ActivityPage';
 import { LogsPage } from './components/pages/LogsPage';
+import { CorrectPage } from './components/pages/CorrectPage';
 
 import { DigestsPage } from './components/pages/DigestsPage';
 import { GuidePage } from './components/pages/GuidePage';
@@ -54,6 +55,7 @@ export function App() {
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/activity" element={<ActivityPage />} />
         <Route path="/logs" element={<LogsPage />} />
+        <Route path="/correct" element={<CorrectPage />} />
         <Route path="/digests" element={<DigestsPage />} />
         <Route path="/events" element={<Navigate to="/activity" replace />} />
         <Route path="/guide" element={<GuidePage />} />

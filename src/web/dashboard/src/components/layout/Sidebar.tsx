@@ -25,6 +25,7 @@ const NAV: NavEntry[] = [
   { to: '/suggestions', icon: '/icons/suggestions.webp', label: 'Suggestions', countKey: 'pendingSuggestions' },
   { to: '/tasks', icon: '/icons/tasks.webp', label: 'Tasks', countKey: 'activeTasks' },
   { to: '/runs', icon: '/icons/runs.webp', label: 'Runs' },
+  { to: '/correct', icon: '/icons/correct.webp', label: 'Correct' },
 
   // System
   { divider: true, groupLabel: 'SYSTEM' },
