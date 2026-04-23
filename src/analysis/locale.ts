@@ -22,16 +22,13 @@
 
 import { EXTRACT_EXAMPLE_EN, EXTRACT_EXAMPLE_ES, OBSERVE_EXAMPLE_EN, OBSERVE_EXAMPLE_ES } from './schemas.js';
 
+// Only the locales exposed in Settings UI (SectionIdentity.tsx offers en/es).
+// Adding a new language = add entry here + add option to the UI + ideally ship
+// matching few-shot EXAMPLE_<xx> variants in schemas.ts. Until that pipeline
+// exists, extra locales would be deadcode suggesting unreal support.
 const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English',
   es: 'Spanish',
-  fr: 'French',
-  de: 'German',
-  pt: 'Portuguese',
-  it: 'Italian',
-  ca: 'Catalan',
-  ja: 'Japanese',
-  zh: 'Chinese',
 };
 
 /** Map a locale code (e.g. 'es-ES', 'en_US', 'fr') to a language name. */
