@@ -76,14 +76,54 @@ async function waitForLaunchdUnload(
 
 type StopResult = 'not_running' | 'graceful' | 'forced';
 
-/** Read activeJobCount from `daemon.json`. Returns null if file missing/malformed. */
-function readActiveJobCount(config: ShadowConfig): number | null {
+type ActiveJobBrief = { type: string; phase: string | null };
+type DaemonSnapshot = { jobCount: number; runCount: number; jobs: ActiveJobBrief[] };
+
+/**
+ * Read the live-ish snapshot from `daemon.json`. Note: the file stops updating
+ * once the daemon enters its drain phase, so the jobs/runs listed here are
+ * accurate up to the last tick before shutdown — good enough for "here's what
+ * was running when you pressed stop" but not real-time.
+ */
+function readDaemonSnapshot(config: ShadowConfig): DaemonSnapshot {
   try {
     const raw = readFileSync(resolve(config.resolvedDataDir, 'daemon.json'), 'utf-8');
-    const state = JSON.parse(raw) as { activeJobCount?: unknown };
-    return typeof state?.activeJobCount === 'number' ? state.activeJobCount : null;
+    const state = JSON.parse(raw) as {
+      activeJobCount?: unknown;
+      activeRunCount?: unknown;
+      activeJobs?: unknown;
+    };
+    const jobCount = typeof state?.activeJobCount === 'number' ? state.activeJobCount : 0;
+    const runCount = typeof state?.activeRunCount === 'number' ? state.activeRunCount : 0;
+    const jobs: ActiveJobBrief[] = Array.isArray(state?.activeJobs)
+      ? (state.activeJobs as Array<Record<string, unknown>>)
+          .map((j) => ({
+            type: typeof j.type === 'string' ? j.type : 'unknown',
+            phase: typeof j.phase === 'string' ? j.phase : null,
+          }))
+      : [];
+    return { jobCount, runCount, jobs };
   } catch {
-    return null;
+    return { jobCount: 0, runCount: 0, jobs: [] };
+  }
+}
+
+/**
+ * Count claude child processes currently alive for this daemon. This is the
+ * real signal during drain — daemon.json stops updating while shutting down,
+ * but pgrep against the running process table stays accurate.
+ */
+function countClaudeChildren(): number {
+  try {
+    const { execSync } = require('node:child_process');
+    const result: string = execSync(
+      'pgrep -cf "claude.*--allowedTools.*mcp__shadow"',
+      { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' as const },
+    );
+    return parseInt(result.trim(), 10) || 0;
+  } catch {
+    // pgrep exits 1 when no matches — expected, just means 0.
+    return 0;
   }
 }
 
@@ -108,12 +148,14 @@ async function bootoutLaunchdAsync(opts: {
     const interval = opts.log
       ? setInterval(() => {
           const elapsedSec = Math.floor((Date.now() - started) / 1000);
-          const jobCount = readActiveJobCount(opts.config);
-          if (jobCount !== null && jobCount > 0) {
-            opts.log!(`  draining ${jobCount} job(s) (${elapsedSec}s)…`);
-          } else {
-            opts.log!(`  draining (${elapsedSec}s)…`);
-          }
+          const snap = readDaemonSnapshot(opts.config);
+          const children = countClaudeChildren();
+          const parts: string[] = [];
+          if (snap.jobCount > 0) parts.push(`${snap.jobCount} job(s)`);
+          if (snap.runCount > 0) parts.push(`${snap.runCount} run(s)`);
+          if (children > 0) parts.push(`${children} claude child${children === 1 ? '' : 'ren'}`);
+          const detail = parts.length > 0 ? ` — ${parts.join(', ')}` : '';
+          opts.log!(`  draining (${elapsedSec}s)${detail}…`);
         }, 2_000)
       : null;
 
@@ -144,11 +186,26 @@ async function gracefulStopDaemon(opts: {
   // 1. Unload launchd FIRST so KeepAlive cannot respawn mid-shutdown.
   //    (Harmless if the plist isn't loaded or doesn't exist.)
   if (existsSync(plistPath)) {
-    // Initial hint so the user sees scope before the bootout blocks for jobs.
+    // Pre-drain snapshot so the user sees scope before the bootout blocks.
+    // daemon.json is accurate up to the last tick; claude child count is
+    // live from the process table.
     if (log && wasRunning) {
-      const initial = readActiveJobCount(config);
-      if (initial !== null && initial > 0) {
-        log(`  ${initial} active job(s), graceful drain up to ${Math.round(drainTimeoutMs / 1000)}s`);
+      const snap = readDaemonSnapshot(config);
+      const children = countClaudeChildren();
+      const inventory: string[] = [];
+      if (snap.jobs.length > 0) {
+        const jobList = snap.jobs.map(j => j.phase ? `${j.type}/${j.phase}` : j.type).join(', ');
+        inventory.push(`${snap.jobs.length} job(s): ${jobList}`);
+      } else if (snap.jobCount > 0) {
+        inventory.push(`${snap.jobCount} job(s)`);
+      }
+      if (snap.runCount > 0) inventory.push(`${snap.runCount} run(s)`);
+      if (children > 0) inventory.push(`${children} claude child${children === 1 ? '' : 'ren'}`);
+      if (inventory.length > 0) {
+        log(`  active at shutdown: ${inventory.join(' + ')}`);
+        log(`  graceful drain up to ${Math.round(drainTimeoutMs / 1000)}s…`);
+      } else {
+        log(`  no active work — stop should be near-instant`);
       }
     }
     await bootoutLaunchdAsync({ plistPath, config, log });
