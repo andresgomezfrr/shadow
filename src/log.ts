@@ -62,6 +62,15 @@ export const log = {
   info: (...args: unknown[]): void => {
     process.stderr.write(`${ts()} INFO ${formatLine(args)}\n`);
   },
+  /**
+   * Write a plain line to stderr with NO timestamp or level prefix. Use for
+   * CLI user-facing notices (progress messages in `shadow daemon restart`,
+   * `shadow job`, etc) where the terminal is the consumer, not the log
+   * file. Structured logs belong to error/warn/info.
+   */
+  cli: (...args: unknown[]): void => {
+    process.stderr.write(`${formatLine(args)}\n`);
+  },
 };
 
 /**

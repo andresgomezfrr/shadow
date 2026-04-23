@@ -264,7 +264,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       const json = Boolean(program.opts().json);
 
       if (process.platform === 'linux') {
-        if (!json) log.error('Stopping daemon…');
+        if (!json) log.cli('Stopping daemon…');
         try {
           execSync('systemctl --user stop shadow-daemon.service', { stdio: 'pipe' });
           printOutput({ ok: true, status: 'graceful', message: 'daemon stopped via systemd --user' }, json);
@@ -275,13 +275,13 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         }
       }
 
-      if (!json) log.error('Stopping daemon…');
+      if (!json) log.cli('Stopping daemon…');
       const startedAt = Date.now();
       const result = await gracefulStopDaemon({
         config,
         execSync,
         plistPath,
-        log: json ? undefined : (msg) => log.error(`  ${msg}`),
+        log: json ? undefined : (msg) => log.cli(`  ${msg}`),
       });
       const elapsedSec = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
 
@@ -302,7 +302,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       const json = Boolean(program.opts().json);
 
       if (process.platform === 'linux') {
-        if (!json) log.error('Restarting daemon…');
+        if (!json) log.cli('Restarting daemon…');
         try {
           execSync('systemctl --user restart shadow-daemon.service', { stdio: 'pipe' });
           printOutput({ ok: true, status: 'graceful', message: 'daemon restarted via systemd --user' }, json);
@@ -313,13 +313,13 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         }
       }
 
-      if (!json) log.error('Stopping daemon…');
+      if (!json) log.cli('Stopping daemon…');
       const stopStartedAt = Date.now();
       const stopResult = await gracefulStopDaemon({
         config,
         execSync,
         plistPath,
-        log: json ? undefined : (msg) => log.error(`  ${msg}`),
+        log: json ? undefined : (msg) => log.cli(`  ${msg}`),
       });
       const stopElapsedSec = Math.max(1, Math.round((Date.now() - stopStartedAt) / 1000));
 
@@ -328,7 +328,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         return;
       }
 
-      if (!json) log.error('Starting daemon…');
+      if (!json) log.cli('Starting daemon…');
       const startStartedAt = Date.now();
 
       // Prefer bootstrap (clean load after bootout). Fall back to kickstart -k
@@ -354,7 +354,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       // success when the daemon is actually ready.
       const { waitForDaemonReady } = await import('../daemon/runtime.js');
       const ready = await waitForDaemonReady(config, 30_000, (elapsedSec) => {
-        if (!json) log.error(`  waiting for daemon to come up (${elapsedSec}s)…`);
+        if (!json) log.cli(`  waiting for daemon to come up (${elapsedSec}s)…`);
       });
       const startElapsedSec = Math.max(1, Math.round((Date.now() - startStartedAt) / 1000));
       if (!ready) {
@@ -379,15 +379,15 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
 
       // Stop the current daemon first (if running). This also unloads launchd
       // so writeAndReloadPlist's bootstrap gets a clean slate.
-      if (!json) log.error('Stopping daemon…');
+      if (!json) log.cli('Stopping daemon…');
       await gracefulStopDaemon({
         config,
         execSync,
         plistPath: PLIST_PATH,
-        log: json ? undefined : (msg) => log.error(`  ${msg}`),
+        log: json ? undefined : (msg) => log.cli(`  ${msg}`),
       });
 
-      if (!json) log.error('Regenerating plist and starting daemon…');
+      if (!json) log.cli('Regenerating plist and starting daemon…');
       const runner = resolveDaemonRunner();
       const result = await writeAndReloadPlist(config, runner);
       if (result.status === 'failed') {
@@ -397,7 +397,7 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
 
       const { waitForDaemonReady } = await import('../daemon/runtime.js');
       const ready = await waitForDaemonReady(config, 30_000, (elapsedSec) => {
-        if (!json) log.error(`  waiting for daemon to come up (${elapsedSec}s)…`);
+        if (!json) log.cli(`  waiting for daemon to come up (${elapsedSec}s)…`);
       });
       if (!ready) {
         printOutput({ error: 'plist reinstalled but daemon did not come up within 30s — check ~/.shadow/daemon.stderr.log' }, json);
@@ -441,7 +441,8 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       }
       const info = JOB_TYPES[type];
       if (!info) {
-        log.error(`Unknown job type: ${type}\nRun "shadow job list" to see available types.`);
+        log.cli(`Unknown job type: ${type}
+Run "shadow job list" to see available types.`);
         process.exit(1);
       }
       withDb((db, json) => {
@@ -494,10 +495,10 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         readFileSync(join(projectRoot, 'package.json'), 'utf8'),
       ).version;
 
-      log.error(`Current version: v${currentVersion}`);
+      log.cli(`Current version: v${currentVersion}`);
 
       // Fetch tags + branches
-      log.error('Fetching updates...');
+      log.cli('Fetching updates...');
       try {
         execSync('git fetch --tags origin', { cwd: projectRoot, stdio: 'pipe' });
       } catch {
@@ -533,10 +534,10 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
         targetLabel = latest;
       }
 
-      log.error(`Upgrading to ${targetLabel}...`);
+      log.cli(`Upgrading to ${targetLabel}...`);
 
       // Stop daemon
-      log.error('Stopping daemon...');
+      log.cli('Stopping daemon...');
       const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
       await gracefulStopDaemon({ config, execSync, plistPath });
 
@@ -549,19 +550,19 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       }
 
       // Rebuild
-      log.error('Installing dependencies...');
+      log.cli('Installing dependencies...');
       execSync('npm install --loglevel=error', { cwd: projectRoot, stdio: 'inherit' });
       execSync('npm run dashboard:install --loglevel=error', { cwd: projectRoot, stdio: 'inherit' });
 
-      log.error('Building...');
+      log.cli('Building...');
       execSync('npm run build', { cwd: projectRoot, stdio: 'inherit' });
 
       // Re-init (regenerate hooks, settings)
-      log.error('Re-initializing...');
+      log.cli('Re-initializing...');
       execSync('node dist/cli.js init', { cwd: projectRoot, stdio: 'inherit', input: '' });
 
       // Start daemon
-      log.error('Starting daemon...');
+      log.cli('Starting daemon...');
       if (existsSync(plistPath)) {
         try {
           execSync(`launchctl bootstrap gui/$(id -u) ${plistPath} 2>/dev/null || launchctl kickstart gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
