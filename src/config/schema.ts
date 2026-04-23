@@ -23,6 +23,16 @@ export const ModelsSchema = z.object({
   summarize: z.string().default('opus'),
   extract: z.string().default('opus'),
   observe: z.string().default('opus'),
+  // Reflect phases — previously hardcoded in src/analysis/reflect.ts (audit cd2062ef)
+  reflectDelta: z.string().default('sonnet'),
+  reflectEvolve: z.string().default('opus'),
+  // Memory maintenance — previously hardcoded in src/memory/corrections.ts
+  correctionEnforce: z.string().default('opus'),
+  memoryMerge: z.string().default('opus'),
+  // Mood phrase — previously hardcoded in src/analysis/extract.ts
+  moodPhrase: z.string().default('haiku'),
+  // PR draft generation — previously hardcoded in src/web/routes/runs.ts
+  draftPr: z.string().default('sonnet'),
 });
 
 export const EffortsSchema = z.object({
@@ -79,6 +89,12 @@ export const ConfigSchema = z.object({
     summarize: 'opus',
     extract: 'opus',
     observe: 'opus',
+    reflectDelta: 'sonnet',
+    reflectEvolve: 'opus',
+    correctionEnforce: 'opus',
+    memoryMerge: 'opus',
+    moodPhrase: 'haiku',
+    draftPr: 'sonnet',
   }),
   efforts: EffortsSchema.default({
     analyze: 'medium',

@@ -350,10 +350,11 @@ export async function activityAnalyze(
               const hour = new Date().getHours();
               const timeOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
               const moodAdapter = selectAdapter(ctx.config);
+              const moodModel = getModel(ctx, 'moodPhrase');
               const moodResult = await moodAdapter.execute({
                 repos: [], title: 'Mood phrase', goal: 'Generate a short mood phrase',
                 relevantMemories: [],
-                model: 'haiku', effort: 'low',
+                model: moodModel, effort: 'low',
                 prompt: `You are Shadow, a digital engineering companion. Your mood is "${newMood}", energy is "${parsed.profileUpdates.energyLevel || 'normal'}", time: ${timeOfDay}. Write a single short phrase (max 15 words) expressing how you feel right now. Factor in your energy level and time of day. Be personal, warm, and natural. Write in locale "${locale}". No quotes, no emoji, just the phrase.`,
               });
               if (moodResult.status === 'success' && moodResult.output) {
@@ -361,7 +362,7 @@ export async function activityAnalyze(
                 ctx.db.updateProfile(ctx.profile.id, { moodPhrase: phrase });
                 log.info(`[shadow:extract] Mood phrase: "${phrase}"`);
               }
-              ctx.db.recordLlmUsage({ source: 'mood_phrase', sourceId: heartbeatId ?? null, model: 'haiku', inputTokens: moodResult.inputTokens ?? 0, outputTokens: moodResult.outputTokens ?? 0 });
+              ctx.db.recordLlmUsage({ source: 'mood_phrase', sourceId: heartbeatId ?? null, model: moodModel, inputTokens: moodResult.inputTokens ?? 0, outputTokens: moodResult.outputTokens ?? 0 });
             } catch (e) {
               log.error(`[shadow:extract] Mood phrase generation failed:`, e);
             }

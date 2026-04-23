@@ -422,7 +422,7 @@ export async function handleRunRoutes(
           goal: 'Generate PR metadata',
           prompt: prPrompt,
           relevantMemories: [],
-          model: 'sonnet',
+          model: config.models.draftPr,
           effort: 'low',
           systemPrompt: 'Respond with ONLY valid JSON. No markdown fences, no explanation.',
           timeoutMs: 30_000,
@@ -452,7 +452,7 @@ export async function handleRunRoutes(
           db.recordLlmUsage({
             source: 'draft-pr',
             sourceId: runId,
-            model: 'sonnet',
+            model: config.models.draftPr,
             inputTokens: result.inputTokens ?? 0,
             outputTokens: result.outputTokens ?? 0,
           });

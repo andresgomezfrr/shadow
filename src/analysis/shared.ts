@@ -380,7 +380,7 @@ export function formatEvents(events: EventEntry[]): string {
 
 // --- Model / effort helpers ---
 
-type ModelPhase = 'analyze' | 'suggest' | 'consolidate' | 'runner' | 'summarize' | 'extract' | 'observe';
+type ModelPhase = 'analyze' | 'suggest' | 'consolidate' | 'runner' | 'summarize' | 'extract' | 'observe' | 'reflectDelta' | 'reflectEvolve' | 'moodPhrase';
 
 export function getModel(ctx: HeartbeatContext, phase: ModelPhase): string {
   const prefs = ctx.profile.preferences as Record<string, unknown> | undefined;

@@ -1,5 +1,6 @@
 import { selectAdapter } from '../backend/index.js';
 import { budgetSkipIfExceeded } from './budget.js';
+import { getModel } from './shared.js';
 
 import type { HeartbeatContext } from './state-machine.js';
 import { log } from '../log.js';
@@ -74,15 +75,16 @@ export async function activityReflect(
   let changeReport = '';
 
   try {
+    const deltaModel = getModel(ctx, 'reflectDelta');
     const deltaResult = await adapter.execute({
       repos: [], title: 'Reflect Delta', goal: 'Summarize changes since last reflect',
-      prompt: deltaPrompt, relevantMemories: [], model: 'sonnet', effort: 'low',
+      prompt: deltaPrompt, relevantMemories: [], model: deltaModel, effort: 'low',
       timeoutMs: ctx.config.analysisTimeoutMs,
       signal: ctx.signal,
     });
     llmCalls++;
     tokensUsed += (deltaResult.inputTokens ?? 0) + (deltaResult.outputTokens ?? 0);
-    ctx.db.recordLlmUsage({ source: 'reflect_delta', sourceId: null, model: 'sonnet', inputTokens: deltaResult.inputTokens ?? 0, outputTokens: deltaResult.outputTokens ?? 0 });
+    ctx.db.recordLlmUsage({ source: 'reflect_delta', sourceId: null, model: deltaModel, inputTokens: deltaResult.inputTokens ?? 0, outputTokens: deltaResult.outputTokens ?? 0 });
 
     if (deltaResult.status === 'success' && deltaResult.output) {
       changeReport = deltaResult.output;
@@ -162,9 +164,10 @@ export async function activityReflect(
   const originalSoulMd = existingSoul?.bodyMd ?? null;
 
   try {
+    const evolveModel = getModel(ctx, 'reflectEvolve');
     const result = await adapter.execute({
       repos: [], title: 'Shadow Reflect', goal: 'Evolve soul reflection',
-      prompt: evolvePrompt, relevantMemories: [], model: 'opus', effort: 'high',
+      prompt: evolvePrompt, relevantMemories: [], model: evolveModel, effort: 'high',
       systemPrompt: null, allowedTools: ['mcp__shadow__*'],
       timeoutMs: ctx.config.analysisTimeoutMs,
       signal: ctx.signal,
@@ -172,7 +175,7 @@ export async function activityReflect(
     llmCalls++;
     tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
     ctx.db.recordLlmUsage({
-      source: 'reflect_evolve', sourceId: null, model: 'opus',
+      source: 'reflect_evolve', sourceId: null, model: evolveModel,
       inputTokens: result.inputTokens ?? 0, outputTokens: result.outputTokens ?? 0,
     });
   } catch (e) {

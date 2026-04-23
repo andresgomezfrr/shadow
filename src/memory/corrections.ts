@@ -143,13 +143,14 @@ For each memory, decide:
 Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edit" | "keep", "reason": string, "editedBody": string | null }] }`;
 
       try {
+        const enforceModel = config.models.correctionEnforce;
         const result = await adapter.execute({
           repos: [],
           title: 'Correction enforcement',
           goal: 'Evaluate memories against user correction',
           prompt,
           relevantMemories: [],
-          model: 'opus',
+          model: enforceModel,
           effort: 'high',
           signal,
         });
@@ -157,7 +158,7 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
         db.recordLlmUsage({
           source: 'correction_enforce',
           sourceId: correction.id,
-          model: 'opus',
+          model: enforceModel,
           inputTokens: result.inputTokens ?? 0,
           outputTokens: result.outputTokens ?? 0,
         });
@@ -363,13 +364,14 @@ Respond with JSON:
 If keepIndices is non-empty, those memories will NOT be merged and will be kept separate.`;
 
     try {
+      const mergeModel = config.models.memoryMerge;
       const result = await adapter.execute({
         repos: [],
         title: 'Memory merge evaluation',
         goal: 'Decide whether to merge similar memories',
         prompt,
         relevantMemories: [],
-        model: 'opus',
+        model: mergeModel,
         effort: 'high',
         signal,
       });
@@ -377,7 +379,7 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
       db.recordLlmUsage({
         source: 'memory_merge',
         sourceId: cluster[0].id,
-        model: 'opus',
+        model: mergeModel,
         inputTokens: result.inputTokens ?? 0,
         outputTokens: result.outputTokens ?? 0,
       });
