@@ -5,33 +5,52 @@ export type RankContext = {
 };
 
 /**
+ * Threshold above which a suggestion is considered "high impact" for
+ * ranking purposes. Mirrors the same bar used by the impact-tiered expiry
+ * logic in engine.ts (getStaleDays): impactScore >= 4 → 60-day TTL.
+ * Keeping the threshold aligned so a suggestion that's *protected* from
+ * expiry is also *protected* from rank-decay invisibility.
+ */
+const HIGH_IMPACT_THRESHOLD = 4;
+
+/**
  * Compute a numeric rank score for a suggestion given the user profile.
  *
  * Formula:
  *   base  = impactScore * 20 + confidenceScore * 0.3
  *   penalty = riskScore * 10
- *   timeDecay = 1 point per day since creation
- *   momentumBoost = max project momentum * 0.08 (max +8)
- *   score = max(0, base - penalty - timeDecay + momentumBoost)
+ *   timeDecay = daysOld * decayRate
+ *     decayRate = 0.3 for high-impact (matches 60-day TTL), 1 otherwise
+ *   momentumBoost = effectiveMomentum * 0.08 (max ~+8)
+ *     effectiveMomentum = high-impact ? max(m, 50) : m
+ *     (momentum floor for high-impact so a quiet project can't bury them —
+ *      audit e0321be4: high-impact + quiet project previously combined to
+ *      create permanently-invisible suggestions)
+ *   score = max(0, base - penalty - timeDecay + momentumBoost + revalidationBoost)
  */
 export function computeRankScore(
   suggestion: SuggestionRecord,
   _profile: UserProfileRecord,
   ctx?: RankContext,
 ): number {
+  const isHighImpact = suggestion.impactScore >= HIGH_IMPACT_THRESHOLD;
   const base = suggestion.impactScore * 20 + suggestion.confidenceScore * 0.3;
   const penalty = suggestion.riskScore * 10;
 
-  // Time decay: 1 point per day since creation
+  // Time decay: scaled by impact. High-impact decays slower so the extended
+  // 60-day TTL actually translates into visibility, not just survival.
   const daysOld = Math.max(0, (Date.now() - new Date(suggestion.createdAt).getTime()) / 86400000);
+  const decayRate = isHighImpact ? 0.3 : 1;
+  const timeDecay = daysOld * decayRate;
 
-  // Momentum boost: suggestions linked to active projects rank higher
+  // Momentum boost with a floor for high-impact suggestions.
   let momentumBoost = 0;
   if (ctx?.projectMomentum) {
     for (const entity of suggestion.entities ?? []) {
       if (entity.type === 'project') {
         const m = ctx.projectMomentum.get(entity.id) ?? 0;
-        momentumBoost = Math.max(momentumBoost, m * 0.08);
+        const effectiveMomentum = isHighImpact ? Math.max(m, 50) : m;
+        momentumBoost = Math.max(momentumBoost, effectiveMomentum * 0.08);
       }
     }
   }
@@ -48,7 +67,7 @@ export function computeRankScore(
     if (suggestion.revalidationVerdict === 'outdated') revalidationBoost = -20;
   }
 
-  return Math.max(0, base - penalty - daysOld + momentumBoost + revalidationBoost);
+  return Math.max(0, base - penalty - timeDecay + momentumBoost + revalidationBoost);
 }
 
 /**
