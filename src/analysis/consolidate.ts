@@ -94,6 +94,7 @@ export async function activityConsolidate(
       relevantMemories: hotMemories.slice(0, 20),
       model: getModel(ctx, 'consolidate'),
       timeoutMs: ctx.config.analysisTimeoutMs,
+      signal: ctx.signal,
     };
 
     try {
@@ -329,6 +330,7 @@ async function synthesizeKnowledgeSummary(ctx: HeartbeatContext): Promise<Knowle
     relevantMemories: inputMemories,
     model: getModel(ctx, 'consolidate'),
     timeoutMs: ctx.config.analysisTimeoutMs,
+    signal: ctx.signal,
   };
 
   const adapter = selectAdapter(ctx.config);

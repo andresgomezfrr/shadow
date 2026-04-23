@@ -211,6 +211,7 @@ export async function activityAnalyze(
         repos: [], title: 'Heartbeat Summarize', goal: 'Summarize session',
         prompt: summarizePrompt, relevantMemories: [], model: summarizeModel, effort,
         timeoutMs: ctx.config.analysisTimeoutMs,
+        signal: ctx.signal,
       });
       llmCalls++;
       tokensUsed += (summaryResult.inputTokens ?? 0) + (summaryResult.outputTokens ?? 0);
@@ -319,6 +320,7 @@ export async function activityAnalyze(
       repos: [], title: 'Heartbeat Extract', goal: 'Extract knowledge + mood', prompt: extractPrompt,
       relevantMemories, model: extractModel, effort,
       timeoutMs: ctx.config.analysisTimeoutMs,
+      signal: ctx.signal,
     });
     llmCalls++;
     tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
@@ -466,6 +468,7 @@ export async function activityAnalyze(
         prompt: cleanupPrompt, relevantMemories: [], model: cleanupModel, effort,
         systemPrompt: null, allowedTools: [], // No MCP — JSON output only
         timeoutMs: ctx.config.analysisTimeoutMs,
+        signal: ctx.signal,
       });
       llmCalls++;
       tokensUsed += (cleanupResult.inputTokens ?? 0) + (cleanupResult.outputTokens ?? 0);
@@ -564,6 +567,7 @@ export async function activityAnalyze(
       repos: [], title: 'Heartbeat Observe', goal: 'Generate observations', prompt: observePrompt,
       relevantMemories: [], model: observeModel, effort,
       timeoutMs: ctx.config.analysisTimeoutMs,
+      signal: ctx.signal,
     });
     llmCalls++;
     tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);

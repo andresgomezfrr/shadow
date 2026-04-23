@@ -62,7 +62,9 @@ export function loadPendingCorrections(
 export async function enforceCorrections(
   db: ShadowDatabase,
   config: ShadowConfig,
+  opts: { signal?: AbortSignal } = {},
 ): Promise<{ processed: number; archived: number; edited: number }> {
+  const signal = opts.signal;
   // Idempotency: only process corrections that have never been enforced before.
   // Process oldest corrections first so later refinements prevail.
   const corrections = db
@@ -75,6 +77,7 @@ export async function enforceCorrections(
   let edited = 0;
 
   for (const correction of corrections) {
+    if (signal?.aborted) break; // cooperative shutdown — don't start another LLM call
     const corrEntities = correction.entities;
 
     // Find semantically similar memories via vector search
@@ -148,6 +151,7 @@ Respond with JSON: { "decisions": [{ "index": number, "action": "archive" | "edi
           relevantMemories: [],
           model: 'opus',
           effort: 'high',
+          signal,
         });
 
         db.recordLlmUsage({
@@ -367,6 +371,7 @@ If keepIndices is non-empty, those memories will NOT be merged and will be kept 
         relevantMemories: [],
         model: 'opus',
         effort: 'high',
+        signal,
       });
 
       db.recordLlmUsage({

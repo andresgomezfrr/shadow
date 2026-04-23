@@ -115,6 +115,7 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
         effort: ctx.config.efforts.revalidate,
         systemPrompt: 'Respond with ONLY valid JSON. No markdown, no explanation, no code fences.',
         allowedTools: ['Read', 'Grep', 'Glob'],
+        signal: ctx.signal,
       });
 
       totalLlmCalls++;

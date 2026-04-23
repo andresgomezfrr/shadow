@@ -24,6 +24,12 @@ export type HeartbeatContext = {
   enrichmentContext?: string;
   activeProjects?: Array<{ projectId: string; projectName: string; score: number }>;
   onPhase?: (phase: HeartbeatPhase) => void;
+  /**
+   * AbortSignal from the hosting job. Callers propagate this to
+   * adapter.execute(pack.signal) so shutdown/drain cancels in-flight LLM
+   * calls cooperatively (audit R-16 completion).
+   */
+  signal?: AbortSignal;
 };
 
 export type HeartbeatResult = {

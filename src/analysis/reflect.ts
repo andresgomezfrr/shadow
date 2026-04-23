@@ -78,6 +78,7 @@ export async function activityReflect(
       repos: [], title: 'Reflect Delta', goal: 'Summarize changes since last reflect',
       prompt: deltaPrompt, relevantMemories: [], model: 'sonnet', effort: 'low',
       timeoutMs: ctx.config.analysisTimeoutMs,
+      signal: ctx.signal,
     });
     llmCalls++;
     tokensUsed += (deltaResult.inputTokens ?? 0) + (deltaResult.outputTokens ?? 0);
@@ -166,6 +167,7 @@ export async function activityReflect(
       prompt: evolvePrompt, relevantMemories: [], model: 'opus', effort: 'high',
       systemPrompt: null, allowedTools: ['mcp__shadow__*'],
       timeoutMs: ctx.config.analysisTimeoutMs,
+      signal: ctx.signal,
     });
     llmCalls++;
     tokensUsed += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);

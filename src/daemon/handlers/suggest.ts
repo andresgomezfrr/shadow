@@ -144,6 +144,7 @@ ${outputLanguageInstruction(ctx.db.ensureProfile().locale)}`;
     effort: ctx.config.efforts.suggestDeep,
     systemPrompt: null,
     allowedTools: ['Read', 'Grep', 'Glob', 'Bash'],
+    signal: ctx.signal,
   });
 
   const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
@@ -349,6 +350,7 @@ ${outputLanguageInstruction(ctx.db.ensureProfile().locale)}`;
     effort: ctx.config.efforts.suggestProject,
     systemPrompt: null,
     allowedTools: ['Read', 'Grep', 'Glob'],
+    signal: ctx.signal,
   });
 
   const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
@@ -512,6 +514,7 @@ ${outputLanguageInstruction(ctx.db.ensureProfile().locale)}`;
     effort: ctx.config.efforts.revalidate,
     systemPrompt: null,
     allowedTools: ['Read', 'Grep', 'Glob', 'Bash'],
+    signal: ctx.signal,
   });
 
   const tokens = (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
@@ -556,6 +559,7 @@ ${outputLanguageInstruction(ctx.db.ensureProfile().locale)}`;
       effort: ctx.config.efforts.revalidate,
       systemPrompt: null,
       allowedTools: ['Read', 'Grep', 'Glob', 'Bash'],
+      signal: ctx.signal,
     });
     llmCallsTotal = 2;
     tokensTotal += (retryResult.inputTokens ?? 0) + (retryResult.outputTokens ?? 0);

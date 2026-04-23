@@ -137,6 +137,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
       const { stdout, stderr, exitCode } = await spawnAsync(
         this.config.claudeBin, args, {
           cwd, timeout: timeoutMs, env, stdin: pack.prompt,
+          signal: pack.signal,
           onSpawn: (child) => {
             this.instanceChild = child;
             // Write pidfile so the stale-run detector can probe liveness
@@ -160,12 +161,13 @@ export class ClaudeCliAdapter implements BackendAdapter {
       const finishedAt = new Date().toISOString();
 
       if (exitCode === null) {
+        const abortedByCaller = pack.signal?.aborted === true;
         return {
-          status: 'timeout',
+          status: abortedByCaller ? 'interrupted' : 'timeout',
           exitCode: null,
           startedAt,
           finishedAt,
-          output: stderr || 'Process timed out',
+          output: stderr || (abortedByCaller ? 'Process interrupted by caller' : 'Process timed out'),
           summaryHint: null,
         };
       }
@@ -260,7 +262,7 @@ export class ClaudeCliAdapter implements BackendAdapter {
 function spawnAsync(
   command: string,
   args: string[],
-  options: { cwd: string; timeout: number; env: Record<string, string | undefined>; stdin?: string; onSpawn?: (child: import('node:child_process').ChildProcess) => void },
+  options: { cwd: string; timeout: number; env: Record<string, string | undefined>; stdin?: string; signal?: AbortSignal; onSpawn?: (child: import('node:child_process').ChildProcess) => void },
 ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
@@ -285,6 +287,7 @@ function spawnAsync(
     child.stderr.on('data', (d: Buffer) => errChunks.push(d));
 
     let timedOut = false;
+    let aborted = false;
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
@@ -294,17 +297,37 @@ function spawnAsync(
       }, 5_000);
     }, options.timeout);
 
+    // Cooperative cancellation via AbortSignal from the caller — closes the
+    // R-16 gap where shutdown would wait for in-flight LLM calls to complete
+    // into a tearing-down daemon. On abort: SIGTERM first, SIGKILL after 5s.
+    const onAbort = () => {
+      aborted = true;
+      child.kill('SIGTERM');
+      setTimeout(() => {
+        if (!child.killed) child.kill('SIGKILL');
+      }, 5_000);
+    };
+    if (options.signal) {
+      if (options.signal.aborted) {
+        onAbort();
+      } else {
+        options.signal.addEventListener('abort', onAbort, { once: true });
+      }
+    }
+
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (options.signal) options.signal.removeEventListener('abort', onAbort);
       resolve({
         stdout: Buffer.concat(chunks).toString('utf8'),
         stderr: Buffer.concat(errChunks).toString('utf8'),
-        exitCode: timedOut ? null : code,
+        exitCode: timedOut || aborted ? null : code,
       });
     });
 
     child.on('error', (err) => {
       clearTimeout(timer);
+      if (options.signal) options.signal.removeEventListener('abort', onAbort);
       resolve({
         stdout: '',
         stderr: err.message,

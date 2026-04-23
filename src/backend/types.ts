@@ -33,6 +33,14 @@ export type ObjectivePack = {
   disallowedTools?: string[];    // explicit deny list — takes precedence over allowedTools (deny rules win)
   permissionMode?: 'plan' | 'acceptEdits' | 'bypassPermissions';
   timeoutMs?: number;
+  /**
+   * Optional AbortSignal that, when aborted, kills the spawned child process
+   * (SIGTERM with SIGKILL fallback after 5s). Callers running inside a job
+   * should pass `ctx.signal` so shutdown/drain cancels in-flight LLM calls
+   * cooperatively instead of waiting for them to complete into a closed DB.
+   * See audit obs 4af409c6 (R-16 completion).
+   */
+  signal?: AbortSignal;
 };
 
 // --- Execution result ---

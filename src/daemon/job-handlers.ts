@@ -206,6 +206,7 @@ async function handleHeartbeat(ctx: JobContext, shared: DaemonSharedState): Prom
     enrichmentContext: enrichmentCtx,
     activeProjects: detectedProjects.length > 0 ? detectedProjects : undefined,
     onPhase: (phase) => ctx.setPhase(phase),
+    signal: ctx.signal,
   });
 
   // Mark enrichment items as reported only after heartbeat succeeds
@@ -295,6 +296,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
     config: ctx.config, db: ctx.db, profile,
     lastHeartbeat: ctx.db.getLastJob('heartbeat'),
     pendingEventCount: ctx.db.listPendingEvents().length,
+    signal: ctx.signal,
   };
   let consolidateResult: Awaited<ReturnType<typeof activityConsolidate>> = {
     memoriesPromoted: 0, memoriesDemoted: 0, memoriesExpired: 0, llmCalls: 0, tokensUsed: 0,
@@ -311,7 +313,7 @@ async function handleConsolidate(ctx: JobContext): Promise<JobHandlerResult> {
   let correctionsResult = { processed: 0, archived: 0, edited: 0 };
   try {
     const { enforceCorrections } = await import('../memory/corrections.js');
-    correctionsResult = await enforceCorrections(ctx.db, ctx.config);
+    correctionsResult = await enforceCorrections(ctx.db, ctx.config, { signal: ctx.signal });
     if (correctionsResult.processed > 0) {
       log.info(`[daemon] Corrections enforced: ${correctionsResult.processed} processed, ${correctionsResult.archived} archived, ${correctionsResult.edited} edited`);
     }
@@ -365,6 +367,7 @@ async function handleReflect(ctx: JobContext): Promise<JobHandlerResult> {
     config: ctx.config, db: ctx.db, profile,
     lastHeartbeat: ctx.db.getLastJob('heartbeat'),
     pendingEventCount: ctx.db.listPendingEvents().length,
+    signal: ctx.signal,
   };
   const reflectResult = await activityReflect(actCtx, { onPhase: ctx.setPhase });
 

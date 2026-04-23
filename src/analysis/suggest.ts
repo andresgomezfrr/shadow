@@ -144,6 +144,7 @@ export async function activitySuggest(
       const genResult = await adapter.execute({
         repos: [], title: `Suggest: ${repo.name}`, goal: 'Generate suggestion candidates',
         prompt: generatePrompt, relevantMemories, model: getModel(ctx, 'suggest'), effort: getEffort(ctx, 'suggest'),
+        signal: ctx.signal,
       });
       totalLlmCalls++;
       const genTokens = (genResult.inputTokens ?? 0) + (genResult.outputTokens ?? 0);
@@ -204,6 +205,7 @@ export async function activitySuggest(
         effort: 'high',
         allowedTools: ['Read', 'Grep', 'Glob', 'Bash'],
         systemPrompt: null,
+        signal: ctx.signal,
       });
       totalLlmCalls++;
       const valTokens = (valResult.inputTokens ?? 0) + (valResult.outputTokens ?? 0);
