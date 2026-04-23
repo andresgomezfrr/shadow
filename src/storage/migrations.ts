@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { dirname, basename, join } from 'node:path';
+import { log } from '../log.js';
 
 export type Migration = {
   version: number;
@@ -1164,6 +1165,24 @@ export const migrations: Migration[] = [
   },
 ];
 
+/**
+ * Latest schema version this build of the code expects. Derived from the
+ * migrations array so adding a new migration auto-bumps it. Used by
+ * `shadow doctor` and the daemon startup to detect drift between a running
+ * install and the version its code was compiled against (audit obs d0670559).
+ */
+export const LATEST_SCHEMA_VERSION: number = Math.max(...migrations.map(m => m.version));
+
+/** Returns the highest `version` recorded in `schema_migrations`, or 0 if the table is empty. */
+export function getAppliedSchemaVersion(database: DatabaseSync): number {
+  try {
+    const row = database.prepare('SELECT MAX(version) AS v FROM schema_migrations').get() as { v: number | null } | undefined;
+    return row?.v ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function applyMigrations(database: DatabaseSync, dbPath?: string): void {
   database.exec('PRAGMA foreign_keys = ON;');
   database.exec('PRAGMA journal_mode = WAL;');
@@ -1220,5 +1239,14 @@ export function applyMigrations(database: DatabaseSync, dbPath?: string): void {
       database.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  // Loud notice when the daemon actually applied something — makes schema
+  // drift visible in the stderr log and in `shadow doctor` post-startup.
+  // Audit obs d0670559: a second Shadow install hit a "no such column"
+  // failure because someone updated code without restarting the daemon.
+  if (pendingMigrations.length > 0) {
+    const summary = pendingMigrations.map(m => `v${m.version}/${m.name}`).join(', ');
+    log.info(`[schema] Applied ${pendingMigrations.length} migration(s) → now at v${LATEST_SCHEMA_VERSION}: ${summary}`);
   }
 }

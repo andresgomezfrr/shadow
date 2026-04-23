@@ -98,33 +98,57 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
   program
     .command('doctor')
     .description('check local environment')
-    .action(async () => {
-      const nodeVersion = process.version;
-      const platform = process.platform;
+    .action(async () =>
+      withDb(async (db) => {
+        const nodeVersion = process.version;
+        const platform = process.platform;
 
-      const adapter = selectAdapter(config);
-      const doctorResult = await adapter.doctor();
+        const adapter = selectAdapter(config);
+        const doctorResult = await adapter.doctor();
 
-      printOutput(
-        {
-          ok: true,
-          node: nodeVersion,
-          platform,
-          dataDir: config.resolvedDataDir,
-          databasePath: config.resolvedDatabasePath,
-          backend: {
-            configured: config.backend,
-            ...doctorResult,
+        // Schema drift check (audit obs d0670559). Compares the MAX(version)
+        // actually applied in this DB against the LATEST_SCHEMA_VERSION the
+        // code was compiled with. Drift means: pull new code but daemon
+        // wasn't restarted — next CLI command that touches tables the new
+        // migrations added/removed will fail silently with cryptic errors
+        // (e.g. "no such column: required_trust_level").
+        const { LATEST_SCHEMA_VERSION, getAppliedSchemaVersion } = await import('../storage/migrations.js');
+        const appliedVersion = getAppliedSchemaVersion(db.rawDb);
+        const schema: Record<string, unknown> = {
+          applied: appliedVersion,
+          expected: LATEST_SCHEMA_VERSION,
+          ok: appliedVersion === LATEST_SCHEMA_VERSION,
+        };
+        if (appliedVersion < LATEST_SCHEMA_VERSION) {
+          schema.drift = LATEST_SCHEMA_VERSION - appliedVersion;
+          schema.hint = 'Restart the daemon to apply pending migrations (shadow daemon restart).';
+        } else if (appliedVersion > LATEST_SCHEMA_VERSION) {
+          schema.drift = appliedVersion - LATEST_SCHEMA_VERSION;
+          schema.hint = 'DB was migrated by a newer build — run `git pull && npm install && npm run build` to bring the code up to date.';
+        }
+
+        printOutput(
+          {
+            ok: schema.ok === true,
+            node: nodeVersion,
+            platform,
+            dataDir: config.resolvedDataDir,
+            databasePath: config.resolvedDatabasePath,
+            schema,
+            backend: {
+              configured: config.backend,
+              ...doctorResult,
+            },
+            proactivityLevel: config.proactivityLevel,
+            models: config.models,
+            heartbeatIntervalMs: config.heartbeatIntervalMs,
+            daemonPollIntervalMs: config.daemonPollIntervalMs,
+            locale: config.locale,
           },
-          proactivityLevel: config.proactivityLevel,
-          models: config.models,
-          heartbeatIntervalMs: config.heartbeatIntervalMs,
-          daemonPollIntervalMs: config.daemonPollIntervalMs,
-          locale: config.locale,
-        },
-        Boolean(program.opts().json),
-      );
-    });
+          Boolean(program.opts().json),
+        );
+      }),
+    );
 
   // --- profile ---
 
