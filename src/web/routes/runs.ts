@@ -24,17 +24,13 @@ export async function handleRunRoutes(
       // Include execution children for parent runs in the result — so the
       // pipeline view (RunsPage, workspace) can show child state even when
       // parent and child are in different statuses (e.g. parent=awaiting_pr, child=done).
+      // Batched via parentRunIds[] to collapse 30 queries → 1 (audit be538fa3).
       const seen = new Set(items.map(r => r.id));
-      const children = [];
-      for (const r of items) {
-        if (r.parentRunId) continue;
-        for (const kid of db.listRuns({ parentRunId: r.id })) {
-          if (!seen.has(kid.id)) {
-            children.push(kid);
-            seen.add(kid.id);
-          }
-        }
-      }
+      const parentIds = items.filter(r => !r.parentRunId).map(r => r.id);
+      const children = parentIds.length > 0
+        ? db.listRuns({ parentRunIds: parentIds }).filter(kid => !seen.has(kid.id))
+        : [];
+      for (const kid of children) seen.add(kid.id);
       const total = db.countRuns({ status, archived });
       return json(res, { items: [...items, ...children], total }), true;
     }

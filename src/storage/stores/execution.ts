@@ -39,7 +39,7 @@ export function getRun(db: DatabaseSync, id: string): RunRecord | null {
   return row ? mapRun(row) : null;
 }
 
-export function listRuns(db: DatabaseSync, filters?: { status?: string; statuses?: string[]; repoId?: string; repoIds?: string[]; parentRunId?: string; parentRunIdIsNull?: boolean; suggestionId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] {
+export function listRuns(db: DatabaseSync, filters?: { status?: string; statuses?: string[]; repoId?: string; repoIds?: string[]; parentRunId?: string; parentRunIds?: string[]; parentRunIdIsNull?: boolean; suggestionId?: string; archived?: boolean; startedAfter?: string; limit?: number; offset?: number }): RunRecord[] {
   const clauses: string[] = [];
   const values: SQLValue[] = [];
 
@@ -64,6 +64,12 @@ export function listRuns(db: DatabaseSync, filters?: { status?: string; statuses
   if (filters?.parentRunId) {
     clauses.push('parent_run_id = ?');
     values.push(filters.parentRunId);
+  } else if (filters?.parentRunIds && filters.parentRunIds.length > 0) {
+    // Batch form — collapses N+1 in /api/runs (audit run be538fa3) where one
+    // pageload would fire one listRuns() per parent to attach exec children.
+    const placeholders = filters.parentRunIds.map(() => '?').join(',');
+    clauses.push(`parent_run_id IN (${placeholders})`);
+    for (const pid of filters.parentRunIds) values.push(pid);
   } else if (filters?.parentRunIdIsNull) {
     clauses.push('parent_run_id IS NULL');
   }
