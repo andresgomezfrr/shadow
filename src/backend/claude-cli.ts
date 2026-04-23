@@ -71,6 +71,18 @@ export class ClaudeCliAdapter implements BackendAdapter {
   }
 
   async execute(pack: ObjectivePack): Promise<BackendExecutionResult> {
+    try {
+      return await this.executeInner(pack);
+    } finally {
+      // Every execute() creates a single-use adapter via selectAdapter(). Drop
+      // it from adapterInstances / jobAdapterGroups on the happy path too —
+      // otherwise both collections leak monotonically over the daemon's life.
+      // Audit run 44361dc7. dispose() is idempotent.
+      this.dispose();
+    }
+  }
+
+  private async executeInner(pack: ObjectivePack): Promise<BackendExecutionResult> {
     const startedAt = new Date().toISOString();
     const timeoutMs = pack.timeoutMs ?? this.config.runnerTimeoutMs;
 

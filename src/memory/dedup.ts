@@ -35,8 +35,14 @@ export async function checkDuplicate(opts: {
   vecTable: VecTable;
   thresholds: DedupThresholds;
   excludeIds?: string[];
-  /** Only compare against entries matching these statuses in the main table */
-  statusFilter?: { table: string; statuses: string[] };
+  /**
+   * Only compare against entries matching these statuses in the main table.
+   * Optional `maxAgeDays` + `ageColumn` clips stale entries out of the
+   * candidate pool — e.g. dismissed suggestions from 6 months ago
+   * shouldn't permanently veto new suggestions in the same space
+   * (audit run 213d43aa).
+   */
+  statusFilter?: { table: string; statuses: string[]; maxAgeDays?: number; ageColumn?: string };
 }): Promise<DedupDecision> {
   const { db, vecTable, thresholds, excludeIds, statusFilter } = opts;
 
@@ -53,16 +59,25 @@ export async function checkDuplicate(opts: {
   }
 
   // Filter and convert to cosine similarity
+  const ageCutoffIso = statusFilter?.maxAgeDays != null
+    ? new Date(Date.now() - statusFilter.maxAgeDays * 86400_000).toISOString()
+    : null;
+  const ageColumn = statusFilter?.ageColumn ?? 'resolved_at';
+
   for (const row of rows) {
     if (excludeIds?.includes(row.id)) continue;
 
     // Check status filter if specified
     if (statusFilter) {
       try {
-        const entity = db.rawDb
-          .prepare(`SELECT status FROM ${statusFilter.table} WHERE id = ?`)
-          .get(row.id) as { status: string } | undefined;
+        const sql = ageCutoffIso
+          ? `SELECT status, ${ageColumn} AS age_ts FROM ${statusFilter.table} WHERE id = ?`
+          : `SELECT status FROM ${statusFilter.table} WHERE id = ?`;
+        const entity = db.rawDb.prepare(sql).get(row.id) as { status: string; age_ts?: string | null } | undefined;
         if (!entity || !statusFilter.statuses.includes(entity.status)) continue;
+        // Age gate — entries older than the cutoff are treated as non-existent
+        // for dedup purposes (they can no longer veto a new entry).
+        if (ageCutoffIso && entity.age_ts && entity.age_ts < ageCutoffIso) continue;
       } catch {
         continue;
       }
@@ -118,6 +133,14 @@ export async function checkObservationDuplicate(
   });
 }
 
+/**
+ * Days after which a dismissed suggestion stops blocking new suggestions in
+ * the same space. Calibrated against the run-lifecycle: suggestions dismissed
+ * more than a month ago likely predate the code state that now justifies
+ * proposing something similar. Audit run 213d43aa.
+ */
+export const DISMISSED_VETO_AGE_DAYS = 30;
+
 export async function checkSuggestionDuplicate(
   db: ShadowDatabase,
   entity: { kind?: string; title: string; summaryMd?: string },
@@ -133,7 +156,11 @@ export async function checkSuggestionDuplicate(
     db,
     vecTable: 'suggestion_vectors',
     thresholds: against === 'dismissed' ? SUGGESTION_DISMISSED_THRESHOLDS : SUGGESTION_THRESHOLDS,
-    statusFilter: { table: 'suggestions', statuses: statusMap[against] },
+    statusFilter: {
+      table: 'suggestions',
+      statuses: statusMap[against],
+      ...(against === 'dismissed' ? { maxAgeDays: DISMISSED_VETO_AGE_DAYS, ageColumn: 'resolved_at' } : {}),
+    },
   });
 }
 

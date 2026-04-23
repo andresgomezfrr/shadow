@@ -229,6 +229,12 @@ export class JobQueue {
       } finally {
         setPhase(null);
         this.active.delete(job.id);
+        // Drop any adapter instances the handler registered in the per-job
+        // group. Without this the happy path leaks into adapterInstances +
+        // jobAdapterGroups monotonically — kill()/dispose() only fire on
+        // timeout/shutdown. Idempotent: no-op if group already cleared.
+        // Audit run 44361dc7.
+        killJobAdapters(job.id);
       }
     })();
 
@@ -260,6 +266,17 @@ export class JobQueue {
     this.active.set(job.id, activeEntry);
   }
 
+
+  /**
+   * Per-job-type timeout. Used by cleanStaleJobs() so orphan detection
+   * respects the same budget the handler would see — otherwise handlers
+   * with a higher timeout (auto-plan 30min, auto-execute 60min) got
+   * falsely marked failed at the 16min flat threshold while still running,
+   * then the handler's own completion overwrote status back to completed.
+   */
+  getHandlerTimeoutMs(type: string): number {
+    return this.handlers.get(type)?.timeoutMs ?? JOB_TIMEOUT_MS;
+  }
 
   async drainAll(timeoutMs = 60_000): Promise<void> {
     if (this.active.size === 0) return;

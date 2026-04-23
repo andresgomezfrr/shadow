@@ -512,18 +512,25 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     // --- Job scheduler helpers ---
 
     function cleanStaleJobs(): void {
+      // Threshold per job type. Must exceed the handler's own timeoutMs (so
+      // JobQueue's internal timeout fires first and sets cancelled=true) plus
+      // a small buffer, otherwise stale-detection would race legitimate jobs
+      // that just take longer than 16min (auto-plan=30min, auto-execute=60min).
+      // Audit run f3e4aa3d.
+      const BUFFER_MS = 2 * 60 * 1000;
       const staleJobs = _db.listJobs({ status: 'running' });
-      const staleThresholdMs = 16 * 60 * 1000; // 16min — must exceed JOB_TIMEOUT_MS (15min) so only orphaned jobs from crashes are caught, not jobs still being managed by JobQueue
       for (const job of staleJobs) {
         const age = Date.now() - new Date(job.startedAt).getTime();
+        const handlerTimeoutMs = jobQueue.getHandlerTimeoutMs(job.type);
+        const staleThresholdMs = handlerTimeoutMs + BUFFER_MS;
         if (age > staleThresholdMs) {
           _db.updateJob(job.id, {
             status: 'failed',
-            result: { error: `stale — stuck running for ${Math.round(age / 60000)}m` },
+            result: { error: `stale — stuck running for ${Math.round(age / 60000)}m (handler timeout ${Math.round(handlerTimeoutMs / 60000)}m)` },
             durationMs: age,
             finishedAt: new Date().toISOString(),
           });
-          log.warn(`[daemon] Marked stale job ${job.type}/${job.id.slice(0, 8)} as failed (${Math.round(age / 60000)}m)`);
+          log.warn(`[daemon] Marked stale job ${job.type}/${job.id.slice(0, 8)} as failed (${Math.round(age / 60000)}m > ${Math.round(staleThresholdMs / 60000)}m threshold)`);
         }
       }
     }
