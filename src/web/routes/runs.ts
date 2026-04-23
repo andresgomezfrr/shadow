@@ -220,10 +220,15 @@ export async function handleRunRoutes(
           const repoPath = repo?.path ?? process.cwd();
           return json(res, { sessionId: run.sessionId, command: `cd ${repoPath} && claude --resume ${run.sessionId}` }), true;
         }
-        // Create a session seeded with the plan + context. No --system-prompt so Claude has MCP access.
+        // Create a session seeded with the plan + context.
+        // Routed through ClaudeCliAdapter so this path inherits every spawn
+        // invariant (default-deny AskUserQuestion, SHADOW_JOB=1 for hook
+        // filtering, MCP allowlist, dispose tracking, AbortSignal). Audit
+        // run c5d66d43 — previously this endpoint reimplemented spawn by
+        // hand and skipped each of those guards.
         const config = loadConfig();
-        const { spawn: spawnChild } = await import('node:child_process');
         const { randomUUID } = await import('node:crypto');
+        const { ClaudeCliAdapter } = await import('../../backend/claude-cli.js');
         const sessionId: string = randomUUID();
         const suggestion = run.suggestionId ? db.getSuggestion(run.suggestionId) : null;
         const repo = db.getRepo(run.repoId);
@@ -243,56 +248,24 @@ export async function handleRunRoutes(
           'Use shadow_memory_search for relevant context. Read files as needed.',
           'Ready to help implement this. What would you like to start with?',
         ].filter(Boolean).join('\n');
-        const env: Record<string, string> = { ...process.env as Record<string, string> };
-        const claudeBin = config.claudeBin ?? 'claude';
-        if (config.claudeExtraPath) env.PATH = `${config.claudeExtraPath}:${env.PATH ?? ''}`;
 
-        const result = await new Promise<{ stdout: string; error?: boolean; message?: string; timedOut?: boolean }>((resolve) => {
-          const child = spawnChild(claudeBin, [
-            '--print', '--output-format', 'json',
-            '--session-id', sessionId,
-          ], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
-          // Prompt via stdin avoids ARG_MAX (suggestion summaryMd + reasoning
-          // can exceed the limit on long plans). Audit run e39733ac.
-          child.stdin.write(prompt);
-          child.stdin.end();
-          const chunks: Buffer[] = [];
-          let settled = false;
-          const settle = (payload: { stdout: string; error?: boolean; message?: string; timedOut?: boolean }) => {
-            if (settled) return;
-            settled = true;
-            resolve(payload);
-          };
-          child.stdout.on('data', (d: Buffer) => chunks.push(d));
-          const timer = setTimeout(() => {
-            child.kill('SIGTERM');
-            const killTimer = setTimeout(() => {
-              child.kill('SIGKILL');
-              // Hard fallback: if the child ignores SIGKILL or the close event
-              // never fires (should not happen on Linux/macOS, but guarding
-              // against a wedged Promise), settle after 1s grace so the HTTP
-              // client isn't left hanging and the session is at least logged
-              // for manual cleanup (audit W-09).
-              setTimeout(() => {
-                log.error(`[runs] session spawn did not exit after SIGKILL — pid ${child.pid} may linger (session=${sessionId.slice(0, 8)})`);
-                settle({ stdout: Buffer.concat(chunks).toString('utf8'), error: true, message: 'session spawn unresponsive to SIGKILL', timedOut: true });
-              }, 1_000);
-            }, 5_000);
-            // Ensure killTimer is cleared if close arrives mid-escalation
-            child.once('close', () => clearTimeout(killTimer));
-          }, 120_000);
-          child.on('close', () => { clearTimeout(timer); settle({ stdout: Buffer.concat(chunks).toString('utf8'), error: false }); });
-          child.on('error', (err) => { clearTimeout(timer); settle({ stdout: '', error: true, message: err.message }); });
+        const adapter = new ClaudeCliAdapter(config);
+        const result = await adapter.execute({
+          repos: repo ? [{ id: repo.id, name: repo.name, path: repo.path }] : [],
+          title: `session: ${suggestion?.title ?? run.kind}`,
+          goal: 'Seed an interactive session for the user to continue manually',
+          prompt,
+          relevantMemories: [],
+          systemPrompt: null,        // default Claude behavior + MCP access
+          sessionId,                 // seed so user can `claude --resume <id>`
+          timeoutMs: 120_000,        // seed-only; user takes over via --resume
         });
 
-        if (result.error) {
-          return json(res, { error: 'Failed to create session', detail: result.message }, 500), true;
+        if (result.status !== 'success') {
+          log.error('[runs] session spawn failed', { status: result.status, output: result.output.slice(0, 200) });
+          return json(res, { error: 'Failed to create session', detail: result.output.slice(0, 500) }, 500), true;
         }
-        let finalSessionId = sessionId;
-        try {
-          const out = JSON.parse(result.stdout || '{}') as { session_id?: string };
-          if (out.session_id) finalSessionId = out.session_id;
-        } catch (e) { log.error('[runs] Failed to parse session output:', e instanceof Error ? e.message : e); }
+        const finalSessionId = result.sessionId ?? sessionId;
         db.updateRun(runId, { sessionId: finalSessionId });
         return json(res, { sessionId: finalSessionId, command: `cd ${cwd} && claude --resume ${finalSessionId}` }), true;
       }

@@ -41,6 +41,15 @@ export type ObjectivePack = {
    * See audit obs 4af409c6 (R-16 completion).
    */
   signal?: AbortSignal;
+  /**
+   * Optional Claude session id to seed (`--session-id <uuid>`). The user can
+   * later resume the session with `claude --resume <id>`. The final session id
+   * (which may differ if Claude regenerated it) is returned in
+   * `BackendExecutionResult.sessionId`. Used by the run-action 'session'
+   * endpoint to materialize a resumable seed without going through the
+   * runner. Audit run c5d66d43.
+   */
+  sessionId?: string;
 };
 
 // --- Execution result ---

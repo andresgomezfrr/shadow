@@ -88,6 +88,13 @@ export class ClaudeCliAdapter implements BackendAdapter {
 
     const args = ['--print', '--output-format', 'json'];
 
+    // Seed a specific session id so the caller can resume the session via
+    // `claude --resume <id>`. Used by the run-action 'session' endpoint to
+    // hand a freshly-seeded session back to the user. Audit run c5d66d43.
+    if (pack.sessionId) {
+      args.push('--session-id', pack.sessionId);
+    }
+
     // System prompt: string = override, null = no override (Claude uses default + MCP), undefined = JSON-only
     if (pack.systemPrompt === null) {
       // Don't pass --system-prompt — Claude uses default behavior with MCP tools
