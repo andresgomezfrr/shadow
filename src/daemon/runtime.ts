@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { resolve } from 'node:path';
@@ -555,6 +556,26 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           errorSummary: 'orphaned — daemon restarted',
           finishedAt: new Date().toISOString(),
         });
+        // Clean up the worktree the dead runner left behind. Without this,
+        // each crashed daemon leaves a `.shadow-worktrees/<id>` directory
+        // pinning a branch that prevents re-creation under the same name
+        // and accumulates disk usage. Audit run bcf9710a.
+        if (run.worktreePath) {
+          const repo = _db.getRepo(run.repoId);
+          if (repo?.path) {
+            try {
+              execFileSync('git', ['worktree', 'remove', run.worktreePath, '--force'], {
+                cwd: repo.path,
+                timeout: 10_000,
+                stdio: 'pipe',
+              });
+              log.info('daemon', `Cleaned orphan worktree for run ${run.id.slice(0, 8)}`);
+            } catch (e) {
+              log.warn('daemon', `Failed to clean orphan worktree for run ${run.id.slice(0, 8)}`, { err: e instanceof Error ? e.message : String(e) });
+            }
+            _db.updateRun(run.id, { worktreePath: null as unknown as string });
+          }
+        }
         log.error(`[daemon] Marked orphaned run ${run.id.slice(0, 8)} as failed (daemon restart)`);
       }
       // Note: 'queued' runs are intentionally left untouched — RunQueue.tick() re-picks them on the next tick.
