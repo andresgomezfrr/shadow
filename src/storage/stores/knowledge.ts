@@ -637,6 +637,27 @@ export function deleteEmbedding(db: DatabaseSync, table: 'memory_vectors' | 'obs
   }
 }
 
+/**
+ * Whitelist of tables allowed as `source_table` in entity_links / entities_json
+ * dual-writes. The value comes from DB rows (junction table) or caller
+ * arguments — neither is user-controlled today, but both feed string
+ * interpolation into prepare(), so we gate them here so a corrupted row or
+ * future refactor can't drive arbitrary SQL. Audit run edc3fbe8.
+ */
+const ENTITY_LINK_TABLES: ReadonlySet<string> = new Set([
+  'memories',
+  'observations',
+  'suggestions',
+  'tasks',
+  'runs',
+]);
+
+function assertEntityLinkTable(table: string): void {
+  if (!ENTITY_LINK_TABLES.has(table)) {
+    throw new Error(`[knowledge] Refusing to use unrecognized source_table in SQL: ${JSON.stringify(table)}`);
+  }
+}
+
 /** Remove entity references from entity_links junction + entities_json in memories, observations, suggestions, tasks.
  *  NOTE: Caller must wrap in a transaction — this function does NOT manage its own transaction
  *  because it's called from deleteRepo/deleteProject/etc. which already hold one. */
@@ -651,6 +672,7 @@ export function removeEntityReferences(db: DatabaseSync, entityType: string, ent
 
   // Sync entities_json for consistency
   for (const row of affected) {
+    assertEntityLinkTable(row.source_table);
     const current = db.prepare(`SELECT entities_json FROM ${row.source_table} WHERE id = ?`).get(row.source_id) as { entities_json: string } | undefined;
     if (current) {
       const entities: EntityLink[] = jsonParse(current.entities_json, []);
@@ -663,6 +685,7 @@ export function removeEntityReferences(db: DatabaseSync, entityType: string, ent
 
 /** Sync entity_links junction table for a given source row. Caller controls transaction if needed. */
 export function syncEntityLinks(db: DatabaseSync, sourceTable: string, sourceId: string, entities: EntityLink[]): void {
+  assertEntityLinkTable(sourceTable);
   db.prepare('DELETE FROM entity_links WHERE source_table = ? AND source_id = ?').run(sourceTable, sourceId);
   if (entities.length === 0) return;
   const ins = db.prepare('INSERT OR IGNORE INTO entity_links (source_table, source_id, entity_type, entity_id) VALUES (?, ?, ?, ?)');
@@ -671,6 +694,7 @@ export function syncEntityLinks(db: DatabaseSync, sourceTable: string, sourceId:
 
 /** Atomically update entities_json + entity_links junction table. */
 export function updateEntityLinks(db: DatabaseSync, sourceTable: string, sourceId: string, entities: EntityLink[]): void {
+  assertEntityLinkTable(sourceTable);
   // BEGIN IMMEDIATE to match the rest of the store writes — audit D-13.
   // Prevents upgrade-deadlock under concurrent writers (would never bite on a
   // single daemon, but keeps the semantics uniform with withTransaction()).
