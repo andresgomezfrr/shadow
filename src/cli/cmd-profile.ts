@@ -12,7 +12,8 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
   program
     .command('status')
     .description('show current shadow state summary')
-    .action(async () =>
+    .option('--cwd <path>', 'resolve contextRepo against this path (typically the shell cwd)')
+    .action(async (opts: { cwd?: string }) =>
       withDb(async (db) => {
         const profile = db.ensureProfile();
         const repos = db.listRepos();
@@ -23,8 +24,38 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
         const unreadEvents = db.listUnreadEvents();
         const unreadNotifications = unreadEvents.length;
         const topEvent = unreadEvents.find(e => e.priority >= 7);
+        // Compute a deep-link target URL for the top notification so the
+        // statusline can wrap the line 2 message in an OSC 8 hyperlink.
+        // Unknown kinds fall back to /activity.
+        function deepLinkFor(kind: string, payload: Record<string, unknown>): string {
+          const runId = payload.runId as string | undefined;
+          const observationId = payload.observationId as string | undefined;
+          const suggestionId = payload.suggestionId as string | undefined;
+          switch (kind) {
+            case 'run_failed':
+            case 'run_completed':
+            case 'auto_execute_complete':
+              return runId ? `/runs?highlight=${runId}` : '/runs';
+            case 'plan_needs_review':
+              return runId ? `/workspace?tab=planned&highlight=${runId}` : '/workspace';
+            case 'observation_notable':
+              return observationId ? `/observations?highlight=${observationId}` : '/observations';
+            case 'suggestion_new':
+            case 'suggestion_revalidated':
+              return suggestionId ? `/suggestions?highlight=${suggestionId}` : '/suggestions';
+            case 'version_available':
+              return '/guide';
+            default:
+              return '/activity';
+          }
+        }
         const topNotification = topEvent
-          ? { kind: topEvent.kind, message: (topEvent.payload as Record<string, unknown>).message as string, priority: topEvent.priority }
+          ? {
+              kind: topEvent.kind,
+              message: (topEvent.payload as Record<string, unknown>).message as string,
+              priority: topEvent.priority,
+              targetPath: deepLinkFor(topEvent.kind, topEvent.payload as Record<string, unknown>),
+            }
           : null;
         const lastHeartbeat = db.getLastJob('heartbeat');
         const recentInteractions = db.listRecentInteractions(5);
@@ -59,6 +90,33 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
         const activeProject = topActiveProject?.projectName ?? null;
         const activeProjectId = topActiveProject?.projectId ?? null;
 
+        // Resolve the shell's cwd against the registered repos so the
+        // statusline can show "📦 <repo> · <branch>" for the directory the
+        // user is actually in. Matching is a longest-prefix so nested paths
+        // still resolve to the outer repo.
+        let contextRepo: { id: string; name: string; branch: string | null } | null = null;
+        if (opts.cwd) {
+          const { resolve: pathResolve } = await import('node:path');
+          const cwdAbs = pathResolve(opts.cwd);
+          const match = repos
+            .map(r => ({ r, abs: pathResolve(r.path) }))
+            .filter(({ abs }) => cwdAbs === abs || cwdAbs.startsWith(abs + '/'))
+            .sort((a, b) => b.abs.length - a.abs.length)[0];
+          if (match) {
+            let branch: string | null = null;
+            try {
+              const { execFileSync } = await import('node:child_process');
+              branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+                cwd: match.abs,
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+                timeout: 1000,
+              }).trim() || null;
+            } catch { /* detached HEAD, no git, permissions — ignore */ }
+            contextRepo = { id: match.r.id, name: match.r.name, branch };
+          }
+        }
+
         return {
           bondTier: profile.bondTier,
           bondAxes: profile.bondAxes,
@@ -90,6 +148,7 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
           thoughtExpiresAt: (daemonState.thoughtExpiresAt as string) ?? null,
           activeProject,
           activeProjectId,
+          contextRepo,
           alerts: (daemonState.alerts as Array<{ id: string; message: string; severity: string; since: string }>) ?? [],
           unreadNotifications,
           topNotification,

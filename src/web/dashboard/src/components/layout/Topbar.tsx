@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BOND_TIER_NAMES } from '../../api/types';
 import type { StatusResponse } from '../../api/types';
 import { useSSEConnected, useSSEStaleness } from '../../hooks/useEventStream';
@@ -21,9 +22,22 @@ export function Topbar({ status }: { status?: StatusResponse | null }) {
   const bondName = BOND_TIER_NAMES[bondTier] ?? 'observer';
   const focusActive = profile?.focusMode === 'focus';
   const [panelOpen, setPanelOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { data: notifications, refresh } = useApi(fetchNotifications, [], POLL_REALTIME);
   const pendingCount = notifications?.length ?? 0;
+
+  // Deep-link: ?notifications=open forces the panel open (used by the
+  // statusline 📬 hyperlink). Consume the param so refreshes don't re-open
+  // the panel after the user closes it.
+  useEffect(() => {
+    if (searchParams.get('notifications') === 'open') {
+      setPanelOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('notifications');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   return (
     <>

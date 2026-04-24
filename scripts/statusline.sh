@@ -27,8 +27,19 @@ if [ -f "$CACHE_FILE" ]; then
   fi
 fi
 
+# Claude Code passes {session_id, model, cwd, ...} as JSON on stdin. Capture
+# the cwd so 'shadow status --cwd' can resolve the active repo + branch of
+# the current shell. Fallback to the script's own PWD if stdin is empty
+# (e.g. when invoked manually for a smoke test).
+STATUSLINE_INPUT=""
+if [ ! -t 0 ]; then
+  STATUSLINE_INPUT=$(cat)
+fi
+CWD=$(echo "$STATUSLINE_INPUT" | grep -o '"cwd":"[^"]*"' | head -1 | cut -d'"' -f4)
+[ -z "$CWD" ] && CWD="$PWD"
+
 # Get Shadow status (--json) and flatten for grep
-RAW_STATUS=$($SHADOW_CLI --json status 2>/dev/null)
+RAW_STATUS=$($SHADOW_CLI --json status --cwd "$CWD" 2>/dev/null)
 STATUS=$(echo "$RAW_STATUS" | tr -d '\n ')
 if [ $? -ne 0 ] || [ -z "$STATUS" ]; then
   echo "{•_•} offline"
@@ -56,6 +67,13 @@ ACTIVE_PROJECT_ID=$(echo "$STATUS" | grep -o '"activeProjectId":"[^"]*"' | head 
 UNREAD_NOTIFS=$(echo "$STATUS" | grep -o '"unreadNotifications":[0-9]*' | head -1 | cut -d: -f2)
 TOP_NOTIF_KIND=$(echo "$STATUS" | grep -o '"topNotification":{[^}]*}' | head -1 | grep -o '"kind":"[^"]*"' | cut -d'"' -f4)
 TOP_NOTIF_MSG=$(echo "$RAW_STATUS" | grep -o '"topNotification": *{[^}]*}' | head -1 | grep -o '"message": *"[^"]*"' | sed 's/"message": *"//;s/"$//')
+TOP_NOTIF_PATH=$(echo "$STATUS" | grep -o '"topNotification":{[^}]*}' | head -1 | grep -o '"targetPath":"[^"]*"' | cut -d'"' -f4)
+
+# Context repo (cwd resolved against registered repos) — {id, name, branch}.
+# Object may be null if cwd isn't inside any registered repo.
+CTX_REPO_ID=$(echo "$STATUS" | grep -o '"contextRepo":{[^}]*}' | head -1 | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+CTX_REPO_NAME=$(echo "$STATUS" | grep -o '"contextRepo":{[^}]*}' | head -1 | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+CTX_REPO_BRANCH=$(echo "$STATUS" | grep -o '"contextRepo":{[^}]*}' | head -1 | grep -o '"branch":"[^"]*"' | cut -d'"' -f4)
 
 # Extract alerts: each alert has message + severity + since + acked
 ALERT_MESSAGES=()
@@ -249,8 +267,9 @@ DASHBOARD_URL="http://localhost:${SHADOW_DASHBOARD_PORT:-3700}"
 # osc8 <url> <visible-text> — wrap text in an OSC 8 hyperlink
 osc8() { printf '\033]8;;%s\a%s\033]8;;\a' "$1" "$2"; }
 
-# Build line 1: mascot + badges (always)
-LINE="${MCOLOR}${MASCOT}${C0}"
+# Build line 1: mascot (linked to /morning — the "home" of Shadow) + badges
+MASCOT_LINK=$(osc8 "$DASHBOARD_URL/morning" "$MASCOT")
+LINE="${MCOLOR}${MASCOT_LINK}${C0}"
 if [ -n "$ACTIVITY_TEXT" ]; then
   LINE="$LINE $ACTIVITY_TEXT"
 fi
@@ -258,8 +277,18 @@ fi
 TEMOJI_LINK=$(osc8 "$DASHBOARD_URL/chronicle" "$TEMOJI")
 LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI $TEMOJI_LINK"
 
-# Active project → /projects/<id> (fall back to plain text if id unresolved)
-if [ -n "$ACTIVE_PROJECT" ] && [ "$ACTIVE_PROJECT" != "null" ]; then
+# Location badge — prefer the shell's concrete context (cwd's repo + branch)
+# over the daemon-detected activeProject, because per-shell info beats a
+# singleton. Fall back to activeProject when cwd isn't inside any
+# registered repo, and to nothing when neither is available.
+if [ -n "$CTX_REPO_ID" ] && [ "$CTX_REPO_ID" != "null" ]; then
+  REPO_LABEL="📦 $CTX_REPO_NAME"
+  if [ -n "$CTX_REPO_BRANCH" ] && [ "$CTX_REPO_BRANCH" != "null" ] && [ "$CTX_REPO_BRANCH" != "HEAD" ]; then
+    REPO_LABEL="$REPO_LABEL · $CTX_REPO_BRANCH"
+  fi
+  REPO_LINK=$(osc8 "$DASHBOARD_URL/repos" "$REPO_LABEL")
+  LINE="$LINE | $REPO_LINK"
+elif [ -n "$ACTIVE_PROJECT" ] && [ "$ACTIVE_PROJECT" != "null" ]; then
   if [ -n "$ACTIVE_PROJECT_ID" ] && [ "$ACTIVE_PROJECT_ID" != "null" ]; then
     PROJECT_LINK=$(osc8 "$DASHBOARD_URL/projects/$ACTIVE_PROJECT_ID" "📋 $ACTIVE_PROJECT")
     LINE="$LINE | $PROJECT_LINK"
@@ -275,7 +304,8 @@ if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
 fi
 
 if [ "$UNREAD_NOTIFS" -gt 0 ] 2>/dev/null; then
-  LINE="$LINE | 📬$UNREAD_NOTIFS"
+  NOTIFS_LINK=$(osc8 "$DASHBOARD_URL/morning?notifications=open" "📬$UNREAD_NOTIFS")
+  LINE="$LINE | $NOTIFS_LINK"
 fi
 
 # Heartbeat countdown (heart pulses between ♥︎ and ♡ each refresh)
@@ -315,14 +345,20 @@ if [ -n "$TOP_NOTIF_KIND" ]; then
   esac
 fi
 
-# Line 2: thought (priority) > top notification. The dashboard link used to
-# live here as a fallback; it now rides on line 1 so line 2 only shows actual
-# content — or nothing at all when no thought/notification is active.
+# Line 2: thought (priority) > top notification. The notification message
+# is wrapped in an OSC 8 hyperlink pointing at the deep-link computed by the
+# status CLI (run_failed → /runs?highlight=<id>, plan_needs_review →
+# /workspace?tab=planned&highlight=<id>, etc.) so a click lands on the
+# specific item, not a generic list.
 OUTPUT="$LINE"
 if [ -n "$SHOW_THOUGHT" ]; then
   OUTPUT="$OUTPUT\n${CD}💭 ${SHOW_THOUGHT}${C0}"
 elif [ -n "$TOP_NOTIF_MSG" ]; then
-  OUTPUT="$OUTPUT\n📬 ${TOP_NOTIF_ICON} ${TOP_NOTIF_MSG}"
+  NOTIF_TEXT="📬 ${TOP_NOTIF_ICON} ${TOP_NOTIF_MSG}"
+  if [ -n "$TOP_NOTIF_PATH" ] && [ "$TOP_NOTIF_PATH" != "null" ]; then
+    NOTIF_TEXT=$(osc8 "$DASHBOARD_URL$TOP_NOTIF_PATH" "$NOTIF_TEXT")
+  fi
+  OUTPUT="$OUTPUT\n$NOTIF_TEXT"
 fi
 
 # Line 3+: alerts (persistent, one per line)
