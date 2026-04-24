@@ -1,6 +1,7 @@
 # Shadow
 
 [![CI](https://github.com/andresgomezfrr/shadow/actions/workflows/ci.yml/badge.svg)](https://github.com/andresgomezfrr/shadow/actions/workflows/ci.yml)
+[![Latest tag](https://img.shields.io/github/v/tag/andresgomezfrr/shadow?sort=semver&label=latest)](https://github.com/andresgomezfrr/shadow/tags)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-43853D.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
 

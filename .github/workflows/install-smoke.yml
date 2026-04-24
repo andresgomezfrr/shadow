@@ -1,0 +1,60 @@
+name: Install smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to install (defaults to main)'
+        default: 'main'
+        required: false
+  schedule:
+    # Weekly regression guard — catches drift in the one-liner path
+    # (raw.githubusercontent.com availability, Node 22 on the default
+    # runner image, install.sh assumptions).
+    - cron: '0 9 * * 1'
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Resolve branch
+        id: branch
+        run: |
+          if [ -n "${{ inputs.branch }}" ]; then
+            echo "name=${{ inputs.branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run installer
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/andresgomezfrr/shadow/${{ steps.branch.outputs.name }}/scripts/install.sh" \
+            | bash -s -- --no-daemon --branch "${{ steps.branch.outputs.name }}"
+
+      - name: Verify installation
+        shell: bash
+        run: |
+          set -e
+          export PATH="$HOME/.shadow/bin:$PATH"
+          echo '--- shadow --version ---'
+          shadow --version
+          echo '--- shadow --help ---'
+          shadow --help > /dev/null
+          echo '--- ~/.shadow structure ---'
+          ls "$HOME/.shadow"
+          echo '--- unknown subcommand guard ---'
+          if shadow noexiste > /dev/null 2>&1; then
+            echo 'FAIL: unknown command did not exit non-zero' >&2
+            exit 1
+          fi
+          echo 'OK: install smoke passed'
