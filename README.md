@@ -1,6 +1,8 @@
 # Shadow
 
 [![CI](https://github.com/andresgomezfrr/shadow/actions/workflows/ci.yml/badge.svg)](https://github.com/andresgomezfrr/shadow/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-43853D.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
 
 > A local-first memory, observation, and autonomy layer for Claude.
 
@@ -11,11 +13,38 @@
 </p>
 <p align="center"><sub>Product tour — <a href="assets/readme/promo.mp4">download mp4</a></sub></p>
 
-Shadow is a background daemon that runs alongside Claude and turns your coding
-sessions into persistent knowledge. It watches what you work on, remembers it,
-surfaces suggestions grounded in your own history, and — when you let it —
-plans and executes tasks on its own. Everything lives locally in a single
-SQLite file under `~/.shadow/`.
+## Why Shadow?
+
+Using Claude as a pair-programmer is powerful but amnesiac: every session
+starts from zero, your project knowledge stays locked in conversation
+history, and nothing watches for patterns across days. Shadow closes that
+loop. It runs quietly in the background, learns from your sessions,
+surfaces what it notices, and keeps track of decisions, repos, and people.
+Locally. Yours. One SQLite file under `~/.shadow/`.
+
+## Quickstart
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/andresgomezfrr/shadow/main/scripts/install.sh | bash
+shadow init
+claude   # start talking — Shadow is already listening
+```
+
+Dashboard at <http://localhost:3700>.
+
+## Contents
+
+- [What Shadow does](#what-shadow-does)
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Install from source](#install-from-source)
+- [Interfaces](#interfaces)
+- [Is Shadow for you?](#is-shadow-for-you)
+- [Project status](#project-status)
+- [Contributing](#contributing)
+- [Documentation](#documentation)
+- [Acknowledgments](#acknowledgments)
+- [License](#license)
 
 ## What Shadow does
 
@@ -66,15 +95,10 @@ For the full architecture, see [CLAUDE.md](CLAUDE.md).
   `ANTHROPIC_API_KEY` with the API backend)
 - `gh` CLI (optional, for PR-aware run lifecycle)
 
-## Install
+## Install from source
 
-One-liner via the install script:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/andresgomezfrr/shadow/main/scripts/install.sh | bash
-```
-
-Or from source:
+The one-liner in [Quickstart](#quickstart) is the recommended path. If you
+prefer to build from source:
 
 ```bash
 git clone git@github.com:andresgomezfrr/shadow.git
@@ -83,12 +107,7 @@ npm install
 npm run build
 npm link            # installs the `shadow` command globally
 shadow init         # bootstraps ~/.shadow/, hooks, and service (launchd/systemd)
-```
-
-Open the dashboard:
-
-```bash
-shadow web          # http://localhost:3700
+shadow web          # open the dashboard at http://localhost:3700
 ```
 
 ## Interfaces
@@ -111,6 +130,28 @@ Shadow exposes three surfaces that share the same SQLite state.
 3. **`shadow` CLI** for admin: `shadow status`, `shadow daemon restart`,
    `shadow job <type>`, `shadow profile bond-reset`. See `shadow --help`.
 
+## Is Shadow for you?
+
+- **You'll probably love Shadow if…** you live in Claude CLI, juggle
+  multiple repos, and get tired of explaining the same context every
+  session. Shadow notices patterns across your work, keeps an opinion about
+  it, and can act on the small stuff when you authorize it.
+
+- **Shadow is probably not for you if…** you want a hosted agent, Windows
+  support, a cloud sync story, or a polished product experience. This is an
+  opinionated personal project released as-is.
+
+- **How is it different from `CLAUDE.md` files or per-project memory?**
+  `CLAUDE.md` is static — you write it, Claude reads it. Shadow learns
+  continuously from your sessions, generates observations you didn't write,
+  ranks suggestions by impact/confidence/risk/effort, and — when you let it —
+  runs tasks in isolated worktrees with PR-aware lifecycle.
+
+- **Does anything leave my machine?** No. Embeddings run locally via
+  [Transformers.js](https://github.com/huggingface/transformers.js) (384-dim,
+  ~30MB model). The only outbound traffic is the Claude API / CLI calls you
+  were already making.
+
 ## Project status
 
 Shadow is under active development. APIs, database schema, and the MCP tool
@@ -118,9 +159,9 @@ surface evolve with the design — breaking changes happen. The project is not
 affiliated with Anthropic; you provide your own Claude credentials.
 
 **Supported today**: macOS (launchd, primary target — most tested) and Linux
-with `systemd --user` (audit C-01). **Not supported**: Windows. Sleep/wake
-awareness uses `pmset` on macOS and `systemd-inhibit --list` on Linux; both
-fall open when unavailable so non-standard distros keep working.
+with `systemd --user`. **Not supported**: Windows. Sleep/wake awareness uses
+`pmset` on macOS and `systemd-inhibit --list` on Linux; both fall open when
+unavailable so non-standard distros keep working.
 
 ## Contributing
 
@@ -148,6 +189,15 @@ premature generalization.
 - [CLAUDE.md](CLAUDE.md) — developer guide: architecture, tech stack, schema, conventions
 - [CHANGELOG.md](CHANGELOG.md) — release history
 - [SECURITY.md](SECURITY.md) — private vulnerability disclosure
+
+## Acknowledgments
+
+Shadow stands on the shoulders of:
+
+- [Claude](https://claude.com) and the [Model Context Protocol](https://modelcontextprotocol.io) — the brain and the lingua franca
+- [sqlite-vec](https://github.com/asg017/sqlite-vec) — local vector search sitting inside SQLite
+- [Transformers.js](https://github.com/huggingface/transformers.js) — 384-dim embeddings without leaving your laptop
+- [Commander](https://github.com/tj/commander.js), [Zod](https://github.com/colinhacks/zod), [React](https://react.dev), [Vite](https://vite.dev), [Tailwind](https://tailwindcss.com) — everyday workhorses
 
 ## License
 
