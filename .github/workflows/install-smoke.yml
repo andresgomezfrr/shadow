@@ -1,12 +1,8 @@
 name: Install smoke
 
 on:
-  # NOTE: 'push' trigger intentionally disabled while the repo is private.
-  # The one-liner 'curl -fsSL .../install.sh | bash' hits
-  # raw.githubusercontent.com, which returns 404 for private repos without
-  # a token. Running on every push would mean a perma-red badge with no
-  # actionable information. Re-enable the push trigger (and drop this
-  # comment) the day the repo goes public.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       branch:
