@@ -2,7 +2,27 @@
   "name": "shadow",
   "version": "0.4.1",
   "private": true,
-  "description": "Shadow — digital companion for engineering day-to-day",
+  "description": "Shadow — local-first memory, observation, and autonomy layer for Claude",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "mcp",
+    "memory",
+    "autonomy",
+    "ai-assistant",
+    "local-first",
+    "engineering-companion"
+  ],
+  "homepage": "https://github.com/andresgomezfrr/shadow#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andresgomezfrr/shadow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/andresgomezfrr/shadow/issues"
+  },
+  "author": "Andres Gomez",
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
     "shadow": "dist/cli.js"

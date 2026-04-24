@@ -46,7 +46,7 @@ You → Claude CLI (MCP tools) → Shadow daemon (:3700)
                                    │   ├── enrichment, pr-sync, remote-sync
                                    │   └── … and more
                                    ├── Hooks (SessionStart, PostToolUse, Stop, …)
-                                   └── launchd service (auto-start, auto-restart)
+                                   └── service manager (launchd on macOS, systemd --user on Linux)
 ```
 
 Shadow is 100% LLM-based — Claude is the brain, Shadow is the persistence,
@@ -59,7 +59,7 @@ For the full architecture, see [CLAUDE.md](CLAUDE.md).
 
 ## Requirements
 
-- macOS (launchd, `darwin-arm64` tested)
+- macOS (launchd, `darwin-arm64` primary target) **or** Linux with `systemd --user`
 - Node.js 22+
 - [Claude CLI](https://claude.com/claude-code) logged in (or an
   `ANTHROPIC_API_KEY` with the API backend)
@@ -81,7 +81,7 @@ cd shadow
 npm install
 npm run build
 npm link            # installs the `shadow` command globally
-shadow init         # bootstraps ~/.shadow/, hooks, and launchd service
+shadow init         # bootstraps ~/.shadow/, hooks, and service (launchd/systemd)
 ```
 
 Open the dashboard:
@@ -116,9 +116,10 @@ Shadow is under active development. APIs, database schema, and the MCP tool
 surface evolve with the design — breaking changes happen. The project is not
 affiliated with Anthropic; you provide your own Claude credentials.
 
-**Supported today**: macOS. **Not supported**: Linux and Windows. The daemon
-relies on launchd and `pmset`; porting to systemd or Windows service managers
-is possible but not done.
+**Supported today**: macOS (launchd, primary target — most tested) and Linux
+with `systemd --user` (audit C-01). **Not supported**: Windows. Sleep/wake
+awareness uses `pmset` on macOS and `systemd-inhibit --list` on Linux; both
+fall open when unavailable so non-standard distros keep working.
 
 ## Contributing
 
@@ -127,7 +128,7 @@ are documented in [CLAUDE.md](CLAUDE.md). If
 you're interested in contributing:
 
 - **Bugs and regressions**: open an issue with a reproduction and your env
-  (macOS version, Node version, Shadow version from `shadow status`)
+  (OS version, Node version, Shadow version from `shadow status`)
 - **New features or architectural changes**: open a discussion first. Shadow
   has strong opinions on abstractions, naming, and lifecycle semantics — it's
   best to align on the design before writing code

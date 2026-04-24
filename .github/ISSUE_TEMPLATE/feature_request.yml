@@ -1,0 +1,50 @@
+name: Feature request / design discussion
+description: Propose a new capability or discuss an architectural change
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Shadow is an opinionated design — please read
+        [CLAUDE.md](../../CLAUDE.md) first and open a discussion before
+        writing code for anything non-trivial.
+
+        The principle here is "code must earn its abstractions": three
+        similar lines beat a premature generalization. Proposals that add
+        abstraction for its own sake tend not to land.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem you're trying to solve
+      description: |
+        What pain are you actually hitting? Describe the concrete friction,
+        not the solution you have in mind.
+      placeholder: |
+        I keep doing X manually every time Y happens and it takes N minutes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal (if you have one)
+      description: |
+        Sketch the approach. Trade-offs welcome — a table comparing
+        alternatives is often clearer than prose.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What did you rule out and why?
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: I've checked that this isn't already covered in CLAUDE.md or GUIDE.md
+          required: true
+        - label: I've searched existing issues/discussions for overlap
+          required: true

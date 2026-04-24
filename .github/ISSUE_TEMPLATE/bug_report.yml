@@ -1,0 +1,89 @@
+name: Bug report
+description: Report a reproducible bug or regression
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. A good reproduction saves
+        a lot of back-and-forth — please fill in what you can.
+
+        Security issues should **not** be reported here. See
+        [SECURITY.md](../../SECURITY.md) for private disclosure.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect to happen, and what actually happened?
+      placeholder: |
+        When I ran `shadow job consolidate`, I expected X, but got Y.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal steps to reproduce
+      placeholder: |
+        1. `shadow init`
+        2. `shadow repo add .`
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Relevant slices of `~/.shadow/daemon.log`, dashboard console, or CLI
+        output. Redact anything sensitive (repo names, paths, tokens).
+      render: shell
+
+  - type: input
+    id: shadow-version
+    attributes:
+      label: Shadow version
+      description: Output of `shadow status` (just the version line)
+      placeholder: "0.4.1"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS + version
+      placeholder: "macOS 15.3 (darwin-arm64) / Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version`
+      placeholder: "v22.11.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options:
+        - cli (claude logged in)
+        - api (ANTHROPIC_API_KEY)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Sanity checklist
+      options:
+        - label: I searched existing issues before filing
+          required: true
+        - label: I'm on the latest `main` (or a recent tag)
+          required: true
