@@ -1,0 +1,34 @@
+name: Docker smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  docker-smoke:
+    # Validates that the project installs and builds cleanly on a fresh
+    # Debian / Node 22 image, which approximates a virgin Linux install for
+    # someone running the one-liner install script. Complementary to the
+    # main `ci` matrix — that one runs against the host, this one against a
+    # clean Linux rootfs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build smoke image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.test
+          push: false
+          load: true
+          tags: shadow-smoke:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run smoke checks
+        run: docker run --rm shadow-smoke:ci

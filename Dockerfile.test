@@ -1,0 +1,42 @@
+# Smoke-test image: validates that Shadow installs and builds cleanly on a
+# fresh Debian / Node 22 host. It does NOT exercise the full runtime —
+# systemd --user isn't available in a minimal container, so the daemon itself
+# is never started. The goal is to catch regressions in install / build /
+# smoke CLI commands before someone hits them on a real Linux box.
+#
+# Build:   docker build -f Dockerfile.test -t shadow-smoke .
+# Run:     docker run --rm shadow-smoke
+FROM node:22-bookworm-slim
+
+# git for the install script path, build-essential + python3 for any native
+# addons (sqlite-vec ships prebuilt binaries but dev tooling may still need
+# a compiler; keep the image minimal but functional).
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git python3 build-essential ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/shadow
+
+# Copy manifests first to leverage Docker layer caching.
+COPY package.json package-lock.json ./
+COPY src/web/dashboard/package.json src/web/dashboard/package-lock.json ./src/web/dashboard/
+
+RUN npm ci
+RUN npm ci --prefix src/web/dashboard
+
+# Now the sources — changes here invalidate only the build layer below.
+COPY . .
+
+RUN npm run typecheck
+RUN npm run build
+
+# The smoke check: CLI exits 0, --version prints, --help renders, and the
+# unknown-command guard we added in 18ca250 actually fires.
+CMD set -e && \
+    echo '--- shadow --version ---' && \
+    node dist/cli.js --version && \
+    echo '--- shadow --help ---' && \
+    node dist/cli.js --help > /dev/null && \
+    echo '--- shadow noexiste (expect exit 1) ---' && \
+    ( node dist/cli.js noexiste > /dev/null 2>&1 && echo 'FAIL: unknown command did not exit non-zero' && exit 1 || echo 'OK: unknown command rejected' ) && \
+    echo '--- all smoke checks passed ---'
