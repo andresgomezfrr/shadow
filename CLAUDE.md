@@ -24,8 +24,8 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
                                     │   ├── pr-sync (gh pr view for awaiting_pr runs, 30min)
                                     │   ├── context-enrich (MCP enrichment)
                                     │   └── auto-plan / auto-execute (autonomy)
-                                    ├── Hooks (6: sessions + tool use + errors + subagents)
-                                    └── launchd service (auto-start, auto-restart)
+                                    ├── Hooks (7: session + tool use + prompts + responses + errors + subagents + statusline)
+                                    └── service manager (launchd on macOS, systemd --user on Linux)
 ```
 
 ## Tech Stack
@@ -40,9 +40,9 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 | CLI | Commander.js 14 |
 | Validation | Zod 4 |
 | LLM Backend | Claude CLI (`--print --output-format json`) or Agent SDK |
-| MCP | JSON-RPC over stdio (69 tools) |
+| MCP | JSON-RPC over HTTP on `/api/mcp` (69 tools); a stdio server also exists for legacy clients (`shadow mcp serve`) |
 | Dashboard | React 19, Vite, Tailwind CSS 4, React Router 7 |
-| Daemon | launchd (macOS), KeepAlive=true |
+| Daemon | launchd (macOS, KeepAlive=true) or systemd --user (Linux, Restart=always) |
 
 ## Dashboard Routes
 
@@ -59,20 +59,25 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 | `/team` | Team | Contacts management |
 | `/systems`, `/systems/:id` | Systems | Cards + drill-down |
 | `/workspace` | Workspace | Tasks + runs: execute/session/dismiss/PR |
+| `/tasks` | Tasks | Task list with status/project filters |
+| `/runs` | Runs | Full run pipeline with parent/child aggregation |
 | `/activity` | Activity | Unified jobs+runs timeline, SSE live status |
+| `/logs` | Logs | Tail `~/.shadow/daemon.log` with level filter |
 | `/usage` | Usage | Token usage by period and model |
 | `/digests` | Digests | Daily/weekly/brag with navigation |
-| `/events` | Events | Pending event queue |
+| `/events` | (redirects to /activity) | — |
 | `/guide` | Guide | Tabbed reference: overview, concepts, CLI, MCP tools, jobs |
 
 **Dev**: `npm run dashboard:dev` → Vite on :5173, proxies API to :3700. **Build**: `npm run dashboard:build` → outputs to `src/web/dashboard/dist/`, served by daemon at :3700 via `server.ts` (which checks this path first, then falls back to `src/web/public/index.html` for legacy).
 
 ## Database Schema
 
-26 tables + virtual tables (SQLite, WAL mode, busy_timeout=5000ms):
+28 base tables + FTS5 / vec0 virtual tables (SQLite, WAL mode,
+busy_timeout=5000ms). Source of truth: `src/storage/migrations.ts`.
 
 | Table | Purpose | Key columns |
 |-------|---------|-------------|
+| `schema_migrations` | Applied migration versions | version, applied_at |
 | `repos` | Tracked repos | name, path (unique), default_branch, test/lint/build commands, last_fetched_at |
 | `projects` | Groups of repos+systems | kind (long-term/sprint/task), status, repo_ids_json, system_ids_json |
 | `user_profile` | Single-row profile | bond_axes_json, bond_tier (1-8), bond_reset_at, proactivity_level, focus_mode |
@@ -82,21 +87,26 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 | `memories` | Layered memory | layer, scope, kind, entities_json, memory_type, FTS5+vector indexed |
 | `observations` | LLM-derived facts | source_kind, kind, entities_json, repo_ids_json, votes, severity |
 | `suggestions` | LLM proposals | impact/confidence/risk/effort, status, entities_json |
+| `heartbeats` | Heartbeat job telemetry | started_at, finished_at, llm_calls, tokens_used, phases_json |
 | `jobs` | Job execution log | type, phase, status, llm_calls, tokens_used, duration_ms |
 | `interactions` | User interactions | sentiment, topics, trust_delta |
 | `event_queue` | Notifications | kind, priority (1-10), delivered |
-| `tasks` | Work containers | title, status, suggestion_id, project_id, external_refs_json, session_id, archived (repoIds via `task_repo_links` junction) |
+| `tasks` | Work containers | title, status, suggestion_id, project_id, external_refs_json, session_id, archived |
+| `task_repo_links` | Task↔repo junction | task_id, repo_id (many-to-many; replaces legacy repo_ids_json) |
 | `runs` | Task execution | status, task_id, outcome, snapshot_ref, result_ref, diff_stat, verification_json, verified |
 | `audit_events` | Append-only trail | actor, action, target_kind, target_id |
-| `llm_usage` | Token tracking | source, model, input_tokens, output_tokens |
+| `llm_usage` | Token tracking (raw) | source, model, input_tokens, output_tokens |
+| `llm_usage_daily` | Token tracking (aggregated) | day, source, model, input_tokens, output_tokens |
 | `systems` | Infrastructure | kind, url, health_check |
 | `contacts` | Team members | role, team, email, slack_id, github_handle |
 | `feedback` | User feedback | target_kind, target_id, action, note |
 | `entity_relations` | Entity graph | source_type, source_id, relation, target_type, target_id, confidence |
+| `entity_links` | Entity↔entity backlinks | source_table, source_id, entity_type, entity_id (auto-maintained from `entities_json`) |
 | `enrichment_cache` | MCP enrichment data | source, entity_type, entity_id, summary, content_hash, reported, expires_at |
 | `digests` | Generated reports | kind, period_start, period_end, content_md, model |
-| `*_fts` | FTS5 virtual tables | auto-synced via triggers |
-| `*_vectors` | vec0 virtual tables | 384-dim embeddings for memories, observations, suggestions |
+| `observability_metrics` | Daemon metrics snapshots | metric, ts, value_json |
+| `*_fts` | FTS5 virtual tables | auto-synced via triggers for memories, observations, suggestions |
+| `*_vectors` | vec0 virtual tables | 384-dim embeddings for memories, observations, suggestions, enrichment |
 
 ## Entity Linking
 
@@ -143,6 +153,10 @@ All memory is **on-demand** — never auto-loaded into prompts. FTS5 search find
 - Implementation: `src/profile/bond.ts`, `src/profile/unlockables.ts`
 
 ## Hooks (Claude Code Integration)
+
+7 hook scripts deployed from `scripts/*.sh` to `~/.shadow/*.sh` on every
+`shadow init`. Each carries a `# shadow-hook-version: <pkg-version>` stamp
+so re-deploy is idempotent and catches drift (audit d74a6227).
 
 | Hook | Purpose |
 |------|---------|
@@ -195,7 +209,7 @@ shadow profile bond-reset --confirm
 ```bash
 # Setup
 npm install
-cd src/web/dashboard && npm install && cd ../../..
+npm run dashboard:install        # or: cd src/web/dashboard && npm install
 
 # Dev
 npm run dev -- <command>         # Run CLI via tsx
@@ -206,23 +220,38 @@ npm run build                    # Compiles TS + builds dashboard
 npm link                         # Install `shadow` globally
 
 # Test
-npm run typecheck                # TypeScript check only
+npm run typecheck                # TypeScript check (also aliased as `lint`)
+npm run test:dev                 # Run *.test.ts with tsx (fast, dev loop)
+npm run test                     # Run compiled *.test.js from dist/ (CI parity)
+npm run dashboard:test           # Dashboard component tests (Vitest + RTL)
 ```
 
 ## Config (env vars)
 
+Full wiring: `src/config/load-config.ts`; defaults: `src/config/schema.ts`.
+Common ones:
+
 ```bash
-SHADOW_BACKEND=cli                   # cli (default) | api
-SHADOW_PROACTIVITY_LEVEL=5           # 1-10
-SHADOW_MODEL_ANALYZE=sonnet          # Heartbeat analyze
-SHADOW_MODEL_SUGGEST=opus            # Suggestions
-SHADOW_MODEL_CONSOLIDATE=sonnet      # Memory consolidation
-SHADOW_MODEL_RUNNER=opus             # Task execution + confidence eval
-SHADOW_MODEL_CHRONICLE_LORE=opus     # Chronicle tier/milestone lore
-SHADOW_MODEL_CHRONICLE_DAILY=haiku   # Voice of shadow + next-step hint
+SHADOW_BACKEND=cli                    # cli (default) | api
+SHADOW_DATA_DIR=~/.shadow             # Data directory
+SHADOW_LOCALE=en                      # User-facing language (en, es, …)
+SHADOW_PROACTIVITY_LEVEL=5            # 1-10
 SHADOW_HEARTBEAT_INTERVAL_MS=1800000  # 30 min
-SHADOW_DATA_DIR=~/.shadow            # Data directory
+
+# Per-phase models (see ModelsSchema for the full set)
+SHADOW_MODEL_ANALYZE=sonnet           # Heartbeat analyze
+SHADOW_MODEL_SUGGEST=opus             # Suggestions
+SHADOW_MODEL_CONSOLIDATE=sonnet       # Memory consolidation
+SHADOW_MODEL_RUNNER=opus              # Task execution + confidence eval
+SHADOW_MODEL_CHRONICLE_LORE=opus      # Chronicle tier/milestone lore
+SHADOW_MODEL_CHRONICLE_DAILY=haiku    # Voice of shadow + next-step hint
 ```
+
+Newer config phases (`reflectDelta`, `reflectEvolve`, `correctionEnforce`,
+`memoryMerge`, `moodPhrase`, `draftPr` — audit cd2062ef) live in
+`ModelsSchema` with sensible defaults but don't yet have `SHADOW_MODEL_*`
+env passthrough. Set them via `user_profile.preferences.models.<phase>`
+from the dashboard if you need to override.
 
 ## Key Patterns
 
@@ -251,5 +280,5 @@ SHADOW_DATA_DIR=~/.shadow            # Data directory
 - **Confidence eval model** — uses `config.models.runner` (default Opus). Critical gate decision for autonomous execution warrants highest quality.
 - **Access count honesty** — heartbeat internal lookups use `touch=false`; only MCP searches increment access counts.
 - **Child process cleanup** — `killJobAdapters(jobId)` sends SIGTERM to spawned `claude` processes per job. `pkill` in daemon stop/restart kills orphaned matches to `--allowedTools.*mcp__shadow`.
-- **Logging convention** — prefer `log.error|warn|info(component, message, context?)` from `src/log.ts` over `console.*`. Convention: `error` = real failure, `warn` = degradation (fallback triggered), `info` = lifecycle/progress/milestone. All go to stderr (single stream — launchd captures to `~/.shadow/daemon.log`). Format: `[component] message: {context-json}`. Legacy `console.error` calls still work (same stream) and are migrated incrementally.
+- **Logging convention** — prefer `log.error|warn|info(component, message, context?)` from `src/log.ts` over `console.*`. Convention: `error` = real failure, `warn` = degradation (fallback triggered), `info` = lifecycle/progress/milestone. All go to stderr as a single stream; the service manager captures it (launchd → `~/.shadow/daemon.log`, systemd → `journalctl --user -u shadow`). Format: `[component] message: {context-json}`. Legacy `console.error` calls still work (same stream) and are migrated incrementally.
 
