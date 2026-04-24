@@ -1,35 +1,41 @@
 # Getting Started with Shadow
 
-Shadow is a local-first engineering companion that runs as a background daemon, learns from your work, and interacts via Claude CLI. It uses 53 MCP tools to manage memory, observations, suggestions, projects, and more.
+Shadow is a local-first engineering companion that runs as a background
+daemon, learns from your work, and interacts via Claude CLI. It exposes 69
+MCP tools to manage memory, observations, suggestions, projects, runs, and
+more.
 
 ## Prerequisites
 
 - **Node.js 22+**
 - **Claude Code** installed and working (`claude` command available)
-- macOS (launchd for daemon auto-start) or Linux
+- **macOS** (launchd, primary target) or **Linux** with `systemd --user`
 
 ## Installation
 
+One-liner (recommended):
+
 ```bash
-# 1. Clone the repo
+curl -fsSL https://raw.githubusercontent.com/andresgomezfrr/shadow/main/scripts/install.sh | bash
+```
+
+From source:
+
+```bash
 git clone git@github.com:andresgomezfrr/shadow.git
 cd shadow
-
-# 2. Install dependencies
 npm install
-
-# 3. Initialize Shadow (creates DB, personality, hooks, daemon service)
-npx tsx src/cli.ts init
-
-# 4. Start the daemon
-npx tsx src/cli.ts daemon start
+npm run build
+npm link               # install the `shadow` command globally
+shadow init            # bootstraps ~/.shadow/, hooks, MCP server, service
+shadow daemon start    # or let init start it for you
 ```
 
 `shadow init` does the following:
-- Creates `~/.shadow/` with SQLite database
+- Creates `~/.shadow/` with the SQLite database
 - Writes Shadow's identity to `~/.claude/CLAUDE.md`
-- Installs hooks and MCP server in `~/.claude/settings.json`
-- Installs a launchd service for auto-start on login (macOS)
+- Installs hooks and the MCP server in `~/.claude/settings.json`
+- Installs a service for auto-start on login: launchd on macOS, `systemd --user` on Linux
 
 Shadow's personality lives as a `soul_reflection` memory inside the database,
 authored and evolved automatically by the daily `reflect` job. You can view
@@ -80,9 +86,9 @@ You can also verify the daemon and MCP endpoint directly:
 
 ```bash
 # Daemon status
-npx tsx src/cli.ts daemon status
+shadow daemon status
 
-# MCP endpoint (53 tools)
+# MCP endpoint (69 tools)
 curl -s -X POST http://localhost:3700/api/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools | length'
 
@@ -129,48 +135,44 @@ Once Shadow is running, interact with it naturally through Claude CLI:
 You ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
                                   ├── SQLite DB (~/.shadow/shadow.db)
                                   ├── Web dashboard (localhost:3700)
-                                  ├── Heartbeat (every 15-30 min)
-                                  │   ├── Analyze conversations (LLM)
+                                  ├── Heartbeat (every 30 min)
+                                  │   ├── summarize → extract → observe (LLM)
                                   │   ├── Create memories + observations
-                                  │   └── Generate suggestions
-                                  ├── Background jobs
+                                  │   └── Generate suggestions (via suggest job)
+                                  ├── Background jobs (22 types)
                                   │   ├── Memory consolidation (6h)
                                   │   ├── Soul reflection (daily)
                                   │   ├── Git remote sync (30min)
-                                  │   └── Context enrichment
+                                  │   ├── PR sync (for awaiting_pr runs, 30min)
+                                  │   ├── Auto-plan / auto-execute (opt-in)
+                                  │   └── Context enrichment, digests, etc.
                                   └── 6 hooks + statusLine (auto-learning from your sessions)
 ```
 
 ## Configuration
 
-All optional — sensible defaults are provided:
+All optional — sensible defaults are provided. See `.env.example` for the
+full list:
 
 ```bash
-SHADOW_PROACTIVITY_LEVEL=5          # 1-10 (how proactive Shadow is)
-SHADOW_PERSONALITY_LEVEL=4          # 1-5 (1=technical, 4=companion, 5=expressive)
-SHADOW_MODEL_ANALYZE=sonnet         # Model for heartbeat analysis
-SHADOW_MODEL_SUGGEST=opus           # Model for suggestions
-SHADOW_HEARTBEAT_INTERVAL_MS=1800000 # 30 minutes
-SHADOW_LOCALE=es                    # Language (Shadow speaks your language)
+SHADOW_PROACTIVITY_LEVEL=5            # 1-10 (how proactive Shadow is)
+SHADOW_PERSONALITY_LEVEL=4            # 1-5 (1=terse/technical, 5=warm/companion-like)
+SHADOW_MODEL_ANALYZE=sonnet           # Model for heartbeat analysis
+SHADOW_MODEL_SUGGEST=opus             # Model for suggestions
+SHADOW_HEARTBEAT_INTERVAL_MS=1800000  # 30 minutes
+SHADOW_LOCALE=en                      # Language Shadow speaks (en, es, …)
 ```
 
 ## Useful commands
 
 ```bash
-npx tsx src/cli.ts daemon start|stop|status|restart
-npx tsx src/cli.ts status
-npx tsx src/cli.ts doctor
-npx tsx src/cli.ts web              # Open dashboard in browser
-npx tsx src/cli.ts summary          # Daily summary
-npx tsx src/cli.ts heartbeat        # Trigger heartbeat now
-```
-
-After building (`npm run build`), you can link globally:
-
-```bash
-npm run build
-npm link
-shadow daemon status   # works globally now
+shadow daemon start|stop|status|restart
+shadow status
+shadow doctor
+shadow web                  # Open dashboard in browser
+shadow summary              # Daily summary
+shadow job heartbeat        # Trigger any daemon job manually
+shadow job list             # List all job types
 ```
 
 ## Dashboard
@@ -187,6 +189,7 @@ Open `http://localhost:3700` in your browser. The dashboard shows:
 
 ## More info
 
-- [GUIDE.md](GUIDE.md) — detailed user guide (Spanish)
+- [GUIDE.md](GUIDE.md) — detailed user guide (what you can say to Shadow)
 - [CLAUDE.md](CLAUDE.md) — developer reference for contributing
-- [BACKLOG.md](BACKLOG.md) — pending improvements and features
+- [CHANGELOG.md](CHANGELOG.md) — release history
+- [SECURITY.md](SECURITY.md) — vulnerability disclosure

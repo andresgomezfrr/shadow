@@ -9,27 +9,32 @@ Shadow is your engineering companion. You interact with it through **Claude CLI*
 ```bash
 cd shadow
 npm install
-npm run dev -- init
-npm run dev -- daemon start
+npm run build
+npm link
+shadow init            # DB, identity, hooks, MCP, service
+shadow daemon start    # or let init start it
 ```
 
 `shadow init` does three things:
 1. Creates the database at `~/.shadow/shadow.db`
 2. Writes Shadow's identity to `~/.claude/CLAUDE.md`
-3. Installs hooks, the MCP server, and the launchd service
+3. Installs hooks, the MCP server, and the service (launchd on macOS,
+   `systemd --user` on Linux)
 
 Shadow's personality (soul) lives as a `soul_reflection` memory inside the
 database, written and evolved automatically by the daily `reflect` job.
 You can view and edit it from the dashboard at `/profile`.
 
-Configure Shadow as an MCP server in Claude Code. Add to `~/.claude/settings.json`:
+`shadow init` also registers Shadow as an **HTTP MCP server** in Claude Code
+(the daemon serves it on port 3700). The resulting `~/.claude/settings.json`
+entry looks like:
 
 ```json
 {
   "mcpServers": {
     "shadow": {
-      "command": "npx",
-      "args": ["tsx", "/full/path/to/shadow/src/cli.ts", "mcp", "serve"]
+      "type": "http",
+      "url": "http://localhost:3700/api/mcp"
     }
   }
 }
@@ -194,24 +199,24 @@ These are the only commands run directly, not via Claude:
 
 ```bash
 # Initial setup
-npm run dev -- init
+shadow init
 
 # Daemon
-npm run dev -- daemon start
-npm run dev -- daemon stop
-npm run dev -- daemon status
+shadow daemon start
+shadow daemon stop
+shadow daemon status
 
 # Jobs (trigger any daemon job manually)
-npm run dev -- job list              # see available types
-npm run dev -- job heartbeat         # analyze recent activity
-npm run dev -- job suggest           # generate suggestions
-npm run dev -- job reflect           # evolve soul
+shadow job list              # see available types
+shadow job heartbeat         # analyze recent activity
+shadow job suggest           # generate suggestions
+shadow job reflect           # evolve soul
 
 # Diagnostics
-npm run dev -- doctor
+shadow doctor
 
 # Interactive teaching (opens a Claude CLI session with Shadow's MCP)
-npm run dev -- teach
+shadow teach
 ```
 
 Everything else is done by talking to Claude.
@@ -252,16 +257,25 @@ When you open Claude CLI, Shadow introduces itself in character because:
 
 ---
 
-## MCP Tools available
+## MCP tools
 
-### Personality
-`shadow_check_in` — personality, mood, context, pending events. Claude calls it automatically.
+Shadow exposes **69 MCP tools** grouped by area. Claude picks them up
+automatically — you don't have to invoke them by name.
 
-### Read (27)
-`shadow_status`, `shadow_alerts`, `shadow_repos`, `shadow_projects`, `shadow_active_projects`, `shadow_project_detail`, `shadow_observations`, `shadow_suggestions`, `shadow_memory_search`, `shadow_memory_list`, `shadow_search`, `shadow_profile`, `shadow_events`, `shadow_contacts`, `shadow_systems`, `shadow_run_list`, `shadow_run_view`, `shadow_usage`, `shadow_daily_summary`, `shadow_feedback`, `shadow_soul`, `shadow_digests`, `shadow_enrichment_config`, `shadow_enrichment_query`, `shadow_relation_list`, `shadow_tasks`
+| Group | Examples | Source |
+|---|---|---|
+| **Status** | `shadow_check_in`, `shadow_status`, `shadow_alerts`, `shadow_events`, `shadow_daily_summary`, `shadow_usage` | `src/mcp/tools/status.ts` |
+| **Memory** | `shadow_memory_search`, `shadow_memory_teach`, `shadow_memory_update`, `shadow_memory_forget`, `shadow_correct`, `shadow_search` | `src/mcp/tools/memory.ts` |
+| **Observations** | `shadow_observations`, `shadow_observe`, `shadow_observation_ack/resolve/reopen` | `src/mcp/tools/observations.ts` |
+| **Suggestions** | `shadow_suggestions`, `shadow_suggest_accept/dismiss/snooze` | `src/mcp/tools/suggestions.ts` |
+| **Entities** | `shadow_repos`, `shadow_projects`, `shadow_contacts`, `shadow_systems`, `shadow_relation_*`, add/update/remove variants | `src/mcp/tools/entities.ts` |
+| **Profile** | `shadow_profile`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_soul`, `shadow_soul_update` | `src/mcp/tools/profile.ts` |
+| **Data** | `shadow_run_list/view/create/archive`, `shadow_digest*`, `shadow_enrichment_*`, `shadow_feedback` | `src/mcp/tools/data.ts` |
+| **Tasks** | `shadow_tasks`, `shadow_task_create/update/close/archive/remove/execute` | `src/mcp/tools/tasks.ts` |
 
-### Write (38 level 1 + 3 level 2)
-`shadow_repo_add`, `shadow_repo_update`, `shadow_repo_remove`, `shadow_project_add`, `shadow_project_remove`, `shadow_project_update`, `shadow_contact_add`, `shadow_contact_update`, `shadow_contact_remove`, `shadow_system_add`, `shadow_system_remove`, `shadow_memory_teach`, `shadow_memory_forget`, `shadow_memory_update`, `shadow_correct`, `shadow_suggest_accept`, `shadow_suggest_dismiss`, `shadow_suggest_snooze`, `shadow_observation_ack`, `shadow_observation_resolve`, `shadow_observation_reopen`, `shadow_profile_set`, `shadow_focus`, `shadow_available`, `shadow_events_ack`, `shadow_soul_update`, `shadow_relation_add`, `shadow_relation_remove`, `shadow_alert_ack`, `shadow_alert_resolve`, `shadow_run_archive`, `shadow_digest`, `shadow_enrichment_write`, `shadow_task_create`, `shadow_task_update`, `shadow_task_close`, `shadow_task_archive`, `shadow_task_remove`
+Use `shadow_check_in` first — Claude does this automatically at session
+start. It returns your current soul, mood, pending events, and contextual
+memories scoped to the active repo.
 
-### Write level 2
-`shadow_observe`, `shadow_run_create`, `shadow_task_execute`
+For full schemas, see each file under `src/mcp/tools/`. The dashboard `/guide`
+page also lists every tool with its description.
