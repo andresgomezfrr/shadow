@@ -89,6 +89,9 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
     .option('--topic <topic>', 'topic to teach about')
     .action(async (options: { topic?: string }) => {
       const { spawnSync } = await import('node:child_process');
+      const { writeFileSync, unlinkSync, mkdtempSync } = await import('node:fs');
+      const { tmpdir } = await import('node:os');
+      const { join } = await import('node:path');
 
       const db = createDatabase(config);
       const profile = db.ensureProfile();
@@ -117,9 +120,15 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
         `- User's name: ${profile.displayName ?? 'dev'}`,
       ].join('\n');
 
+      // System prompt via file: soul + guidelines grow over time and can
+      // exceed ARG_MAX on long-running installations. Audit run e39733ac.
+      const tmpDir = mkdtempSync(join(tmpdir(), 'shadow-teach-'));
+      const systemPromptFile = join(tmpDir, 'system.txt');
+      writeFileSync(systemPromptFile, systemPrompt, 'utf8');
+
       const args = [
         '--allowedTools', 'mcp__shadow__*',
-        '--system-prompt', systemPrompt,
+        '--system-prompt-file', systemPromptFile,
       ];
 
       if (options.topic) {
@@ -129,16 +138,20 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
       console.log('Starting teaching session... Shadow is ready to learn.');
       console.log('Ctrl+C to end.\n');
 
-      const result = spawnSync(config.claudeBin, args, {
-        stdio: 'inherit',
-        env: {
-          ...process.env,
-          SHADOW_DATA_DIR: config.resolvedDataDir,
-        },
-      });
+      try {
+        const result = spawnSync(config.claudeBin, args, {
+          stdio: 'inherit',
+          env: {
+            ...process.env,
+            SHADOW_DATA_DIR: config.resolvedDataDir,
+          },
+        });
 
-      if (result.status !== 0 && result.error) {
-        log.error('Teaching session failed:', result.error.message);
+        if (result.status !== 0 && result.error) {
+          log.error('Teaching session failed:', result.error.message);
+        }
+      } finally {
+        try { unlinkSync(systemPromptFile); } catch { /* best-effort */ }
       }
     });
 
@@ -344,10 +357,13 @@ export function registerMiscCommands(program: Command, config: ShadowConfig, wit
           env.PATH = `${config.claudeExtraPath}:${env.PATH ?? ''}`;
         }
 
-        const result = spawnSync(config.claudeBin, ['--print', '--model', options.model, prompt], {
+        // Prompt via stdin: soul + memory context can grow past ARG_MAX as
+        // the installation matures. Audit run e39733ac.
+        const result = spawnSync(config.claudeBin, ['--print', '--model', options.model], {
           encoding: 'utf8',
           timeout: 60000,
           env,
+          input: prompt,
           maxBuffer: 5 * 1024 * 1024,
         });
 

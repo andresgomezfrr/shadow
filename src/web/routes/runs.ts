@@ -255,8 +255,11 @@ export async function handleRunRoutes(
           const child = spawnChild(claudeBin, [
             '--print', '--output-format', 'json',
             '--session-id', sessionId,
-            prompt,
           ], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
+          // Prompt via stdin avoids ARG_MAX (suggestion summaryMd + reasoning
+          // can exceed the limit on long plans). Audit run e39733ac.
+          child.stdin.write(prompt);
+          child.stdin.end();
           const chunks: Buffer[] = [];
           let settled = false;
           const settle = (payload: { stdout: string; error?: boolean; message?: string; timedOut?: boolean }) => {
