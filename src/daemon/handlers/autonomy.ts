@@ -21,8 +21,12 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
   const now = Date.now();
   const minAgeMs = planRules.minAgeHours * 60 * 60 * 1000;
 
-  // Per-suggestion filtering with reasons
-  type SuggestionEntry = { suggestionId: string; title: string; action: string; reason?: string };
+  // Per-suggestion filtering with reasons. `runId` is populated when the
+  // action is 'planned' so downstream consumers (UI, MCP) can deep-link to
+  // the created run without hunting for it in the reason field. Audit run
+  // a109a07f: previously `reason` was overloaded with the runId UUID,
+  // breaking the semantic contract of "reason = why this happened".
+  type SuggestionEntry = { suggestionId: string; title: string; action: string; reason?: string; runId?: string };
   const allEntries: SuggestionEntry[] = [];
   const passed: typeof allOpen = [];
 
@@ -150,7 +154,13 @@ export async function handleAutoPlan(ctx: JobContext, _shared: DaemonSharedState
       const accepted = acceptSuggestion(ctx.db, suggestion.id, 'execute');
       if (accepted.ok && accepted.runCreated) {
         autoPlanned++;
-        resultCandidates.push({ suggestionId: suggestion.id, title: suggestion.title, action: 'planned', reason: accepted.runCreated });
+        resultCandidates.push({
+          suggestionId: suggestion.id,
+          title: suggestion.title,
+          action: 'planned',
+          reason: 'Plan accepted',
+          runId: accepted.runCreated,
+        });
         log.error(`[auto-plan] Planned: "${suggestion.title}" → run ${accepted.runCreated.slice(0, 8)}`);
       } else {
         skipped++;
@@ -197,7 +207,10 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
 
   const plannedRuns = ctx.db.listPlannedRunsForAutoExec();
 
-  type RunEntry = { runId: string; title?: string; action: string; reason?: string };
+  // `childRunId` is populated when action is 'auto_executed' so consumers
+  // can deep-link to the spawned execution run without re-querying.
+  // Audit run a109a07f.
+  type RunEntry = { runId: string; title?: string; action: string; reason?: string; childRunId?: string };
   const allEntries: RunEntry[] = [];
   const passed: typeof plannedRuns = [];
 
@@ -313,7 +326,7 @@ export async function handleAutoExecute(ctx: JobContext, _shared: DaemonSharedSt
 
       ctx.db.updateRun(run.id, { autoEvalAt: now });
       autoExecuted++;
-      allEntries.push({ runId: run.id, title, action: 'auto_executed' });
+      allEntries.push({ runId: run.id, title, action: 'auto_executed', childRunId: childRun.id });
       log.error(`[auto-execute] Executing: run ${run.id.slice(0, 8)} → child ${childRun.id.slice(0, 8)}`);
     } catch (e) {
       log.error(`[auto-execute] Failed to create execution run for ${run.id.slice(0, 8)}:`, e instanceof Error ? e.message : e);
