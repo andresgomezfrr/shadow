@@ -273,6 +273,17 @@ if [ -n "$NEXT_HB" ] && [ "$NEXT_HB" != "null" ]; then
   fi
 fi
 
+# Dashboard hyperlink — icon-only OSC 8 (iTerm2, Alacritty, Kitty, WezTerm,
+# Ghostty, gnome-terminal, Konsole, Windows Terminal). Terminals that don't
+# render OSC 8 fall back to showing just the icon; the URL stays hidden
+# behind the BEL-terminated sequence either way. Only shown when the daemon
+# is up — otherwise clicking it would land on nothing.
+if [ "$DAEMON_RUNNING" = "true" ]; then
+  DASHBOARD_URL="http://localhost:${SHADOW_DASHBOARD_PORT:-3700}"
+  DASHBOARD_LINK=$(printf '\033]8;;%s\a🌐\033]8;;\a' "$DASHBOARD_URL")
+  LINE="$LINE | $DASHBOARD_LINK"
+fi
+
 # Resolve top notification icon by event kind
 TOP_NOTIF_ICON=""
 if [ -n "$TOP_NOTIF_KIND" ]; then
@@ -286,22 +297,14 @@ if [ -n "$TOP_NOTIF_KIND" ]; then
   esac
 fi
 
-# Line 2: thought (priority) > top notification (persistent) > dashboard link (fallback)
-# Dashboard is rendered as an OSC 8 hyperlink — visible text "🔗 dashboard",
-# URL hidden underneath. Supported by iTerm2, Alacritty, Kitty, WezTerm,
-# Ghostty, gnome-terminal, Konsole, Windows Terminal. Terminals that don't
-# render OSC 8 will show only the visible text (no raw escape codes) because
-# the sequences use BEL terminators that legacy parsers strip.
-# Audit UI-23 (original dim URL) + later: hide URL behind icon.
-DASHBOARD_URL="http://localhost:${SHADOW_DASHBOARD_PORT:-3700}"
-DASHBOARD_LINK=$(printf '\033]8;;%s\a🔗\033]8;;\a' "$DASHBOARD_URL")
+# Line 2: thought (priority) > top notification. The dashboard link used to
+# live here as a fallback; it now rides on line 1 so line 2 only shows actual
+# content — or nothing at all when no thought/notification is active.
 OUTPUT="$LINE"
 if [ -n "$SHOW_THOUGHT" ]; then
   OUTPUT="$OUTPUT\n${CD}💭 ${SHOW_THOUGHT}${C0}"
 elif [ -n "$TOP_NOTIF_MSG" ]; then
   OUTPUT="$OUTPUT\n📬 ${TOP_NOTIF_ICON} ${TOP_NOTIF_MSG}"
-elif [ "$DAEMON_RUNNING" = "true" ]; then
-  OUTPUT="$OUTPUT\n${CD}${DASHBOARD_LINK}${C0}"
 fi
 
 # Line 3+: alerts (persistent, one per line)
