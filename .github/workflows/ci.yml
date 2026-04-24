@@ -38,3 +38,18 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Smoke CLI (host)
+        shell: bash
+        run: |
+          set -e
+          echo '--- shadow --version ---'
+          node dist/cli.js --version
+          echo '--- shadow --help ---'
+          node dist/cli.js --help > /dev/null
+          echo '--- shadow noexiste (expect non-zero exit) ---'
+          if node dist/cli.js noexiste > /dev/null 2>&1; then
+            echo 'FAIL: unknown command did not exit non-zero' >&2
+            exit 1
+          fi
+          echo 'OK: unknown command rejected'
