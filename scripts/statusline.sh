@@ -52,6 +52,7 @@ ENERGY=$(echo "$STATUS" | grep -o '"energyLevel":"[^"]*"' | head -1 | cut -d'"' 
 THOUGHT=$(echo "$RAW_STATUS" | grep -o '"thought": *"[^"]*"' | head -1 | sed 's/"thought": *"//;s/"$//')
 THOUGHT_EXPIRES=$(echo "$RAW_STATUS" | grep -o '"thoughtExpiresAt": *"[^"]*"' | head -1 | sed 's/"thoughtExpiresAt": *"//;s/"$//')
 ACTIVE_PROJECT=$(echo "$STATUS" | grep -o '"activeProject":"[^"]*"' | head -1 | cut -d'"' -f4)
+ACTIVE_PROJECT_ID=$(echo "$STATUS" | grep -o '"activeProjectId":"[^"]*"' | head -1 | cut -d'"' -f4)
 UNREAD_NOTIFS=$(echo "$STATUS" | grep -o '"unreadNotifications":[0-9]*' | head -1 | cut -d: -f2)
 TOP_NOTIF_KIND=$(echo "$STATUS" | grep -o '"topNotification":{[^}]*}' | head -1 | grep -o '"kind":"[^"]*"' | cut -d'"' -f4)
 TOP_NOTIF_MSG=$(echo "$RAW_STATUS" | grep -o '"topNotification": *{[^}]*}' | head -1 | grep -o '"message": *"[^"]*"' | sed 's/"message": *"//;s/"$//')
@@ -240,19 +241,37 @@ if [ -n "$THOUGHT" ] && [ "$THOUGHT" != "null" ] && [ -n "$THOUGHT_EXPIRES" ] &&
   fi
 fi
 
+# Dashboard base URL — resolved once so every OSC 8 link on the line can
+# point at its own section. Terminals that don't render OSC 8 simply show
+# the visible text with no escape-code leak (BEL-terminated).
+DASHBOARD_URL="http://localhost:${SHADOW_DASHBOARD_PORT:-3700}"
+
+# osc8 <url> <visible-text> — wrap text in an OSC 8 hyperlink
+osc8() { printf '\033]8;;%s\a%s\033]8;;\a' "$1" "$2"; }
+
 # Build line 1: mascot + badges (always)
 LINE="${MCOLOR}${MASCOT}${C0}"
 if [ -n "$ACTIVITY_TEXT" ]; then
   LINE="$LINE $ACTIVITY_TEXT"
 fi
-LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI $TEMOJI"
+# Bond tier emoji → /chronicle
+TEMOJI_LINK=$(osc8 "$DASHBOARD_URL/chronicle" "$TEMOJI")
+LINE="$LINE | $MOOD_EMOJI$ENERGY_EMOJI $TEMOJI_LINK"
 
+# Active project → /projects/<id> (fall back to plain text if id unresolved)
 if [ -n "$ACTIVE_PROJECT" ] && [ "$ACTIVE_PROJECT" != "null" ]; then
-  LINE="$LINE | 📋 $ACTIVE_PROJECT"
+  if [ -n "$ACTIVE_PROJECT_ID" ] && [ "$ACTIVE_PROJECT_ID" != "null" ]; then
+    PROJECT_LINK=$(osc8 "$DASHBOARD_URL/projects/$ACTIVE_PROJECT_ID" "📋 $ACTIVE_PROJECT")
+    LINE="$LINE | $PROJECT_LINK"
+  else
+    LINE="$LINE | 📋 $ACTIVE_PROJECT"
+  fi
 fi
 
+# Suggestions count → /suggestions
 if [ "$SUGGESTIONS" -gt 0 ] 2>/dev/null; then
-  LINE="$LINE | 💡$SUGGESTIONS"
+  SUGGEST_LINK=$(osc8 "$DASHBOARD_URL/suggestions" "💡$SUGGESTIONS")
+  LINE="$LINE | $SUGGEST_LINK"
 fi
 
 if [ "$UNREAD_NOTIFS" -gt 0 ] 2>/dev/null; then
@@ -279,8 +298,7 @@ fi
 # behind the BEL-terminated sequence either way. Only shown when the daemon
 # is up — otherwise clicking it would land on nothing.
 if [ "$DAEMON_RUNNING" = "true" ]; then
-  DASHBOARD_URL="http://localhost:${SHADOW_DASHBOARD_PORT:-3700}"
-  DASHBOARD_LINK=$(printf '\033]8;;%s\a🌐\033]8;;\a' "$DASHBOARD_URL")
+  DASHBOARD_LINK=$(osc8 "$DASHBOARD_URL" "🌐")
   LINE="$LINE | $DASHBOARD_LINK"
 fi
 

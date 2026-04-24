@@ -53,8 +53,11 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
           }).length;
         } catch { /* no interactions file */ }
 
-        // Active project from daemon detection
-        const activeProject = (daemonState.activeProjects as Array<{ projectName: string }> | undefined)?.[0]?.projectName ?? null;
+        // Active project from daemon detection. Exposing the id too so the
+        // statusline can deep-link to /projects/<id> without a second round-trip.
+        const topActiveProject = (daemonState.activeProjects as Array<{ projectId: string; projectName: string }> | undefined)?.[0];
+        const activeProject = topActiveProject?.projectName ?? null;
+        const activeProjectId = topActiveProject?.projectId ?? null;
 
         return {
           bondTier: profile.bondTier,
@@ -86,6 +89,7 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
           thought: (daemonState.thought as string) ?? null,
           thoughtExpiresAt: (daemonState.thoughtExpiresAt as string) ?? null,
           activeProject,
+          activeProjectId,
           alerts: (daemonState.alerts as Array<{ id: string; message: string; severity: string; since: string }>) ?? [],
           unreadNotifications,
           topNotification,
