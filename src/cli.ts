@@ -51,13 +51,30 @@ program
 // wrapper stays immune to Claude CLI flag renames. Variadic argument
 // declaration + allowUnknownOption + allowExcessArguments so Commander
 // accepts arbitrary trailing tokens without erroring.
+//
+// Unknown subcommand handling: Commander would otherwise route any unknown
+// first token (e.g. `shadow noexiste`) into this bare action and silently
+// open Claude with the typo as a Claude argument. We guard against that by
+// rejecting any positional token that arrives before `--` — if you wanted
+// passthrough, you would have used `shadow -- <args>` explicitly.
 program
   .argument('[claudeArgs...]', 'arguments passed to claude after --')
   .allowUnknownOption()
   .allowExcessArguments()
-  .action(() => {
+  .action((claudeArgsBefore: string[]) => {
     const dashIdx = process.argv.indexOf('--');
-    const claudeArgs = dashIdx >= 0 ? process.argv.slice(dashIdx + 1) : [];
+    const hasDashSeparator = dashIdx >= 0;
+    const claudeArgs = hasDashSeparator ? process.argv.slice(dashIdx + 1) : [];
+
+    // Tokens collected before `--` are a typo / unknown subcommand. Reject
+    // with help so users discover the real surface instead of accidentally
+    // launching Claude with garbage.
+    if (!hasDashSeparator && claudeArgsBefore.length > 0) {
+      const unknown = claudeArgsBefore[0];
+      log.error(`Unknown command: ${unknown}\n`);
+      program.outputHelp();
+      process.exit(1);
+    }
 
     const db = createDatabase(config);
     let soul: string;
