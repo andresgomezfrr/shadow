@@ -191,6 +191,8 @@ shadow web                      # Open dashboard in browser
 
 # Admin
 shadow status / doctor / daemon start|stop|restart|status / usage
+shadow statusline               # Inspect status-line registration
+shadow statusline enable|disable # Toggle Claude Code's status-line entry
 
 # Data management
 shadow repo add|list|remove

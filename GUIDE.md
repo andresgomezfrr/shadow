@@ -215,6 +215,11 @@ shadow job reflect           # evolve soul
 # Diagnostics
 shadow doctor
 
+# Status line (Claude Code's emoji bar — activity, bond, suggestions, heartbeat)
+shadow statusline              # inspect current registration
+shadow statusline enable       # register Shadow's status line
+shadow statusline disable      # remove it (hooks stay)
+
 # Interactive teaching (opens a Claude CLI session with Shadow's MCP)
 shadow teach
 ```

@@ -129,7 +129,8 @@ Shadow exposes three surfaces that share the same SQLite state.
    is the inbox for active work; Chronicle is the bond narrative.
 
 3. **`shadow` CLI** for admin: `shadow status`, `shadow daemon restart`,
-   `shadow job <type>`, `shadow profile bond-reset`. See `shadow --help`.
+   `shadow job <type>`, `shadow profile bond-reset`, `shadow statusline
+   enable|disable`. See `shadow --help`.
 
 ## Is Shadow for you?
 

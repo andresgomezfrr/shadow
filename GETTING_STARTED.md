@@ -169,10 +169,12 @@ SHADOW_LOCALE=en                      # Language Shadow speaks (en, es, …)
 shadow daemon start|stop|status|restart
 shadow status
 shadow doctor
-shadow web                  # Open dashboard in browser
-shadow summary              # Daily summary
-shadow job heartbeat        # Trigger any daemon job manually
-shadow job list             # List all job types
+shadow web                          # Open dashboard in browser
+shadow summary                      # Daily summary
+shadow job heartbeat                # Trigger any daemon job manually
+shadow job list                     # List all job types
+shadow statusline                   # Inspect the Claude status-line entry
+shadow statusline enable|disable    # Turn Shadow's status line on/off
 ```
 
 ## Dashboard
