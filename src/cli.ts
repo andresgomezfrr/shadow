@@ -17,6 +17,7 @@ import { registerKnowledgeCommands } from './cli/cmd-knowledge.js';
 import { registerDaemonCommands } from './cli/cmd-daemon.js';
 import { registerProfileCommands } from './cli/cmd-profile.js';
 import { registerMiscCommands } from './cli/cmd-misc.js';
+import { registerStatuslineCommand } from './cli/cmd-statusline.js';
 import { registerTaskCommands } from './cli/cmd-tasks.js';
 import { registerDocsCommands } from './cli/cmd-docs.js';
 import { log } from './log.js';
@@ -114,6 +115,7 @@ registerEntityCommands(program, config, withDb);
 registerKnowledgeCommands(program, config, withDb);
 registerDaemonCommands(program, config, withDb);
 registerMiscCommands(program, config, withDb);
+registerStatuslineCommand(program, config);
 registerTaskCommands(program, config, withDb);
 registerDocsCommands(program);
 
