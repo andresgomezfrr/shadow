@@ -74,6 +74,7 @@ TOP_NOTIF_PATH=$(echo "$STATUS" | grep -o '"topNotification":{[^}]*}' | head -1 
 CTX_REPO_ID=$(echo "$STATUS" | grep -o '"contextRepo":{[^}]*}' | head -1 | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
 CTX_REPO_NAME=$(echo "$STATUS" | grep -o '"contextRepo":{[^}]*}' | head -1 | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
 CTX_REPO_BRANCH=$(echo "$STATUS" | grep -o '"contextRepo":{[^}]*}' | head -1 | grep -o '"branch":"[^"]*"' | cut -d'"' -f4)
+CTX_REPO_WEB=$(echo "$STATUS" | grep -o '"contextRepo":{[^}]*}' | head -1 | grep -o '"webUrl":"[^"]*"' | sed 's/"webUrl":"//;s/"$//')
 
 # Extract alerts: each alert has message + severity + since + acked
 ALERT_MESSAGES=()
@@ -286,7 +287,14 @@ if [ -n "$CTX_REPO_ID" ] && [ "$CTX_REPO_ID" != "null" ]; then
   if [ -n "$CTX_REPO_BRANCH" ] && [ "$CTX_REPO_BRANCH" != "null" ] && [ "$CTX_REPO_BRANCH" != "HEAD" ]; then
     REPO_LABEL="$REPO_LABEL · $CTX_REPO_BRANCH"
   fi
-  REPO_LINK=$(osc8 "$DASHBOARD_URL/repos" "$REPO_LABEL")
+  # Prefer the GitHub/GitLab web URL for the current branch — it's where you
+  # actually want to land. Fall back to the dashboard /repos view when the
+  # remote is missing or the URL can't be normalised (bare local repos).
+  if [ -n "$CTX_REPO_WEB" ] && [ "$CTX_REPO_WEB" != "null" ]; then
+    REPO_LINK=$(osc8 "$CTX_REPO_WEB" "$REPO_LABEL")
+  else
+    REPO_LINK=$(osc8 "$DASHBOARD_URL/repos" "$REPO_LABEL")
+  fi
   LINE="$LINE | $REPO_LINK"
 elif [ -n "$ACTIVE_PROJECT" ] && [ "$ACTIVE_PROJECT" != "null" ]; then
   if [ -n "$ACTIVE_PROJECT_ID" ] && [ "$ACTIVE_PROJECT_ID" != "null" ]; then

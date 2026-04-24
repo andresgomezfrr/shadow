@@ -94,7 +94,7 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
         // statusline can show "📦 <repo> · <branch>" for the directory the
         // user is actually in. Matching is a longest-prefix so nested paths
         // still resolve to the outer repo.
-        let contextRepo: { id: string; name: string; branch: string | null } | null = null;
+        let contextRepo: { id: string; name: string; branch: string | null; webUrl: string | null } | null = null;
         if (opts.cwd) {
           const { resolve: pathResolve } = await import('node:path');
           const cwdAbs = pathResolve(opts.cwd);
@@ -104,16 +104,41 @@ export function registerProfileCommands(program: Command, config: ShadowConfig, 
             .sort((a, b) => b.abs.length - a.abs.length)[0];
           if (match) {
             let branch: string | null = null;
+            let remoteUrl: string | null = null;
             try {
               const { execFileSync } = await import('node:child_process');
-              branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-                cwd: match.abs,
-                encoding: 'utf8',
-                stdio: ['ignore', 'pipe', 'ignore'],
-                timeout: 1000,
-              }).trim() || null;
+              const gitOpts = { cwd: match.abs, encoding: 'utf8' as const, stdio: ['ignore', 'pipe', 'ignore'] as ['ignore', 'pipe', 'ignore'], timeout: 1000 };
+              branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], gitOpts).trim() || null;
+              // Prefer origin; fall back to upstream. Failure is benign.
+              try {
+                remoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], gitOpts).trim() || null;
+              } catch {
+                try { remoteUrl = execFileSync('git', ['remote', 'get-url', 'upstream'], gitOpts).trim() || null; } catch { /* no remote */ }
+              }
             } catch { /* detached HEAD, no git, permissions — ignore */ }
-            contextRepo = { id: match.r.id, name: match.r.name, branch };
+
+            // Normalize the remote URL into a browsable web URL, deep-linked
+            // to the current branch when we know it.
+            //   git@github.com:u/r.git  → https://github.com/u/r
+            //   ssh://git@github.com/u/r → https://github.com/u/r
+            //   https://github.com/u/r(.git) → https://github.com/u/r
+            // Pointing at `/tree/<branch>` when branch is known so the click
+            // lands on the code view for what you're actually on.
+            let webUrl: string | null = null;
+            if (remoteUrl) {
+              let normalized = remoteUrl.trim();
+              if (normalized.startsWith('git@')) {
+                normalized = 'https://' + normalized.slice(4).replace(':', '/');
+              } else if (normalized.startsWith('ssh://git@')) {
+                normalized = 'https://' + normalized.slice('ssh://git@'.length);
+              }
+              if (normalized.endsWith('.git')) normalized = normalized.slice(0, -4);
+              if (/^https?:\/\//.test(normalized)) {
+                webUrl = branch && branch !== 'HEAD' ? `${normalized}/tree/${branch}` : normalized;
+              }
+            }
+
+            contextRepo = { id: match.r.id, name: match.r.name, branch, webUrl };
           }
         }
 
