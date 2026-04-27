@@ -1,12 +1,13 @@
 import type { Command } from 'commander';
 import type { ShadowConfig } from '../config/load-config.js';
 import type { WithDb } from './types.js';
-import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, chmodSync, rmSync, unlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { printOutput } from './output.js';
 import { log } from '../log.js';
-import { ensureHooksDeployed } from './hooks.js';
+import { ensureHooksDeployed, HOOK_SCRIPTS } from './hooks.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -398,4 +399,200 @@ ${endMarker}`;
         };
       }),
     );
+}
+
+/**
+ * Best-effort fast stop for `shadow uninstall`. Unlike `daemon stop`, we
+ * don't wait the full 65 s graceful drain — the user is removing Shadow,
+ * so dropping in-flight jobs is acceptable. Tries: bootout (or systemctl
+ * stop) → SIGTERM → wait 3 s → force-kill stragglers + port 3700.
+ */
+async function fastStopDaemon(): Promise<void> {
+  const { execSync } = await import('node:child_process');
+  if (process.platform === 'linux') {
+    try { execSync('systemctl --user stop shadow-daemon.service', { stdio: 'ignore' }); } catch { /* ok */ }
+  } else {
+    const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
+    if (existsSync(plistPath)) {
+      try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'ignore' }); } catch { /* ok */ }
+    }
+  }
+  // Give the daemon a moment to shut down on its own
+  await new Promise(r => setTimeout(r, 3_000));
+  // Force-kill any survivors (orphaned tsx wrappers, claude children, port holders)
+  try { execSync('pkill -9 -f "shadow/.*daemon/runtime"', { stdio: 'ignore' }); } catch { /* ok */ }
+  try { execSync('pkill -9 -f "claude.*--allowedTools.*mcp__shadow"', { stdio: 'ignore' }); } catch { /* ok */ }
+  try { execSync('lsof -ti :3700 | xargs kill -9', { stdio: 'ignore' }); } catch { /* ok */ }
+}
+
+export function registerUninstallCommand(program: Command, config: ShadowConfig): void {
+  program
+    .command('uninstall')
+    .description('remove Shadow integration with Claude (hooks, MCP, daemon). Use --purge --confirm to also delete ~/.shadow/.')
+    .option('--purge', 'also delete the data directory ~/.shadow/ (db, memories, soul). Requires --confirm.', false)
+    .option('--confirm', 'required with --purge to actually delete data', false)
+    .action(async (opts: { purge?: boolean; confirm?: boolean }) => {
+      const json = Boolean(program.opts().json);
+
+      if (opts.purge && !opts.confirm) {
+        printOutput({ error: '--purge requires --confirm (this deletes ~/.shadow/ permanently)' }, json);
+        return;
+      }
+
+      const removed: string[] = [];
+      const skipped: string[] = [];
+      const errors: string[] = [];
+
+      // 1. Stop daemon (fast, non-graceful — user is removing Shadow)
+      if (!json) log.cli('Stopping daemon…');
+      await fastStopDaemon();
+      removed.push('daemon (stopped)');
+
+      // 2. Remove platform service unit (launchd plist or systemd unit)
+      if (process.platform === 'darwin') {
+        const plistPath = resolve(homedir(), 'Library', 'LaunchAgents', 'com.shadow.daemon.plist');
+        if (existsSync(plistPath)) {
+          try { unlinkSync(plistPath); removed.push(`launchd plist (${plistPath})`); }
+          catch (e) { errors.push(`failed to remove ${plistPath}: ${(e as Error).message}`); }
+        } else {
+          skipped.push('launchd plist (not present)');
+        }
+      } else if (process.platform === 'linux') {
+        const { SYSTEMD_UNIT_PATH } = await import('./systemd.js');
+        if (existsSync(SYSTEMD_UNIT_PATH)) {
+          try {
+            const { execSync } = await import('node:child_process');
+            try { execSync('systemctl --user disable shadow-daemon.service', { stdio: 'ignore' }); } catch { /* ok */ }
+            unlinkSync(SYSTEMD_UNIT_PATH);
+            try { execSync('systemctl --user daemon-reload', { stdio: 'ignore' }); } catch { /* ok */ }
+            removed.push(`systemd unit (${SYSTEMD_UNIT_PATH})`);
+          } catch (e) { errors.push(`failed to remove ${SYSTEMD_UNIT_PATH}: ${(e as Error).message}`); }
+        } else {
+          skipped.push('systemd unit (not present)');
+        }
+      }
+
+      // 3. Strip Shadow section from ~/.claude/CLAUDE.md
+      const claudeMdPath = resolve(homedir(), '.claude', 'CLAUDE.md');
+      const startMarker = '<!-- SHADOW:START -->';
+      const endMarker = '<!-- SHADOW:END -->';
+      if (existsSync(claudeMdPath)) {
+        try {
+          const content = readFileSync(claudeMdPath, 'utf8');
+          const startIdx = content.indexOf(startMarker);
+          const endIdx = content.indexOf(endMarker);
+          if (startIdx !== -1 && endIdx !== -1) {
+            const cleaned = (content.slice(0, startIdx) + content.slice(endIdx + endMarker.length)).replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+            writeFileSync(claudeMdPath, cleaned, 'utf8');
+            removed.push(`CLAUDE.md SHADOW section (${claudeMdPath})`);
+          } else {
+            skipped.push('CLAUDE.md SHADOW section (markers not found)');
+          }
+        } catch (e) { errors.push(`failed to clean ${claudeMdPath}: ${(e as Error).message}`); }
+      } else {
+        skipped.push('CLAUDE.md (not present)');
+      }
+
+      // 4. Strip Shadow hooks + statusLine + mcpServers.shadow from settings.json
+      const settingsPath = resolve(homedir(), '.claude', 'settings.json');
+      if (existsSync(settingsPath)) {
+        try {
+          const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>;
+          let touched = false;
+
+          // Remove statusLine if it points at Shadow
+          const statusLine = settings.statusLine as { command?: string } | undefined;
+          if (statusLine?.command && statusLine.command.includes('/.shadow/') && statusLine.command.endsWith('statusline.sh')) {
+            delete settings.statusLine;
+            touched = true;
+          }
+
+          // Remove the 6 hook entries Shadow installs (matches by command path, not key)
+          const hooks = settings.hooks as Record<string, Array<{ hooks?: Array<{ command?: string }> }>> | undefined;
+          if (hooks && typeof hooks === 'object') {
+            const shadowHookSuffixes = ['session-start.sh', 'post-tool.sh', 'user-prompt.sh', 'stop.sh', 'stop-failure.sh', 'subagent-start.sh'];
+            for (const eventName of Object.keys(hooks)) {
+              const filtered = hooks[eventName].filter(group => {
+                const inner = group.hooks ?? [];
+                return !inner.some(h => typeof h.command === 'string' && h.command.includes('/.shadow/') && shadowHookSuffixes.some(s => (h.command as string).endsWith(s)));
+              });
+              if (filtered.length === 0) {
+                delete hooks[eventName];
+                touched = true;
+              } else if (filtered.length !== hooks[eventName].length) {
+                hooks[eventName] = filtered;
+                touched = true;
+              }
+            }
+            if (Object.keys(hooks).length === 0) delete settings.hooks;
+          }
+
+          // Remove mcpServers.shadow (legacy — newer installs use `claude mcp add`,
+          // but older ones may still have it here)
+          const mcpServers = settings.mcpServers as Record<string, unknown> | undefined;
+          if (mcpServers && 'shadow' in mcpServers) {
+            delete mcpServers.shadow;
+            if (Object.keys(mcpServers).length === 0) delete settings.mcpServers;
+            touched = true;
+          }
+
+          if (touched) {
+            writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+            removed.push(`Shadow entries from ${settingsPath}`);
+          } else {
+            skipped.push('settings.json (no Shadow entries found)');
+          }
+        } catch (e) { errors.push(`failed to clean ${settingsPath}: ${(e as Error).message}`); }
+      } else {
+        skipped.push('settings.json (not present)');
+      }
+
+      // 5. Unregister MCP server (`claude mcp remove`)
+      const claudeBin = config.claudeBin || 'claude';
+      const { execSync } = await import('node:child_process');
+      try {
+        execSync(`${claudeBin} mcp remove shadow -s user 2>&1`, { encoding: 'utf8', timeout: 10_000, stdio: 'pipe' });
+        removed.push('MCP server (claude mcp remove shadow)');
+      } catch {
+        // Either not registered, or claude CLI missing — both acceptable
+        skipped.push('MCP server (not registered or claude CLI missing)');
+      }
+
+      // 6. Remove deployed hook scripts from data dir (kept even if --purge is off,
+      //    so they don't fire pointing at a stopped daemon)
+      for (const script of HOOK_SCRIPTS) {
+        const scriptPath = resolve(config.resolvedDataDir, script);
+        if (existsSync(scriptPath)) {
+          try { unlinkSync(scriptPath); }
+          catch (e) { errors.push(`failed to remove ${scriptPath}: ${(e as Error).message}`); }
+        }
+      }
+      removed.push(`hook scripts in ${config.resolvedDataDir}`);
+
+      // 7. Optional: purge data directory
+      if (opts.purge) {
+        try {
+          rmSync(config.resolvedDataDir, { recursive: true, force: true });
+          removed.push(`data directory ${config.resolvedDataDir} (--purge)`);
+        } catch (e) {
+          errors.push(`failed to remove ${config.resolvedDataDir}: ${(e as Error).message}`);
+        }
+      }
+
+      const nextSteps = opts.purge
+        ? ['Restart Claude Code to drop the Shadow personality from the current session']
+        : [
+          `Data preserved at ${config.resolvedDataDir} — delete manually with: rm -rf ${config.resolvedDataDir}`,
+          'Restart Claude Code to drop the Shadow personality from the current session',
+        ];
+
+      printOutput({
+        ok: errors.length === 0,
+        removed,
+        skipped,
+        errors,
+        purged: Boolean(opts.purge),
+        nextSteps,
+      }, json);
+    });
 }

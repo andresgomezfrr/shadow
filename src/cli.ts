@@ -11,7 +11,7 @@ import { printOutput } from './cli/output.js';
 import { loadConfig } from './config/load-config.js';
 import type { ShadowDatabase } from './storage/index.js';
 
-import { registerInitCommand } from './cli/cmd-init.js';
+import { registerInitCommand, registerUninstallCommand } from './cli/cmd-init.js';
 import { registerEntityCommands } from './cli/cmd-entities.js';
 import { registerKnowledgeCommands } from './cli/cmd-knowledge.js';
 import { registerDaemonCommands } from './cli/cmd-daemon.js';
@@ -110,6 +110,7 @@ const withDb = async <T>(handler: (db: ShadowDatabase, json: boolean) => Promise
 };
 
 registerInitCommand(program, config, withDb);
+registerUninstallCommand(program, config);
 registerProfileCommands(program, config, withDb);
 registerEntityCommands(program, config, withDb);
 registerKnowledgeCommands(program, config, withDb);
