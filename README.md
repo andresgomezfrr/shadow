@@ -27,7 +27,6 @@ Locally. Yours. One SQLite file under `~/.shadow/`.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/andresgomezfrr/shadow/main/scripts/install.sh | bash
-shadow init
 claude   # start talking — Shadow is already listening
 ```
 
