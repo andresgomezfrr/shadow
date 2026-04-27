@@ -388,19 +388,36 @@ export function registerDaemonCommands(program: Command, config: ShadowConfig, w
       if (!json) log.cli('Starting daemon…');
       const startStartedAt = Date.now();
 
-      // Prefer bootstrap (clean load after bootout). Fall back to kickstart -k
-      // (force-restart) if bootstrap fails because the service is in a
-      // transitional state.
-      let bootstrapMode: 'bootstrap' | 'kickstart';
-      try {
-        execSync(`launchctl bootstrap gui/$(id -u) ${plistPath}`, { stdio: 'pipe' });
-        bootstrapMode = 'bootstrap';
-      } catch {
+      // bootstrap requires the service to be unloaded; kickstart -k requires
+      // it to be loaded — they're contradictory. After a graceful stop the
+      // service should be unloaded, so bootstrap is the right call. If it
+      // fails because launchd is still draining the previous incarnation,
+      // re-bootout and retry rather than falling through to kickstart -k
+      // (which would fail too, hiding the real cause).
+      let bootstrapMode: 'bootstrap' | 'kickstart' = 'bootstrap';
+      let bootstrapError: string | null = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          execSync(`launchctl kickstart -k gui/$(id -u)/com.shadow.daemon`, { stdio: 'pipe' });
-          bootstrapMode = 'kickstart';
+          execSync(`launchctl bootstrap gui/$(id -u) ${plistPath}`, { stdio: ['ignore', 'pipe', 'pipe'] });
+          bootstrapError = null;
+          break;
         } catch (e) {
-          printOutput({ error: `failed to restart launchd service: ${(e as Error).message}` }, json);
+          bootstrapError = (e as { stderr?: Buffer }).stderr?.toString().trim() || (e as Error).message;
+          if (attempt < 3) {
+            // Clear any stale loaded state, then retry
+            try { execSync(`launchctl bootout gui/$(id -u) ${plistPath}`, { stdio: 'ignore' }); } catch { /* ok */ }
+            await new Promise(r => setTimeout(r, 500));
+          }
+        }
+      }
+      if (bootstrapError) {
+        // Last-ditch recovery: kickstart -k (only works if service is somehow
+        // still loaded). If this fails, surface the original bootstrap error.
+        try {
+          execSync(`launchctl kickstart -k gui/$(id -u)/com.shadow.daemon`, { stdio: ['ignore', 'pipe', 'pipe'] });
+          bootstrapMode = 'kickstart';
+        } catch {
+          printOutput({ error: `failed to restart launchd service: ${bootstrapError}` }, json);
           return;
         }
       }
