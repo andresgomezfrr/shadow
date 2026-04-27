@@ -557,9 +557,10 @@ Run "shadow job list" to see available types.`);
       // Fetch tags + branches
       log.cli('Fetching updates...');
       try {
-        execSync('git fetch --tags origin', { cwd: projectRoot, stdio: 'pipe' });
-      } catch {
-        printOutput({ error: 'Failed to fetch from remote — check your network/SSH keys' }, json);
+        execSync('git fetch --tags origin', { cwd: projectRoot, stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (e) {
+        const stderr = (e as { stderr?: Buffer }).stderr?.toString().trim() || (e as Error).message;
+        printOutput({ error: `Failed to fetch from remote: ${stderr}` }, json);
         return;
       }
 
@@ -571,9 +572,10 @@ Run "shadow job list" to see available types.`);
         target = `origin/${opts.branch}`;
         targetLabel = opts.branch;
         try {
-          execFileSync('git', ['fetch', 'origin', opts.branch], { cwd: projectRoot, stdio: 'pipe' });
-        } catch {
-          printOutput({ error: `Branch '${opts.branch}' not found on remote` }, json);
+          execFileSync('git', ['fetch', 'origin', opts.branch], { cwd: projectRoot, stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (e) {
+          const stderr = (e as { stderr?: Buffer }).stderr?.toString().trim() || (e as Error).message;
+          printOutput({ error: `Failed to fetch branch '${opts.branch}': ${stderr}` }, json);
           return;
         }
       } else {
