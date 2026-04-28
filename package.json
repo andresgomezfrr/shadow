@@ -1,6 +1,6 @@
 {
   "name": "shadow",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Shadow — local-first memory, observation, and autonomy layer for Claude",
   "keywords": [

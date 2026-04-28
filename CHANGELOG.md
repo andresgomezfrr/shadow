@@ -8,6 +8,51 @@ migrations can land in any release (the daemon auto-applies them on restart).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-04-28
+
+**Uninstall path, daemon restart fix, defensive tests.**
+
+Patch release on top of v0.5.0. Adds a documented exit path
+(`shadow uninstall`), fixes two reliability bugs in the daemon and
+upgrade flows, and lands regression tests on the two areas that had
+shipped without coverage.
+
+### Added
+
+- **`shadow uninstall`** — removes the Claude integration end-to-end:
+  fast-stops the daemon, removes the launchd plist or systemd unit,
+  strips Shadow's hooks/statusLine/mcpServers entries from
+  `~/.claude/settings.json` (matching by command path so third-party
+  entries are left intact), removes the SHADOW section from
+  `~/.claude/CLAUDE.md`, unregisters the MCP server, and deletes the
+  deployed hook scripts. Data at `~/.shadow/` is preserved by default;
+  `--purge --confirm` also wipes it.
+
+### Fixed
+
+- **`shadow daemon restart` actually restarts.** The previous
+  implementation stopped the daemon but did not start it again,
+  leaving the user with a stopped service.
+- **`shadow upgrade` surfaces real git errors.** Network failures and
+  fetch errors are now reported verbatim instead of being collapsed
+  into a generic message.
+
+### Tests
+
+- 26 fixture tests for the `shadow uninstall` settings.json filter
+  (the no-friendly-fire scenario where third-party hooks/statusLine
+  must be preserved) and the CLAUDE.md SHADOW-section stripping.
+- 14 unit tests for the suggestion rank-decay protection from v0.5.0
+  audit `e0321be4` — high-impact suggestions on quiet projects must
+  not silently fall below visibility.
+
+### Docs / CI
+
+- README quickstart drops the redundant `shadow init` step (the
+  installer already runs it).
+- The install-smoke workflow re-enables the `push` trigger now that
+  the repository is public.
+
 ## [0.5.0] — 2026-04-24
 
 **Hardening, Linux parity, OSS hygiene, status line overhaul.**
