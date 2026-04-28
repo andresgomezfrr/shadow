@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { printOutput } from './output.js';
 import { log } from '../log.js';
 import { ensureHooksDeployed, HOOK_SCRIPTS } from './hooks.js';
+import { stripShadowFromSettings, stripShadowSectionFromClaudeMd } from './uninstall-helpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -474,16 +475,12 @@ export function registerUninstallCommand(program: Command, config: ShadowConfig)
 
       // 3. Strip Shadow section from ~/.claude/CLAUDE.md
       const claudeMdPath = resolve(homedir(), '.claude', 'CLAUDE.md');
-      const startMarker = '<!-- SHADOW:START -->';
-      const endMarker = '<!-- SHADOW:END -->';
       if (existsSync(claudeMdPath)) {
         try {
           const content = readFileSync(claudeMdPath, 'utf8');
-          const startIdx = content.indexOf(startMarker);
-          const endIdx = content.indexOf(endMarker);
-          if (startIdx !== -1 && endIdx !== -1) {
-            const cleaned = (content.slice(0, startIdx) + content.slice(endIdx + endMarker.length)).replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
-            writeFileSync(claudeMdPath, cleaned, 'utf8');
+          const result = stripShadowSectionFromClaudeMd(content);
+          if (result.removed) {
+            writeFileSync(claudeMdPath, result.content, 'utf8');
             removed.push(`CLAUDE.md SHADOW section (${claudeMdPath})`);
           } else {
             skipped.push('CLAUDE.md SHADOW section (markers not found)');
@@ -497,47 +494,10 @@ export function registerUninstallCommand(program: Command, config: ShadowConfig)
       const settingsPath = resolve(homedir(), '.claude', 'settings.json');
       if (existsSync(settingsPath)) {
         try {
-          const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>;
-          let touched = false;
-
-          // Remove statusLine if it points at Shadow
-          const statusLine = settings.statusLine as { command?: string } | undefined;
-          if (statusLine?.command && statusLine.command.includes('/.shadow/') && statusLine.command.endsWith('statusline.sh')) {
-            delete settings.statusLine;
-            touched = true;
-          }
-
-          // Remove the 6 hook entries Shadow installs (matches by command path, not key)
-          const hooks = settings.hooks as Record<string, Array<{ hooks?: Array<{ command?: string }> }>> | undefined;
-          if (hooks && typeof hooks === 'object') {
-            const shadowHookSuffixes = ['session-start.sh', 'post-tool.sh', 'user-prompt.sh', 'stop.sh', 'stop-failure.sh', 'subagent-start.sh'];
-            for (const eventName of Object.keys(hooks)) {
-              const filtered = hooks[eventName].filter(group => {
-                const inner = group.hooks ?? [];
-                return !inner.some(h => typeof h.command === 'string' && h.command.includes('/.shadow/') && shadowHookSuffixes.some(s => (h.command as string).endsWith(s)));
-              });
-              if (filtered.length === 0) {
-                delete hooks[eventName];
-                touched = true;
-              } else if (filtered.length !== hooks[eventName].length) {
-                hooks[eventName] = filtered;
-                touched = true;
-              }
-            }
-            if (Object.keys(hooks).length === 0) delete settings.hooks;
-          }
-
-          // Remove mcpServers.shadow (legacy — newer installs use `claude mcp add`,
-          // but older ones may still have it here)
-          const mcpServers = settings.mcpServers as Record<string, unknown> | undefined;
-          if (mcpServers && 'shadow' in mcpServers) {
-            delete mcpServers.shadow;
-            if (Object.keys(mcpServers).length === 0) delete settings.mcpServers;
-            touched = true;
-          }
-
-          if (touched) {
-            writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+          const parsed = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>;
+          const result = stripShadowFromSettings(parsed);
+          if (result.touched) {
+            writeFileSync(settingsPath, JSON.stringify(result.settings, null, 2) + '\n', 'utf8');
             removed.push(`Shadow entries from ${settingsPath}`);
           } else {
             skipped.push('settings.json (no Shadow entries found)');
