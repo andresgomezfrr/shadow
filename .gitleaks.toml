@@ -1,0 +1,26 @@
+title = "Gitleaks config for Shadow"
+
+# Extiende los detectores por defecto (Anthropic, OpenAI, AWS, GitHub, etc.)
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlist para archivos de documentación, ejemplo y configs"
+paths = [
+  '''(.*?)\.env\.example$''',
+  '''(.*?)\.gitleaks\.toml$''',
+  '''CHANGELOG\.md$''',
+  '''README\.md$''',
+  '''GUIDE\.md$''',
+  '''GETTING_STARTED\.md$''',
+  '''SECURITY\.md$''',
+  '''COMPLETED\.md$''',
+  '''package-lock\.json$''',
+  '''(.*?)/dist/(.*?)''',
+  '''(.*?)/node_modules/(.*?)''',
+]
+# False positives revisados manualmente — nombres de funciones largas dentro de
+# backticks markdown que la regla generic-api-key dispara por ruido contextual.
+commits = [
+  "56278fcb0e5a07b24d3c86f6e1776fed8c904947",
+]
