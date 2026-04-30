@@ -18,6 +18,7 @@ import { readRunPid, isPidAlive, clearRunPid } from '../runner/pidfile.js';
 import { JobQueue } from './job-queue.js';
 import { buildHandlerRegistry } from './job-handlers.js';
 import type { DaemonSharedState } from './job-handlers.js';
+import { Watchdog } from './watchdog.js';
 import { log } from '../log.js';
 
 // --- Types ---
@@ -346,6 +347,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
   let eventBusRef: EventBus | null = null;
   let runQueueRef: RunQueue | null = null;
   let jobQueueRef: JobQueue | null = null;
+  let watchdogRef: Watchdog | null = null;
 
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
@@ -491,6 +493,17 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     };
 
     writeDaemonState(config, state);
+
+    // Watchdog: event-loop lag + soft-timeout de sesión (memoria tension #12).
+    // Comparte la referencia de state.alerts: cualquier alert que el watchdog
+    // levante aparece en shadow_alerts / status line vía el tick principal.
+    watchdogRef = new Watchdog(state.alerts, Date.now(), {
+      enabled: config.watchdogEnabled,
+      eventLoopThresholdMs: config.watchdogEventLoopThresholdMs,
+      softTimeoutMs: config.watchdogSoftTimeoutMs,
+      tickIntervalMs: config.watchdogTickIntervalMs,
+    });
+    watchdogRef.start();
 
     // db is guaranteed non-null at this point (created in Step 2)
     const _db = db!;
@@ -1043,9 +1056,10 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     if (runQueueRef) try { runQueueRef.killAll(); } catch { /* cleanup */ }
     killAllActiveChildren(); // safety net
 
-    // Step 7b: Shutdown watcher + SSE
+    // Step 7b: Shutdown watcher + SSE + watchdog
     if (repoWatcherRef) repoWatcherRef.stopAll();
     if (eventBusRef) eventBusRef.shutdown();
+    if (watchdogRef) watchdogRef.stop();
 
     // Step 8: Cleanup. Order matters — stop accepting HTTP requests BEFORE closing
     // the DB, otherwise a late request reaches the handler after the SQLite connection

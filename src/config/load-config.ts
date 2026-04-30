@@ -84,6 +84,10 @@ export function loadConfig(): ShadowConfig {
     suggestDeepDormantThresholdDays: process.env.SHADOW_SUGGEST_DEEP_DORMANT_THRESHOLD_DAYS,
     suggestProjectMinGapDays: process.env.SHADOW_SUGGEST_PROJECT_MIN_GAP_DAYS,
     projectProfileMinGapMs: process.env.SHADOW_PROJECT_PROFILE_MIN_GAP_MS,
+    watchdogEnabled: process.env.SHADOW_WATCHDOG_ENABLED,
+    watchdogEventLoopThresholdMs: process.env.SHADOW_WATCHDOG_EVENT_LOOP_THRESHOLD_MS,
+    watchdogSoftTimeoutMs: process.env.SHADOW_WATCHDOG_SOFT_TIMEOUT_MS,
+    watchdogTickIntervalMs: process.env.SHADOW_WATCHDOG_TICK_INTERVAL_MS,
   });
 
   const resolvedDataDir = resolveDataDir(parsed.dataDir);

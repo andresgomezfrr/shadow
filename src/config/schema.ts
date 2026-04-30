@@ -135,6 +135,10 @@ export const ConfigSchema = z.object({
   suggestDeepDormantThresholdDays: z.coerce.number().int().min(1).default(14),
   suggestProjectMinGapDays: z.coerce.number().int().min(1).default(7),
   projectProfileMinGapMs: z.coerce.number().int().positive().default(4 * 60 * 60 * 1000),
+  watchdogEnabled: z.coerce.boolean().default(true),
+  watchdogEventLoopThresholdMs: z.coerce.number().int().positive().default(30_000),
+  watchdogSoftTimeoutMs: z.coerce.number().int().positive().default(6 * 60 * 60 * 1000),
+  watchdogTickIntervalMs: z.coerce.number().int().positive().default(60_000),
 });
 
 /**
