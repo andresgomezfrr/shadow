@@ -1,0 +1,24 @@
+name: Evals
+
+on:
+  schedule:
+    # 02:00 UTC nightly — fuera de horario activo
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  eval-offline:
+    name: Eval baseline (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - name: Install deps
+        run: npm ci
+      - name: Run evals
+        run: npm run eval -- --json
+        # No fail on missing-snapshot; el runner solo sale con 1 si hay FAIL real.
