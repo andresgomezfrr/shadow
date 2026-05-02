@@ -1,0 +1,734 @@
+[
+  {
+    "type": "index",
+    "name": "idx_audit_action",
+    "tbl_name": "audit_events",
+    "sql": "CREATE INDEX idx_audit_action ON audit_events(action, created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_chronicle_kind",
+    "tbl_name": "chronicle_entries",
+    "sql": "CREATE INDEX idx_chronicle_kind ON chronicle_entries(kind, created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_chronicle_milestone_unique",
+    "tbl_name": "chronicle_entries",
+    "sql": "CREATE UNIQUE INDEX idx_chronicle_milestone_unique ON chronicle_entries(milestone_key) WHERE kind = 'milestone'"
+  },
+  {
+    "type": "index",
+    "name": "idx_chronicle_tier_unique",
+    "tbl_name": "chronicle_entries",
+    "sql": "CREATE UNIQUE INDEX idx_chronicle_tier_unique ON chronicle_entries(tier) WHERE kind = 'tier_lore'"
+  },
+  {
+    "type": "index",
+    "name": "idx_contacts_team",
+    "tbl_name": "contacts",
+    "sql": "CREATE INDEX idx_contacts_team ON contacts(team)"
+  },
+  {
+    "type": "index",
+    "name": "idx_digests_kind",
+    "tbl_name": "digests",
+    "sql": "CREATE INDEX idx_digests_kind ON digests(kind, period_start DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_digests_kind_period_unique",
+    "tbl_name": "digests",
+    "sql": "CREATE UNIQUE INDEX idx_digests_kind_period_unique ON digests(kind, period_start)"
+  },
+  {
+    "type": "index",
+    "name": "idx_enrichment_entity",
+    "tbl_name": "enrichment_cache",
+    "sql": "CREATE INDEX idx_enrichment_entity ON enrichment_cache(entity_id, entity_type, created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_enrichment_expiry",
+    "tbl_name": "enrichment_cache",
+    "sql": "CREATE INDEX idx_enrichment_expiry ON enrichment_cache(expires_at, stale)"
+  },
+  {
+    "type": "index",
+    "name": "idx_enrichment_hash",
+    "tbl_name": "enrichment_cache",
+    "sql": "CREATE INDEX idx_enrichment_hash ON enrichment_cache(content_hash)"
+  },
+  {
+    "type": "index",
+    "name": "idx_enrichment_reported",
+    "tbl_name": "enrichment_cache",
+    "sql": "CREATE INDEX idx_enrichment_reported ON enrichment_cache(reported)"
+  },
+  {
+    "type": "index",
+    "name": "idx_enrichment_source",
+    "tbl_name": "enrichment_cache",
+    "sql": "CREATE INDEX idx_enrichment_source ON enrichment_cache(source)"
+  },
+  {
+    "type": "index",
+    "name": "idx_entity_links_target",
+    "tbl_name": "entity_links",
+    "sql": "CREATE INDEX idx_entity_links_target ON entity_links(entity_type, entity_id, source_table)"
+  },
+  {
+    "type": "index",
+    "name": "idx_entity_rel_pair",
+    "tbl_name": "entity_relations",
+    "sql": "CREATE UNIQUE INDEX idx_entity_rel_pair ON entity_relations(source_type, source_id, relation, target_type, target_id)"
+  },
+  {
+    "type": "index",
+    "name": "idx_entity_rel_source",
+    "tbl_name": "entity_relations",
+    "sql": "CREATE INDEX idx_entity_rel_source ON entity_relations(source_type, source_id)"
+  },
+  {
+    "type": "index",
+    "name": "idx_entity_rel_target",
+    "tbl_name": "entity_relations",
+    "sql": "CREATE INDEX idx_entity_rel_target ON entity_relations(target_type, target_id)"
+  },
+  {
+    "type": "index",
+    "name": "idx_event_queue_dedup",
+    "tbl_name": "event_queue",
+    "sql": "CREATE INDEX idx_event_queue_dedup ON event_queue (kind, json_extract(payload_json, '$.targetId'), created_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_events_pending",
+    "tbl_name": "event_queue",
+    "sql": "CREATE INDEX idx_events_pending ON event_queue(delivered, priority DESC, created_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_feedback_category",
+    "tbl_name": "feedback",
+    "sql": "CREATE INDEX idx_feedback_category ON feedback(target_kind, category, created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_feedback_target",
+    "tbl_name": "feedback",
+    "sql": "CREATE INDEX idx_feedback_target ON feedback(target_kind, created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_feedback_target_id",
+    "tbl_name": "feedback",
+    "sql": "CREATE INDEX idx_feedback_target_id ON feedback(target_kind, target_id, action)"
+  },
+  {
+    "type": "index",
+    "name": "idx_feedback_thumbs",
+    "tbl_name": "feedback",
+    "sql": "CREATE INDEX idx_feedback_thumbs ON feedback(target_kind, action, created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_interactions_created",
+    "tbl_name": "interactions",
+    "sql": "CREATE INDEX idx_interactions_created ON interactions(created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_jobs_queue",
+    "tbl_name": "jobs",
+    "sql": "CREATE INDEX idx_jobs_queue ON jobs(status, priority DESC, created_at ASC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_jobs_status",
+    "tbl_name": "jobs",
+    "sql": "CREATE INDEX idx_jobs_status ON jobs(status, created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_jobs_type",
+    "tbl_name": "jobs",
+    "sql": "CREATE INDEX idx_jobs_type ON jobs(type, started_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_llm_usage_created",
+    "tbl_name": "llm_usage",
+    "sql": "CREATE INDEX idx_llm_usage_created ON llm_usage(created_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_llm_usage_daily_date",
+    "tbl_name": "llm_usage_daily",
+    "sql": "CREATE INDEX idx_llm_usage_daily_date ON llm_usage_daily(date)"
+  },
+  {
+    "type": "index",
+    "name": "idx_memories_created",
+    "tbl_name": "memories",
+    "sql": "CREATE INDEX idx_memories_created ON memories(created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_memories_kind",
+    "tbl_name": "memories",
+    "sql": "CREATE INDEX idx_memories_kind ON memories(kind)"
+  },
+  {
+    "type": "index",
+    "name": "idx_memories_layer",
+    "tbl_name": "memories",
+    "sql": "CREATE INDEX idx_memories_layer ON memories(layer, archived_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_memories_scope",
+    "tbl_name": "memories",
+    "sql": "CREATE INDEX idx_memories_scope ON memories(scope, repo_id)"
+  },
+  {
+    "type": "index",
+    "name": "idx_memories_source",
+    "tbl_name": "memories",
+    "sql": "CREATE INDEX idx_memories_source ON memories(source_type, source_id)"
+  },
+  {
+    "type": "index",
+    "name": "idx_memories_type",
+    "tbl_name": "memories",
+    "sql": "CREATE INDEX idx_memories_type ON memories(memory_type, layer, archived_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_obs_metrics_date",
+    "tbl_name": "observability_metrics",
+    "sql": "CREATE INDEX idx_obs_metrics_date ON observability_metrics(snapshot_date)"
+  },
+  {
+    "type": "index",
+    "name": "idx_obs_metrics_key",
+    "tbl_name": "observability_metrics",
+    "sql": "CREATE INDEX idx_obs_metrics_key ON observability_metrics(metric_key)"
+  },
+  {
+    "type": "index",
+    "name": "idx_observations_created_status",
+    "tbl_name": "observations",
+    "sql": "CREATE INDEX idx_observations_created_status ON observations(status, created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_observations_dedup",
+    "tbl_name": "observations",
+    "sql": "CREATE INDEX idx_observations_dedup ON observations(repo_id, kind, title)"
+  },
+  {
+    "type": "index",
+    "name": "idx_observations_last_notified_at",
+    "tbl_name": "observations",
+    "sql": "CREATE INDEX idx_observations_last_notified_at ON observations(last_notified_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_observations_repo",
+    "tbl_name": "observations",
+    "sql": "CREATE INDEX idx_observations_repo ON observations(repo_id, created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_observations_source",
+    "tbl_name": "observations",
+    "sql": "CREATE INDEX idx_observations_source ON observations(source_kind, source_id)"
+  },
+  {
+    "type": "index",
+    "name": "idx_observations_status",
+    "tbl_name": "observations",
+    "sql": "CREATE INDEX idx_observations_status ON observations(status, last_seen_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_observations_unprocessed",
+    "tbl_name": "observations",
+    "sql": "CREATE INDEX idx_observations_unprocessed ON observations(processed, created_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_projects_status",
+    "tbl_name": "projects",
+    "sql": "CREATE INDEX idx_projects_status ON projects(status)"
+  },
+  {
+    "type": "index",
+    "name": "idx_runs_status",
+    "tbl_name": "runs",
+    "sql": "CREATE INDEX idx_runs_status ON runs(status, created_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_suggestions_kind",
+    "tbl_name": "suggestions",
+    "sql": "CREATE INDEX idx_suggestions_kind ON suggestions(kind)"
+  },
+  {
+    "type": "index",
+    "name": "idx_suggestions_status",
+    "tbl_name": "suggestions",
+    "sql": "CREATE INDEX idx_suggestions_status ON suggestions(status, created_at DESC)"
+  },
+  {
+    "type": "index",
+    "name": "idx_systems_kind",
+    "tbl_name": "systems",
+    "sql": "CREATE INDEX idx_systems_kind ON systems(kind)"
+  },
+  {
+    "type": "index",
+    "name": "idx_task_repo_links_repo",
+    "tbl_name": "task_repo_links",
+    "sql": "CREATE INDEX idx_task_repo_links_repo ON task_repo_links(repo_id)"
+  },
+  {
+    "type": "index",
+    "name": "idx_tasks_status",
+    "tbl_name": "tasks",
+    "sql": "CREATE INDEX idx_tasks_status ON tasks(status)"
+  },
+  {
+    "type": "index",
+    "name": "idx_unlockables_tier",
+    "tbl_name": "unlockables",
+    "sql": "CREATE INDEX idx_unlockables_tier ON unlockables(tier_required, unlocked)"
+  },
+  {
+    "type": "table",
+    "name": "audit_events",
+    "tbl_name": "audit_events",
+    "sql": "CREATE TABLE audit_events ( id TEXT PRIMARY KEY, actor TEXT NOT NULL DEFAULT 'shadow', interface TEXT NOT NULL, action TEXT NOT NULL, target_kind TEXT, target_id TEXT, detail_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "bond_daily_cache",
+    "tbl_name": "bond_daily_cache",
+    "sql": "CREATE TABLE bond_daily_cache ( cache_key TEXT PRIMARY KEY, body_md TEXT NOT NULL, model TEXT NOT NULL, generated_at TEXT NOT NULL, expires_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "chronicle_entries",
+    "tbl_name": "chronicle_entries",
+    "sql": "CREATE TABLE chronicle_entries ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, tier INTEGER, milestone_key TEXT, title TEXT NOT NULL, body_md TEXT NOT NULL, model TEXT NOT NULL, created_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "contacts",
+    "tbl_name": "contacts",
+    "sql": "CREATE TABLE contacts ( id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT, team TEXT, email TEXT, slack_id TEXT, github_handle TEXT, notes_md TEXT, preferred_channel TEXT, last_mentioned_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "digests",
+    "tbl_name": "digests",
+    "sql": "CREATE TABLE digests ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL, content_md TEXT NOT NULL, model TEXT NOT NULL DEFAULT 'sonnet', tokens_used INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "type": "table",
+    "name": "enrichment_cache",
+    "tbl_name": "enrichment_cache",
+    "sql": "CREATE TABLE enrichment_cache ( id TEXT PRIMARY KEY, source TEXT NOT NULL, entity_type TEXT, entity_id TEXT, entity_name TEXT, summary TEXT NOT NULL, detail_json TEXT NOT NULL DEFAULT '{}', content_hash TEXT NOT NULL, reported INTEGER NOT NULL DEFAULT 0, stale INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, expires_at TEXT , ttl_category TEXT, refresh_count INTEGER NOT NULL DEFAULT 0, change_count INTEGER NOT NULL DEFAULT 0, access_count INTEGER NOT NULL DEFAULT 0, last_consumed_at TEXT)"
+  },
+  {
+    "type": "table",
+    "name": "enrichment_vectors",
+    "tbl_name": "enrichment_vectors",
+    "sql": "CREATE VIRTUAL TABLE enrichment_vectors USING vec0( id TEXT PRIMARY KEY, embedding FLOAT[384] )"
+  },
+  {
+    "type": "table",
+    "name": "enrichment_vectors_chunks",
+    "tbl_name": "enrichment_vectors_chunks",
+    "sql": "CREATE TABLE \"enrichment_vectors_chunks\"(chunk_id INTEGER PRIMARY KEY AUTOINCREMENT,size INTEGER NOT NULL,validity BLOB NOT NULL,rowids BLOB NOT NULL)"
+  },
+  {
+    "type": "table",
+    "name": "enrichment_vectors_info",
+    "tbl_name": "enrichment_vectors_info",
+    "sql": "CREATE TABLE \"enrichment_vectors_info\" (key text primary key, value any)"
+  },
+  {
+    "type": "table",
+    "name": "enrichment_vectors_rowids",
+    "tbl_name": "enrichment_vectors_rowids",
+    "sql": "CREATE TABLE \"enrichment_vectors_rowids\"(rowid INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,chunk_id INTEGER,chunk_offset INTEGER)"
+  },
+  {
+    "type": "table",
+    "name": "enrichment_vectors_vector_chunks00",
+    "tbl_name": "enrichment_vectors_vector_chunks00",
+    "sql": "CREATE TABLE \"enrichment_vectors_vector_chunks00\"(rowid PRIMARY KEY,vectors BLOB NOT NULL)"
+  },
+  {
+    "type": "table",
+    "name": "entity_links",
+    "tbl_name": "entity_links",
+    "sql": "CREATE TABLE entity_links ( source_table TEXT NOT NULL, source_id TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, PRIMARY KEY (source_table, source_id, entity_type, entity_id) )"
+  },
+  {
+    "type": "table",
+    "name": "entity_relations",
+    "tbl_name": "entity_relations",
+    "sql": "CREATE TABLE entity_relations ( id TEXT PRIMARY KEY, source_type TEXT NOT NULL, source_id TEXT NOT NULL, relation TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT NOT NULL, confidence REAL NOT NULL DEFAULT 0.8, source_origin TEXT NOT NULL DEFAULT 'auto', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "event_queue",
+    "tbl_name": "event_queue",
+    "sql": "CREATE TABLE event_queue ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 5, payload_json TEXT NOT NULL DEFAULT '{}', delivered INTEGER NOT NULL DEFAULT 0, delivered_at TEXT, created_at TEXT NOT NULL , read_at TEXT)"
+  },
+  {
+    "type": "table",
+    "name": "feedback",
+    "tbl_name": "feedback",
+    "sql": "CREATE TABLE feedback ( id TEXT PRIMARY KEY, target_kind TEXT NOT NULL, target_id TEXT NOT NULL, action TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL , category TEXT)"
+  },
+  {
+    "type": "table",
+    "name": "interactions",
+    "tbl_name": "interactions",
+    "sql": "CREATE TABLE interactions ( id TEXT PRIMARY KEY, interface TEXT NOT NULL, kind TEXT NOT NULL, input_summary TEXT, output_summary TEXT, sentiment TEXT, topics_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "jobs",
+    "tbl_name": "jobs",
+    "sql": "CREATE TABLE jobs ( id TEXT PRIMARY KEY, type TEXT NOT NULL, phase TEXT NOT NULL DEFAULT 'running', phases_json TEXT NOT NULL DEFAULT '[]', activity TEXT, status TEXT NOT NULL DEFAULT 'running', llm_calls INTEGER NOT NULL DEFAULT 0, tokens_used INTEGER NOT NULL DEFAULT 0, result_json TEXT NOT NULL DEFAULT '{}', duration_ms INTEGER, started_at TEXT NOT NULL, finished_at TEXT, created_at TEXT NOT NULL , priority INTEGER NOT NULL DEFAULT 5, trigger_source TEXT NOT NULL DEFAULT 'schedule')"
+  },
+  {
+    "type": "table",
+    "name": "llm_usage",
+    "tbl_name": "llm_usage",
+    "sql": "CREATE TABLE llm_usage ( id TEXT PRIMARY KEY, source TEXT NOT NULL, source_id TEXT, model TEXT NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "llm_usage_daily",
+    "tbl_name": "llm_usage_daily",
+    "sql": "CREATE TABLE llm_usage_daily ( date TEXT NOT NULL, source TEXT NOT NULL, model TEXT NOT NULL, input_tokens_sum INTEGER NOT NULL DEFAULT 0, output_tokens_sum INTEGER NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (date, source, model) )"
+  },
+  {
+    "type": "table",
+    "name": "memories",
+    "tbl_name": "memories",
+    "sql": "CREATE TABLE memories ( id TEXT PRIMARY KEY, repo_id TEXT, layer TEXT NOT NULL, scope TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body_md TEXT NOT NULL, tags_json TEXT NOT NULL DEFAULT '[]', source_type TEXT NOT NULL, confidence_score INTEGER NOT NULL DEFAULT 70, relevance_score REAL NOT NULL DEFAULT 0.5, access_count INTEGER NOT NULL DEFAULT 0, last_accessed_at TEXT, promoted_from TEXT, demoted_to TEXT, expires_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT, contact_id TEXT REFERENCES contacts(id), system_id TEXT REFERENCES systems(id), source_id TEXT, entities_json TEXT NOT NULL DEFAULT '[]', memory_type TEXT NOT NULL DEFAULT 'unclassified', valid_from TEXT, valid_until TEXT, source_memory_ids_json TEXT NOT NULL DEFAULT '[]', enforced_at INTEGER, FOREIGN KEY(repo_id) REFERENCES repos(id) )"
+  },
+  {
+    "type": "table",
+    "name": "memories_fts",
+    "tbl_name": "memories_fts",
+    "sql": "CREATE VIRTUAL TABLE memories_fts USING fts5( title, body_md, tags_text, content='memories', content_rowid='rowid', tokenize='unicode61' )"
+  },
+  {
+    "type": "table",
+    "name": "memories_fts_config",
+    "tbl_name": "memories_fts_config",
+    "sql": "CREATE TABLE 'memories_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+  },
+  {
+    "type": "table",
+    "name": "memories_fts_data",
+    "tbl_name": "memories_fts_data",
+    "sql": "CREATE TABLE 'memories_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+  },
+  {
+    "type": "table",
+    "name": "memories_fts_docsize",
+    "tbl_name": "memories_fts_docsize",
+    "sql": "CREATE TABLE 'memories_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+  },
+  {
+    "type": "table",
+    "name": "memories_fts_idx",
+    "tbl_name": "memories_fts_idx",
+    "sql": "CREATE TABLE 'memories_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+  },
+  {
+    "type": "table",
+    "name": "memory_vectors",
+    "tbl_name": "memory_vectors",
+    "sql": "CREATE VIRTUAL TABLE memory_vectors USING vec0( id TEXT PRIMARY KEY, embedding FLOAT[384] )"
+  },
+  {
+    "type": "table",
+    "name": "memory_vectors_chunks",
+    "tbl_name": "memory_vectors_chunks",
+    "sql": "CREATE TABLE \"memory_vectors_chunks\"(chunk_id INTEGER PRIMARY KEY AUTOINCREMENT,size INTEGER NOT NULL,validity BLOB NOT NULL,rowids BLOB NOT NULL)"
+  },
+  {
+    "type": "table",
+    "name": "memory_vectors_info",
+    "tbl_name": "memory_vectors_info",
+    "sql": "CREATE TABLE \"memory_vectors_info\" (key text primary key, value any)"
+  },
+  {
+    "type": "table",
+    "name": "memory_vectors_rowids",
+    "tbl_name": "memory_vectors_rowids",
+    "sql": "CREATE TABLE \"memory_vectors_rowids\"(rowid INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,chunk_id INTEGER,chunk_offset INTEGER)"
+  },
+  {
+    "type": "table",
+    "name": "memory_vectors_vector_chunks00",
+    "tbl_name": "memory_vectors_vector_chunks00",
+    "sql": "CREATE TABLE \"memory_vectors_vector_chunks00\"(rowid PRIMARY KEY,vectors BLOB NOT NULL)"
+  },
+  {
+    "type": "table",
+    "name": "observability_metrics",
+    "tbl_name": "observability_metrics",
+    "sql": "CREATE TABLE observability_metrics ( id TEXT PRIMARY KEY, snapshot_date TEXT NOT NULL, -- YYYY-MM-DD metric_key TEXT NOT NULL, -- e.g. 'bond.depth', 'memories.layer.core', 'dedup.suggest.hit_rate' metric_value REAL NOT NULL, context_json TEXT DEFAULT '{}', created_at TEXT NOT NULL, UNIQUE (snapshot_date, metric_key) )"
+  },
+  {
+    "type": "table",
+    "name": "observation_vectors",
+    "tbl_name": "observation_vectors",
+    "sql": "CREATE VIRTUAL TABLE observation_vectors USING vec0( id TEXT PRIMARY KEY, embedding FLOAT[384] )"
+  },
+  {
+    "type": "table",
+    "name": "observation_vectors_chunks",
+    "tbl_name": "observation_vectors_chunks",
+    "sql": "CREATE TABLE \"observation_vectors_chunks\"(chunk_id INTEGER PRIMARY KEY AUTOINCREMENT,size INTEGER NOT NULL,validity BLOB NOT NULL,rowids BLOB NOT NULL)"
+  },
+  {
+    "type": "table",
+    "name": "observation_vectors_info",
+    "tbl_name": "observation_vectors_info",
+    "sql": "CREATE TABLE \"observation_vectors_info\" (key text primary key, value any)"
+  },
+  {
+    "type": "table",
+    "name": "observation_vectors_rowids",
+    "tbl_name": "observation_vectors_rowids",
+    "sql": "CREATE TABLE \"observation_vectors_rowids\"(rowid INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,chunk_id INTEGER,chunk_offset INTEGER)"
+  },
+  {
+    "type": "table",
+    "name": "observation_vectors_vector_chunks00",
+    "tbl_name": "observation_vectors_vector_chunks00",
+    "sql": "CREATE TABLE \"observation_vectors_vector_chunks00\"(rowid PRIMARY KEY,vectors BLOB NOT NULL)"
+  },
+  {
+    "type": "table",
+    "name": "observations",
+    "tbl_name": "observations",
+    "sql": "CREATE TABLE observations ( id TEXT PRIMARY KEY, repo_id TEXT NOT NULL, kind TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'info', title TEXT NOT NULL, detail_json TEXT NOT NULL DEFAULT '{}', processed INTEGER NOT NULL DEFAULT 0, suggestion_id TEXT, created_at TEXT NOT NULL, source_kind TEXT NOT NULL DEFAULT 'repo', source_id TEXT, votes INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'active', first_seen_at TEXT, last_seen_at TEXT, context_json TEXT NOT NULL DEFAULT '{}', repo_ids_json TEXT NOT NULL DEFAULT '[]', entities_json TEXT NOT NULL DEFAULT '[]', last_notified_at TEXT DEFAULT NULL, FOREIGN KEY(repo_id) REFERENCES repos(id) )"
+  },
+  {
+    "type": "table",
+    "name": "observations_fts",
+    "tbl_name": "observations_fts",
+    "sql": "CREATE VIRTUAL TABLE observations_fts USING fts5( title, detail_text, content='observations', content_rowid='rowid', tokenize='unicode61' )"
+  },
+  {
+    "type": "table",
+    "name": "observations_fts_config",
+    "tbl_name": "observations_fts_config",
+    "sql": "CREATE TABLE 'observations_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+  },
+  {
+    "type": "table",
+    "name": "observations_fts_data",
+    "tbl_name": "observations_fts_data",
+    "sql": "CREATE TABLE 'observations_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+  },
+  {
+    "type": "table",
+    "name": "observations_fts_docsize",
+    "tbl_name": "observations_fts_docsize",
+    "sql": "CREATE TABLE 'observations_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+  },
+  {
+    "type": "table",
+    "name": "observations_fts_idx",
+    "tbl_name": "observations_fts_idx",
+    "sql": "CREATE TABLE 'observations_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+  },
+  {
+    "type": "table",
+    "name": "projects",
+    "tbl_name": "projects",
+    "sql": "CREATE TABLE projects ( id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT, kind TEXT NOT NULL DEFAULT 'long-term', status TEXT NOT NULL DEFAULT 'active', repo_ids_json TEXT NOT NULL DEFAULT '[]', system_ids_json TEXT NOT NULL DEFAULT '[]', contact_ids_json TEXT NOT NULL DEFAULT '[]', start_date TEXT, end_date TEXT, notes_md TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')) , context_md TEXT, context_updated_at TEXT)"
+  },
+  {
+    "type": "table",
+    "name": "repos",
+    "tbl_name": "repos",
+    "sql": "CREATE TABLE repos ( id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE, remote_url TEXT, default_branch TEXT NOT NULL DEFAULT 'main', language_hint TEXT, test_command TEXT, lint_command TEXT, build_command TEXT, last_observed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL , last_fetched_at TEXT, context_md TEXT, context_updated_at TEXT, last_remote_head TEXT)"
+  },
+  {
+    "type": "table",
+    "name": "runs",
+    "tbl_name": "runs",
+    "sql": "CREATE TABLE runs ( id TEXT PRIMARY KEY, repo_id TEXT NOT NULL, suggestion_id TEXT, kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', prompt TEXT NOT NULL, result_summary_md TEXT, error_summary TEXT, artifact_dir TEXT, started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL, repo_ids_json TEXT NOT NULL DEFAULT '[]', session_id TEXT, parent_run_id TEXT, worktree_path TEXT, archived INTEGER NOT NULL DEFAULT 0, confidence TEXT, doubts_json TEXT NOT NULL DEFAULT '[]', pr_url TEXT, snapshot_ref TEXT, result_ref TEXT, diff_stat TEXT, verification_json TEXT NOT NULL DEFAULT '{}', verified TEXT, closed_note TEXT, activity TEXT, task_id TEXT, outcome TEXT, auto_eval_at TEXT, FOREIGN KEY(repo_id) REFERENCES repos(id), FOREIGN KEY(suggestion_id) REFERENCES suggestions(id) )"
+  },
+  {
+    "type": "table",
+    "name": "schema_migrations",
+    "tbl_name": "schema_migrations",
+    "sql": "CREATE TABLE schema_migrations ( version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "suggestion_vectors",
+    "tbl_name": "suggestion_vectors",
+    "sql": "CREATE VIRTUAL TABLE suggestion_vectors USING vec0( id TEXT PRIMARY KEY, embedding FLOAT[384] )"
+  },
+  {
+    "type": "table",
+    "name": "suggestion_vectors_chunks",
+    "tbl_name": "suggestion_vectors_chunks",
+    "sql": "CREATE TABLE \"suggestion_vectors_chunks\"(chunk_id INTEGER PRIMARY KEY AUTOINCREMENT,size INTEGER NOT NULL,validity BLOB NOT NULL,rowids BLOB NOT NULL)"
+  },
+  {
+    "type": "table",
+    "name": "suggestion_vectors_info",
+    "tbl_name": "suggestion_vectors_info",
+    "sql": "CREATE TABLE \"suggestion_vectors_info\" (key text primary key, value any)"
+  },
+  {
+    "type": "table",
+    "name": "suggestion_vectors_rowids",
+    "tbl_name": "suggestion_vectors_rowids",
+    "sql": "CREATE TABLE \"suggestion_vectors_rowids\"(rowid INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,chunk_id INTEGER,chunk_offset INTEGER)"
+  },
+  {
+    "type": "table",
+    "name": "suggestion_vectors_vector_chunks00",
+    "tbl_name": "suggestion_vectors_vector_chunks00",
+    "sql": "CREATE TABLE \"suggestion_vectors_vector_chunks00\"(rowid PRIMARY KEY,vectors BLOB NOT NULL)"
+  },
+  {
+    "type": "table",
+    "name": "suggestions",
+    "tbl_name": "suggestions",
+    "sql": "CREATE TABLE suggestions ( id TEXT PRIMARY KEY, repo_id TEXT, source_observation_id TEXT, kind TEXT NOT NULL, title TEXT NOT NULL, summary_md TEXT NOT NULL, reasoning_md TEXT, impact_score INTEGER NOT NULL DEFAULT 3, confidence_score INTEGER NOT NULL DEFAULT 70, risk_score INTEGER NOT NULL DEFAULT 2, status TEXT NOT NULL DEFAULT 'pending', feedback_note TEXT, shown_at TEXT, resolved_at TEXT, created_at TEXT NOT NULL, expires_at TEXT, repo_ids_json TEXT NOT NULL DEFAULT '[]', entities_json TEXT NOT NULL DEFAULT '[]', revalidation_count INTEGER NOT NULL DEFAULT 0, last_revalidated_at TEXT, revalidation_verdict TEXT, revalidation_note TEXT, effort TEXT DEFAULT 'medium', FOREIGN KEY(repo_id) REFERENCES repos(id), FOREIGN KEY(source_observation_id) REFERENCES observations(id) )"
+  },
+  {
+    "type": "table",
+    "name": "suggestions_fts",
+    "tbl_name": "suggestions_fts",
+    "sql": "CREATE VIRTUAL TABLE suggestions_fts USING fts5( title, summary_md, content='suggestions', content_rowid='rowid', tokenize='unicode61' )"
+  },
+  {
+    "type": "table",
+    "name": "suggestions_fts_config",
+    "tbl_name": "suggestions_fts_config",
+    "sql": "CREATE TABLE 'suggestions_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+  },
+  {
+    "type": "table",
+    "name": "suggestions_fts_data",
+    "tbl_name": "suggestions_fts_data",
+    "sql": "CREATE TABLE 'suggestions_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+  },
+  {
+    "type": "table",
+    "name": "suggestions_fts_docsize",
+    "tbl_name": "suggestions_fts_docsize",
+    "sql": "CREATE TABLE 'suggestions_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+  },
+  {
+    "type": "table",
+    "name": "suggestions_fts_idx",
+    "tbl_name": "suggestions_fts_idx",
+    "sql": "CREATE TABLE 'suggestions_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+  },
+  {
+    "type": "table",
+    "name": "systems",
+    "tbl_name": "systems",
+    "sql": "CREATE TABLE systems ( id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, url TEXT, description TEXT, access_method TEXT, config_json TEXT NOT NULL DEFAULT '{}', health_check TEXT, last_checked_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL , logs_location TEXT, deploy_method TEXT, debug_guide TEXT, related_repos_json TEXT NOT NULL DEFAULT '[]')"
+  },
+  {
+    "type": "table",
+    "name": "task_repo_links",
+    "tbl_name": "task_repo_links",
+    "sql": "CREATE TABLE task_repo_links ( task_id TEXT NOT NULL, repo_id TEXT NOT NULL, PRIMARY KEY (task_id, repo_id), FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE, FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE )"
+  },
+  {
+    "type": "table",
+    "name": "tasks",
+    "tbl_name": "tasks",
+    "sql": "CREATE TABLE tasks ( id TEXT PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'todo', context_md TEXT, external_refs_json TEXT NOT NULL DEFAULT '[]', project_id TEXT, entities_json TEXT NOT NULL DEFAULT '[]', session_id TEXT, session_repo_path TEXT, pr_urls_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, closed_at TEXT , archived INTEGER NOT NULL DEFAULT 0, suggestion_id TEXT, closed_note TEXT)"
+  },
+  {
+    "type": "table",
+    "name": "unlockables",
+    "tbl_name": "unlockables",
+    "sql": "CREATE TABLE unlockables ( id TEXT PRIMARY KEY, tier_required INTEGER NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, description TEXT, payload_json TEXT NOT NULL DEFAULT '{}', unlocked INTEGER NOT NULL DEFAULT 0, unlocked_at TEXT, created_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "user_profile",
+    "tbl_name": "user_profile",
+    "sql": "CREATE TABLE user_profile ( id TEXT PRIMARY KEY DEFAULT 'default', display_name TEXT, timezone TEXT, locale TEXT NOT NULL DEFAULT 'es', work_hours_json TEXT NOT NULL DEFAULT '{}', commit_patterns_json TEXT NOT NULL DEFAULT '{}', verbosity TEXT NOT NULL DEFAULT 'normal', proactive_level TEXT NOT NULL DEFAULT 'moderate', total_interactions INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', dislikes_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, updated_at TEXT NOT NULL , proactivity_level INTEGER NOT NULL DEFAULT 5, personality_level INTEGER NOT NULL DEFAULT 4, focus_mode TEXT, focus_until TEXT, energy_level TEXT, mood_hint TEXT, mood_phrase TEXT, bond_axes_json TEXT NOT NULL DEFAULT '{\"time\":0,\"depth\":0,\"momentum\":0,\"alignment\":0,\"autonomy\":0}', bond_tier INTEGER NOT NULL DEFAULT 1, bond_reset_at TEXT NOT NULL DEFAULT '2026-01-01T00:00:00Z', bond_tier_last_rise_at TEXT)"
+  },
+  {
+    "type": "trigger",
+    "name": "memories_ad",
+    "tbl_name": "memories",
+    "sql": "CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN INSERT INTO memories_fts(memories_fts, rowid, title, body_md, tags_text) VALUES ('delete', OLD.rowid, OLD.title, OLD.body_md, COALESCE((SELECT group_concat(value, ' ') FROM json_each(OLD.tags_json)), '')); END"
+  },
+  {
+    "type": "trigger",
+    "name": "memories_ai",
+    "tbl_name": "memories",
+    "sql": "CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN INSERT INTO memories_fts(rowid, title, body_md, tags_text) VALUES (NEW.rowid, NEW.title, NEW.body_md, COALESCE((SELECT group_concat(value, ' ') FROM json_each(NEW.tags_json)), '')); END"
+  },
+  {
+    "type": "trigger",
+    "name": "memories_au",
+    "tbl_name": "memories",
+    "sql": "CREATE TRIGGER memories_au AFTER UPDATE ON memories BEGIN INSERT INTO memories_fts(memories_fts, rowid, title, body_md, tags_text) VALUES ('delete', OLD.rowid, OLD.title, OLD.body_md, COALESCE((SELECT group_concat(value, ' ') FROM json_each(OLD.tags_json)), '')); INSERT INTO memories_fts(rowid, title, body_md, tags_text) VALUES (NEW.rowid, NEW.title, NEW.body_md, COALESCE((SELECT group_concat(value, ' ') FROM json_each(NEW.tags_json)), '')); END"
+  },
+  {
+    "type": "trigger",
+    "name": "observations_fts_ad",
+    "tbl_name": "observations",
+    "sql": "CREATE TRIGGER observations_fts_ad AFTER DELETE ON observations BEGIN INSERT INTO observations_fts(observations_fts, rowid, title, detail_text) VALUES ('delete', OLD.rowid, OLD.title, OLD.detail_json); END"
+  },
+  {
+    "type": "trigger",
+    "name": "observations_fts_ai",
+    "tbl_name": "observations",
+    "sql": "CREATE TRIGGER observations_fts_ai AFTER INSERT ON observations BEGIN INSERT INTO observations_fts(rowid, title, detail_text) VALUES (NEW.rowid, NEW.title, NEW.detail_json); END"
+  },
+  {
+    "type": "trigger",
+    "name": "observations_fts_au",
+    "tbl_name": "observations",
+    "sql": "CREATE TRIGGER observations_fts_au AFTER UPDATE ON observations BEGIN INSERT INTO observations_fts(observations_fts, rowid, title, detail_text) VALUES ('delete', OLD.rowid, OLD.title, OLD.detail_json); INSERT INTO observations_fts(rowid, title, detail_text) VALUES (NEW.rowid, NEW.title, NEW.detail_json); END"
+  },
+  {
+    "type": "trigger",
+    "name": "suggestions_fts_ad",
+    "tbl_name": "suggestions",
+    "sql": "CREATE TRIGGER suggestions_fts_ad AFTER DELETE ON suggestions BEGIN INSERT INTO suggestions_fts(suggestions_fts, rowid, title, summary_md) VALUES ('delete', OLD.rowid, OLD.title, OLD.summary_md); END"
+  },
+  {
+    "type": "trigger",
+    "name": "suggestions_fts_ai",
+    "tbl_name": "suggestions",
+    "sql": "CREATE TRIGGER suggestions_fts_ai AFTER INSERT ON suggestions BEGIN INSERT INTO suggestions_fts(rowid, title, summary_md) VALUES (NEW.rowid, NEW.title, NEW.summary_md); END"
+  },
+  {
+    "type": "trigger",
+    "name": "suggestions_fts_au",
+    "tbl_name": "suggestions",
+    "sql": "CREATE TRIGGER suggestions_fts_au AFTER UPDATE ON suggestions BEGIN INSERT INTO suggestions_fts(suggestions_fts, rowid, title, summary_md) VALUES ('delete', OLD.rowid, OLD.title, OLD.summary_md); INSERT INTO suggestions_fts(rowid, title, summary_md) VALUES (NEW.rowid, NEW.title, NEW.summary_md); END"
+  }
+]
