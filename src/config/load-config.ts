@@ -88,6 +88,7 @@ export function loadConfig(): ShadowConfig {
     watchdogEventLoopThresholdMs: process.env.SHADOW_WATCHDOG_EVENT_LOOP_THRESHOLD_MS,
     watchdogSoftTimeoutMs: process.env.SHADOW_WATCHDOG_SOFT_TIMEOUT_MS,
     watchdogTickIntervalMs: process.env.SHADOW_WATCHDOG_TICK_INTERVAL_MS,
+    embeddingBackfillIntervalMs: process.env.SHADOW_EMBEDDING_BACKFILL_INTERVAL_MS,
   });
 
   const resolvedDataDir = resolveDataDir(parsed.dataDir);

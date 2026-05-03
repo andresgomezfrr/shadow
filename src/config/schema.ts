@@ -139,6 +139,7 @@ export const ConfigSchema = z.object({
   watchdogEventLoopThresholdMs: z.coerce.number().int().positive().default(30_000),
   watchdogSoftTimeoutMs: z.coerce.number().int().positive().default(6 * 60 * 60 * 1000),
   watchdogTickIntervalMs: z.coerce.number().int().positive().default(60_000),
+  embeddingBackfillIntervalMs: z.coerce.number().int().min(10_000).default(60_000),
 });
 
 /**

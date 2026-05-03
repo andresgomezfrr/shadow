@@ -348,6 +348,7 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
   let runQueueRef: RunQueue | null = null;
   let jobQueueRef: JobQueue | null = null;
   let watchdogRef: Watchdog | null = null;
+  let embeddingBackfillTimerRef: NodeJS.Timeout | null = null;
 
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
@@ -595,8 +596,15 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     }
     cleanOrphanedJobsOnStartup();
 
-    // Backfill embeddings for entities created outside heartbeat (MCP teach, CLI, etc.)
-    (async () => {
+    // Backfill embeddings for entities created outside heartbeat (MCP teach, CLI, etc.).
+    // Periodic: corre al startup + cada `embeddingBackfillIntervalMs` (default 60s).
+    // El teach NO genera embedding inline (no bloquea response); este loop recoge
+    // todo lo pendiente en background. Cualquier search vectorial sobre memorias
+    // recién creadas cae a FTS5 hasta que el siguiente tick procese el embedding.
+    let embeddingBackfillRunning = false;
+    const runBackfillOnce = async (): Promise<void> => {
+      if (embeddingBackfillRunning || draining) return;
+      embeddingBackfillRunning = true;
       try {
         const { backfillEmbeddings } = await import('../memory/lifecycle.js');
         const counts = await backfillEmbeddings(_db);
@@ -604,8 +612,13 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         if (total > 0) log.info(`[daemon] Backfilled embeddings: ${counts.memories} memories, ${counts.observations} observations, ${counts.suggestions} suggestions`);
       } catch (e) {
         log.error('[daemon] Embedding backfill failed:', e instanceof Error ? e.message : e);
+      } finally {
+        embeddingBackfillRunning = false;
       }
-    })();
+    };
+    void runBackfillOnce();
+    embeddingBackfillTimerRef = setInterval(() => { void runBackfillOnce(); }, config.embeddingBackfillIntervalMs);
+    if (typeof embeddingBackfillTimerRef.unref === 'function') embeddingBackfillTimerRef.unref();
 
     // --- Thought loop (random status line thoughts, independent of heartbeat) ---
     startThoughtLoop({
@@ -1056,10 +1069,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
     if (runQueueRef) try { runQueueRef.killAll(); } catch { /* cleanup */ }
     killAllActiveChildren(); // safety net
 
-    // Step 7b: Shutdown watcher + SSE + watchdog
+    // Step 7b: Shutdown watcher + SSE + watchdog + embedding backfill
     if (repoWatcherRef) repoWatcherRef.stopAll();
     if (eventBusRef) eventBusRef.shutdown();
     if (watchdogRef) watchdogRef.stop();
+    if (embeddingBackfillTimerRef) clearInterval(embeddingBackfillTimerRef);
 
     // Step 8: Cleanup. Order matters — stop accepting HTTP requests BEFORE closing
     // the DB, otherwise a late request reaches the handler after the SQLite connection
