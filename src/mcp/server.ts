@@ -5,7 +5,9 @@ import type { UserProfileRecord } from '../storage/models.js';
 
 import type { McpTool, ToolContext } from './tools/types.js';
 import type { DaemonSharedState } from '../daemon/job-handlers.js';
+import { listResources, readResource, type McpResource } from './resources.js';
 export type { McpTool } from './tools/types.js';
+export { createMcpResources, type McpResource } from './resources.js';
 
 import { statusTools } from './tools/status.js';
 import { memoryTools } from './tools/memory.js';
@@ -88,9 +90,45 @@ type JsonRpcResponse = {
 export async function handleJsonRpcRequest(
   tools: McpTool[],
   request: unknown,
+  resources: McpResource[] = [],
 ): Promise<unknown> {
   const req = request as JsonRpcRequest;
   const id = req.id ?? null;
+
+  if (req.method === 'resources/list') {
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: { resources: listResources(resources) },
+    } satisfies JsonRpcResponse;
+  }
+
+  if (req.method === 'resources/read') {
+    const params = req.params ?? {};
+    const uri = params.uri as string | undefined;
+    if (!uri) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32602, message: 'Missing uri in params.uri' },
+      } satisfies JsonRpcResponse;
+    }
+    try {
+      const contents = await readResource(resources, uri);
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: { contents: [contents] },
+      } satisfies JsonRpcResponse;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32602, message },
+      } satisfies JsonRpcResponse;
+    }
+  }
 
   if (req.method === 'tools/list') {
     return {

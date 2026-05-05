@@ -6,7 +6,7 @@ import { createDatabase, type ShadowDatabase } from '../storage/database.js';
 import { loadConfig } from '../config/load-config.js';
 import type { EventBus } from './event-bus.js';
 import type { DaemonSharedState } from '../daemon/job-handlers.js';
-import { createMcpTools, handleJsonRpcRequest, type McpTool } from '../mcp/server.js';
+import { createMcpTools, createMcpResources, handleJsonRpcRequest, type McpTool, type McpResource } from '../mcp/server.js';
 import { json, html, readBody, parseUrl } from './helpers.js';
 import { handleSuggestionRoutes } from './routes/suggestions.js';
 import { handleObservationRoutes } from './routes/observations.js';
@@ -58,6 +58,7 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
 
   // MCP tools — lazy-initialized on first /api/mcp request
   let mcpTools: McpTool[] | null = null;
+  let mcpResources: McpResource[] | null = null;
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -99,7 +100,7 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
             jsonrpc: '2.0', id: p.id ?? null,
             result: {
               protocolVersion: '2025-03-26',
-              capabilities: { tools: {} },
+              capabilities: { tools: {}, resources: {} },
               serverInfo: { name: 'shadow-mcp', version: '0.1.0' },
             },
           }));
@@ -113,13 +114,16 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
           return void res.end();
         }
 
-        // Lazy-init MCP tools
+        // Lazy-init MCP tools + resources
         if (!mcpTools) {
           mcpTools = createMcpTools(db, config, { daemonState });
         }
+        if (!mcpResources) {
+          mcpResources = createMcpResources(db);
+        }
 
-        // Delegate to JSON-RPC handler (tools/list, tools/call)
-        const response = await handleJsonRpcRequest(mcpTools, parsed);
+        // Delegate to JSON-RPC handler (tools/list, tools/call, resources/list, resources/read)
+        const response = await handleJsonRpcRequest(mcpTools, parsed, mcpResources);
 
         // Emit SSE for mutating tool calls
         if (eventBus && p.method === 'tools/call') {
