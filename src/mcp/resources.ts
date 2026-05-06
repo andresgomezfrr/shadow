@@ -14,7 +14,60 @@
 // Diseñado para evolucionar gradual: las tools existentes (entities, data)
 // siguen disponibles hasta tener confirmación de uso real.
 
+import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+
 import type { ShadowDatabase } from '../storage/database.js';
+
+// Directorio donde Claude Code escribe los planes de plan-mode.
+// Override vía env por tests + máquinas con layout no estándar.
+const PLANS_DIR = process.env.SHADOW_PLANS_DIR
+  ? resolve(process.env.SHADOW_PLANS_DIR)
+  : join(homedir(), '.claude', 'plans');
+
+type PlanSummary = {
+  filename: string;
+  path: string;
+  sizeBytes: number;
+  mtime: string;
+  firstHeading: string | null;
+};
+
+function readPlansDir(dir: string): PlanSummary[] {
+  if (!existsSync(dir)) return [];
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const out: PlanSummary[] = [];
+  for (const name of entries) {
+    if (!name.endsWith('.md')) continue;
+    const path = join(dir, name);
+    try {
+      const st = statSync(path);
+      if (!st.isFile()) continue;
+      // Solo leemos el principio del archivo para sacar la primera heading;
+      // los planes pueden ser grandes y no queremos cargarlos enteros.
+      const head = readFileSync(path, 'utf-8').slice(0, 2048);
+      const headingMatch = head.split('\n').find((l) => l.trim().startsWith('# '));
+      out.push({
+        filename: name,
+        path,
+        sizeBytes: st.size,
+        mtime: new Date(st.mtimeMs).toISOString(),
+        firstHeading: headingMatch ? headingMatch.replace(/^#\s+/, '').trim() : null,
+      });
+    } catch {
+      /* skip unreadable */
+    }
+  }
+  // mtime desc — más reciente primero
+  out.sort((a, b) => (a.mtime < b.mtime ? 1 : a.mtime > b.mtime ? -1 : 0));
+  return out;
+}
 
 export type ResourceAnnotations = {
   audience?: ('user' | 'assistant')[];
@@ -94,6 +147,55 @@ export function createMcpResources(db: ShadowDatabase): McpResource[] {
       read: async () => {
         const items = db.listContacts();
         return JSON.stringify({ count: items.length, items }, null, 2);
+      },
+    },
+    {
+      uri: 'shadow://plans/active',
+      name: 'Active plan documents',
+      description: 'Plans currently in ~/.claude/plans/ (one per plan-mode session). Filename + size + mtime + first heading. The body is large; fetch it via the path field when needed.',
+      mimeType: 'application/json',
+      annotations: { audience: ['assistant'], priority: 0.7 },
+      read: async () => {
+        const plans = readPlansDir(PLANS_DIR);
+        return JSON.stringify({ dir: PLANS_DIR, count: plans.length, plans }, null, 2);
+      },
+    },
+    {
+      uri: 'shadow://session/last-known',
+      name: 'Last-known session bookmark',
+      description: 'Snapshot of the most recent activity: last 10 interactions (sentiment + topics), latest mood/thought, open counts. Use at session start to recover context instead of re-tying transcripts.',
+      mimeType: 'application/json',
+      annotations: { audience: ['assistant'], priority: 0.95 },
+      read: async () => {
+        const recent = db.listRecentInteractions(10);
+        const profile = db.ensureProfile();
+        const openObs = db.listObservations({ status: 'open' });
+        const openSug = db.listSuggestions({ status: 'open' });
+        const lastSeen = recent[0]?.createdAt ?? null;
+        const hoursAgo = lastSeen
+          ? Math.round(((Date.now() - new Date(lastSeen).getTime()) / 3_600_000) * 10) / 10
+          : null;
+        return JSON.stringify(
+          {
+            lastSeenAt: lastSeen,
+            hoursAgo,
+            lastMood: profile.moodHint ?? 'neutral',
+            lastThought: profile.moodPhrase ?? null,
+            energyLevel: profile.energyLevel ?? null,
+            focusMode: profile.focusMode ?? null,
+            recentInteractions: recent.map((i) => ({
+              ts: i.createdAt,
+              kind: i.kind,
+              sentiment: i.sentiment,
+              topics: i.topics,
+              inputSummary: i.inputSummary,
+            })),
+            openObservationsCount: openObs.length,
+            openSuggestionsCount: openSug.length,
+          },
+          null,
+          2,
+        );
       },
     },
   ];
