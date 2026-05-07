@@ -5,11 +5,28 @@ import type { ShadowConfig } from '../../config/load-config.js';
 import type { UserProfileRecord } from '../../storage/models.js';
 import type { DaemonSharedState } from '../../daemon/job-handlers.js';
 
+// MCP tool annotation hints (spec 2025-06-18). Cada hint es opcional;
+// ausencia ≠ negación — la spec los llama "hints", no flags. Por eso el
+// emitter en server.ts solo incluye `annotations` cuando algún hint != undefined.
+//
+//   readOnlyHint     true cuando el tool no muta estado observable
+//   destructiveHint  true cuando el tool elimina/cierra datos
+//   idempotentHint   true cuando reejecutar con los mismos args es no-op
+//   openWorldHint    true cuando el tool toca red/sistema externo no controlado
+export type McpToolAnnotations = {
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+};
+
 export type McpTool = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
   handler: (params: Record<string, unknown>) => Promise<unknown>;
+  /** Override explícito — gana sobre lo inferido en server.ts inferAnnotations(). */
+  annotations?: McpToolAnnotations;
 };
 
 export type ToolContext = {

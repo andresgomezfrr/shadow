@@ -3,10 +3,10 @@ import type { ShadowDatabase } from '../storage/database.js';
 import type { ShadowConfig } from '../config/load-config.js';
 import type { UserProfileRecord } from '../storage/models.js';
 
-import type { McpTool, ToolContext } from './tools/types.js';
+import type { McpTool, McpToolAnnotations, ToolContext } from './tools/types.js';
 import type { DaemonSharedState } from '../daemon/job-handlers.js';
 import { listResources, readResource, type McpResource } from './resources.js';
-export type { McpTool } from './tools/types.js';
+export type { McpTool, McpToolAnnotations } from './tools/types.js';
 export { createMcpResources, type McpResource } from './resources.js';
 
 import { statusTools } from './tools/status.js';
@@ -67,6 +67,47 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: 
     ...dataTools(ctx),
     ...taskTools(ctx),
   ];
+}
+
+// ---------------------------------------------------------------------------
+// Annotation inference (MCP spec 2025-06-18)
+// ---------------------------------------------------------------------------
+
+// Sufijos del nombre del tool → hint por defecto. Aplicado post-assembly en
+// emitToolList(). El override explícito declarado en cada tool gana siempre.
+//
+// Las listas se evalúan en orden: destructive antes que read-only, mutating
+// antes que default. Si un nombre no encaja en ninguna lista, queda sin hints
+// inferidos (la spec dice "hints" — ausencia ≠ negación).
+const READONLY_SUFFIXES = /(_list|_view|_search|_get|_query|_status|_available|_focus|_check_in|_alerts|_systems|_repos|_contacts|_observations|_suggestions|_tasks|_digests|_digest|_relations?|_projects|_events|_summary|_profile|_detail|_soul|_usage|_config|_active_projects)$/;
+const DESTRUCTIVE_SUFFIXES = /(_remove|_archive|_close|_delete|_stop|_forget|_resolve|_dismiss|_ack)$/;
+const MUTATING_SUFFIXES = /(_create|_add|_update|_set|_write|_teach|_observe|_correct|_feedback|_accept|_snooze|_reopen|_run|_execute|_reset)$/;
+
+export function inferAnnotations(name: string): McpToolAnnotations {
+  if (DESTRUCTIVE_SUFFIXES.test(name)) {
+    return { destructiveHint: true, idempotentHint: false };
+  }
+  if (READONLY_SUFFIXES.test(name)) {
+    return { readOnlyHint: true, idempotentHint: true };
+  }
+  if (MUTATING_SUFFIXES.test(name)) {
+    return { readOnlyHint: false, idempotentHint: false };
+  }
+  return {};
+}
+
+function resolveAnnotations(tool: McpTool): McpToolAnnotations {
+  const inferred = inferAnnotations(tool.name);
+  // Override explícito de la tool gana — pero solo para los campos declarados.
+  // Los demás siguen los defaults inferidos.
+  return { ...inferred, ...(tool.annotations ?? {}) };
+}
+
+function hasAnyHint(a: McpToolAnnotations): boolean {
+  return a.readOnlyHint !== undefined
+    || a.destructiveHint !== undefined
+    || a.idempotentHint !== undefined
+    || a.openWorldHint !== undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,11 +176,16 @@ export async function handleJsonRpcRequest(
       jsonrpc: '2.0',
       id,
       result: {
-        tools: tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          inputSchema: t.inputSchema,
-        })),
+        tools: tools.map((t) => {
+          const annotations = resolveAnnotations(t);
+          const entry: Record<string, unknown> = {
+            name: t.name,
+            description: t.description,
+            inputSchema: t.inputSchema,
+          };
+          if (hasAnyHint(annotations)) entry.annotations = annotations;
+          return entry;
+        }),
       },
     } satisfies JsonRpcResponse;
   }
