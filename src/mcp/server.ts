@@ -17,6 +17,7 @@ import { entityTools } from './tools/entities.js';
 import { profileTools } from './tools/profile.js';
 import { dataTools } from './tools/data.js';
 import { taskTools } from './tools/tasks.js';
+import { workspaceTools } from './tools/workspace.js';
 
 // ---------------------------------------------------------------------------
 // Tool assembly
@@ -66,6 +67,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: 
     ...profileTools(ctx),
     ...dataTools(ctx),
     ...taskTools(ctx),
+    ...workspaceTools(ctx),
   ];
 }
 

@@ -20,6 +20,7 @@ import { registerMiscCommands } from './cli/cmd-misc.js';
 import { registerStatuslineCommand } from './cli/cmd-statusline.js';
 import { registerTaskCommands } from './cli/cmd-tasks.js';
 import { registerDocsCommands } from './cli/cmd-docs.js';
+import { registerWorkspaceCommand } from './cli/cmd-workspace.js';
 import { log } from './log.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -119,6 +120,7 @@ registerMiscCommands(program, config, withDb);
 registerStatuslineCommand(program, config);
 registerTaskCommands(program, config, withDb);
 registerDocsCommands(program);
+registerWorkspaceCommand(program, config, withDb);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   log.error(error instanceof Error ? error.message : String(error));

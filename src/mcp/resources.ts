@@ -22,11 +22,13 @@ import type { ShadowDatabase } from '../storage/database.js';
 
 // Directorio donde Claude Code escribe los planes de plan-mode.
 // Override vía env por tests + máquinas con layout no estándar.
-const PLANS_DIR = process.env.SHADOW_PLANS_DIR
-  ? resolve(process.env.SHADOW_PLANS_DIR)
-  : join(homedir(), '.claude', 'plans');
+export function plansDir(): string {
+  return process.env.SHADOW_PLANS_DIR
+    ? resolve(process.env.SHADOW_PLANS_DIR)
+    : join(homedir(), '.claude', 'plans');
+}
 
-type PlanSummary = {
+export type PlanSummary = {
   filename: string;
   path: string;
   sizeBytes: number;
@@ -34,7 +36,7 @@ type PlanSummary = {
   firstHeading: string | null;
 };
 
-function readPlansDir(dir: string): PlanSummary[] {
+export function readPlansDir(dir: string): PlanSummary[] {
   if (!existsSync(dir)) return [];
   let entries: string[];
   try {
@@ -156,8 +158,9 @@ export function createMcpResources(db: ShadowDatabase): McpResource[] {
       mimeType: 'application/json',
       annotations: { audience: ['assistant'], priority: 0.7 },
       read: async () => {
-        const plans = readPlansDir(PLANS_DIR);
-        return JSON.stringify({ dir: PLANS_DIR, count: plans.length, plans }, null, 2);
+        const dir = plansDir();
+        const plans = readPlansDir(dir);
+        return JSON.stringify({ dir, count: plans.length, plans }, null, 2);
       },
     },
     {
