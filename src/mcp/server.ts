@@ -19,6 +19,7 @@ import { dataTools } from './tools/data.js';
 import { taskTools } from './tools/tasks.js';
 import { workspaceTools } from './tools/workspace.js';
 import { repoHealthTools } from './tools/repo-health.js';
+import { recapTools } from './tools/recap.js';
 
 // ---------------------------------------------------------------------------
 // Tool assembly
@@ -70,6 +71,7 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: 
     ...taskTools(ctx),
     ...workspaceTools(ctx),
     ...repoHealthTools(ctx),
+    ...recapTools(ctx),
   ];
 }
 
