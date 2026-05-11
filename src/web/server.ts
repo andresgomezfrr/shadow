@@ -6,7 +6,7 @@ import { createDatabase, type ShadowDatabase } from '../storage/database.js';
 import { loadConfig } from '../config/load-config.js';
 import type { EventBus } from './event-bus.js';
 import type { DaemonSharedState } from '../daemon/job-handlers.js';
-import { createMcpTools, createMcpResources, handleJsonRpcRequest, type McpTool, type McpResource } from '../mcp/server.js';
+import { createMcpTools, createMcpResources, createMcpPrompts, handleJsonRpcRequest, type McpTool, type McpResource, type McpPrompt } from '../mcp/server.js';
 import { json, html, readBody, parseUrl } from './helpers.js';
 import { handleSuggestionRoutes } from './routes/suggestions.js';
 import { handleObservationRoutes } from './routes/observations.js';
@@ -59,6 +59,7 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
   // MCP tools — lazy-initialized on first /api/mcp request
   let mcpTools: McpTool[] | null = null;
   let mcpResources: McpResource[] | null = null;
+  let mcpPrompts: McpPrompt[] | null = null;
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -100,7 +101,7 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
             jsonrpc: '2.0', id: p.id ?? null,
             result: {
               protocolVersion: '2025-03-26',
-              capabilities: { tools: {}, resources: {} },
+              capabilities: { tools: {}, resources: {}, prompts: {} },
               serverInfo: { name: 'shadow-mcp', version: '0.1.0' },
             },
           }));
@@ -114,16 +115,19 @@ export async function startWebServer(port: number = 3700, host: string = '127.0.
           return void res.end();
         }
 
-        // Lazy-init MCP tools + resources
+        // Lazy-init MCP tools + resources + prompts
         if (!mcpTools) {
           mcpTools = createMcpTools(db, config, { daemonState });
         }
         if (!mcpResources) {
           mcpResources = createMcpResources(db);
         }
+        if (!mcpPrompts) {
+          mcpPrompts = createMcpPrompts(db, config);
+        }
 
-        // Delegate to JSON-RPC handler (tools/list, tools/call, resources/list, resources/read)
-        const response = await handleJsonRpcRequest(mcpTools, parsed, mcpResources);
+        // Delegate to JSON-RPC handler (tools/{list,call} + resources/{list,read} + prompts/{list,get})
+        const response = await handleJsonRpcRequest(mcpTools, parsed, mcpResources, mcpPrompts);
 
         // Emit SSE for mutating tool calls
         if (eventBus && p.method === 'tools/call') {

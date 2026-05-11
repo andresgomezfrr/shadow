@@ -6,8 +6,10 @@ import type { UserProfileRecord } from '../storage/models.js';
 import type { McpTool, McpToolAnnotations, ToolContext } from './tools/types.js';
 import type { DaemonSharedState } from '../daemon/job-handlers.js';
 import { listResources, readResource, type McpResource } from './resources.js';
+import { listPrompts, getPrompt, type McpPrompt } from './prompts.js';
 export type { McpTool, McpToolAnnotations } from './tools/types.js';
 export { createMcpResources, type McpResource } from './resources.js';
+export { createMcpPrompts, type McpPrompt } from './prompts.js';
 
 import { statusTools } from './tools/status.js';
 import { memoryTools } from './tools/memory.js';
@@ -138,9 +140,46 @@ export async function handleJsonRpcRequest(
   tools: McpTool[],
   request: unknown,
   resources: McpResource[] = [],
+  prompts: McpPrompt[] = [],
 ): Promise<unknown> {
   const req = request as JsonRpcRequest;
   const id = req.id ?? null;
+
+  if (req.method === 'prompts/list') {
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: { prompts: listPrompts(prompts) },
+    } satisfies JsonRpcResponse;
+  }
+
+  if (req.method === 'prompts/get') {
+    const params = req.params ?? {};
+    const name = params.name as string | undefined;
+    const args = (params.arguments as Record<string, unknown>) ?? {};
+    if (!name) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32602, message: 'Missing prompt name in params.name' },
+      } satisfies JsonRpcResponse;
+    }
+    try {
+      const result = await getPrompt(prompts, name, args);
+      return {
+        jsonrpc: '2.0',
+        id,
+        result,
+      } satisfies JsonRpcResponse;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32602, message },
+      } satisfies JsonRpcResponse;
+    }
+  }
 
   if (req.method === 'resources/list') {
     return {

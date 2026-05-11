@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline';
 
 import type { ShadowConfig } from '../config/load-config.js';
 import { createDatabase } from '../storage/database.js';
-import { createMcpTools, handleJsonRpcRequest } from './server.js';
+import { createMcpTools, createMcpResources, createMcpPrompts, handleJsonRpcRequest } from './server.js';
 
 type JsonRpcRequest = {
   jsonrpc: string;
@@ -27,6 +27,8 @@ type JsonRpcResponse = {
 export async function startStdioMcpServer(config: ShadowConfig): Promise<void> {
   const db = createDatabase(config);
   const tools = createMcpTools(db, config);
+  const resources = createMcpResources(db);
+  const prompts = createMcpPrompts(db, config);
 
   const rl = createInterface({
     input: process.stdin,
@@ -64,6 +66,8 @@ export async function startStdioMcpServer(config: ShadowConfig): Promise<void> {
           protocolVersion: '2025-03-26',
           capabilities: {
             tools: {},
+            resources: {},
+            prompts: {},
           },
           serverInfo: {
             name: 'shadow-mcp',
@@ -80,8 +84,8 @@ export async function startStdioMcpServer(config: ShadowConfig): Promise<void> {
       continue;
     }
 
-    // Delegate to the JSON-RPC handler for tools/list, tools/call, etc.
-    const response = (await handleJsonRpcRequest(tools, parsed)) as JsonRpcResponse;
+    // Delegate to the JSON-RPC handler for tools/* + resources/* + prompts/*
+    const response = (await handleJsonRpcRequest(tools, parsed, resources, prompts)) as JsonRpcResponse;
     send(response);
   }
 
