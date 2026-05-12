@@ -27,9 +27,15 @@ import { recapTools } from './tools/recap.js';
 // Tool assembly
 // ---------------------------------------------------------------------------
 
-export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: { daemonState?: DaemonSharedState }): McpTool[] {
+// Exportado para reuso entre MCP server y CLI command `shadow context`.
+// Compone las funciones de mood/greeting/trustNames sobre una DB dada.
+export function createDerivers(db: ShadowDatabase): {
+  getTrustLevel: () => number;
+  deriveMood: () => string;
+  deriveGreeting: (profile: UserProfileRecord) => string;
+  trustNames: Record<number, string>;
+} {
   function getTrustLevel(): number {
-    // Legacy name kept for ToolContext back-compat; returns bond tier now
     const profile = db.getProfile('default');
     return profile?.bondTier ?? 0;
   }
@@ -59,6 +65,12 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: 
   const trustNames: Record<number, string> = {
     1: 'observer', 2: 'advisor', 3: 'assistant', 4: 'partner', 5: 'shadow',
   };
+
+  return { getTrustLevel, deriveMood, deriveGreeting, trustNames };
+}
+
+export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: { daemonState?: DaemonSharedState }): McpTool[] {
+  const { getTrustLevel, deriveMood, deriveGreeting, trustNames } = createDerivers(db);
 
   const ctx: ToolContext = { db, config, getTrustLevel, deriveMood, deriveGreeting, trustNames, daemonState: opts?.daemonState };
 

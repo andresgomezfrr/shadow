@@ -90,6 +90,71 @@ describe('shadow_check_in', () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildCheckInData pure function (used by `shadow context` CLI)
+// ---------------------------------------------------------------------------
+
+describe('buildCheckInData', () => {
+  let db: ReturnType<typeof createTestToolContext>['db'];
+  let config: ReturnType<typeof createTestToolContext>['config'];
+  let cleanup: () => void;
+
+  before(() => {
+    const env = createTestToolContext({ trustLevel: 3 });
+    db = env.db;
+    config = env.config;
+    mkdirSync(config.resolvedDataDir, { recursive: true });
+    writeDaemonState(config.resolvedDataDir, { alerts: [], updateAvailable: null });
+    cleanup = env.cleanup;
+  });
+  after(() => cleanup());
+
+  it('returns same shape as shadow_check_in without applying bond delta', async () => {
+    const { buildCheckInData } = await import('./status.js');
+    const { createDerivers } = await import('../server.js');
+    const derivers = createDerivers(db);
+
+    const before = db.getProfile('default')!;
+    const data = await buildCheckInData({
+      db,
+      config,
+      deriveMood: derivers.deriveMood,
+      deriveGreeting: derivers.deriveGreeting,
+      trustNames: derivers.trustNames,
+    });
+    const after = db.getProfile('default')!;
+
+    // Shape parity
+    assert.ok('bondTier' in data);
+    assert.ok('bondAxes' in data);
+    assert.ok('mood' in data);
+    assert.ok('pendingEvents' in data);
+    assert.ok(Array.isArray(data.recentObservations));
+    assert.ok('todayTokens' in data);
+
+    // No bond delta applied — axes should be unchanged.
+    // (En contraste con shadow_check_in MCP tool que sí los incrementa.)
+    assert.deepEqual(after.bondAxes, before.bondAxes, 'CLI buildCheckInData must NOT mutate bond axes');
+  });
+
+  it('passes repoPath through and produces contextRepo when matched', async () => {
+    const { buildCheckInData } = await import('./status.js');
+    const { createDerivers } = await import('../server.js');
+    const derivers = createDerivers(db);
+    const repo = seedRepo(db, { name: 'ctx-cli-repo', path: '/tmp/ctx-cli-repo' });
+
+    const data = await buildCheckInData({
+      db,
+      config,
+      repoPath: '/tmp/ctx-cli-repo',
+      deriveMood: derivers.deriveMood,
+      deriveGreeting: derivers.deriveGreeting,
+      trustNames: derivers.trustNames,
+    });
+    assert.equal(data.contextRepo, repo.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // shadow_status
 // ---------------------------------------------------------------------------
 
