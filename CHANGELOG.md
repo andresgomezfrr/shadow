@@ -8,6 +8,103 @@ migrations can land in any release (the daemon auto-applies them on restart).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-12
+
+**MCP 2025-06-18 trinity, daemon hardening, observability primitives.**
+
+Minor release across three sprints. Completes the MCP server primitives
+trinity (tools + resources + prompts), hardens the daemon against long
+sessions and silent failures, adds eval scaffolding and a handful of
+user-facing CLI commands for daily diagnostics.
+
+### Added — MCP server
+
+- **Resources primitive** (spec 2025-06-18). Six read-only URIs:
+  `shadow://profile/soul`, `shadow://observations/open`,
+  `shadow://digests/latest`, `shadow://contacts`,
+  `shadow://session/last-known` (snapshot for session-start recall),
+  `shadow://plans/active` (lists plan-mode markdown files under
+  `~/.claude/plans/`, configurable via `SHADOW_PLANS_DIR`).
+- **Prompts primitive**. Four parameterizable templates that capture
+  recurring workflows: `shadow_morning_brief` (no args, composes from
+  DB), `shadow_scope_check({task})`, `shadow_audit_block({summary})`,
+  `shadow_naming_vote({domain, count?})`. Prompts are template-only —
+  Shadow does not call the LLM in `render()`.
+- **Tool annotations** (spec 2025-06-18): `readOnlyHint`,
+  `destructiveHint`, `idempotentHint`, `openWorldHint`. Inferred per
+  tool name by suffix; explicit `annotations` on a tool overrides the
+  defaults.
+- **`shadow_workspace_status`** — single-call git-status global across
+  all repos + awaiting-PR runs + active plans + HIGH-severity open
+  observations + daemon alerts. Parallelized with `Promise.allSettled`,
+  per-repo timeout 1s.
+- **`shadow_repo_health`** — open PRs / last CI run / branch
+  divergence via `gh` CLI; per-aspect envelope so a missing/unauthed
+  `gh` only fails that aspect. `openWorldHint: true`.
+- **`shadow_recap({hours})`** — ad-hoc activity summary over audit
+  events (stats only, no LLM).
+- **`shadow_memory_similar({memoryId})`** — search-by-example reusing
+  the stored embedding (no re-embed).
+- **`shadow_plan_to_task({planPath})`** — link a plan-mode markdown
+  file to a tracked task. Idempotent (looks up existing
+  `externalRefs[].url`). Path guard limits to home or
+  `$SHADOW_PLANS_DIR`.
+
+### Added — CLI
+
+- **`shadow workspace [--timeout <ms>]`** — wraps `shadow_workspace_status`.
+- **`shadow recap [hours] [--json|--markdown|--narrate]`** — narrative
+  is a placeholder pending LLM wiring; `--narrate` flag is required
+  explicitly (no silent token spend).
+- **`shadow context [--repo <path>] [--json]`** — terminal-friendly
+  render of `shadow_check_in` data; reuses the new pure function
+  `buildCheckInData()` and does NOT apply the bond delta (CLI is
+  read-only).
+- **`shadow tail [--lines N] [--type <component>] [--no-follow] [--no-color]`** —
+  daemon log streamer with ANSI coloring by level, filter by
+  `[component]` tag substring, follow mode polls via `fs.statSync`
+  every 500ms (more portable than `fs.watch` on macOS).
+
+### Added — Daemon & memory
+
+- **Soft watchdog** monitoring event-loop lag (`perf_hooks`-based,
+  no external dep) + per-session soft-timeout (default 6h). Emits
+  alerts via existing `shadow_alerts` surface. Env knobs:
+  `SHADOW_WATCHDOG_{ENABLED,EVENT_LOOP_THRESHOLD_MS,SOFT_TIMEOUT_MS,TICK_INTERVAL_MS}`.
+- **Periodic embedding backfill** — backfill now runs every
+  `SHADOW_EMBEDDING_BACKFILL_INTERVAL_MS` (default 60s), not only at
+  daemon startup. Closes the window where `shadow_memory_teach`
+  memories lived without a vector for hours.
+- **Two-stage retrieval scaffolding** — `maybeRerank()` in
+  `src/memory/rerank.ts`. Pure function, gated by callsite. Not yet
+  wired into `hybridSearch` — awaits A/B with measurable baseline.
+
+### Added — Tooling
+
+- **Gitleaks** in CI (`gitleaks/gitleaks-action@v2`) + opt-in local
+  pre-commit hook (`scripts/install-gitleaks-hook.sh`, no husky dep).
+  `.gitleaks.toml` with doc/example/dist allowlist.
+- **Eval baseline harness** — `evals/` directory with 20 frozen cases
+  (10 extract + 10 observe), TypeScript fixtures, offline runner
+  (`npm run eval`), nightly workflow `.github/workflows/evals.yml`.
+  Layered checks: Zod schema validity, item-count bounds, required
+  kinds, forbidden substrings (anti-secret-leak).
+- **Migrations golden snapshot** — `src/storage/migrations.test.ts`
+  with 7 invariants + `__snapshots__/migrations.schema.json`
+  regenerable via `UPDATE_SNAPSHOTS=1`.
+
+### Fixed
+
+- Daemon shutdown: `webServer.close()` failures during teardown now
+  log a `warn` instead of being silently swallowed (helps debug
+  EADDRINUSE on next start).
+- Daemon: `embedding backfill` promise rejections are now surfaced
+  via `log.error` instead of leaking as `UnhandledPromiseRejection`.
+
+### Removed
+
+Nothing removed in this release.
+
 ## [0.5.1] — 2026-04-28
 
 **Uninstall path, daemon restart fix, defensive tests.**

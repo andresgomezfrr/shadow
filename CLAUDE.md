@@ -40,7 +40,7 @@ User ← Claude CLI (MCP tools) → Shadow daemon (port 3700)
 | CLI | Commander.js 14 |
 | Validation | Zod 4 |
 | LLM Backend | Claude CLI (`--print --output-format json`) or Agent SDK |
-| MCP | JSON-RPC over HTTP on `/api/mcp` (69 tools); a stdio server also exists for legacy clients (`shadow mcp serve`) |
+| MCP | JSON-RPC over HTTP on `/api/mcp` (spec 2025-06-18): **74 tools + 6 resources + 4 prompts**; stdio server also exists for legacy clients (`shadow mcp serve`). Tools declare `annotations` hints (readOnly/destructive/idempotent/openWorld) via name-suffix inference + per-tool override. |
 | Dashboard | React 19, Vite, Tailwind CSS 4, React Router 7 |
 | Daemon | launchd (macOS, KeepAlive=true) or systemd --user (Linux, Restart=always) |
 
@@ -188,6 +188,10 @@ shadow -- <claude args>         # Passthrough: e.g. shadow -- --resume <id>, sha
 shadow ask "question"           # One-shot question with personality
 shadow summary                  # Daily activity summary
 shadow web                      # Open dashboard in browser
+shadow context [--repo P] [--json]                     # snapshot of compañero state (mood/focus/alerts/obs/plans)
+shadow workspace [--timeout MS]                        # git-status global across all repos + pending work
+shadow recap [hours] [--json|--markdown|--narrate]     # ad-hoc activity recap (default 24h, stats-only by default)
+shadow tail [--lines N] [--type X] [--no-follow] [--no-color]  # daemon log streamer with ANSI coloring
 
 # Admin
 shadow status / doctor / daemon start|stop|restart|status / usage
@@ -239,6 +243,16 @@ SHADOW_DATA_DIR=~/.shadow             # Data directory
 SHADOW_LOCALE=en                      # User-facing language (en, es, …)
 SHADOW_PROACTIVITY_LEVEL=5            # 1-10
 SHADOW_HEARTBEAT_INTERVAL_MS=1800000  # 30 min
+SHADOW_PLANS_DIR=~/.claude/plans      # plan-mode markdown source (shadow://plans/active + shadow_plan_to_task)
+
+# Watchdog (v0.6.0): event-loop lag + soft session timeout
+SHADOW_WATCHDOG_ENABLED=true
+SHADOW_WATCHDOG_EVENT_LOOP_THRESHOLD_MS=30000  # 30s
+SHADOW_WATCHDOG_SOFT_TIMEOUT_MS=21600000       # 6h
+SHADOW_WATCHDOG_TICK_INTERVAL_MS=60000         # 60s
+
+# Periodic embedding backfill (v0.6.0)
+SHADOW_EMBEDDING_BACKFILL_INTERVAL_MS=60000    # 60s
 
 # Per-phase models (see ModelsSchema for the full set)
 SHADOW_MODEL_ANALYZE=sonnet           # Heartbeat analyze
@@ -257,7 +271,11 @@ from the dashboard if you need to override.
 
 ## Key Patterns
 
-**Adding a new MCP tool**: Add to the appropriate file in `src/mcp/tools/` (status, memory, observations, suggestions, entities, profile, data, tasks). Follow existing pattern: inputSchema + async handler. Register in `src/mcp/server.ts` tool assembly.
+**Adding a new MCP tool**: Add to the appropriate file in `src/mcp/tools/` (status, memory, observations, suggestions, entities, profile, data, tasks, workspace, repo-health, recap). Follow existing pattern: inputSchema + async handler + optional `annotations` override. Register in `src/mcp/server.ts` tool assembly. Tool annotations are inferred from the name suffix (see `inferAnnotations()` regex in `src/mcp/server.ts`); add new suffixes when introducing tools that don't match the existing groups.
+
+**Adding a new MCP resource**: Append an entry to `createMcpResources(db)` in `src/mcp/resources.ts` with `{uri, name, description, mimeType, annotations, read}`. URIs follow `shadow://<scope>/<key>`. Read-only data only — mutations stay in tools.
+
+**Adding a new MCP prompt**: Append to `createMcpPrompts(db, config)` in `src/mcp/prompts.ts`. Prompts are template-only — do NOT call the LLM inside `render()`. Use `requireString(args, key)` for required args, return `{messages: [...]}` per MCP spec 2025-06-18.
 
 **Adding a new CLI command**: Extend the appropriate `src/cli/cmd-*.ts` module. Export a register function, call it from `src/cli.ts`. Use `withDb()` wrapper for DB access.
 
