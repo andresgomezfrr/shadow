@@ -140,6 +140,17 @@ export const ConfigSchema = z.object({
   watchdogSoftTimeoutMs: z.coerce.number().int().positive().default(6 * 60 * 60 * 1000),
   watchdogTickIntervalMs: z.coerce.number().int().positive().default(60_000),
   embeddingBackfillIntervalMs: z.coerce.number().int().min(10_000).default(60_000),
+  // Auto-revalidation of stale suggestions (v0.6.2+).
+  // Triggers the existing `revalidate-suggestion` LLM job for open suggestions
+  // that aged past `revalidateStaleAgeThresholdMs` AND have new commits in
+  // their repo since createdAt. The cooldown prevents the same suggestion
+  // from being re-revalidated more often than `revalidateStaleCooldownMs`.
+  revalidateStaleEnabled: z.coerce.boolean().default(true),
+  revalidateStaleIntervalMs: z.coerce.number().int().min(60_000).default(6 * 60 * 60 * 1000),
+  revalidateStaleAgeThresholdMs: z.coerce.number().int().min(60_000).default(4 * 60 * 60 * 1000),
+  revalidateStaleCooldownMs: z.coerce.number().int().min(60_000).default(24 * 60 * 60 * 1000),
+  revalidateStaleMaxPerBatch: z.coerce.number().int().min(1).max(50).default(5),
+  revalidateStaleGitTimeoutMs: z.coerce.number().int().min(500).max(30_000).default(2_000),
 });
 
 /**

@@ -718,6 +718,13 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         _db.enqueueJob('version-check', { priority: 1 });
       }
 
+      // Auto-revalidate stale suggestions: cheap I/O batch that enqueues
+      // `revalidate-suggestion` LLM jobs for suggestions whose repo has
+      // moved since they were created. Real work happens in the LLM jobs.
+      if (canSchedule && config.revalidateStaleEnabled && shouldEnqueue('revalidate-stale-batch', config.revalidateStaleIntervalMs)) {
+        _db.enqueueJob('revalidate-stale-batch', { priority: 2 });
+      }
+
       // Repo profiling: now reactive (triggered by remote-sync when changes detected)
       // Manual trigger still available via /api/jobs/trigger/repo-profile
 

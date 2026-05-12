@@ -24,6 +24,7 @@ export const JOB_TYPES: Record<string, { priority: number; description: string }
   'digest-weekly':        { priority: 5,  description: 'generate weekly digest' },
   'digest-brag':          { priority: 5,  description: 'generate brag doc' },
   'revalidate-suggestion': { priority: 3, description: 'revalidate open suggestions' },
+  'revalidate-stale-batch': { priority: 2, description: 'enqueue revalidate-suggestion for stale open suggestions with new commits' },
   'auto-plan':            { priority: 4,  description: 'revalidate mature suggestions and create plan runs' },
   'auto-execute':         { priority: 4,  description: 'execute planned runs with high confidence' },
   cleanup:                { priority: 2,  description: 'purge interactions/event_queue/llm_usage/jobs older than 90d; rollup llm_usage_daily' },

@@ -89,6 +89,12 @@ export function loadConfig(): ShadowConfig {
     watchdogSoftTimeoutMs: process.env.SHADOW_WATCHDOG_SOFT_TIMEOUT_MS,
     watchdogTickIntervalMs: process.env.SHADOW_WATCHDOG_TICK_INTERVAL_MS,
     embeddingBackfillIntervalMs: process.env.SHADOW_EMBEDDING_BACKFILL_INTERVAL_MS,
+    revalidateStaleEnabled: process.env.SHADOW_REVALIDATE_STALE_ENABLED,
+    revalidateStaleIntervalMs: process.env.SHADOW_REVALIDATE_STALE_INTERVAL_MS,
+    revalidateStaleAgeThresholdMs: process.env.SHADOW_REVALIDATE_STALE_AGE_THRESHOLD_MS,
+    revalidateStaleCooldownMs: process.env.SHADOW_REVALIDATE_STALE_COOLDOWN_MS,
+    revalidateStaleMaxPerBatch: process.env.SHADOW_REVALIDATE_STALE_MAX_PER_BATCH,
+    revalidateStaleGitTimeoutMs: process.env.SHADOW_REVALIDATE_STALE_GIT_TIMEOUT_MS,
   });
 
   const resolvedDataDir = resolveDataDir(parsed.dataDir);
