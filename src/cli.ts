@@ -23,6 +23,7 @@ import { registerDocsCommands } from './cli/cmd-docs.js';
 import { registerWorkspaceCommand } from './cli/cmd-workspace.js';
 import { registerRecapCommand } from './cli/cmd-recap.js';
 import { registerContextCommand } from './cli/cmd-context.js';
+import { registerLogsCommand } from './cli/cmd-logs.js';
 import { log } from './log.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -125,6 +126,7 @@ registerDocsCommands(program);
 registerWorkspaceCommand(program, config, withDb);
 registerRecapCommand(program, config, withDb);
 registerContextCommand(program, config, withDb);
+registerLogsCommand(program, config);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   log.error(error instanceof Error ? error.message : String(error));
