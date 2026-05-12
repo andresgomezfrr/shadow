@@ -98,7 +98,7 @@ export function dataTools(ctx: ToolContext): McpTool[] {
     // ---- Search ----
     {
       name: 'shadow_search',
-      description: 'Unified semantic + full-text search across memories, observations, and suggestions (FTS5 + embeddings, ranked via RRF). Use when the user asks "what do you know about X" or when you need to find relevant context across all knowledge types with a single call.',
+      description: 'Unified cross-entity search across memories + observations + suggestions (FTS5 + embeddings, RRF). **Call PROACTIVELY before any non-trivial proposal** — one call returns ranked matches across the three knowledge stores, cheaper than three separate searches. Triggers: before naming/refactor/library proposals; before opining on conventions; when the user mentions a topic / pattern / past decision / tech name / workflow. The recall step is what keeps Shadow from re-litigating locked decisions — skip it and you\'re flying blind.',
       inputSchema: mcpSchema(SearchSchema),
       handler: async (params) => {
         const { query, types, limit } = SearchSchema.parse(params);

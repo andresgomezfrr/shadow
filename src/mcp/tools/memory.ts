@@ -72,7 +72,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_memory_search',
-      description: 'Search Shadow\'s memory store using full-text search (FTS5) with ranking by relevance and access count. Use when the user references something you\'ve previously learned ("remember when...", "what did I tell you about X") or when you need background context for a task.',
+      description: 'Search Shadow\'s memory store (FTS5 + access-count ranking). **Call PROACTIVELY before opining or proposing**, not only when the user references the past. Triggers: before naming/refactor/library/approach proposals; before estimating effort; before agreeing with a default; whenever the user mentions a decision, pattern, convention, or "lo que ya hicimos". Andrés has locked decisions and anti-patterns documented as memories that often contradict defaults — recall them first or risk re-litigating settled ground. Cheap call (<50ms), no token cost.',
       inputSchema: mcpSchema(MemorySearchSchema),
       handler: async (params) => {
         const { query, limit } = MemorySearchSchema.parse(params);
@@ -190,7 +190,7 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
     // -----------------------------------------------------------------------
     {
       name: 'shadow_memory_similar',
-      description: 'Search-by-example: find memories semantically similar to a given memory id. Reuses its stored embedding (no re-embed) and runs vector search excluding the input itself. Use to discover latent connections that keyword search misses ("memorias parecidas a esta decisión").',
+      description: 'Search-by-example: find memories semantically similar to a given memoryId. **Call after surfacing a memory that looks relevant** to widen the recall around it — neighbouring decisions / conventions / patterns that share semantic ground but lack overlapping keywords. Triggers: "is this similar to something we already decided?", "what else applies here?". Reuses stored embedding (no re-embed) and excludes the input from results. Complementary to shadow_memory_search (keyword) — call both when the answer matters.',
       inputSchema: mcpSchema(MemorySimilarSchema),
       handler: async (params) => {
         const { memoryId, limit, excludeArchived } = MemorySimilarSchema.parse(params);
