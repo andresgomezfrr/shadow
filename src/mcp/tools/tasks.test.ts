@@ -287,3 +287,85 @@ describe('shadow_task_remove', () => {
     assert.equal(db.getTask(task.id), null);
   });
 });
+
+// ---------------------------------------------------------------------------
+// shadow_plan_to_task
+// ---------------------------------------------------------------------------
+
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+describe('shadow_plan_to_task', () => {
+  let tools: McpTool[];
+  let db: ReturnType<typeof createTestToolContext>['db'];
+  let cleanup: () => void;
+  const tmpDirs: string[] = [];
+
+  before(() => {
+    const env = createTestToolContext({ trustLevel: 2 });
+    tools = taskTools(env.ctx);
+    db = env.db;
+    cleanup = env.cleanup;
+  });
+  after(() => {
+    for (const d of tmpDirs) {
+      try { rmSync(d, { recursive: true, force: true }); } catch {}
+    }
+    cleanup();
+  });
+
+  function writePlan(content: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'shadow-p2t-'));
+    tmpDirs.push(dir);
+    const path = join(dir, 'plan.md');
+    writeFileSync(path, content);
+    return path;
+  }
+
+  it('returns err when plan file does not exist', async () => {
+    const result = await callTool(tools, 'shadow_plan_to_task', { planPath: '/tmp/shadow-nonexistent-plan-xyz.md' }) as any;
+    assert.equal(result.ok, false);
+    assert.match(result.error, /plan file not found/);
+  });
+
+  it('extracts first heading as title', async () => {
+    const planPath = writePlan('# My epic plan title\n\nbody here');
+    const result = await callTool(tools, 'shadow_plan_to_task', { planPath }) as any;
+    assert.equal(result.ok, true);
+    assert.equal(result.data.created, true);
+    assert.equal(result.data.task.title, 'My epic plan title');
+  });
+
+  it('falls back to filename when no heading', async () => {
+    const planPath = writePlan('no heading just body\nstill no heading');
+    const result = await callTool(tools, 'shadow_plan_to_task', { planPath }) as any;
+    assert.equal(result.ok, true);
+    assert.equal(result.data.task.title, 'plan.md');
+  });
+
+  it('respects explicit title override', async () => {
+    const planPath = writePlan('# Auto title\n');
+    const result = await callTool(tools, 'shadow_plan_to_task', { planPath, title: 'Explicit override' }) as any;
+    assert.equal(result.data.task.title, 'Explicit override');
+  });
+
+  it('linked task carries plan externalRef', async () => {
+    const planPath = writePlan('# ref test\n');
+    const result = await callTool(tools, 'shadow_plan_to_task', { planPath }) as any;
+    const refs = result.data.task.externalRefs as any[];
+    assert.equal(refs.length, 1);
+    assert.equal(refs[0].source, 'plan');
+    assert.equal(refs[0].key, 'plan.md');
+    assert.match(refs[0].url, /^file:\/\//);
+  });
+
+  it('is idempotent — second call returns same task with created:false', async () => {
+    const planPath = writePlan('# idempotent plan\n');
+    const first = await callTool(tools, 'shadow_plan_to_task', { planPath }) as any;
+    const second = await callTool(tools, 'shadow_plan_to_task', { planPath }) as any;
+    assert.equal(first.data.created, true);
+    assert.equal(second.data.created, false);
+    assert.equal(second.data.task.id, first.data.task.id);
+  });
+});

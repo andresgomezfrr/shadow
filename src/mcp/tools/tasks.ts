@@ -1,6 +1,30 @@
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
 import { z } from 'zod';
 import type { McpTool, ToolContext } from './types.js';
 import { mcpSchema, ok, err } from './types.js';
+
+// Convención para linkar tasks a planes de plan-mode:
+//   externalRefs: [{ source: 'plan', key: <basename>, url: 'file://<absolute-path>' }]
+// Aplica idempotencia buscando un task existente con el mismo `url`.
+const PLAN_EXTERNAL_SOURCE = 'plan';
+
+const PlanToTaskSchema = z.object({
+  planPath: z.string().describe('Absolute path to the plan markdown file (typically under ~/.claude/plans/)'),
+  title: z.string().optional().describe('Override title (default: first markdown heading or filename)'),
+  projectId: z.string().optional().describe('Parent project id'),
+  repoIds: z.array(z.string()).optional().describe('Associated repo ids'),
+});
+
+function extractFirstHeading(planPath: string): string | null {
+  try {
+    const head = readFileSync(planPath, 'utf-8').slice(0, 2048);
+    const headingLine = head.split('\n').find((l) => l.trim().startsWith('# '));
+    return headingLine ? headingLine.replace(/^#\s+/, '').trim() : null;
+  } catch {
+    return null;
+  }
+}
 
 const ListTasksSchema = z.object({
   status: z.enum(['open', 'active', 'blocked', 'done']).optional().describe('Filter by status'),
@@ -180,6 +204,52 @@ export function taskTools(ctx: ToolContext): McpTool[] {
         });
         ctx.db.updateTask(input.id, { status: 'active' });
         return ok({ runId: run.id, taskId: input.id });
+      },
+    },
+    {
+      name: 'shadow_plan_to_task',
+      description: 'Create a task linked to a plan-mode markdown file (typically under ~/.claude/plans/). Idempotent: if a task already references the same plan path it is returned instead of duplicated. Title defaults to the first markdown heading or filename. Use after ExitPlanMode to track execution of an approved plan.',
+      inputSchema: mcpSchema(PlanToTaskSchema),
+      handler: async (params) => {
+        const input = PlanToTaskSchema.parse(params);
+        const absolutePath = resolve(input.planPath);
+        if (!existsSync(absolutePath)) return err(`plan file not found: ${absolutePath}`);
+        try {
+          if (!statSync(absolutePath).isFile()) return err(`not a file: ${absolutePath}`);
+        } catch {
+          return err(`cannot stat: ${absolutePath}`);
+        }
+
+        const url = `file://${absolutePath}`;
+        const key = basename(absolutePath);
+
+        // Idempotencia: busca task existente con externalRefs apuntando a este plan.
+        // No hay índice SQL sobre external_refs_json — filter in-memory sobre el
+        // listado activo (limit 500 cubre realidad práctica; si crece, añadir índice).
+        const existingTasks = ctx.db.listTasks({ limit: 500 });
+        const existing = existingTasks.find((t) =>
+          t.externalRefs.some((r) => r.source === PLAN_EXTERNAL_SOURCE && r.url === url),
+        );
+        if (existing) {
+          return ok({ task: existing, message: `existing task for plan ${key}`, created: false });
+        }
+
+        const title = input.title ?? extractFirstHeading(absolutePath) ?? key;
+        const task = ctx.db.createTask({
+          title,
+          status: 'open',
+          externalRefs: [{ source: PLAN_EXTERNAL_SOURCE, key, url }],
+          repoIds: input.repoIds,
+          projectId: input.projectId,
+        });
+        ctx.db.createAuditEvent({
+          interface: 'mcp',
+          action: 'plan_to_task',
+          targetKind: 'task',
+          targetId: task.id,
+          detail: { planPath: absolutePath, title },
+        });
+        return ok({ task, message: `task created from plan: ${key}`, created: true });
       },
     },
     {

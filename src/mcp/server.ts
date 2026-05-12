@@ -99,9 +99,9 @@ export function createMcpTools(db: ShadowDatabase, config: ShadowConfig, opts?: 
 // Las listas se evalúan en orden: destructive antes que read-only, mutating
 // antes que default. Si un nombre no encaja en ninguna lista, queda sin hints
 // inferidos (la spec dice "hints" — ausencia ≠ negación).
-const READONLY_SUFFIXES = /(_list|_view|_search|_get|_query|_status|_available|_focus|_check_in|_alerts|_systems|_repos|_contacts|_observations|_suggestions|_tasks|_digests|_digest|_relations?|_projects|_events|_summary|_profile|_detail|_soul|_usage|_config|_active_projects)$/;
+const READONLY_SUFFIXES = /(_list|_view|_search|_get|_query|_status|_available|_focus|_check_in|_alerts|_systems|_repos|_contacts|_observations|_suggestions|_tasks|_digests|_digest|_relations?|_projects|_events|_summary|_profile|_detail|_soul|_usage|_config|_active_projects|_health|_recap|_similar)$/;
 const DESTRUCTIVE_SUFFIXES = /(_remove|_archive|_close|_delete|_stop|_forget|_resolve|_dismiss|_ack)$/;
-const MUTATING_SUFFIXES = /(_create|_add|_update|_set|_write|_teach|_observe|_correct|_feedback|_accept|_snooze|_reopen|_run|_execute|_reset)$/;
+const MUTATING_SUFFIXES = /(_create|_add|_update|_set|_write|_teach|_observe|_correct|_feedback|_accept|_snooze|_reopen|_run|_execute|_reset|_to_task)$/;
 
 export function inferAnnotations(name: string): McpToolAnnotations {
   if (DESTRUCTIVE_SUFFIXES.test(name)) {
