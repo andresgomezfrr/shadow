@@ -8,6 +8,33 @@ migrations can land in any release (the daemon auto-applies them on restart).
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-05-12
+
+**Behavior fix: pivot search-tool descriptions reactive → proactive.**
+
+Patch on top of v0.6.0 in response to a real-use observation: Shadow
+was not calling memory-search on its own. Root cause was tool-description
+wording, not missing functionality.
+
+### Fixed
+
+- `shadow_memory_search`, `shadow_memory_similar`, and `shadow_search`
+  (cross-entity) now describe themselves with explicit proactive
+  triggers: before naming/refactor/library/approach proposals, before
+  opining on conventions, before estimating effort, when the user
+  mentions decisions/patterns/conventions. Previously framed reactively
+  ("use when the user references the past"), which the consuming LLM
+  honored too strictly. Behavior change with zero code change.
+- Recall cost (<50ms) is now stated explicitly in the description so
+  the LLM no longer treats it as expensive.
+
+### Companion changes (outside the repo)
+
+- A `convention` memory ("Recall-first: search memory antes de proponer")
+  was teach'ed into the local Shadow DB to surface in `contextKnowledge`
+  on `shadow_check_in`. Repo-side change in this release is the
+  description rewrite; the memory entry lives per-installation.
+
 ## [0.6.0] — 2026-05-12
 
 **MCP 2025-06-18 trinity, daemon hardening, observability primitives.**
