@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { z } from 'zod';
 import type { McpTool, ToolContext } from './types.js';
 import { mcpSchema, ok, err } from './types.js';
@@ -8,6 +9,22 @@ import { mcpSchema, ok, err } from './types.js';
 //   externalRefs: [{ source: 'plan', key: <basename>, url: 'file://<absolute-path>' }]
 // Aplica idempotencia buscando un task existente con el mismo `url`.
 const PLAN_EXTERNAL_SOURCE = 'plan';
+
+// Defense-in-depth: aunque sea uso solo-local, la tool acepta path arbitrario.
+// Limita a archivos bajo el home del usuario (donde típicamente viven
+// `~/.claude/plans/`, `~/workspace/<repo>/plans/`, etc) o bajo `SHADOW_PLANS_DIR`
+// override. Evita que un caller curioso linke `/etc/passwd` como "plan".
+function isPathAllowed(absolutePath: string): boolean {
+  const allowedRoots: string[] = [];
+  if (process.env.SHADOW_PLANS_DIR) {
+    try { allowedRoots.push(realpathSync(resolve(process.env.SHADOW_PLANS_DIR))); } catch { /* dir may not exist yet */ }
+  }
+  try { allowedRoots.push(realpathSync(homedir())); } catch { /* unlikely */ }
+
+  let resolved: string;
+  try { resolved = realpathSync(absolutePath); } catch { return false; }
+  return allowedRoots.some((root) => resolved === root || resolved.startsWith(root + '/'));
+}
 
 const PlanToTaskSchema = z.object({
   planPath: z.string().describe('Absolute path to the plan markdown file (typically under ~/.claude/plans/)'),
@@ -218,6 +235,9 @@ export function taskTools(ctx: ToolContext): McpTool[] {
           if (!statSync(absolutePath).isFile()) return err(`not a file: ${absolutePath}`);
         } catch {
           return err(`cannot stat: ${absolutePath}`);
+        }
+        if (!isPathAllowed(absolutePath)) {
+          return err(`path outside allowed roots (home or $SHADOW_PLANS_DIR): ${absolutePath}`);
         }
 
         const url = `file://${absolutePath}`;

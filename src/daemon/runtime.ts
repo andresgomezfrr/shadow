@@ -616,8 +616,10 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         embeddingBackfillRunning = false;
       }
     };
-    void runBackfillOnce();
-    embeddingBackfillTimerRef = setInterval(() => { void runBackfillOnce(); }, config.embeddingBackfillIntervalMs);
+    runBackfillOnce().catch((e) => log.error('[daemon] embedding backfill startup rejected:', e));
+    embeddingBackfillTimerRef = setInterval(() => {
+      runBackfillOnce().catch((e) => log.error('[daemon] embedding backfill tick rejected:', e));
+    }, config.embeddingBackfillIntervalMs);
     if (typeof embeddingBackfillTimerRef.unref === 'function') embeddingBackfillTimerRef.unref();
 
     // --- Thought loop (random status line thoughts, independent of heartbeat) ---
@@ -1084,7 +1086,11 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
           webServer.close(),
           new Promise<void>((r) => setTimeout(r, 5_000)),  // hard cap — don't hang shutdown
         ]);
-      } catch { /* best-effort */ }
+      } catch (e) {
+        // Silenciar rompía debugging cuando el siguiente arranque hereda un puerto
+        // ocupado. Loguea sin re-throw para no bloquear el resto del shutdown.
+        log.warn('[daemon] webServer.close failed during shutdown:', e instanceof Error ? e.message : String(e));
+      }
     }
     // Final grace period: allow any in-flight async writes (scheduled by aborted
     // handlers' catch/finally blocks) to drain their microtask queue before we

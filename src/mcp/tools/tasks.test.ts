@@ -301,8 +301,11 @@ describe('shadow_plan_to_task', () => {
   let db: ReturnType<typeof createTestToolContext>['db'];
   let cleanup: () => void;
   const tmpDirs: string[] = [];
+  const originalPlansDir = process.env.SHADOW_PLANS_DIR;
 
   before(() => {
+    // Permitir tmpdir() como plans root para que el path guard no bloquee fixtures.
+    process.env.SHADOW_PLANS_DIR = tmpdir();
     const env = createTestToolContext({ trustLevel: 2 });
     tools = taskTools(env.ctx);
     db = env.db;
@@ -312,6 +315,8 @@ describe('shadow_plan_to_task', () => {
     for (const d of tmpDirs) {
       try { rmSync(d, { recursive: true, force: true }); } catch {}
     }
+    if (originalPlansDir === undefined) delete process.env.SHADOW_PLANS_DIR;
+    else process.env.SHADOW_PLANS_DIR = originalPlansDir;
     cleanup();
   });
 
@@ -367,5 +372,12 @@ describe('shadow_plan_to_task', () => {
     assert.equal(first.data.created, true);
     assert.equal(second.data.created, false);
     assert.equal(second.data.task.id, first.data.task.id);
+  });
+
+  it('rejects paths outside allowed roots (defense-in-depth)', async () => {
+    // /etc/hosts existe en macOS y Linux, no está bajo home ni tmpdir → debe rechazar.
+    const result = await callTool(tools, 'shadow_plan_to_task', { planPath: '/etc/hosts' }) as any;
+    assert.equal(result.ok, false);
+    assert.match(result.error, /outside allowed roots/);
   });
 });
