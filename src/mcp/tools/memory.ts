@@ -53,6 +53,12 @@ const MemoryListSchema = z.object({
   detail: z.boolean().describe('Include full bodyMd (default false)').optional(),
 });
 
+const MemorySimilarSchema = z.object({
+  memoryId: z.string().describe('Memory id to find neighbors for'),
+  limit: z.coerce.number().int().min(1).max(50).default(5),
+  excludeArchived: z.coerce.boolean().default(true),
+});
+
 // ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
@@ -176,6 +182,49 @@ export function memoryTools(ctx: ToolContext): McpTool[] {
           detail: { updatedFields: Object.keys(updates), reason: reason ?? null },
         });
         return ok({ memoryId, updated: Object.keys(updates) });
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // shadow_memory_similar
+    // -----------------------------------------------------------------------
+    {
+      name: 'shadow_memory_similar',
+      description: 'Search-by-example: find memories semantically similar to a given memory id. Reuses its stored embedding (no re-embed) and runs vector search excluding the input itself. Use to discover latent connections that keyword search misses ("memorias parecidas a esta decisión").',
+      inputSchema: mcpSchema(MemorySimilarSchema),
+      handler: async (params) => {
+        const { memoryId, limit, excludeArchived } = MemorySimilarSchema.parse(params);
+
+        const sourceMem = db.getMemory(memoryId);
+        if (!sourceMem) return err(`memory not found: ${memoryId}`);
+
+        // Lectura directa del embedding ya almacenado — sin re-computar.
+        const row = db.rawDb
+          .prepare('SELECT embedding FROM memory_vectors WHERE id = ?')
+          .get(memoryId) as { embedding: Float32Array } | undefined;
+        if (!row) return err(`memory has no embedding yet — wait for next backfill tick (default 60s) or check daemon logs`);
+
+        const { similarToEmbedding } = await import('../../memory/search.js');
+        // limit + 1 para descartar el self del topK; aún así +5 extra como margen
+        // por si el self no es el primero (puede no estar si hay duplicates).
+        const raw = similarToEmbedding({
+          db: db.rawDb,
+          embedding: row.embedding,
+          vecTable: 'memory_vectors',
+          limit: limit + 5,
+        });
+
+        const items: Array<{ id: string; title: string; kind: string; layer: string; similarity: number; archived: boolean }> = [];
+        for (const r of raw) {
+          if (r.id === memoryId) continue;
+          const m = db.getMemory(r.id);
+          if (!m) continue;
+          const archived = !!m.archivedAt;
+          if (excludeArchived && archived) continue;
+          items.push({ id: m.id, title: m.title, kind: m.kind, layer: m.layer, similarity: r.similarity, archived });
+          if (items.length >= limit) break;
+        }
+        return ok({ source: { id: sourceMem.id, title: sourceMem.title }, count: items.length, items });
       },
     },
 

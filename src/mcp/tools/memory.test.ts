@@ -286,3 +286,88 @@ describe('shadow_correct', () => {
     assert.ok(entities.some((e: any) => e.type === 'repo' && e.id === repo.id));
   });
 });
+
+// ---------------------------------------------------------------------------
+// shadow_memory_similar
+// ---------------------------------------------------------------------------
+
+describe('shadow_memory_similar', () => {
+  let tools: McpTool[];
+  let db: ReturnType<typeof createTestToolContext>['db'];
+  let cleanup: () => void;
+
+  before(async () => {
+    const env = createTestToolContext({ trustLevel: 1 });
+    tools = memoryTools(env.ctx);
+    db = env.db;
+    cleanup = env.cleanup;
+  });
+  after(() => cleanup());
+
+  it('returns err when memory not found', async () => {
+    const result = await callTool(tools, 'shadow_memory_similar', { memoryId: 'nonexistent-id-xyz' }) as any;
+    assert.equal(result.ok, false);
+    assert.match(result.error, /memory not found/);
+  });
+
+  it('returns err when memory has no embedding yet', async () => {
+    const mem = seedMemory(db, { title: 'no-embed memory', bodyMd: 'no embedding generated for this' });
+    const result = await callTool(tools, 'shadow_memory_similar', { memoryId: mem.id }) as any;
+    assert.equal(result.ok, false);
+    assert.match(result.error, /no embedding/);
+  });
+
+  it('finds neighbors when embeddings exist + excludes self', async () => {
+    const { generateAndStoreEmbedding } = await import('../../memory/lifecycle.js');
+    const seed = seedMemory(db, { title: 'TypeScript strict configuration', bodyMd: 'tsconfig strict mode enabled' });
+    const neighbor1 = seedMemory(db, { title: 'TypeScript noUncheckedIndexedAccess', bodyMd: 'related tsconfig flag for type safety' });
+    const neighbor2 = seedMemory(db, { title: 'Strict null checks', bodyMd: 'TypeScript strictNullChecks setting' });
+    const unrelated = seedMemory(db, { title: 'Postgres connection pooling', bodyMd: 'pgbouncer transaction mode' });
+
+    for (const m of [seed, neighbor1, neighbor2, unrelated]) {
+      await generateAndStoreEmbedding(db, 'memory', m.id, { kind: m.kind, title: m.title, bodyMd: m.bodyMd });
+    }
+
+    const result = await callTool(tools, 'shadow_memory_similar', { memoryId: seed.id, limit: 5 }) as any;
+    assert.equal(result.ok, true);
+    const items = result.data.items as Array<{ id: string; similarity: number }>;
+    assert.ok(items.length >= 2, `expected at least 2 neighbors, got ${items.length}`);
+    // El self nunca debe aparecer
+    assert.ok(!items.some((i) => i.id === seed.id), 'self must be excluded');
+    // Similarities descending
+    for (let i = 1; i < items.length; i++) {
+      assert.ok(items[i - 1].similarity >= items[i].similarity, 'similarities should be descending');
+    }
+  });
+
+  it('respects limit param', async () => {
+    const { generateAndStoreEmbedding } = await import('../../memory/lifecycle.js');
+    const seed = seedMemory(db, { title: 'limit test seed', bodyMd: 'seed body for limit test' });
+    for (let i = 0; i < 4; i++) {
+      const m = seedMemory(db, { title: `limit neighbor ${i}`, bodyMd: `neighbor body ${i}` });
+      await generateAndStoreEmbedding(db, 'memory', m.id, { kind: m.kind, title: m.title, bodyMd: m.bodyMd });
+    }
+    await generateAndStoreEmbedding(db, 'memory', seed.id, { kind: seed.kind, title: seed.title, bodyMd: seed.bodyMd });
+
+    const result = await callTool(tools, 'shadow_memory_similar', { memoryId: seed.id, limit: 2 }) as any;
+    assert.equal(result.ok, true);
+    assert.equal(result.data.items.length, 2);
+  });
+
+  it('excludes archived by default; includes when excludeArchived=false', async () => {
+    const { generateAndStoreEmbedding } = await import('../../memory/lifecycle.js');
+    const seed = seedMemory(db, { title: 'archive test seed', bodyMd: 'seed for archive filter' });
+    const archiveTarget = seedMemory(db, { title: 'archive test neighbor', bodyMd: 'will be archived' });
+    await generateAndStoreEmbedding(db, 'memory', seed.id, { kind: seed.kind, title: seed.title, bodyMd: seed.bodyMd });
+    await generateAndStoreEmbedding(db, 'memory', archiveTarget.id, { kind: archiveTarget.kind, title: archiveTarget.title, bodyMd: archiveTarget.bodyMd });
+    db.updateMemory(archiveTarget.id, { archivedAt: new Date().toISOString() });
+
+    const defaultRes = await callTool(tools, 'shadow_memory_similar', { memoryId: seed.id, limit: 20 }) as any;
+    assert.ok(!defaultRes.data.items.some((i: any) => i.id === archiveTarget.id), 'archived must be excluded by default');
+
+    const withArchived = await callTool(tools, 'shadow_memory_similar', { memoryId: seed.id, limit: 20, excludeArchived: false }) as any;
+    const found = withArchived.data.items.find((i: any) => i.id === archiveTarget.id);
+    assert.ok(found, 'archived should appear when excludeArchived=false');
+    assert.equal(found.archived, true);
+  });
+});

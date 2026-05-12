@@ -160,3 +160,21 @@ export async function vectorSearch(opts: {
     similarity: 1 - (r.distance * r.distance) / 2,
   }));
 }
+
+/**
+ * Variant of vectorSearch that takes a pre-computed embedding instead of text.
+ * Used by `shadow_memory_similar` where the embedding already lives in
+ * memory_vectors and re-computing would be wasteful (~200ms vs ~1ms read).
+ */
+export function similarToEmbedding(opts: {
+  db: DatabaseSync;
+  embedding: Float32Array;
+  vecTable: string;
+  limit: number;
+}): { id: string; similarity: number }[] {
+  const results = searchVector(opts.db, opts.embedding, opts.vecTable, opts.limit);
+  return results.map((r) => ({
+    id: r.id,
+    similarity: 1 - (r.distance * r.distance) / 2,
+  }));
+}
