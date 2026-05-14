@@ -89,6 +89,9 @@ export function loadConfig(): ShadowConfig {
     watchdogSoftTimeoutMs: process.env.SHADOW_WATCHDOG_SOFT_TIMEOUT_MS,
     watchdogTickIntervalMs: process.env.SHADOW_WATCHDOG_TICK_INTERVAL_MS,
     embeddingBackfillIntervalMs: process.env.SHADOW_EMBEDDING_BACKFILL_INTERVAL_MS,
+    programmaticBudgetEnabled: process.env.SHADOW_PROGRAMMATIC_BUDGET_ENABLED,
+    programmaticBudgetUsd: process.env.SHADOW_PROGRAMMATIC_BUDGET_USD,
+    programmaticBudgetCheckIntervalMs: process.env.SHADOW_PROGRAMMATIC_BUDGET_CHECK_INTERVAL_MS,
   });
 
   const resolvedDataDir = resolveDataDir(parsed.dataDir);

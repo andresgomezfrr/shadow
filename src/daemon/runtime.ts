@@ -718,6 +718,12 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
         _db.enqueueJob('version-check', { priority: 1 });
       }
 
+      // Programmatic-budget check: estimate monthly $ spend on `claude -p`
+      // / Agent SDK calls vs configured ceiling (default $200 for Max 20x).
+      if (canSchedule && config.programmaticBudgetEnabled && shouldEnqueue('programmatic-budget-check', config.programmaticBudgetCheckIntervalMs)) {
+        _db.enqueueJob('programmatic-budget-check', { priority: 1 });
+      }
+
       // Repo profiling: now reactive (triggered by remote-sync when changes detected)
       // Manual trigger still available via /api/jobs/trigger/repo-profile
 
@@ -1047,6 +1053,43 @@ export async function startDaemon(config: ShadowConfig): Promise<void> {
       if (consecutiveIdleTicks > 0 && consecutiveIdleTicks % 60 === 0) {
         repoWatcher.rotateWatchers();
         state.watchedRepoCount = repoWatcher.watchedCount;
+      }
+
+      // Programmatic budget alert: derive from latest budget-check job.
+      // Same pattern as backend_unhealthy / update_available. Single alert
+      // id (`programmatic_budget`) whose severity tracks the level.
+      const lastBudgetCheck = _db.getLastJob('programmatic-budget-check');
+      const existingBudgetAlert = state.alerts.findIndex(a => a.id === 'programmatic_budget');
+      if (lastBudgetCheck?.status === 'completed') {
+        const bcResult = lastBudgetCheck.result as Record<string, unknown> | null;
+        const level = bcResult?.level as string | undefined;
+        const pct = bcResult?.pct as number | undefined;
+        const monthlyUsd = bcResult?.monthlyUsd as number | undefined;
+        const budgetUsd = bcResult?.budgetUsd as number | undefined;
+        const month = bcResult?.month as string | undefined;
+
+        if (level && level !== 'ok') {
+          const severity: 'info' | 'warning' | 'critical' =
+            level === 'over_100' ? 'critical' : level === 'warning_90' ? 'warning' : 'info';
+          const message = `Programmatic LLM budget at ${pct?.toFixed(0) ?? '?'}% ($${monthlyUsd?.toFixed(2) ?? '?'}/$${budgetUsd ?? '?'}) for ${month ?? '?'}`;
+          if (existingBudgetAlert === -1) {
+            state.alerts.push({
+              id: 'programmatic_budget',
+              message,
+              severity,
+              since: lastBudgetCheck.finishedAt ?? new Date().toISOString(),
+              acked: false,
+            });
+            log.warn(`[daemon] Alert raised: ${message}`);
+          } else {
+            // Refresh severity + message in place (level may have escalated)
+            state.alerts[existingBudgetAlert].severity = severity;
+            state.alerts[existingBudgetAlert].message = message;
+          }
+        } else if (level === 'ok' && existingBudgetAlert !== -1) {
+          state.alerts.splice(existingBudgetAlert, 1);
+          log.info('[daemon] Alert cleared: programmatic_budget — back under threshold');
+        }
       }
 
       writeDaemonState(config, state);

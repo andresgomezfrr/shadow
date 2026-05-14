@@ -510,6 +510,7 @@ import { handleAutoPlan, handleAutoExecute } from './handlers/autonomy.js';
 import { handlePrSync } from './handlers/pr-sync.js';
 import { handleCleanup } from './handlers/cleanup.js';
 import { handleMetricsSnapshot } from './handlers/metrics.js';
+import { handleProgrammaticBudgetCheck } from './handlers/budget.js';
 import { log } from '../log.js';
 
 export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
@@ -533,6 +534,7 @@ export function buildHandlerRegistry(): Map<string, JobHandlerEntry> {
   registry.set('pr-sync', { category: 'io', fn: handlePrSync });
   registry.set('cleanup', { category: 'io', fn: handleCleanup, timeoutMs: 10 * 60 * 1000 });
   registry.set('metrics-snapshot', { category: 'io', fn: handleMetricsSnapshot });
+  registry.set('programmatic-budget-check', { category: 'io', fn: handleProgrammaticBudgetCheck });
 
   // Digest handlers registered with their full type name
   for (const digestType of ['digest-daily', 'digest-weekly', 'digest-brag']) {

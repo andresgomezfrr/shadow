@@ -140,6 +140,14 @@ export const ConfigSchema = z.object({
   watchdogSoftTimeoutMs: z.coerce.number().int().positive().default(6 * 60 * 60 * 1000),
   watchdogTickIntervalMs: z.coerce.number().int().positive().default(60_000),
   embeddingBackfillIntervalMs: z.coerce.number().int().min(10_000).default(60_000),
+  // Programmatic-LLM budget tracking (v0.6.2+).
+  // Starting 2026-06-15 Anthropic Max 20x subscribers get a $200/month credit
+  // for Agent SDK + `claude --print` usage. Shadow's daemon jobs all run in
+  // that bucket; this lets you watch the spend and get alerts before the
+  // credit dries up mid-month.
+  programmaticBudgetEnabled: z.coerce.boolean().default(true),
+  programmaticBudgetUsd: z.coerce.number().nonnegative().default(200),
+  programmaticBudgetCheckIntervalMs: z.coerce.number().int().min(60_000).default(6 * 60 * 60 * 1000),
 });
 
 /**
