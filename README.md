@@ -58,25 +58,33 @@ Dashboard at <http://localhost:3700>.
   suggestions into tasks and run them in isolated worktrees
 - **Bond system**: Shadow grows with you across 5 axes and 8 tiers, with a
   narrative Chronicle authored by the LLM as you cross thresholds
-- **69 MCP tools** give Claude typed, safe access to everything in Shadow
-- **Web dashboard** with 17+ pages: Morning brief, Workspace, Chronicle,
+- **74 MCP tools + 6 resources + 4 prompts** — full MCP 2025-06-18 trinity,
+  with `annotations` hints (readOnly / destructive / idempotent / openWorld)
+  so Claude can reason about what each tool does to your state
+- **Diagnostic CLI** for daily use: `shadow workspace` (git-status global +
+  pending work across repos), `shadow context` (mood/focus/observations/
+  plans snapshot), `shadow recap [hours]`, `shadow tail` (live daemon log
+  streamer with level coloring and `[component]` filter)
+- **Web dashboard** with 18+ pages: Morning brief, Workspace, Chronicle,
   Memories, Observations, Suggestions, Activity, Runs, Tasks, Digests,
   Usage, Profile, Repos, Projects, Systems, Team, Guide
 
 ## How it works
 
 ```
-You → Claude CLI (MCP tools) → Shadow daemon (:3700)
-                                   ├── SQLite (~/.shadow/shadow.db)
-                                   ├── Web dashboard (React)
-                                   ├── Job system (22 types)
-                                   │   ├── heartbeat (summarize → extract → observe)
-                                   │   ├── suggest, consolidate, reflect
-                                   │   ├── auto-plan, auto-execute
-                                   │   ├── enrichment, pr-sync, remote-sync
-                                   │   └── … and more
-                                   ├── Hooks (SessionStart, PostToolUse, Stop, …)
-                                   └── service manager (launchd on macOS, systemd --user on Linux)
+You → Claude CLI (MCP) → Shadow daemon (:3700)
+                            ├── SQLite (~/.shadow/shadow.db) + FTS5 + sqlite-vec
+                            ├── MCP server (tools + resources + prompts)
+                            ├── Web dashboard (React)
+                            ├── Job system (22 types)
+                            │   ├── heartbeat (summarize → extract → observe)
+                            │   ├── suggest, consolidate, reflect
+                            │   ├── auto-plan, auto-execute
+                            │   ├── enrichment, pr-sync, remote-sync
+                            │   └── … and more
+                            ├── Watchdog (event-loop lag + soft session timeout)
+                            ├── Hooks (SessionStart, PostToolUse, Stop, …)
+                            └── service manager (launchd on macOS, systemd --user on Linux)
 ```
 
 Shadow is 100% LLM-based — Claude is the brain, Shadow is the persistence,
@@ -114,9 +122,13 @@ shadow web          # open the dashboard at http://localhost:3700
 
 Shadow exposes three surfaces that share the same SQLite state.
 
-1. **Claude CLI (primary).** Shadow exposes 69 MCP tools (`mcp__shadow__*`).
-   Claude reaches for them naturally — `shadow_check_in` on every session
-   start, `shadow_suggestions` for advice, `shadow_task_create` when an idea
+1. **Claude CLI (primary).** Shadow exposes the full MCP 2025-06-18 trinity:
+   **74 tools** (`mcp__shadow__*`), **6 resources** (`shadow://profile/soul`,
+   `shadow://session/last-known`, `shadow://plans/active`, …), and
+   **4 prompts** (`shadow_morning_brief`, `shadow_scope_check`,
+   `shadow_audit_block`, `shadow_naming_vote`). Claude reaches for tools
+   naturally — `shadow_check_in` on every session start, `shadow_search`
+   before opining on conventions, `shadow_task_create` when an idea
    crystallizes. Start a session via `shadow` (spawns `claude` with the soul
    pre-loaded as `--append-system-prompt`) or `claude` bare (SessionStart
    hook injects the soul). Passthrough: `shadow -- --resume <id>`,
@@ -127,9 +139,16 @@ Shadow exposes three surfaces that share the same SQLite state.
    contacts, repos, projects. The Morning page is the daily brief; Workspace
    is the inbox for active work; Chronicle is the bond narrative.
 
-3. **`shadow` CLI** for admin: `shadow status`, `shadow daemon restart`,
-   `shadow job <type>`, `shadow profile bond-reset`, `shadow statusline
-   enable|disable`. See `shadow --help`.
+3. **`shadow` CLI** for admin and diagnostics:
+   - **Admin**: `shadow status`, `shadow daemon restart`, `shadow job <type>`,
+     `shadow profile bond-reset`, `shadow statusline enable|disable`.
+   - **Diagnostics** (v0.6.0+): `shadow workspace` (git-status global + pending
+     work across all repos), `shadow context [--repo <path>] [--json]`
+     (terminal-friendly snapshot of mood / focus / alerts / observations /
+     active plans), `shadow recap [hours] [--json|--markdown]` (ad-hoc activity
+     recap), `shadow tail [--lines N] [--type X] [--no-follow]` (daemon log
+     streamer with ANSI coloring by level and `[component]` filter).
+   - See `shadow --help`.
 
 ## Is Shadow for you?
 
